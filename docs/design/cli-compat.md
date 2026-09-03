@@ -117,10 +117,10 @@ The contract that makes `--stamp` useful without forcing a rebuild every
 build: a *stable* status change invalidates stamped actions; a *volatile*
 change alone (the common case — `BUILD_TIMESTAMP` differs every time)
 never does. `WorkspaceStatus::invalidates` encodes this by comparing only
-the stable map. `FORMATTED_DATE`'s calendar math
-(`fjfj-exec::workspace_status::civil_from_days`) is Howard Hinnant's
-public-domain `civil_from_days` algorithm, hand-rolled rather than adding
-a date/time crate dependency for one field.
+the stable map. `FORMATTED_DATE`'s calendar math uses the `time` crate
+(`OffsetDateTime::now_utc`); `time::Month`/`time::Weekday` spell names out
+in full, so `fjfj-exec::workspace_status::format_date` takes a 3-letter
+prefix to match Bazel's `EEE`/`MMM`.
 
 Currently wired into `fjfj build`'s stub only as far as computing and
 logging the status (so `--workspace_status_command`/`--stamp` fail fast

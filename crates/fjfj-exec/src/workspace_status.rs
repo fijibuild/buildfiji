@@ -6,10 +6,10 @@
 //! environment and clock, and write the two files.
 
 use std::path::Path;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use fjfj_bazel_compat::workspace_status::{WorkspaceStatus, WorkspaceStatusError};
 use fjfj_bazel_compat::workspace_status_flags::WorkspaceStatusFlags;
+use time::OffsetDateTime;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ComputeError {
@@ -19,8 +19,6 @@ pub enum ComputeError {
     NonZeroExit(std::path::PathBuf, std::process::ExitStatus),
     #[error("workspace status command {0:?} printed invalid output: {1}")]
     Invalid(std::path::PathBuf, WorkspaceStatusError),
-    #[error("system clock is before the Unix epoch")]
-    ClockBeforeEpoch,
 }
 
 /// Run `flags.workspace_status_command` (a no-op, matching Bazel's
@@ -35,18 +33,15 @@ pub async fn compute(flags: &WorkspaceStatusFlags) -> Result<WorkspaceStatus, Co
     let user = std::env::var("USER")
         .or_else(|_| std::env::var("USERNAME"))
         .unwrap_or_else(|_| "unknown".to_string());
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|_| ComputeError::ClockBeforeEpoch)?
-        .as_secs();
+    let now = OffsetDateTime::now_utc();
 
     WorkspaceStatus::parse(
         &raw,
         &flags.embed_label,
         &host,
         &user,
-        now,
-        &format_date_utc(now),
+        now.unix_timestamp().max(0) as u64,
+        &format_date(now),
     )
     .map_err(|e| {
         ComputeError::Invalid(
@@ -95,45 +90,23 @@ fn hostname_fallback() -> String {
         .unwrap_or_else(|| "unknown".to_string())
 }
 
-const MONTHS: [&str; 12] = [
-    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-];
-const WEEKDAYS: [&str; 7] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
 /// `FORMATTED_DATE`'s documented format: `yyyy MMM d HH:mm:ss EEE`, UTC.
-/// Hand-rolled rather than pulling in a date/time crate for one field:
-/// the civil-calendar conversion is Howard Hinnant's well-known
-/// `civil_from_days` (public domain), which is exact for the entire
-/// `i64` day range and needs no dependency.
-fn format_date_utc(unix_seconds: u64) -> String {
-    let unix_seconds = unix_seconds as i64;
-    let days = unix_seconds.div_euclid(86400);
-    let secs_of_day = unix_seconds.rem_euclid(86400);
-    let (year, month, day) = civil_from_days(days);
-    let weekday = WEEKDAYS[((days + 4).rem_euclid(7)) as usize];
-    let hh = secs_of_day / 3600;
-    let mm = (secs_of_day % 3600) / 60;
-    let ss = secs_of_day % 60;
+/// `time::Month`/`time::Weekday`'s `Display` spell the name out in full
+/// (`"June"`, `"Friday"`); Bazel's format wants the three-letter form, so
+/// take a prefix rather than hand-rolling the calendar math ourselves.
+fn format_date(dt: OffsetDateTime) -> String {
+    let month = dt.month().to_string();
+    let weekday = dt.weekday().to_string();
     format!(
-        "{year} {} {day} {hh:02}:{mm:02}:{ss:02} {weekday}",
-        MONTHS[(month - 1) as usize]
+        "{} {} {} {:02}:{:02}:{:02} {}",
+        dt.year(),
+        &month[..3],
+        dt.day(),
+        dt.hour(),
+        dt.minute(),
+        dt.second(),
+        &weekday[..3]
     )
-}
-
-/// Days-since-1970-01-01 -> (year, month 1-12, day 1-31), UTC, proleptic
-/// Gregorian. <http://howardhinnant.github.io/date_algorithms.html>
-fn civil_from_days(z: i64) -> (i64, u32, u32) {
-    let z = z + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z.rem_euclid(146_097); // [0, 146096]
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365; // [0, 399]
-    let y = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100); // [0, 365]
-    let mp = (5 * doy + 2) / 153; // [0, 11]
-    let d = (doy - (153 * mp + 2) / 5 + 1) as u32; // [1, 31]
-    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32; // [1, 12]
-    let y = if m <= 2 { y + 1 } else { y };
-    (y, m, d)
 }
 
 #[cfg(test)]
@@ -143,9 +116,15 @@ mod tests {
     #[test]
     fn known_epoch_dates() {
         // 1970-01-01 00:00:00 UTC was a Thursday.
-        assert_eq!(format_date_utc(0), "1970 Jan 1 00:00:00 Thu");
+        assert_eq!(
+            format_date(OffsetDateTime::from_unix_timestamp(0).unwrap()),
+            "1970 Jan 1 00:00:00 Thu"
+        );
         // 2023-06-02 01:44:29 UTC, the doc's own example, was a Friday.
-        assert_eq!(format_date_utc(1_685_670_269), "2023 Jun 2 01:44:29 Fri");
+        assert_eq!(
+            format_date(OffsetDateTime::from_unix_timestamp(1_685_670_269).unwrap()),
+            "2023 Jun 2 01:44:29 Fri"
+        );
     }
 
     #[tokio::test]
