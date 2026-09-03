@@ -47,4 +47,29 @@ does not move `changedAt`. -/
 theorem reverify_preserves_changedAt (n : Node) (v : Version) (hv : n.verifiedAt ≤ v) :
     ({ n with verifiedAt := v, h := Nat.le_trans n.h hv } : Node).changedAt = n.changedAt := rfl
 
+/-- Invariants checked exhaustively by the Stateright model in
+`crates/fjfj-models/src/scheduler.rs`, stated over a completed node and the
+versions it observed for its dependencies. -/
+structure Observation where
+  depChangedAt : Version
+  observed     : Version
+
+/-- No reads from the future: a node verified at `v` observed nothing newer
+than `v`. Violated by the mixed-version bug (finishing an evaluation with
+reads taken at different global versions). -/
+def NoFutureReads (n : Node) (obs : List Observation) : Prop :=
+  ∀ o ∈ obs, o.observed ≤ n.verifiedAt
+
+/-- Verified implies current: a node verified at the current version `v`
+observed each dependency's current `changedAt`. -/
+def CurrentDeps (n : Node) (obs : List Observation) (v : Version) : Prop :=
+  n.verifiedAt = v → ∀ o ∈ obs, o.observed = o.depChangedAt
+
+/-- A node with no dependencies trivially satisfies both invariants. -/
+theorem leaf_consistent (n : Node) (v : Version) :
+    NoFutureReads n [] ∧ CurrentDeps n [] v := by
+  refine ⟨?_, ?_⟩
+  · intro o h; cases h
+  · intro _ o h; cases h
+
 end Fjfj.Engine

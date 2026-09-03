@@ -6,3 +6,4 @@
 //! interleaving of a kill with the protocol.
 
 pub mod publish;
+pub mod scheduler;
