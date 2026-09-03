@@ -1,0 +1,17 @@
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+
+package(default_visibility = ["//visibility:public"])
+
+rust_library(
+    name = "fjfj-models",
+    srcs = glob(["src/**/*.rs"]),
+    crate_name = "fjfj_models",
+    edition = "2024",
+    version = "0.0.1",
+    deps = ["@crates//:stateright"],
+)
+
+rust_test(
+    name = "fjfj-models_test",
+    crate = ":fjfj-models",
+)

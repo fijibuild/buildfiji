@@ -19,6 +19,7 @@ fjfj-remote = { path = "crates/fjfj-remote" }
 fjfj-sandbox = { path = "crates/fjfj-sandbox" }
 fjfj-telemetry = { path = "crates/fjfj-telemetry" }
 fjfj-bazel-compat = { path = "crates/fjfj-bazel-compat" }
+fjfj-models = { path = "crates/fjfj-models" }
 
 # Reused ecosystem libraries (see docs/ARCHITECTURE.md "Reuse over rebuild")
 anyhow = "1"
@@ -37,3 +38,4 @@ sha2 = "0.11"
 hex = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+stateright = "0.31"

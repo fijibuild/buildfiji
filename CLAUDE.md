@@ -62,12 +62,12 @@ This protocol applies when ending a Beads implementation workflow. It is subordi
 ## Build & Test
 
 ```bash
-cargo build && cargo test          # Rust workspace (authoritative)
-bazel build //... && bazel test //...  # via rules_rust + crate_universe from Cargo.lock
-./target/debug/fjfj build //...       # dogfood
+bazel build //... && bazel test //...   # the runner; clippy + rustfmt aspects run on every build
+bazel run //:fjfj -- build //...        # dogfood
+cd spec && lake build                    # Lean spec, until Lean rules land
 ```
 
-After changing any Cargo.toml, run `CARGO_BAZEL_REPIN=1 bazel build //...` and update the crate BUILD.bazel deps by hand.
+Bazel and fjfj are the build runners. Cargo is used only to maintain Cargo.toml/Cargo.lock (`cargo update`, `cargo fmt --all`); do not treat `cargo test` as a gate. After changing any Cargo.toml, run `CARGO_BAZEL_REPIN=1 bazel build //...` and update the crate BUILD.bazel deps by hand.
 
 
 ## Architecture Overview

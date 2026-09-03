@@ -1,4 +1,5 @@
 import Fjfj.Engine
+import Fjfj.Publish
 /-!
 # fjfj architecture specification
 
