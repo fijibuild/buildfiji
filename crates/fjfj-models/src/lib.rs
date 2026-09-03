@@ -7,6 +7,7 @@
 
 pub mod compaction;
 pub mod daemon;
+pub mod disk_cache;
 pub mod dynamic;
 pub mod publish;
 pub mod scheduler;

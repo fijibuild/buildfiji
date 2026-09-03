@@ -54,3 +54,13 @@ and `--experimental_remote_cache_key_workspace`-style salt fields.
 - Output tree virtualisation strategy (FUSE? NFS? lazy copy on access?).
 - Tree artifacts and symlink handling parity with Bazel.
 - Remote persistent workers (Bazel has none; do we want them?).
+
+## Shared disk cache rules (model-checked, `crates/fjfj-models/src/disk_cache.rs`)
+
+Bazel and fjfj may share one `--disk_cache`. Blobs and action-cache
+entries are written temp + fsync + rename. An action-cache hit counts only
+if every referenced CAS blob is present at use time; a missing blob is a
+miss and re-executes. Garbage collection removes action-cache entries
+before the blobs they reference. Trusting an action-cache entry without
+checking the CAS serves a missing blob under concurrent GC; the checker
+finds it.
