@@ -26,3 +26,26 @@ request. Separately, `WarningDeduplicator` tracks exact warning text
 already shown in this invocation so a message repeated by many actions is
 only printed once — a plain `HashSet<String>`, since Bazel's own
 deduplication is by exact text, not by warning "kind".
+
+## Compact execution log (decision 2026-09-03)
+
+`--execution_log_compact_file`'s wire format (`ExecLogEntry` from Bazel's
+`src/main/protobuf/spawn.proto`, length-delimited and zstd-compressed as one
+continuous stream) is hand-transcribed as `prost::Message` structs in
+`fjfj_remote::execution_log`, the same way `action_key::CacheSalt` transcribes
+`remote_execution_log.proto` — a vendored `.proto` file plus a protoc/prost-build
+step isn't worth it for a message set this small and stable. It lives in
+`fjfj-remote`, not `fjfj-bazel-compat`, because its payload is spawn/action
+data (`Spawn`, `InputSet`, `File`) rather than a flag value, and this crate
+already owns the other action-cache-key wire types it shares digest and
+platform message shapes with.
+
+Entries reference each other by a caller-assigned id (Bazel requires that an
+entry be written only after everything it references, without requiring
+increasing id order), so the writer only encodes what it's given — assigning
+ids by walking the action graph belongs to whatever produces the entries.
+Only the `Invocation`, `File`, `InputSet` and `Spawn` variants of
+`ExecLogEntry`'s oneof are transcribed so far; `Directory`,
+`UnresolvedSymlink`, `SymlinkAction`, `SymlinkEntrySet` and `RunfilesTree`
+exist in Bazel's proto for runfiles-tree reconstruction, which fjfj doesn't
+build yet.

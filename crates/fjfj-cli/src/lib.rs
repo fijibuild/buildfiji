@@ -10,9 +10,10 @@
 use clap::Parser;
 use fjfj_bazel_compat::exit_code::{ExitCode, messages};
 use fjfj_bazel_compat::{
-    Cli, Command, TargetPattern, canonicalize_flags, diagnostics_flags, flag_alias, misc_flags,
-    output_filter, workspace_status_flags,
+    Cli, Command, TargetPattern, canonicalize_flags, diagnostics_flags, execution_log_flags,
+    flag_alias, misc_flags, output_filter, workspace_status_flags,
 };
+use fjfj_remote::execution_log::{CompactExecutionLogWriter, EntryType, ExecLogEntry, Invocation};
 
 /// `fjfj license`'s output. Bazel's own prints an equivalent short notice
 /// (not the full license text — that's `LICENSE` in the repository root).
@@ -120,6 +121,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
             let (workspace_status, rest) = workspace_status_flags::extract(&rest, "build");
             let (misc, rest) = misc_flags::extract(&rest, "build");
             let (output_filter_flags, rest) = output_filter::extract(&rest, "build");
+            let (execution_log, rest) = execution_log_flags::extract(&rest, "build");
             let patterns = rest
                 .iter()
                 .map(|p| p.parse::<TargetPattern>())
@@ -136,8 +138,40 @@ async fn run(cli: Cli) -> Result<(), CliError> {
                 ?misc,
                 ?aliases,
                 ?output_filter_flags,
+                ?execution_log,
                 "build requested"
             );
+            // Opened and given its Invocation header now, for the same
+            // fail-fast reason as --workspace_status_command above: an
+            // unwritable --execution_log_compact_file path should reject
+            // the build immediately, not silently produce nothing once
+            // there are real spawns to log. The invocation id is left
+            // empty until there is a daemon-assigned one to put here (see
+            // `invocation_id` in fjfj-proto's command.proto).
+            if let Some(path) = &execution_log.execution_log_compact_file {
+                let file = std::fs::File::create(path).map_err(|e| {
+                    CliError::CommandLine(anyhow::anyhow!(
+                        "couldn't open --execution_log_compact_file {}: {e}",
+                        path.display()
+                    ))
+                })?;
+                let mut writer = CompactExecutionLogWriter::new(file)
+                    .map_err(|e| CliError::Internal(anyhow::Error::from(e)))?;
+                writer
+                    .write_entry(&ExecLogEntry {
+                        id: 0,
+                        r#type: Some(EntryType::Invocation(Invocation {
+                            hash_function_name: "SHA-256".into(),
+                            workspace_runfiles_directory: "_main".into(),
+                            sibling_repository_layout: true,
+                            id: String::new(),
+                        })),
+                    })
+                    .map_err(|e| CliError::Internal(anyhow::Error::from(e)))?;
+                writer
+                    .finish()
+                    .map_err(|e| CliError::Internal(anyhow::Error::from(e)))?;
+            }
             // Computed and logged now so `--workspace_status_command` and
             // `--stamp` fail fast the way Bazel does, even before there's
             // a real build to stamp; the snapshot isn't written to disk

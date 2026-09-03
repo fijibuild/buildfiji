@@ -15,4 +15,5 @@ fjfj-bazel-compat.workspace = true
 fjfj-starlark.workspace = true
 fjfj-graph.workspace = true
 fjfj-exec.workspace = true
+fjfj-remote.workspace = true
 fjfj-telemetry.workspace = true

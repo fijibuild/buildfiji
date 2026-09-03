@@ -6,6 +6,7 @@
 //! See `docs/design/remote-execution.md` and `spec/Fjfj/ActionKey.lean`.
 
 pub mod action_key;
+pub mod execution_log;
 
 pub use bazel_remote_apis::build::bazel::remote::execution::v2 as reapi;
 

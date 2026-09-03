@@ -52,3 +52,4 @@ tracing = "0.1"
 tracing-opentelemetry = "0.33"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 time = "0.3"
+zstd = "0.13"
