@@ -4,6 +4,7 @@
 *.db
 .beads-credential-key
 .beads/proxieddb/
+.beads/interactions.jsonl
 user.bazelrc
 /target
 bazel-*
