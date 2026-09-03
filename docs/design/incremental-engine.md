@@ -29,6 +29,11 @@ spawns the daemon, streams the command and relays output and exit code.
 The daemon owns the in-memory engine graph, persistent worker pools, warm
 remote connections and the file watcher.
 
+Rules from the model checker (`crates/fjfj-models/src/daemon.rs`): a live
+daemon always holds the output_base lock and a spawn that cannot take it
+exits; a crashed daemon's stale lock is broken by the next spawn; a daemon
+with blocked (queued) clients is not idle and must not time out.
+
 Telemetry: the client opens the root span and propagates W3C `traceparent`
 in gRPC metadata so client and daemon spans form one trace; the daemon
 exports OTLP and also emits daemon-lifecycle metrics.
