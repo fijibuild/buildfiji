@@ -4,7 +4,10 @@ package(default_visibility = ["//visibility:public"])
 
 rust_library(
     name = "fjfj-bazel-compat",
-    srcs = glob(["src/**/*.rs"]),
+    # Excludes src/bin/: refresh_bazel_flags is a cargo-run-only dev tool
+    # (shells out to `bazel`, writes back into the source tree), not part
+    # of the Bazel-built product. See its doc comment.
+    srcs = glob(["src/**/*.rs"], exclude = ["src/bin/**"]),
     crate_name = "fjfj_bazel_compat",
     edition = "2024",
     version = "0.0.1",

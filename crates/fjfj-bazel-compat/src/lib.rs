@@ -7,6 +7,7 @@
 //! Unknown Bazel flags are *accepted and recorded* (not rejected) so that a
 //! `.bazelrc` shared with Bazel keeps working; see `UnknownFlagPolicy`.
 
+pub mod bazel_flags;
 pub mod bazelrc;
 
 use clap::{Parser, Subcommand};

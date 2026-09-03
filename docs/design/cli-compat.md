@@ -42,3 +42,26 @@ directly.
   stay hand-written (they're pure Bazel semantics, not parsing).
 - Diagnostics: [Ariadne](https://github.com/zesterer/ariadne) for rendering
   parse errors with source spans, matching Chumsky's error/span model.
+
+## Bazel flag table (decision 2026-09-03)
+
+`bazel help flags-as-proto` prints a base64-encoded, serialized
+`bazel_flags.FlagCollection` message (proto2; vendored at
+`fjfj-bazel-compat/proto/bazel_flags.proto` for reference) — every flag
+Bazel accepts, per command, with defaults, types, and metadata tags
+(`INCOMPATIBLE_CHANGE` marks the `--incompatible_*` migration flags; there's
+no separate table for those).
+
+`fjfj-bazel-compat::bazel_flags::FLAGS` is this table, generated once
+against the pinned Bazel version and checked in as plain Rust data
+(`src/bazel_flags/generated.rs`), refreshed by
+`cargo run -p fjfj-bazel-compat --bin refresh_bazel_flags` when the pinned
+version bumps. That refresh binary decodes the proto with a ~150-line
+hand-rolled wire-format reader rather than `protoc`/`prost-build`: pulling
+in a protoc dependency (system binary or `prost-build`'s vendored one) is
+disproportionate machinery for a script that runs rarely against one small,
+stable, all-scalar/repeated-string proto2 message. The reader's
+field-number mapping must be kept in sync with the vendored `.proto` by
+hand if Bazel ever changes it. It is a `cargo run`-only dev tool (writes
+into the source tree, shells out to `bazel`), not built by
+`bazel build //...` — see `BUILD.bazel`'s glob exclude.

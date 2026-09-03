@@ -24,6 +24,7 @@ fjfj-telemetry = { path = "crates/fjfj-telemetry" }
 # Reused ecosystem libraries (see docs/ARCHITECTURE.md "Reuse over rebuild")
 anyhow = "1"
 ariadne = "0.6"
+base64 = "0.23"
 bazel-remote-apis = "0.28"
 chumsky = "0.13"
 clap = { version = "4", features = ["derive", "env"] }
