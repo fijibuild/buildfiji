@@ -13,7 +13,9 @@ pub mod bazelrc;
 pub mod canonicalize_flags;
 pub mod diagnostics_flags;
 pub mod exit_code;
+pub mod flag_alias;
 pub mod flag_registry;
+pub mod misc_flags;
 pub mod workspace_status;
 pub mod workspace_status_flags;
 

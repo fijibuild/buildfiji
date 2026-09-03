@@ -139,3 +139,21 @@ downstream — `canonicalize-flags` takes only flags, no target patterns, so
 
 `license` prints a short notice, matching Bazel's own `license` command —
 the full text lives in the repository's `LICENSE` file, same as Bazel's.
+
+## `--flag_alias`, `--check_visibility`, `--memory_profile` (decision 2026-09-03)
+
+`--flag_alias=<name>=<label>` splits into two functions rather than one,
+matching Bazel's own two-pass handling: `flag_alias::extract` collects
+every occurrence into a name→label table (it's accepted by every command,
+so unlike this crate's other `extract` functions it takes no `command`
+parameter), then `flag_alias::apply` rewrites later `--<alias>` tokens in
+the rest of argv to `--<label>`. Splitting them lets a caller log or
+inspect the alias table independent of rewriting. `apply`'s output is the
+label form fjfj-starlark's build-setting resolution will understand once
+it exists — until then it's just a different, still-unrecognised flag
+name, the same as any other Starlark flag today.
+
+`--[no]check_visibility` and `--memory_profile=<path>` are grouped in one
+`misc_flags` module rather than given one each: both are single-field
+concerns with no implementation to attach to yet (visibility enforcement,
+memory profiling), so a struct-per-flag module would be pure ceremony.
