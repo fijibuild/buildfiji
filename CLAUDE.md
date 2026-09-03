@@ -62,12 +62,12 @@ This protocol applies when ending a Beads implementation workflow. It is subordi
 ## Build & Test
 
 ```bash
-bazel build //... && bazel test //...   # the runner; clippy + rustfmt aspects run on every build
+bazel build //... && bazel test //...   # the gate; clippy + rustfmt aspects run on every build
 bazel run //:fjfj -- build //...        # dogfood
 cd spec && lake build                    # Lean spec, until Lean rules land
 ```
 
-Bazel and fjfj are the build runners. Cargo is used only to maintain Cargo.toml/Cargo.lock (`cargo update`, `cargo fmt --all`); do not treat `cargo test` as a gate. After changing any Cargo.toml, run `CARGO_BAZEL_REPIN=1 bazel build //...` and update the crate BUILD.bazel deps by hand.
+Bazel and fjfj are the build runners; cargo only maintains Cargo.toml/Cargo.lock and runs rustfmt. Details are in the `bazel`, `rust` and `lean` skills.
 
 
 ## Architecture Overview
@@ -76,14 +76,20 @@ See `docs/ARCHITECTURE.md` (crate map, principles) and `docs/design/*.md` (one d
 
 ## Conventions & Patterns
 
-- Bazel 9.2.0 observable behaviour is the spec: flags, --incompatible_* defaults, Starlark builtins, output layout, exit codes.
-- Reuse crates and protocols (starlark, bazel-remote-apis, tonic, tracing/OpenTelemetry, clap) before writing custom code.
-- Telemetry: everything is a `tracing` span; BEP and profiles are exports of the trace.
-- Architecture is recorded in Lean 4 under spec/ (checked by `lake build`); docs/design markdown is the prose companion. Fable-level decisions get a Lean module before closing.
-- Model checking in Rust: Stateright for protocol interleavings (crash and kill as actions), Loom for engine internals, Kani for pure codecs. TLA+ only by decision.
-- Kani: `cargo kani -p <crate>` (cargo is acceptable here until Bazel wiring lands). Keep harnesses on pure, allocation-free functions with `#[kani::unwind(N)]` matching the input bound; BTreeMap/String code does not terminate under CBMC.
-- Keep `fjfj-graph` free of I/O.
-- Immutable data and optics by default: values are immutable, updates go through lenses/prisms producing new values with structural sharing (persistent collections, Arc). Interior mutability or in-place mutation is allowed only where a profile shows it matters, and the bead must cite the profile.
-- No native Starlark modules: cc_common, java_common and friends are written in Starlark (builtins overlay or the rules themselves). Rust only implements the core language and rule/aspect/provider/ctx primitives.
-- Edition 2024, latest stable Rust (pinned in rust-toolchain.toml and MODULE.bazel), latest crate versions only.
-- Clippy and rustfmt run as aspects on every `bazel build` via .bazelrc; run `cargo fmt --all` before building.
+Project-wide:
+
+- Bazel 9.2.0 observable behaviour is the spec: flags, --incompatible_* defaults, Starlark builtins, output layout, exit codes. When in doubt, run Bazel and match what it does.
+- Reuse existing crates and protocols before writing custom code; a hand-rolled replacement needs a reason in the bead.
+- Architecture is recorded in Lean 4 under spec/; docs/design markdown is the prose companion, and the Lean wins when they disagree.
+- Keep `fjfj-graph` free of I/O — it is pure data.
+- A decision belongs in its docs/design doc and its bead, not in a second copy elsewhere.
+
+Language and toolchain guidance lives in skills, not here:
+
+| Skill | Covers |
+|---|---|
+| `rust` | Toolchain and crate policy, cargo vs Bazel, fmt/clippy gates, immutable data and optics, tracing spans, Stateright/Loom/Kani |
+| `bazel` | Build and test gate, BUILD.bazel and MODULE.bazel maintenance, repinning, spike crates |
+| `starlark` | The starlark crate front end, no native modules, BUILD vs .bzl dialect, AST memory rule |
+| `lean` | What the spec/ modules must state and when a bead needs one |
+| `bead-standards` | model/* and effort/* labels on every work bead |
