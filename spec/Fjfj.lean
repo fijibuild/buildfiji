@@ -1,3 +1,4 @@
+import Fjfj.Engine
 /-!
 # fjfj architecture specification
 
@@ -8,4 +9,3 @@ Specs live at the level of keys, values, edges and protocols, not Rust code.
 Decisions recorded here (with beads ids) are the source of truth; the
 markdown in `docs/design/` explains them in prose.
 -/
-import Fjfj.Engine
