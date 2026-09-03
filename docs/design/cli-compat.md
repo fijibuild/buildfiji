@@ -82,3 +82,16 @@ turns an unresolved token into either a one-line warning to print and
 continue, or the error to propagate — Bazel-flag-compatibility-during-
 migration is the point of `Warn`, per this doc's "Flag policy" section
 above.
+
+## Diagnostics flags (decision 2026-09-03)
+
+`--keep_going`/`-k`, `--verbose_failures`, `--subcommands`/`-s`,
+`--explain=<path>`, and the now-no-op `--verbose_explanations` are pulled
+out of a command's raw argv slice by
+`fjfj-bazel-compat::diagnostics_flags::extract`, using `FlagRegistry`
+rather than a clap field per flag — consistent with target patterns
+already being captured as raw strings (`TargetArgs::patterns`) rather than
+individually typed. A token `extract` doesn't recognise is left untouched
+for the caller (a real flag or a target pattern); it only peels off these
+five. This is the shape future flag groups (test flags, action-env, …)
+should follow rather than growing clap's own flag surface.

@@ -2,7 +2,7 @@
 //! runs the requested command.
 
 use clap::Parser;
-use fjfj_bazel_compat::{Cli, Command, TargetPattern};
+use fjfj_bazel_compat::{Cli, Command, TargetPattern, diagnostics_flags};
 
 pub fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
@@ -19,12 +19,12 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             Ok(())
         }
         Command::Build(args) => {
-            let patterns = args
-                .patterns
+            let (diagnostics, rest) = diagnostics_flags::extract(&args.patterns, "build");
+            let patterns = rest
                 .iter()
                 .map(|p| p.parse::<TargetPattern>())
                 .collect::<Result<Vec<_>, _>>()?;
-            tracing::info!(?patterns, "build requested");
+            tracing::info!(?patterns, ?diagnostics, "build requested");
             anyhow::bail!("fjfj build is not implemented yet; see `bd ready`")
         }
         other => anyhow::bail!("command not implemented yet: {other:?}"),

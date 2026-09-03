@@ -10,6 +10,7 @@
 
 pub mod bazel_flags;
 pub mod bazelrc;
+pub mod diagnostics_flags;
 pub mod flag_registry;
 
 use clap::{Parser, Subcommand};
