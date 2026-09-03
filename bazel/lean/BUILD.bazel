@@ -1,0 +1,10 @@
+# buildfiji-4b0.5: pinned Lean 4 toolchain release data, consumed by
+# buildfiji-4b0.1's (not yet written) toolchain repository rule.
+#
+# `load()` here forces Bazel to parse and evaluate versions.bzl whenever
+# this package loads, so a syntax or struct-shape error surfaces at
+# `bazel query //bazel/lean/...` rather than staying latent until 4b0.1
+# actually consumes it.
+load(":versions.bzl", "LEAN_TOOLCHAINS", "LEAN_VERSION")
+
+exports_files(["versions.bzl"])
