@@ -4,14 +4,20 @@ Bazel's Skyframe and Buck2's DICE are memoising, demand-driven key/value
 graphs with dependency tracking and invalidation. fjfj needs the same to
 support a persistent server, `--watchfs`, and fast no-op builds.
 
-Options to evaluate (spike):
-1. Buck2's `dice` crate (not on crates.io as of this writing; vendor or git dep).
-2. `salsa` (used by rust-analyzer): mature, Rust-native, but single-threaded
-   revision model may not suit a highly parallel build.
-3. Custom: keys are enums (`PackageKey`, `ConfiguredTargetKey`, `AspectKey`,
-   `ActionKey`, `FileKey`), values are `Arc<dyn Any>`, with a versioned
-   dependency graph. Highest control, highest cost.
+Decision (2026-09-03): build a custom engine, crate `fjfj-engine`.
 
-Decision criteria: parallelism, cancellation, memory footprint on 100k+
-targets, and ease of expressing Bazel's cycle detection and error
-propagation semantics.
+Rejected:
+1. Buck2 `dice`: not published on crates.io; API tracks Buck2 needs.
+2. `salsa`: single-revision IDE model; poor fit for thousands of concurrent
+   actions with cancellation and streaming results.
+
+Requirements for `fjfj-engine`:
+- Demand-driven memoised key/value graph; keys are enums (`PackageKey`,
+  `ConfiguredTargetKey`, `AspectKey`, `ActionKey`, `FileKey`, `RepoKey`).
+- Versioned dependency edges with early cutoff (unchanged value does not
+  invalidate dependents).
+- Fully async and parallel (tokio); cancellation of in-flight computations.
+- Bazel cycle detection and error propagation semantics.
+- Designed for persistence across server restarts.
+
+The spike (buildfiji-23d.1) studies dice and salsa to decide what to borrow.
