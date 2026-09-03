@@ -6,6 +6,7 @@ rust_library(
     name = "fjfj-remote",
     srcs = glob(["src/**/*.rs"]),
     compile_data = glob(["testdata/**"]),
+    rustc_flags = ["--check-cfg=cfg(kani)", "--check-cfg=cfg(test)"],
     crate_name = "fjfj_remote",
     edition = "2024",
     version = "0.0.1",
@@ -24,5 +25,6 @@ rust_library(
 rust_test(
     name = "fjfj-remote_test",
     crate = ":fjfj-remote",
+    rustc_flags = ["--check-cfg=cfg(kani)", "--check-cfg=cfg(test)"],
     deps = ["@crates//:serde_json"],
 )

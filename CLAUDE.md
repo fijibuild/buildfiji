@@ -82,6 +82,7 @@ See `docs/ARCHITECTURE.md` (crate map, principles) and `docs/design/*.md` (one d
 - Parser fallback if starlark crate is slow: lexer on https://github.com/NathanHowell/regal, target the `starlark_syntax` AST.
 - Architecture is recorded in Lean 4 under spec/ (checked by `lake build`); docs/design markdown is the prose companion. Fable-level decisions get a Lean module before closing.
 - Model checking in Rust: Stateright for protocol interleavings (crash and kill as actions), Loom for engine internals, Kani for pure codecs. TLA+ only by decision.
+- Kani: `cargo kani -p <crate>` (cargo is acceptable here until Bazel wiring lands). Keep harnesses on pure, allocation-free functions with `#[kani::unwind(N)]` matching the input bound; BTreeMap/String code does not terminate under CBMC.
 - Keep `fjfj-graph` free of I/O.
 - Immutable data and optics by default: values are immutable, updates go through lenses/prisms producing new values with structural sharing (persistent collections, Arc). Interior mutability or in-place mutation is allowed only where a profile shows it matters, and the bead must cite the profile.
 - No native Starlark modules: cc_common, java_common and friends are written in Starlark (builtins overlay or the rules themselves). Rust only implements the core language and rule/aspect/provider/ctx primitives.

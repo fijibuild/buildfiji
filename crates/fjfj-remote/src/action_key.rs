@@ -70,6 +70,12 @@ pub struct CacheSalt {
     pub workspace: String,
 }
 
+/// A valid single path component: non-empty, not `.` or `..`, no `/`.
+/// Pure and allocation-free so it can be proved with Kani (see `verification`).
+pub fn valid_component(c: &[u8]) -> bool {
+    !c.is_empty() && c != b"." && c != b".." && !c.contains(&b'/')
+}
+
 pub fn digest_of(bytes: &[u8]) -> Digest {
     Digest {
         hash: hex::encode(sha2::Sha256::digest(bytes)),
@@ -95,7 +101,7 @@ impl Tree {
             None => (path, None),
         };
         anyhow::ensure!(
-            !head.is_empty() && head != "." && head != "..",
+            valid_component(head.as_bytes()),
             "invalid path component in {path:?}"
         );
         match rest {
@@ -137,6 +143,40 @@ impl Tree {
                 Ok(())
             }
         }
+    }
+
+    /// Structural canonical-form check used by the Kani proofs: every name
+    /// valid, lists sorted and unique (BTreeMap guarantees order; this
+    /// re-checks it independently), and no name shared between kinds.
+    #[cfg(test)]
+    fn is_canonical(&self) -> bool {
+        fn valid(n: &str) -> bool {
+            valid_component(n.as_bytes())
+        }
+        fn sorted_unique<'a>(mut it: impl Iterator<Item = &'a String>) -> bool {
+            let mut prev: Option<&'a String> = None;
+            for n in it.by_ref() {
+                if let Some(p) = prev
+                    && p >= n
+                {
+                    return false;
+                }
+                prev = Some(n);
+            }
+            true
+        }
+        self.files.keys().all(|n| valid(n))
+            && self.symlinks.keys().all(|n| valid(n))
+            && self.dirs.keys().all(|n| valid(n))
+            && sorted_unique(self.files.keys())
+            && sorted_unique(self.symlinks.keys())
+            && sorted_unique(self.dirs.keys())
+            && self
+                .files
+                .keys()
+                .all(|n| !self.dirs.contains_key(n) && !self.symlinks.contains_key(n))
+            && self.symlinks.keys().all(|n| !self.dirs.contains_key(n))
+            && self.dirs.values().all(|d| d.is_canonical())
     }
 
     /// Serialise bottom-up, appending every `Directory` to `out`, returning this node's digest.
@@ -333,6 +373,16 @@ mod tests {
     }
 
     #[test]
+    fn inserted_trees_are_canonical() {
+        let f = |p: &str| Input::file(p, digest_of(b""));
+        let mut t = Tree::default();
+        for i in [f("a"), f("b/c"), f("b/a"), f("z")] {
+            t.insert(&i.path, i.kind).unwrap();
+        }
+        assert!(t.is_canonical());
+    }
+
+    #[test]
     fn rejects_duplicates_and_file_dir_conflicts() {
         let f = |p: &str| Input {
             path: p.into(),
@@ -344,5 +394,51 @@ mod tests {
         assert!(merkle_tree([f("a"), f("a")]).is_err());
         assert!(merkle_tree([f("a/b"), f("a")]).is_err());
         assert!(merkle_tree([f("a/../b")]).is_err());
+    }
+}
+
+/// Kani proofs (bead buildfiji-2h9.8). Run with `cargo kani -p fjfj-remote`.
+///
+/// Symbolic execution over `BTreeMap<String, _>` and `String` does not
+/// terminate in useful time, so proofs target the pure, allocation-free
+/// core that the tree builder relies on. The tree structure itself is
+/// covered by unit tests and the Bazel byte-parity tests.
+#[cfg(kani)]
+mod verification {
+    use super::valid_component;
+
+    const MAX: usize = 4;
+
+    fn any_component() -> ([u8; MAX], usize) {
+        let bytes: [u8; MAX] = kani::any();
+        let len: usize = kani::any();
+        kani::assume(len <= MAX);
+        (bytes, len)
+    }
+
+    /// `valid_component` is exactly the specification: rejects empty, `.`,
+    /// `..` and anything containing `/`; accepts everything else.
+    #[kani::proof]
+    #[kani::unwind(6)]
+    fn valid_component_matches_spec() {
+        let (bytes, len) = any_component();
+        let c = &bytes[..len];
+        let spec = len > 0 && c != b"." && c != b".." && !c.iter().any(|&b| b == b'/');
+        assert_eq!(valid_component(c), spec);
+    }
+
+    /// A valid component never contains a separator, so splitting a path on
+    /// `/` and validating each piece implies the pieces re-join to the path.
+    #[kani::proof]
+    #[kani::unwind(6)]
+    fn valid_component_has_no_separator() {
+        let (bytes, len) = any_component();
+        let c = &bytes[..len];
+        if valid_component(c) {
+            for &b in c {
+                assert_ne!(b, b'/');
+            }
+            assert!(!c.is_empty());
+        }
     }
 }

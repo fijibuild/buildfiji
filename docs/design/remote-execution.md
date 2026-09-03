@@ -37,6 +37,11 @@ the REAPI spec:
 - Environment variables, platform properties and output paths are sorted;
   directory entries are sorted by name.
 
+Kani proves the pure path-component validator (`valid_component`) against
+its specification for all inputs up to four bytes; the BTreeMap-based tree
+is out of reach for symbolic execution and is covered by unit and parity
+tests.
+
 Still to verify with more fixtures: tree artifacts, symlink inputs,
 runfiles trees, `exec_properties` from platforms, tool inputs, timeouts,
 and `--experimental_remote_cache_key_workspace`-style salt fields.
