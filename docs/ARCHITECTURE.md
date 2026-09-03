@@ -51,3 +51,16 @@ Planned crates: `fjfj-engine` (incremental memoising graph), `fjfj-proto` and `f
 
 See `docs/design/` for one document per hard problem. Each corresponds to an
 epic in beads (`bd list --type epic`).
+
+## Data modelling: immutable optics by default
+
+All engine and graph values are immutable. Updates are expressed with optics
+(lenses, prisms, traversals) that return new values sharing structure with
+the old ones, backed by persistent collections and `Arc`. This keeps
+memoisation, cancellation and persistence simple: a node's value never
+changes under a reader, snapshots are free, and equality for early cutoff is
+structural.
+
+In-place mutation, `RefCell`/`Mutex` interior mutability, or arena tricks are
+allowed only where a profile shows the immutable version is a bottleneck.
+The bead that introduces such code must link the profile.
