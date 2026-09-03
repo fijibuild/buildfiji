@@ -6,12 +6,39 @@
 
 use std::fmt;
 
+pub mod label;
+pub use label::LabelError;
+
 /// A Bazel label, e.g. `@repo//pkg/sub:name`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct Label {
     pub repo: String,
     pub package: String,
     pub name: String,
+}
+
+impl Label {
+    /// Build a `Label`, validating `package` and `name` against Bazel's
+    /// own character rules (see [`label`]'s module doc for why they
+    /// differ). Does not parse a `@repo//pkg:name` string — that's
+    /// `fjfj_bazel_compat::TargetPattern`'s job, one layer up, which also
+    /// handles the wildcard/negation syntax a concrete `Label` doesn't
+    /// have.
+    pub fn new(
+        repo: impl Into<String>,
+        package: impl Into<String>,
+        name: impl Into<String>,
+    ) -> Result<Label, LabelError> {
+        let package = package.into();
+        let name = name.into();
+        label::validate_package_name(&package)?;
+        label::validate_target_name(&name)?;
+        Ok(Label {
+            repo: repo.into(),
+            package,
+            name,
+        })
+    }
 }
 
 impl fmt::Display for Label {

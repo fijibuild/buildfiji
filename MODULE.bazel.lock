@@ -502,7 +502,7 @@
           "REPO_MAPPING:rules_rust+,bazel_skylib bazel_skylib+",
           "REPO_MAPPING:rules_rust+,bazel_tools bazel_tools",
           "REPO_MAPPING:rules_rust+,rules_cc rules_cc+",
-          "FILE:@@//Cargo.lock a6bf995228920b709ba97cb98020554fcb75138ef2221faf8ae6c6e433dc0176",
+          "FILE:@@//Cargo.lock 032cd9b604b16cdf425eb41435eceb9423f38159613794c71c45fe6462a378e7",
           "FILE:@@//Cargo.toml 79e8181931ac4b772a2a991d2064cfe2e04a0e1164721932b9dc576ae4a0711c",
           "FILE:@@//crates/fjfj/Cargo.toml ef31872aa582b75601172747471d5c4aad9b85162f7769b1b8f7b6b81e2b1703",
           "FILE:@@//crates/fjfj-cli/Cargo.toml d192bf74f543aa3200c70ff5daccfbb0d3df7470f788aa413fc1485d0da89f55",
@@ -512,7 +512,7 @@
           "FILE:@@//crates/fjfj-remote/Cargo.toml 2bee627a9639dbe0ddd4e56f1721934dd6b30900b7df6f600c3e425f7dadd6bc",
           "FILE:@@//crates/fjfj-sandbox/Cargo.toml 97d32162b897b47db2101119d2ea99c564f53a63def7bf139ae86d533c9b487f",
           "FILE:@@//crates/fjfj-telemetry/Cargo.toml 7b7f116a9ce81b9860a67749256eb4127f41a50721de8c4a13c4c37f87631cef",
-          "FILE:@@//crates/fjfj-bazel-compat/Cargo.toml d346870e1f4cad75e5cf351e827bd62bdb4702464af2863c18265cd363d2947e",
+          "FILE:@@//crates/fjfj-bazel-compat/Cargo.toml e6922ea08ff5cf9442e5a9070f4baea906ee86318e821c09b7ab64eeae7fcc45",
           "FILE:@@//crates/fjfj-models/Cargo.toml 2a2748baf3f33a2137e185ff4dc200d189cae7dad067292c7385a7cbf2b90973",
           "FILE:@@//crates/fjfj-proto/Cargo.toml 42e8451f9720dbcf0f9a4cee973869e05eca996bda57ff0a2538dafe97ff3395"
         ],

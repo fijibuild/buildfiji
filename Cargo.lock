@@ -875,6 +875,7 @@ dependencies = [
  "base64 0.23.1",
  "chumsky",
  "clap",
+ "fjfj-graph",
  "serde",
  "serde_json",
  "thiserror",

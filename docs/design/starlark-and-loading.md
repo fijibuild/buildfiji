@@ -34,3 +34,23 @@ equivalent of Bazel's `@_builtins`) or provided by the rules themselves.
 Rust implements only the core language plus the rule, aspect, provider,
 `ctx`, `Args`, depset, transition, toolchain and exec-group primitives, and
 those must be complete enough to express the native modules in Starlark.
+
+## Label character rules and path representation (decision 2026-09-03)
+
+Package names and target names follow Bazel's own `LabelValidator`
+exactly (`fjfj_graph::label`), not a plausible-looking approximation, and
+the two are asymmetric on purpose: a package name is ASCII-only, but a
+target name additionally allows any non-ASCII character — Bazel treats
+every code point above U+007F as automatically legal in a target name, so
+a source file with a non-ASCII name (a common case for localized test
+fixtures) is not an edge case to reject (buildfiji-mum.18).
+
+Once real filesystem code exists (globbing, package loading, the
+execroot), paths are `PathBuf`/`OsString`, never `String`: a Unix path is
+an arbitrary byte sequence with no UTF-8 guarantee, and Windows paths
+carrying more than `MAX_PATH` (260 UTF-16 units) need the `\\?\`
+extended-length prefix, which only applies to well-formed `OsString`
+paths, not to a `String` that has already lost the platform's native
+encoding. Label validation (above) stays on `&str`, since labels are
+Bazel-language identifiers with a defined character set, not filesystem
+paths.

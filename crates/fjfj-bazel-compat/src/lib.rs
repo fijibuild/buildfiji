@@ -150,6 +150,12 @@ impl std::str::FromStr for TargetPattern {
             ),
             None => (s.to_string(), None),
         };
+        fjfj_graph::label::validate_package_name(&package)
+            .map_err(|e| anyhow::anyhow!("invalid package name {package:?}: {e}"))?;
+        if let Some(target) = &target {
+            fjfj_graph::label::validate_target_name(target)
+                .map_err(|e| anyhow::anyhow!("invalid target name {target:?}: {e}"))?;
+        }
         Ok(TargetPattern {
             negative,
             repo,
@@ -182,5 +188,22 @@ mod tests {
         assert_eq!(p.repo.as_deref(), Some("rules_rust"));
         assert_eq!(p.package, "foo");
         assert_eq!(p.target.as_deref(), Some("bar"));
+    }
+    #[test]
+    fn accepts_a_unicode_target_name() {
+        // buildfiji-mum.18: Bazel target names allow any non-ASCII
+        // character (see fjfj_graph::label's doc comment); a source file
+        // with a non-ASCII name is a legal target.
+        let p: TargetPattern = "//testdata:café.txt".parse().unwrap();
+        assert_eq!(p.target.as_deref(), Some("café.txt"));
+    }
+    #[test]
+    fn rejects_a_non_ascii_package_name() {
+        // Unlike target names, package names are ASCII-only in Bazel.
+        assert!("//café:foo".parse::<TargetPattern>().is_err());
+    }
+    #[test]
+    fn rejects_an_invalid_target_character() {
+        assert!("//foo:bar:baz".parse::<TargetPattern>().is_err());
     }
 }
