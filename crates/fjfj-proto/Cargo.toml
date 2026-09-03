@@ -13,9 +13,3 @@ tonic-prost.workspace = true
 [build-dependencies]
 tonic-prost-build.workspace = true
 protobuf-src.workspace = true
-
-[lints.rust]
-# See tests/bazel_smoke.rs: cfg(bazel) is set only by the Bazel rust_test,
-# so it never applies under `cargo test`, but rustc still needs telling
-# it's a recognised cfg (not a typo) to avoid an unexpected_cfgs warning.
-unexpected_cfgs = { level = "warn", check-cfg = ["cfg(bazel)"] }

@@ -514,7 +514,7 @@
           "FILE:@@//crates/fjfj-telemetry/Cargo.toml 7b7f116a9ce81b9860a67749256eb4127f41a50721de8c4a13c4c37f87631cef",
           "FILE:@@//crates/fjfj-bazel-compat/Cargo.toml d346870e1f4cad75e5cf351e827bd62bdb4702464af2863c18265cd363d2947e",
           "FILE:@@//crates/fjfj-models/Cargo.toml 2a2748baf3f33a2137e185ff4dc200d189cae7dad067292c7385a7cbf2b90973",
-          "FILE:@@//crates/fjfj-proto/Cargo.toml 305689cc33f539940418b8cc27bbe88ae71f77b22cc415e57e04f3553757d2df"
+          "FILE:@@//crates/fjfj-proto/Cargo.toml 42e8451f9720dbcf0f9a4cee973869e05eca996bda57ff0a2538dafe97ff3395"
         ],
         "generatedRepoSpecs": {
           "crates": {

@@ -5,38 +5,36 @@
 //! both Cargo (`build.rs`, via `tonic-build` + vendored `protoc`) and
 //! Bazel (`rust_prost_library`, via `rust_prost_toolchain`) so the two
 //! build graphs stay in sync by construction rather than by convention.
+//!
+//! Types live under [`fjfj::v1`] (i.e. `fjfj_proto::fjfj::v1::RunCommandRequest`,
+//! not a flat `fjfj_proto::RunCommandRequest`) on purpose: `rust_prost_library`
+//! nests its generated module by proto package and doesn't offer a flat
+//! mode, so this crate nests its own `include!` to match rather than
+//! leaving Cargo and Bazel callers with two different paths for the same
+//! type (buildfiji-23d.23). `tests/smoke.rs` runs unmodified under both
+//! `cargo test` and `bazel test` as a result. The two build graphs still
+//! pin different prost/tonic runtime versions (`rules_rust_prost` vendors
+//! its own); that's fine as long as nothing in one build graph mixes
+//! generated types from both.
 
 #![allow(clippy::all)]
 
-include!(concat!(env!("OUT_DIR"), "/fjfj.v1.rs"));
+pub mod fjfj {
+    pub mod v1 {
+        include!(concat!(env!("OUT_DIR"), "/fjfj.v1.rs"));
+    }
+}
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::fjfj::v1::{InfoResponse, PingResponse, command_service_client};
 
-    // Exercises that the generated request/response types and the client
-    // stub actually build and link against the crate's prost/tonic
-    // versions; a version skew between fjfj-proto's runtime deps and a
-    // caller's would fail here first.
-    #[test]
-    fn generated_types_round_trip_defaults() {
-        let request = RunCommandRequest {
-            invocation_id: "abc123".to_string(),
-            args: vec!["build".to_string(), "//...".to_string()],
-            working_directory: "/repo".to_string(),
-            env: Default::default(),
-        };
-        assert_eq!(request.args.len(), 2);
-
-        let event = CommandEvent {
-            event: Some(command_event::Event::Result(CommandResult { exit_code: 0 })),
-        };
-        match event.event {
-            Some(command_event::Event::Result(result)) => assert_eq!(result.exit_code, 0),
-            _ => panic!("expected a CommandResult event"),
-        }
-    }
-
+    // Exercises that the client stub actually builds and links against
+    // this crate's own prost/tonic versions; a version skew between
+    // fjfj-proto's runtime deps and a caller's would fail here first.
+    // Cargo-only (see `tests/smoke.rs`'s doc comment for why): the
+    // generated client type is generic over a tonic `Channel`, and the
+    // Bazel build graph pins a different tonic version.
     #[test]
     fn client_type_names_are_reachable() {
         fn _assert_type<T>() {}

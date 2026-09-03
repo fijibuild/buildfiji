@@ -6,10 +6,7 @@ package(default_visibility = ["//visibility:public"])
 
 # rust_prost_library names its generated crate after this proto_library
 # target, so it's named to match the Cargo crate ("fjfj_proto") rather than
-# "command_proto"; callers write `fjfj_proto::fjfj::v1::...` under Bazel vs.
-# the flat `fjfj_proto::...` build.rs produces under Cargo (tonic-prost's
-# generated module nests by proto package, the include! in src/lib.rs does
-# not) — a known seam between the two codegen paths, not a bug.
+# "command_proto".
 proto_library(
     name = "fjfj_proto",
     srcs = ["proto/fjfj/v1/command.proto"],
@@ -17,10 +14,13 @@ proto_library(
 )
 
 # Generated prost/tonic bindings for fjfj_proto, from the same .proto
-# sources Cargo compiles via build.rs + tonic-prost-build. The two
-# toolchains pin different prost/tonic runtime versions (rules_rust_prost
-# vendors its own); that's fine as long as nothing in one build graph mixes
-# generated types from both.
+# sources Cargo compiles via build.rs + tonic-prost-build. src/lib.rs nests
+# its include! under the same `fjfj::v1` module rust_prost_library uses
+# (buildfiji-23d.23), so both build graphs expose
+# `fjfj_proto::fjfj::v1::...` — tests/smoke.rs runs unmodified under both.
+# The two toolchains still pin different prost/tonic runtime versions
+# (rules_rust_prost vendors its own); that's fine as long as nothing in one
+# build graph mixes generated types from both.
 rust_prost_library(
     name = "fjfj-proto",
     proto = ":fjfj_proto",
@@ -28,8 +28,7 @@ rust_prost_library(
 
 rust_test(
     name = "fjfj-proto_test",
-    srcs = ["tests/bazel_smoke.rs"],
+    srcs = ["tests/smoke.rs"],
     edition = "2024",
-    rustc_flags = ["--cfg=bazel", "--check-cfg=cfg(bazel)", "--check-cfg=cfg(test)"],
     deps = [":fjfj-proto"],
 )
