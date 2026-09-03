@@ -1,0 +1,50 @@
+name: Bug report
+description: Something in fjfj doesn't work, or doesn't match Bazel's behavior
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this. If this is a
+        compatibility gap with Bazel (fjfj does something Bazel
+        wouldn't, or vice versa), say so explicitly — those are
+        tracked differently from ordinary bugs.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you ran, what you expected, what you got instead. Full command lines and output beat a paraphrase.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproduction
+      description: The smallest `BUILD`/`MODULE.bazel`/command line that reproduces it, or a link to a repo.
+    validations:
+      required: false
+  - type: input
+    id: version
+    attributes:
+      label: fjfj version
+      description: Output of `fjfj version`, or the commit you built from.
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - macOS arm64
+        - macOS x86_64
+        - Linux x86_64
+        - Linux arm64
+        - Other
+    validations:
+      required: true
+  - type: checkboxes
+    id: bazel-comparison
+    attributes:
+      label: Does this also happen with real Bazel?
+      options:
+        - label: I checked — this is fjfj-specific, not a Bazel behavior fjfj is (correctly) matching

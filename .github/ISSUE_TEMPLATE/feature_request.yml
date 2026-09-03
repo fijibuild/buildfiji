@@ -1,0 +1,32 @@
+name: Feature request
+description: A capability fjfj is missing
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        If this is a Bazel flag, Starlark builtin, or command that real
+        Bazel already supports and fjfj doesn't yet, say which one —
+        those are usually already tracked as compatibility gaps and
+        this saves duplicate triage.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do
+      description: The underlying problem, not just the feature — helps us tell if there's a smaller fix.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: What you'd want fjfj to do. A specific flag, command, or Starlark API beats a general description.
+    validations:
+      required: false
+  - type: textarea
+    id: bazel-parity
+    attributes:
+      label: Bazel parity
+      description: If this mirrors an existing Bazel flag/command/builtin, name it (and link the Bazel docs if handy).
+    validations:
+      required: false
