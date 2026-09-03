@@ -41,3 +41,6 @@ serde_json = "1"
 stateright = "0.31"
 bazel-remote-apis = "0.28"
 prost = "0.14"
+chumsky = "1.0.0-alpha.8"
+ariadne = "0.6"
+regal = { git = "https://github.com/NathanHowell/regal" }

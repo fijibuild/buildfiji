@@ -8,7 +8,7 @@ rust_library(
     crate_name = "fjfj_bazel_compat",
     edition = "2024",
     version = "0.0.1",
-    deps = ["@crates//:anyhow", "@crates//:clap", "@crates//:serde_json", "@crates//:serde", "@crates//:thiserror", ],
+    deps = ["@crates//:anyhow", "@crates//:ariadne", "@crates//:chumsky", "@crates//:clap", "@crates//:serde_json", "@crates//:serde", "@crates//:thiserror", ],
 )
 
 rust_test(
