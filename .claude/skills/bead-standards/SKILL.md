@@ -1,14 +1,18 @@
 ---
 name: bead-standards
-description: Standards for creating and labelling beads in this repo. Use whenever creating, triaging, or claiming a bead. Every bead carries exactly one model/* label and one effort/* label so an orchestrator can route it to the right agent at the right reasoning budget.
+description: Standards for creating and labelling beads in this repo. Use whenever creating, triaging, or claiming a bead. Every work bead (task, spike, decision, bug, milestone) carries exactly one model/* label and one effort/* label so an orchestrator can route it; epics carry neither.
 ---
 
 # Bead standards
 
-Every bead (epic, task, spike, decision, milestone) MUST carry:
+Every work bead (task, spike, decision, bug, milestone) MUST carry:
 
 - exactly one `model/{haiku,sonnet,opus,fable}` label
 - exactly one `effort/{low,medium,high,xhigh,max}` label
+
+Epics MUST carry neither. An epic is a container, not routable work; its
+children are labelled individually. This also stops `--parent` from copying
+labels onto children (see below).
 
 Apply them at creation time:
 
@@ -55,14 +59,16 @@ A bead is ready to route only if its description states: the Bazel behaviour bei
 
 ## Labels and `--parent`
 
-`bd create --parent=<epic>` copies the epic's labels onto the child. After
-adding the child's own `model/*` and `effort/*`, remove the inherited pair
-with `bd label remove <id> <label>` (one label per call), or the child ends
-up with two of each. Audit with:
+`bd create --parent=<X>` copies X's labels onto the child. Epics have none,
+so children of epics start clean. A subtask under a labelled task inherits
+that task's pair: add the subtask's own labels, then remove the inherited
+ones with `bd label remove <id> <label>` (one label per call). Audit with:
 
 ```bash
 bd list --json | python3 -c 'import sys,json
 for i in json.load(sys.stdin):
     L=i.get("labels") or []
-    if len([l for l in L if l.startswith("model/")])!=1 or len([l for l in L if l.startswith("effort/")])!=1: print(i["id"],L)'
+    m=len([l for l in L if l.startswith("model/")]); e=len([l for l in L if l.startswith("effort/")])
+    want=0 if i.get("issue_type")=="epic" else 1
+    if m!=want or e!=want: print(i["id"],i.get("issue_type"),L)'
 ```
