@@ -122,35 +122,20 @@ the stable map. `FORMATTED_DATE`'s calendar math uses the `time` crate
 in full, so `fjfj-exec::workspace_status::format_date` takes a 3-letter
 prefix to match Bazel's `EEE`/`MMM`.
 
-Currently wired into `fjfj build`'s stub only as far as computing and
-logging the status (so `--workspace_status_command`/`--stamp` fail fast
-the way Bazel does); writing the files needs an execroot/`bazel-out`
-layout that doesn't exist yet (buildfiji-fyz.18).
-
 ## Remaining commands (decision 2026-09-03)
 
-`print_action`, `dump`, `canonicalize-flags`, and `license` round out
-`Command`. `help` needed no new variant: clap's `Subcommand` derive
-already generates a `help` subcommand (`fjfj help`, `fjfj help build`)
-unless disabled, so adding one of our own would only collide with it.
+`help` needed no new `Command` variant: clap's `Subcommand` derive already
+generates a `help` subcommand (`fjfj help`, `fjfj help build`) unless
+disabled, so adding one of our own would only collide with it.
 
-`canonicalize-flags` is real, not a stub —
-`fjfj-bazel-compat::canonicalize_flags::canonicalize` resolves each token
-through the same `FlagRegistry` every other flag-consuming module here
-uses, and rewrites it to `--name`, `--noname`, or `--name=value`. Unlike
+`canonicalize-flags` is built on the same `FlagRegistry` every other
+flag-consuming module in this crate uses
+(`fjfj-bazel-compat::canonicalize_flags::canonicalize`), rewriting each
+token to `--name`, `--noname`, or `--name=value`. Unlike
 `diagnostics_flags`/`workspace_status_flags`, an unresolved token is the
 command's *whole* job failing, not something to leave for a caller
 downstream — `canonicalize-flags` takes only flags, no target patterns, so
 `FlagRegistry`'s existing `UnknownFlagError` is the right and only error.
 
-`license` prints a short notice (`crates/fjfj-cli`'s `LICENSE_NOTICE`),
-matching Bazel's own `license` command — the full text lives in the
-repository's `LICENSE` file, same as Bazel's.
-
-`print_action` and `dump` are recognised (so they fail with "not
-implemented yet" instead of clap's "unrecognized subcommand") but not
-implemented: both need state — a configured action graph, a Starlark
-heap — that doesn't exist yet. `print_action`'s real implementation
-belongs with `fjfj-exec`/`fjfj-graph` once actions exist; `dump`'s with
-whatever ends up holding server-process state (`fjfj-engine`, once it
-exists).
+`license` prints a short notice, matching Bazel's own `license` command —
+the full text lives in the repository's `LICENSE` file, same as Bazel's.
