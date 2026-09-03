@@ -86,6 +86,34 @@ single-threaded (sections decode in parallel). The nodes section is the next
 target: action argv lists dominate it and should be deduplicated by content
 like edge lists.
 
+Budget confirmed (buildfiji-23d.19) on two other graph shapes and a
+synthetic 1M-node graph, same machine/method as above, `crates/fjfj-spike-persist`
+restored from commit 8a6ed31 (`fixtures/generate.sh` reproduces the first
+two dumps; `--replicate` produces the third):
+
+| graph | nodes | edges | columnar+zstd bytes/node | cold load |
+|---|---:|---:|---:|---:|
+| this repo (37,685 nodes, above) | 37,685 | 98,239 | 29.1 | 7.9ms |
+| rules_go `examples/hello` (flat depsets, few actions) | 6,862 | 10,251 | 27.4 | 8.9ms |
+| rules_python `examples/pip_parse` (runfiles-heavy) | 24,885 | 44,834 | 25.5 | 42.6ms |
+| synthetic, 41x replication of pip_parse | 1,020,285 | 1,838,194 | 2.0 | 80.2ms |
+
+Both new shapes land in the same 25-30 bytes/node band as the original
+measurement — flat depsets and runfiles trees don't break the format.
+Cold load holds well inside the 250ns/node budget throughout (80.2ms /
+1,020,285 nodes ≈ 79ns/node); redb and fjall were skipped on the 1M-node run
+(`--skip-kv`) since they were already 7-8x larger and much slower to write
+and are not going to close that gap by writing more of the same shape.
+
+Caveat on the 1M-node number: it's built by replicating pip_parse's graph
+verbatim (`synth::replicate`), sharing one string table across copies, so
+zstd compresses the repeated node/edge bytes far better than a real 1M-node
+graph with a million unique labels and argv lists would. Treat 2.0
+bytes/node as an artifact of the replication method, not a projection for a
+real graph at that size — the load-time-per-node figure is the number this
+run is actually good evidence for, since decode work scales with distinct
+sections, not with how compressible their content happens to be.
+
 Lean: `spec/Fjfj/Persistence.lean` (crash contract and delta-coding
 roundtrip). Later, profile-driven: lazy per-section loading, zstd dictionary
 for small delta-log entries, LRU eviction.
