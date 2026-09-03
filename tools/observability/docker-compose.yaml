@@ -1,7 +1,10 @@
 # buildfiji-k62.14: one-command local OTel backend for `fjfj`'s telemetry
 # (see crates/fjfj-telemetry). Fans OTLP in on one endpoint, out to
 # VictoriaTraces for traces and VictoriaMetrics for metrics — both take a
-# direct OTLP push, no Prometheus-style scraping. See README.md to run it.
+# direct OTLP push, no Prometheus-style scraping. See README.md to run it
+# (Apple `container`/`container-compose` users especially — service
+# hostnames need a one-time `sudo container system dns create` first).
+name: observability
 services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.159.0
@@ -22,8 +25,11 @@ services:
     command:
       - "-storageDataPath=/vtraces"
       # otel-collector's own OTLP/gRPC exporter reaches this directly;
-      # not published to the host.
+      # not published to the host. TLS is on by default for this
+      # listener — off here since otel-collector connects `insecure`
+      # over the compose network, and this is a local dev stack only.
       - "-otlpGRPCListenAddr=:4317"
+      - "-otlpGRPC.tls=false"
     ports:
       - "10428:10428" # VMUI (/select/vmui) and Jaeger query API (/select/jaeger)
 

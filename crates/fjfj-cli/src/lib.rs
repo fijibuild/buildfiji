@@ -74,10 +74,6 @@ impl CliError {
 
 pub fn main() -> std::process::ExitCode {
     let cli = Cli::parse(); // exits 2 itself on a flag-syntax error
-    let Ok(_telemetry) = fjfj_telemetry::init() else {
-        eprintln!("{}", messages::fatal("failed to initialize telemetry"));
-        return ExitCode::InternalError.into();
-    };
     let rt = match tokio::runtime::Runtime::new() {
         Ok(rt) => rt,
         Err(e) => {
@@ -87,6 +83,19 @@ pub fn main() -> std::process::ExitCode {
             );
             return ExitCode::InternalError.into();
         }
+    };
+    // fjfj_telemetry::init() is synchronous, but building its OTLP
+    // exporters (opentelemetry_otlp's tonic/hyper-util plumbing) still
+    // needs an entered Tokio runtime — panics with "there is no reactor
+    // running" otherwise, only visible once OTEL_EXPORTER_OTLP_ENDPOINT
+    // is actually set (buildfiji-k62.14). So `rt` must exist first, and
+    // the guard stays alive through `block_on` below rather than being
+    // dropped right after `init` — the periodic metrics exporter it sets
+    // up spawns a background task that outlives this call.
+    let _guard = rt.enter();
+    let Ok(_telemetry) = fjfj_telemetry::init() else {
+        eprintln!("{}", messages::fatal("failed to initialize telemetry"));
+        return ExitCode::InternalError.into();
     };
     match rt.block_on(run(cli)) {
         Ok(()) => ExitCode::Success.into(),

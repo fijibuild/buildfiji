@@ -12,11 +12,11 @@ receivers:
         endpoint: 0.0.0.0:4318
 
 exporters:
-  otlp/victoriatraces:
+  otlp_grpc/victoriatraces:
     endpoint: victoriatraces:4317
     tls:
       insecure: true
-  otlphttp/victoriametrics:
+  otlp_http/victoriametrics:
     # VictoriaMetrics' OTLP metrics path isn't the OTLP-standard
     # `/v1/metrics` the otlphttp exporter would otherwise append to a
     # bare `endpoint`, so it's spelled out here.
@@ -32,8 +32,8 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlp/victoriatraces, debug]
+      exporters: [otlp_grpc/victoriatraces, debug]
     metrics:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlphttp/victoriametrics, debug]
+      exporters: [otlp_http/victoriametrics, debug]

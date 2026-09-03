@@ -11,6 +11,24 @@ One command to get somewhere to point `fjfj`'s OTLP export
 docker compose -f tools/observability/docker-compose.yaml up
 ```
 
+On macOS with [Apple's `container`](https://github.com/apple/container) +
+[`container-compose`](https://github.com/apple/container-compose) instead
+of Docker, the compose file works as-is (verified end to end — a real
+`fjfj build` span landed in VictoriaTraces), but service-name resolution
+between containers needs a one-time, interactive setup step first, or
+`otel-collector` can't reach `victoriatraces`/`victoriametrics` by name
+(`no children to pick from` in its logs):
+
+```bash
+sudo container system dns create observability   # once per machine
+container-compose -f tools/observability/docker-compose.yaml up
+```
+
+(`observability` here is this compose project's `name:`, above — matches
+the `.observability` domain `container-compose` registers hostnames
+under.) Without that, container-compose falls back to `/etc/hosts`
+patching, which didn't resolve reliably in testing.
+
 Then, in another shell:
 
 ```bash
