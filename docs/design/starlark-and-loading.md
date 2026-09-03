@@ -20,7 +20,7 @@ bottleneck of the loading phase; the regal option stays on the shelf and is
 reopened only if a profile of a real fjfj load shows parsing above ~20% of
 loading wall time.
 
-Spike (`crates/fjfj-spike-starlark-parse` at commit SPIKE_COMMIT, removed
+Spike (`crates/fjfj-spike-starlark-parse` at commit fd5f11f, removed
 afterwards; bead buildfiji-mum.1). Corpora are blobless sparse clones of
 whole repos (`fixtures/fetch.sh`), every `BUILD`, `BUILD.bazel`, `*.bzl`,
 `*.star` and `MODULE.bazel` in the tree. Bazel 9.2.0-era sources, starlark
