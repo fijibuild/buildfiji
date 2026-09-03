@@ -895,6 +895,7 @@ name = "fjfj-exec"
 version = "0.0.1"
 dependencies = [
  "anyhow",
+ "fjfj-bazel-compat",
  "fjfj-graph",
  "fjfj-remote",
  "fjfj-sandbox",

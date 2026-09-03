@@ -13,6 +13,8 @@ pub mod bazelrc;
 pub mod diagnostics_flags;
 pub mod exit_code;
 pub mod flag_registry;
+pub mod workspace_status;
+pub mod workspace_status_flags;
 
 use clap::{Parser, Subcommand};
 

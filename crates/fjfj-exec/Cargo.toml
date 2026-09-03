@@ -10,6 +10,7 @@ anyhow.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 tokio.workspace = true
+fjfj-bazel-compat.workspace = true
 fjfj-graph.workspace = true
 fjfj-sandbox.workspace = true
 fjfj-remote.workspace = true

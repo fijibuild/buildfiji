@@ -9,7 +9,7 @@
 
 use clap::Parser;
 use fjfj_bazel_compat::exit_code::{ExitCode, messages};
-use fjfj_bazel_compat::{Cli, Command, TargetPattern, diagnostics_flags};
+use fjfj_bazel_compat::{Cli, Command, TargetPattern, diagnostics_flags, workspace_status_flags};
 
 /// A command failure, tagged with the Bazel exit code it corresponds to.
 /// `clap::Cli::parse()` handles its own flag-syntax errors (already exits
@@ -83,12 +83,28 @@ async fn run(cli: Cli) -> Result<(), CliError> {
         }
         Command::Build(args) => {
             let (diagnostics, rest) = diagnostics_flags::extract(&args.patterns, "build");
+            let (workspace_status, rest) = workspace_status_flags::extract(&rest, "build");
             let patterns = rest
                 .iter()
                 .map(|p| p.parse::<TargetPattern>())
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(CliError::CommandLine)?;
-            tracing::info!(?patterns, ?diagnostics, "build requested");
+            tracing::info!(
+                ?patterns,
+                ?diagnostics,
+                ?workspace_status,
+                "build requested"
+            );
+            // Computed and logged now so `--workspace_status_command` and
+            // `--stamp` fail fast the way Bazel does, even before there's
+            // a real build to stamp; the snapshot isn't written to disk
+            // yet since there's no execroot/bazel-out layout for
+            // stable-status.txt/volatile-status.txt to land in (see
+            // fjfj_exec::workspace_status).
+            let status = fjfj_exec::workspace_status::compute(&workspace_status)
+                .await
+                .map_err(|e| CliError::Build(anyhow::anyhow!(e)))?;
+            tracing::info!(stable = ?status.stable, "workspace status computed");
             Err(CliError::Build(anyhow::anyhow!(
                 "fjfj build is not implemented yet; see `bd ready`"
             )))

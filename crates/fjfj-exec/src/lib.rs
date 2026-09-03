@@ -1,6 +1,8 @@
 //! Execution phase: schedules `fjfj_graph::Action`s across local sandboxes
 //! and remote executors, checking the action cache first.
 
+pub mod workspace_status;
+
 use fjfj_graph::Action;
 
 /// Result of running an action.

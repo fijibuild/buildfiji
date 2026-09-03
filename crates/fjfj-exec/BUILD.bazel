@@ -8,7 +8,7 @@ rust_library(
     crate_name = "fjfj_exec",
     edition = "2024",
     version = "0.0.1",
-    deps = ["@crates//:anyhow", "@crates//:thiserror", "@crates//:tokio", "@crates//:tracing", "//crates/fjfj-graph", "//crates/fjfj-remote", "//crates/fjfj-sandbox", ],
+    deps = ["@crates//:anyhow", "@crates//:thiserror", "@crates//:tokio", "@crates//:tracing", "//crates/fjfj-bazel-compat", "//crates/fjfj-graph", "//crates/fjfj-remote", "//crates/fjfj-sandbox", ],
 )
 
 rust_test(

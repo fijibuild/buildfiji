@@ -95,3 +95,34 @@ individually typed. A token `extract` doesn't recognise is left untouched
 for the caller (a real flag or a target pattern); it only peels off these
 five. This is the shape future flag groups (test flags, action-env, …)
 should follow rather than growing clap's own flag surface.
+
+## Workspace status and stamping (decision 2026-09-03)
+
+`--workspace_status_command=<program>`, `--[no]stamp`, and
+`--embed_label=<value>` are pulled out the same way, by
+`fjfj-bazel-compat::workspace_status_flags::extract`. The parsing and
+partitioning rules for the command's output live separately, in
+`fjfj-bazel-compat::workspace_status` (pure, no I/O, matching Bazel's own
+[documented contract](https://bazel.build/docs/user-manual#workspace-status)):
+a `KEY VALUE` line per key, `[A-Z_]+` only, no duplicates; keys prefixed
+`STABLE_` are "stable", everything else "volatile"; `BUILD_EMBED_LABEL`,
+`BUILD_HOST`, `BUILD_USER` are always stable and `BUILD_TIMESTAMP`,
+`FORMATTED_DATE` always volatile, regardless of what the command printed.
+`fjfj-exec::workspace_status` is the I/O half — runs the program (failing
+the build on a non-zero exit, per spec), reads `$USER`/hostname and the
+clock for the built-ins, and writes `stable-status.txt`/
+`volatile-status.txt`.
+
+The contract that makes `--stamp` useful without forcing a rebuild every
+build: a *stable* status change invalidates stamped actions; a *volatile*
+change alone (the common case — `BUILD_TIMESTAMP` differs every time)
+never does. `WorkspaceStatus::invalidates` encodes this by comparing only
+the stable map. `FORMATTED_DATE`'s calendar math
+(`fjfj-exec::workspace_status::civil_from_days`) is Howard Hinnant's
+public-domain `civil_from_days` algorithm, hand-rolled rather than adding
+a date/time crate dependency for one field.
+
+Currently wired into `fjfj build`'s stub only as far as computing and
+logging the status (so `--workspace_status_command`/`--stamp` fail fast
+the way Bazel does); writing the files needs an execroot/`bazel-out`
+layout that doesn't exist yet (buildfiji-fyz.18).
