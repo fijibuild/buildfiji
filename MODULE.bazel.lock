@@ -1,5 +1,5 @@
 {
-  "lockFileVersion": 18,
+  "lockFileVersion": 28,
   "registryFileHashes": {
     "https://bcr.bazel.build/bazel_registry.json": "8a28e4aff06ee60aed2a8c281907fb8bcbf3b753c91fb5a5c57da3215d5b3497",
     "https://bcr.bazel.build/modules/abseil-cpp/20210324.2/MODULE.bazel": "7cd0312e064fde87c8d1cd79ba06c876bd23630c83466e9500321be55c96ace2",
@@ -9,20 +9,34 @@
     "https://bcr.bazel.build/modules/abseil-cpp/20230802.0/MODULE.bazel": "d253ae36a8bd9ee3c5955384096ccb6baf16a1b1e93e858370da0a3b94f77c16",
     "https://bcr.bazel.build/modules/abseil-cpp/20230802.1/MODULE.bazel": "fa92e2eb41a04df73cdabeec37107316f7e5272650f81d6cc096418fe647b915",
     "https://bcr.bazel.build/modules/abseil-cpp/20240116.1/MODULE.bazel": "37bcdb4440fbb61df6a1c296ae01b327f19e9bb521f9b8e26ec854b6f97309ed",
-    "https://bcr.bazel.build/modules/abseil-cpp/20240116.1/source.json": "9be551b8d4e3ef76875c0d744b5d6a504a27e3ae67bc6b28f46415fd2d2957da",
-    "https://bcr.bazel.build/modules/apple_support/1.23.1/MODULE.bazel": "53763fed456a968cf919b3240427cf3a9d5481ec5466abc9d5dc51bc70087442",
+    "https://bcr.bazel.build/modules/abseil-cpp/20240116.2/MODULE.bazel": "73939767a4686cd9a520d16af5ab440071ed75cec1a876bf2fcfaf1f71987a16",
+    "https://bcr.bazel.build/modules/abseil-cpp/20250127.1/MODULE.bazel": "c4a89e7ceb9bf1e25cf84a9f830ff6b817b72874088bf5141b314726e46a57c1",
+    "https://bcr.bazel.build/modules/abseil-cpp/20250512.1/MODULE.bazel": "d209fdb6f36ffaf61c509fcc81b19e81b411a999a934a032e10cd009a0226215",
+    "https://bcr.bazel.build/modules/abseil-cpp/20250814.1/MODULE.bazel": "51f2312901470cdab0dbdf3b88c40cd21c62a7ed58a3de45b365ddc5b11bcab2",
+    "https://bcr.bazel.build/modules/abseil-cpp/20250814.1/source.json": "cea3901d7e299da7320700abbaafe57a65d039f10d0d7ea601c4a66938ea4b0c",
+    "https://bcr.bazel.build/modules/apple_support/1.11.1/MODULE.bazel": "1843d7cd8a58369a444fc6000e7304425fba600ff641592161d9f15b179fb896",
+    "https://bcr.bazel.build/modules/apple_support/1.15.1/MODULE.bazel": "a0556fefca0b1bb2de8567b8827518f94db6a6e7e7d632b4c48dc5f865bc7c85",
+    "https://bcr.bazel.build/modules/apple_support/1.21.0/MODULE.bazel": "ac1824ed5edf17dee2fdd4927ada30c9f8c3b520be1b5fd02a5da15bc10bff3e",
+    "https://bcr.bazel.build/modules/apple_support/1.21.1/MODULE.bazel": "5809fa3efab15d1f3c3c635af6974044bac8a4919c62238cce06acee8a8c11f1",
     "https://bcr.bazel.build/modules/apple_support/1.24.1/MODULE.bazel": "f46e8ddad60aef170ee92b2f3d00ef66c147ceafea68b6877cb45bd91737f5f8",
-    "https://bcr.bazel.build/modules/apple_support/1.24.1/source.json": "cf725267cbacc5f028ef13bb77e7f2c2e0066923a4dab1025e4a0511b1ed258a",
+    "https://bcr.bazel.build/modules/apple_support/1.24.2/MODULE.bazel": "0e62471818affb9f0b26f128831d5c40b074d32e6dda5a0d3852847215a41ca4",
+    "https://bcr.bazel.build/modules/apple_support/1.24.2/source.json": "2c22c9827093250406c5568da6c54e6fdf0ef06238def3d99c71b12feb057a8d",
     "https://bcr.bazel.build/modules/bazel_features/1.1.1/MODULE.bazel": "27b8c79ef57efe08efccbd9dd6ef70d61b4798320b8d3c134fd571f78963dbcd",
+    "https://bcr.bazel.build/modules/bazel_features/1.10.0/MODULE.bazel": "f75e8807570484a99be90abcd52b5e1f390362c258bcb73106f4544957a48101",
     "https://bcr.bazel.build/modules/bazel_features/1.11.0/MODULE.bazel": "f9382337dd5a474c3b7d334c2f83e50b6eaedc284253334cf823044a26de03e8",
     "https://bcr.bazel.build/modules/bazel_features/1.15.0/MODULE.bazel": "d38ff6e517149dc509406aca0db3ad1efdd890a85e049585b7234d04238e2a4d",
     "https://bcr.bazel.build/modules/bazel_features/1.17.0/MODULE.bazel": "039de32d21b816b47bd42c778e0454217e9c9caac4a3cf8e15c7231ee3ddee4d",
     "https://bcr.bazel.build/modules/bazel_features/1.18.0/MODULE.bazel": "1be0ae2557ab3a72a57aeb31b29be347bcdc5d2b1eb1e70f39e3851a7e97041a",
     "https://bcr.bazel.build/modules/bazel_features/1.19.0/MODULE.bazel": "59adcdf28230d220f0067b1f435b8537dd033bfff8db21335ef9217919c7fb58",
+    "https://bcr.bazel.build/modules/bazel_features/1.21.0/MODULE.bazel": "675642261665d8eea09989aa3b8afb5c37627f1be178382c320d1b46afba5e3b",
+    "https://bcr.bazel.build/modules/bazel_features/1.23.0/MODULE.bazel": "fd1ac84bc4e97a5a0816b7fd7d4d4f6d837b0047cf4cbd81652d616af3a6591a",
     "https://bcr.bazel.build/modules/bazel_features/1.27.0/MODULE.bazel": "621eeee06c4458a9121d1f104efb80f39d34deff4984e778359c60eaf1a8cb65",
     "https://bcr.bazel.build/modules/bazel_features/1.28.0/MODULE.bazel": "4b4200e6cbf8fa335b2c3f43e1d6ef3e240319c33d43d60cc0fbd4b87ece299d",
+    "https://bcr.bazel.build/modules/bazel_features/1.3.0/MODULE.bazel": "cdcafe83ec318cda34e02948e81d790aab8df7a929cec6f6969f13a489ccecd9",
     "https://bcr.bazel.build/modules/bazel_features/1.30.0/MODULE.bazel": "a14b62d05969a293b80257e72e597c2da7f717e1e69fa8b339703ed6731bec87",
+    "https://bcr.bazel.build/modules/bazel_features/1.33.0/MODULE.bazel": "8b8dc9d2a4c88609409c3191165bccec0e4cb044cd7a72ccbe826583303459f6",
     "https://bcr.bazel.build/modules/bazel_features/1.4.1/MODULE.bazel": "e45b6bb2350aff3e442ae1111c555e27eac1d915e77775f6fdc4b351b758b5d7",
+    "https://bcr.bazel.build/modules/bazel_features/1.42.1/MODULE.bazel": "275a59b5406ff18c01739860aa70ad7ccb3cfb474579411decca11c93b951080",
     "https://bcr.bazel.build/modules/bazel_features/1.50.0/MODULE.bazel": "2083ef9c7a469f520890483ccf8e0189d6e71e2117e7752e15e6554433d5ae3e",
     "https://bcr.bazel.build/modules/bazel_features/1.50.0/source.json": "e0ee3debde2789ff56e4452e612d126925ba9ab64d4bde79c67f099d2902df9b",
     "https://bcr.bazel.build/modules/bazel_features/1.9.1/MODULE.bazel": "8f679097876a9b609ad1f60249c49d68bfab783dd9be012faf9d82547b14815a",
@@ -37,18 +51,24 @@
     "https://bcr.bazel.build/modules/bazel_skylib/1.6.1/MODULE.bazel": "8fdee2dbaace6c252131c00e1de4b165dc65af02ea278476187765e1a617b917",
     "https://bcr.bazel.build/modules/bazel_skylib/1.7.0/MODULE.bazel": "0db596f4563de7938de764cc8deeabec291f55e8ec15299718b93c4423e9796d",
     "https://bcr.bazel.build/modules/bazel_skylib/1.7.1/MODULE.bazel": "3120d80c5861aa616222ec015332e5f8d3171e062e3e804a2a0253e1be26e59b",
+    "https://bcr.bazel.build/modules/bazel_skylib/1.8.1/MODULE.bazel": "88ade7293becda963e0e3ea33e7d54d3425127e0a326e0d17da085a5f1f03ff6",
     "https://bcr.bazel.build/modules/bazel_skylib/1.8.2/MODULE.bazel": "69ad6927098316848b34a9142bcc975e018ba27f08c4ff403f50c1b6e646ca67",
     "https://bcr.bazel.build/modules/bazel_skylib/1.8.2/source.json": "34a3c8bcf233b835eb74be9d628899bb32999d3e0eadef1947a0a562a2b16ffb",
-    "https://bcr.bazel.build/modules/buildozer/7.1.2/MODULE.bazel": "2e8dd40ede9c454042645fd8d8d0cd1527966aa5c919de86661e62953cd73d84",
-    "https://bcr.bazel.build/modules/buildozer/7.1.2/source.json": "c9028a501d2db85793a6996205c8de120944f50a0d570438fcae0457a5f9d1f8",
+    "https://bcr.bazel.build/modules/buildozer/8.5.1/MODULE.bazel": "a35d9561b3fc5b18797c330793e99e3b834a473d5fbd3d7d7634aafc9bdb6f8f",
+    "https://bcr.bazel.build/modules/buildozer/8.5.1/source.json": "e3386e6ff4529f2442800dee47ad28d3e6487f36a1f75ae39ae56c70f0cd2fbd",
     "https://bcr.bazel.build/modules/google_benchmark/1.8.2/MODULE.bazel": "a70cf1bba851000ba93b58ae2f6d76490a9feb74192e57ab8e8ff13c34ec50cb",
     "https://bcr.bazel.build/modules/googletest/1.11.0/MODULE.bazel": "3a83f095183f66345ca86aa13c58b59f9f94a2f81999c093d4eeaa2d262d12f4",
     "https://bcr.bazel.build/modules/googletest/1.14.0.bcr.1/MODULE.bazel": "22c31a561553727960057361aa33bf20fb2e98584bc4fec007906e27053f80c6",
-    "https://bcr.bazel.build/modules/googletest/1.14.0.bcr.1/source.json": "41e9e129f80d8c8bf103a7acc337b76e54fad1214ac0a7084bf24f4cd924b8b4",
     "https://bcr.bazel.build/modules/googletest/1.14.0/MODULE.bazel": "cfbcbf3e6eac06ef9d85900f64424708cc08687d1b527f0ef65aa7517af8118f",
+    "https://bcr.bazel.build/modules/googletest/1.15.2/MODULE.bazel": "6de1edc1d26cafb0ea1a6ab3f4d4192d91a312fd2d360b63adaa213cd00b2108",
+    "https://bcr.bazel.build/modules/googletest/1.17.0/MODULE.bazel": "dbec758171594a705933a29fcf69293d2468c49ec1f2ebca65c36f504d72df46",
+    "https://bcr.bazel.build/modules/googletest/1.17.0/source.json": "38e4454b25fc30f15439c0378e57909ab1fd0a443158aa35aec685da727cd713",
     "https://bcr.bazel.build/modules/jsoncpp/1.9.5/MODULE.bazel": "31271aedc59e815656f5736f282bb7509a97c7ecb43e927ac1a37966e0578075",
-    "https://bcr.bazel.build/modules/jsoncpp/1.9.5/source.json": "4108ee5085dd2885a341c7fab149429db457b3169b86eb081fa245eadf69169d",
+    "https://bcr.bazel.build/modules/jsoncpp/1.9.6/MODULE.bazel": "2f8d20d3b7d54143213c4dfc3d98225c42de7d666011528dc8fe91591e2e17b0",
+    "https://bcr.bazel.build/modules/jsoncpp/1.9.6/source.json": "a04756d367a2126c3541682864ecec52f92cdee80a35735a3cb249ce015ca000",
     "https://bcr.bazel.build/modules/libpfm/4.11.0/MODULE.bazel": "45061ff025b301940f1e30d2c16bea596c25b176c8b6b3087e92615adbd52902",
+    "https://bcr.bazel.build/modules/nlohmann_json/3.6.1/MODULE.bazel": "6f7b417dcc794d9add9e556673ad25cb3ba835224290f4f848f8e2db1e1fca74",
+    "https://bcr.bazel.build/modules/nlohmann_json/3.6.1/source.json": "f448c6e8963fdfa7eb831457df83ad63d3d6355018f6574fb017e8169deb43a9",
     "https://bcr.bazel.build/modules/package_metadata/0.0.3/MODULE.bazel": "77890552ecea9e284b5424c9de827a58099348763a4359e975c359a83d4faa83",
     "https://bcr.bazel.build/modules/package_metadata/0.0.3/source.json": "742075a428ad12a3fa18a69014c2f57f01af910c6d9d18646c990200853e641a",
     "https://bcr.bazel.build/modules/platforms/0.0.10/MODULE.bazel": "8cb8efaf200bdeb2150d93e162c40f388529a25852b332cec879373771e48ed5",
@@ -64,54 +84,64 @@
     "https://bcr.bazel.build/modules/platforms/1.1.0/source.json": "fcf351c47596c939140ab0d333dfdd08ed1ea6ce33c2fe70c12493a301cf1344",
     "https://bcr.bazel.build/modules/protobuf/21.7/MODULE.bazel": "a5a29bb89544f9b97edce05642fac225a808b5b7be74038ea3640fae2f8e66a7",
     "https://bcr.bazel.build/modules/protobuf/27.0/MODULE.bazel": "7873b60be88844a0a1d8f80b9d5d20cfbd8495a689b8763e76c6372998d3f64c",
-    "https://bcr.bazel.build/modules/protobuf/27.1/MODULE.bazel": "703a7b614728bb06647f965264967a8ef1c39e09e8f167b3ca0bb1fd80449c0d",
     "https://bcr.bazel.build/modules/protobuf/29.0-rc2/MODULE.bazel": "6241d35983510143049943fc0d57937937122baf1b287862f9dc8590fc4c37df",
-    "https://bcr.bazel.build/modules/protobuf/29.0/MODULE.bazel": "319dc8bf4c679ff87e71b1ccfb5a6e90a6dbc4693501d471f48662ac46d04e4e",
-    "https://bcr.bazel.build/modules/protobuf/29.0/source.json": "b857f93c796750eef95f0d61ee378f3420d00ee1dd38627b27193aa482f4f981",
+    "https://bcr.bazel.build/modules/protobuf/29.0-rc3/MODULE.bazel": "33c2dfa286578573afc55a7acaea3cada4122b9631007c594bf0729f41c8de92",
+    "https://bcr.bazel.build/modules/protobuf/29.1/MODULE.bazel": "557c3457560ff49e122ed76c0bc3397a64af9574691cb8201b4e46d4ab2ecb95",
     "https://bcr.bazel.build/modules/protobuf/3.19.0/MODULE.bazel": "6b5fbb433f760a99a22b18b6850ed5784ef0e9928a72668b66e4d7ccd47db9b0",
+    "https://bcr.bazel.build/modules/protobuf/32.1/MODULE.bazel": "89cd2866a9cb07fee9ff74c41ceace11554f32e0d849de4e23ac55515cfada4d",
+    "https://bcr.bazel.build/modules/protobuf/33.4/MODULE.bazel": "114775b816b38b6d0ca620450d6b02550c60ceedfdc8d9a229833b34a223dc42",
+    "https://bcr.bazel.build/modules/protobuf/33.4/source.json": "555f8686b4c7d6b5ba731fbea13bf656b4bfd9a7ff629c1d9d3f6e1d6155de79",
     "https://bcr.bazel.build/modules/pybind11_bazel/2.11.1/MODULE.bazel": "88af1c246226d87e65be78ed49ecd1e6f5e98648558c14ce99176da041dc378e",
-    "https://bcr.bazel.build/modules/pybind11_bazel/2.11.1/source.json": "be4789e951dd5301282729fe3d4938995dc4c1a81c2ff150afc9f1b0504c6022",
+    "https://bcr.bazel.build/modules/pybind11_bazel/2.12.0/MODULE.bazel": "e6f4c20442eaa7c90d7190d8dc539d0ab422f95c65a57cc59562170c58ae3d34",
+    "https://bcr.bazel.build/modules/pybind11_bazel/2.12.0/source.json": "6900fdc8a9e95866b8c0d4ad4aba4d4236317b5c1cd04c502df3f0d33afed680",
     "https://bcr.bazel.build/modules/re2/2023-09-01/MODULE.bazel": "cb3d511531b16cfc78a225a9e2136007a48cf8a677e4264baeab57fe78a80206",
-    "https://bcr.bazel.build/modules/re2/2023-09-01/source.json": "e044ce89c2883cd957a2969a43e79f7752f9656f6b20050b62f90ede21ec6eb4",
+    "https://bcr.bazel.build/modules/re2/2024-07-02.bcr.1/MODULE.bazel": "b4963dda9b31080be1905ef085ecd7dd6cd47c05c79b9cdf83ade83ab2ab271a",
+    "https://bcr.bazel.build/modules/re2/2024-07-02.bcr.1/source.json": "2ff292be6ef3340325ce8a045ecc326e92cbfab47c7cbab4bd85d28971b97ac4",
+    "https://bcr.bazel.build/modules/re2/2024-07-02/MODULE.bazel": "0eadc4395959969297cbcf31a249ff457f2f1d456228c67719480205aa306daa",
     "https://bcr.bazel.build/modules/rules_android/0.1.1/MODULE.bazel": "48809ab0091b07ad0182defb787c4c5328bd3a278938415c00a7b69b50c4d3a8",
     "https://bcr.bazel.build/modules/rules_android/0.1.1/source.json": "e6986b41626ee10bdc864937ffb6d6bf275bb5b9c65120e6137d56e6331f089e",
+    "https://bcr.bazel.build/modules/rules_apple/3.16.0/MODULE.bazel": "0d1caf0b8375942ce98ea944be754a18874041e4e0459401d925577624d3a54a",
+    "https://bcr.bazel.build/modules/rules_apple/4.1.0/MODULE.bazel": "76e10fd4a48038d3fc7c5dc6e63b7063bbf5304a2e3bd42edda6ec660eebea68",
+    "https://bcr.bazel.build/modules/rules_apple/4.1.0/source.json": "8ee81e1708756f81b343a5eb2b2f0b953f1d25c4ab3d4a68dc02754872e80715",
     "https://bcr.bazel.build/modules/rules_cc/0.0.1/MODULE.bazel": "cb2aa0747f84c6c3a78dad4e2049c154f08ab9d166b1273835a8174940365647",
     "https://bcr.bazel.build/modules/rules_cc/0.0.10/MODULE.bazel": "ec1705118f7eaedd6e118508d3d26deba2a4e76476ada7e0e3965211be012002",
     "https://bcr.bazel.build/modules/rules_cc/0.0.13/MODULE.bazel": "0e8529ed7b323dad0775ff924d2ae5af7640b23553dfcd4d34344c7e7a867191",
-    "https://bcr.bazel.build/modules/rules_cc/0.0.14/MODULE.bazel": "5e343a3aac88b8d7af3b1b6d2093b55c347b8eefc2e7d1442f7a02dc8fea48ac",
     "https://bcr.bazel.build/modules/rules_cc/0.0.15/MODULE.bazel": "6704c35f7b4a72502ee81f61bf88706b54f06b3cbe5558ac17e2e14666cd5dcc",
     "https://bcr.bazel.build/modules/rules_cc/0.0.16/MODULE.bazel": "7661303b8fc1b4d7f532e54e9d6565771fea666fbdf839e0a86affcd02defe87",
+    "https://bcr.bazel.build/modules/rules_cc/0.0.17/MODULE.bazel": "2ae1d8f4238ec67d7185d8861cb0a2cdf4bc608697c331b95bf990e69b62e64a",
     "https://bcr.bazel.build/modules/rules_cc/0.0.2/MODULE.bazel": "6915987c90970493ab97393024c156ea8fb9f3bea953b2f3ec05c34f19b5695c",
     "https://bcr.bazel.build/modules/rules_cc/0.0.6/MODULE.bazel": "abf360251023dfe3efcef65ab9d56beefa8394d4176dd29529750e1c57eaa33f",
     "https://bcr.bazel.build/modules/rules_cc/0.0.8/MODULE.bazel": "964c85c82cfeb6f3855e6a07054fdb159aced38e99a5eecf7bce9d53990afa3e",
     "https://bcr.bazel.build/modules/rules_cc/0.0.9/MODULE.bazel": "836e76439f354b89afe6a911a7adf59a6b2518fafb174483ad78a2a2fde7b1c5",
     "https://bcr.bazel.build/modules/rules_cc/0.1.1/MODULE.bazel": "2f0222a6f229f0bf44cd711dc13c858dad98c62d52bd51d8fc3a764a83125513",
+    "https://bcr.bazel.build/modules/rules_cc/0.1.2/MODULE.bazel": "557ddc3a96858ec0d465a87c0a931054d7dcfd6583af2c7ed3baf494407fd8d0",
+    "https://bcr.bazel.build/modules/rules_cc/0.1.5/MODULE.bazel": "88dfc9361e8b5ae1008ac38f7cdfd45ad738e4fa676a3ad67d19204f045a1fd8",
+    "https://bcr.bazel.build/modules/rules_cc/0.2.0/MODULE.bazel": "b5c17f90458caae90d2ccd114c81970062946f49f355610ed89bebf954f5783c",
+    "https://bcr.bazel.build/modules/rules_cc/0.2.13/MODULE.bazel": "eecdd666eda6be16a8d9dc15e44b5c75133405e820f620a234acc4b1fdc5aa37",
+    "https://bcr.bazel.build/modules/rules_cc/0.2.17/MODULE.bazel": "1849602c86cb60da8613d2de887f9566a6d354a6df6d7009f9d04a14402f9a84",
+    "https://bcr.bazel.build/modules/rules_cc/0.2.17/source.json": "3832f45d145354049137c0090df04629d9c2b5493dc5c2bf46f1834040133a07",
     "https://bcr.bazel.build/modules/rules_cc/0.2.4/MODULE.bazel": "1ff1223dfd24f3ecf8f028446d4a27608aa43c3f41e346d22838a4223980b8cc",
     "https://bcr.bazel.build/modules/rules_cc/0.2.8/MODULE.bazel": "f1df20f0bf22c28192a794f29b501ee2018fa37a3862a1a2132ae2940a23a642",
-    "https://bcr.bazel.build/modules/rules_cc/0.2.8/source.json": "85087982aca15f31307bd52698316b28faa31bd2c3095a41f456afec0131344c",
     "https://bcr.bazel.build/modules/rules_foreign_cc/0.9.0/MODULE.bazel": "c9e8c682bf75b0e7c704166d79b599f93b72cfca5ad7477df596947891feeef6",
     "https://bcr.bazel.build/modules/rules_fuzzing/0.5.2/MODULE.bazel": "40c97d1144356f52905566c55811f13b299453a14ac7769dfba2ac38192337a8",
-    "https://bcr.bazel.build/modules/rules_fuzzing/0.5.2/source.json": "c8b1e2c717646f1702290959a3302a178fb639d987ab61d548105019f11e527e",
     "https://bcr.bazel.build/modules/rules_java/4.0.0/MODULE.bazel": "5a78a7ae82cd1a33cef56dc578c7d2a46ed0dca12643ee45edbb8417899e6f74",
     "https://bcr.bazel.build/modules/rules_java/5.3.5/MODULE.bazel": "a4ec4f2db570171e3e5eb753276ee4b389bae16b96207e9d3230895c99644b86",
-    "https://bcr.bazel.build/modules/rules_java/6.0.0/MODULE.bazel": "8a43b7df601a7ec1af61d79345c17b31ea1fedc6711fd4abfd013ea612978e39",
-    "https://bcr.bazel.build/modules/rules_java/6.4.0/MODULE.bazel": "e986a9fe25aeaa84ac17ca093ef13a4637f6107375f64667a15999f77db6c8f6",
     "https://bcr.bazel.build/modules/rules_java/6.5.2/MODULE.bazel": "1d440d262d0e08453fa0c4d8f699ba81609ed0e9a9a0f02cd10b3e7942e61e31",
     "https://bcr.bazel.build/modules/rules_java/7.10.0/MODULE.bazel": "530c3beb3067e870561739f1144329a21c851ff771cd752a49e06e3dc9c2e71a",
     "https://bcr.bazel.build/modules/rules_java/7.12.2/MODULE.bazel": "579c505165ee757a4280ef83cda0150eea193eed3bef50b1004ba88b99da6de6",
     "https://bcr.bazel.build/modules/rules_java/7.2.0/MODULE.bazel": "06c0334c9be61e6cef2c8c84a7800cef502063269a5af25ceb100b192453d4ab",
-    "https://bcr.bazel.build/modules/rules_java/7.3.2/MODULE.bazel": "50dece891cfdf1741ea230d001aa9c14398062f2b7c066470accace78e412bc2",
     "https://bcr.bazel.build/modules/rules_java/7.6.1/MODULE.bazel": "2f14b7e8a1aa2f67ae92bc69d1ec0fa8d9f827c4e17ff5e5f02e91caa3b2d0fe",
-    "https://bcr.bazel.build/modules/rules_java/8.14.0/MODULE.bazel": "717717ed40cc69994596a45aec6ea78135ea434b8402fb91b009b9151dd65615",
-    "https://bcr.bazel.build/modules/rules_java/8.14.0/source.json": "8a88c4ca9e8759da53cddc88123880565c520503321e2566b4e33d0287a3d4bc",
+    "https://bcr.bazel.build/modules/rules_java/8.3.2/MODULE.bazel": "7336d5511ad5af0b8615fdc7477535a2e4e723a357b6713af439fe8cf0195017",
+    "https://bcr.bazel.build/modules/rules_java/8.5.1/MODULE.bazel": "d8a9e38cc5228881f7055a6079f6f7821a073df3744d441978e7a43e20226939",
+    "https://bcr.bazel.build/modules/rules_java/8.6.1/MODULE.bazel": "f4808e2ab5b0197f094cabce9f4b006a27766beb6a9975931da07099560ca9c2",
+    "https://bcr.bazel.build/modules/rules_java/9.1.0/MODULE.bazel": "ee63f27e36a3fada80342869361182f120a9819c74320e8e65b1e04ba0cd7a9d",
+    "https://bcr.bazel.build/modules/rules_java/9.1.0/source.json": "da589573c1dee2c9ac4a568b301269a2e8191110ff0345c1a959fa7ea6c4dfd6",
     "https://bcr.bazel.build/modules/rules_jvm_external/4.4.2/MODULE.bazel": "a56b85e418c83eb1839819f0b515c431010160383306d13ec21959ac412d2fe7",
     "https://bcr.bazel.build/modules/rules_jvm_external/5.1/MODULE.bazel": "33f6f999e03183f7d088c9be518a63467dfd0be94a11d0055fe2d210f89aa909",
     "https://bcr.bazel.build/modules/rules_jvm_external/5.2/MODULE.bazel": "d9351ba35217ad0de03816ef3ed63f89d411349353077348a45348b096615036",
-    "https://bcr.bazel.build/modules/rules_jvm_external/5.3/MODULE.bazel": "bf93870767689637164657731849fb887ad086739bd5d360d90007a581d5527d",
-    "https://bcr.bazel.build/modules/rules_jvm_external/6.1/MODULE.bazel": "75b5fec090dbd46cf9b7d8ea08cf84a0472d92ba3585b476f44c326eda8059c4",
     "https://bcr.bazel.build/modules/rules_jvm_external/6.3/MODULE.bazel": "c998e060b85f71e00de5ec552019347c8bca255062c990ac02d051bb80a38df0",
-    "https://bcr.bazel.build/modules/rules_jvm_external/6.3/source.json": "6f5f5a5a4419ae4e37c35a5bb0a6ae657ed40b7abc5a5189111b47fcebe43197",
-    "https://bcr.bazel.build/modules/rules_kotlin/1.9.0/MODULE.bazel": "ef85697305025e5a61f395d4eaede272a5393cee479ace6686dba707de804d59",
+    "https://bcr.bazel.build/modules/rules_jvm_external/6.7/MODULE.bazel": "e717beabc4d091ecb2c803c2d341b88590e9116b8bf7947915eeb33aab4f96dd",
+    "https://bcr.bazel.build/modules/rules_jvm_external/6.7/source.json": "5426f412d0a7fc6b611643376c7e4a82dec991491b9ce5cb1cfdd25fe2e92be4",
     "https://bcr.bazel.build/modules/rules_kotlin/1.9.6/MODULE.bazel": "d269a01a18ee74d0335450b10f62c9ed81f2321d7958a2934e44272fe82dcef3",
     "https://bcr.bazel.build/modules/rules_kotlin/1.9.6/source.json": "2faa4794364282db7c06600b7e5e34867a564ae91bda7cae7c29c64e9466b7d5",
     "https://bcr.bazel.build/modules/rules_license/0.0.3/MODULE.bazel": "627e9ab0247f7d1e05736b59dbb1b6871373de5ad31c3011880b4133cafd4bd0",
@@ -123,28 +153,41 @@
     "https://bcr.bazel.build/modules/rules_pkg/1.0.1/source.json": "bd82e5d7b9ce2d31e380dd9f50c111d678c3bdaca190cb76b0e1c71b05e1ba8a",
     "https://bcr.bazel.build/modules/rules_proto/4.0.0/MODULE.bazel": "a7a7b6ce9bee418c1a760b3d84f83a299ad6952f9903c67f19e4edd964894e06",
     "https://bcr.bazel.build/modules/rules_proto/5.3.0-21.7/MODULE.bazel": "e8dff86b0971688790ae75528fe1813f71809b5afd57facb44dad9e8eca631b7",
+    "https://bcr.bazel.build/modules/rules_proto/6.0.0-rc1/MODULE.bazel": "1e5b502e2e1a9e825eef74476a5a1ee524a92297085015a052510b09a1a09483",
     "https://bcr.bazel.build/modules/rules_proto/6.0.2/MODULE.bazel": "ce916b775a62b90b61888052a416ccdda405212b6aaeb39522f7dc53431a5e73",
-    "https://bcr.bazel.build/modules/rules_proto/7.0.2/MODULE.bazel": "bf81793bd6d2ad89a37a40693e56c61b0ee30f7a7fdbaf3eabbf5f39de47dea2",
-    "https://bcr.bazel.build/modules/rules_proto/7.0.2/source.json": "1e5e7260ae32ef4f2b52fd1d0de8d03b606a44c91b694d2f1afb1d3b28a48ce1",
+    "https://bcr.bazel.build/modules/rules_proto/7.1.0/MODULE.bazel": "002d62d9108f75bb807cd56245d45648f38275cb3a99dcd45dfb864c5d74cb96",
+    "https://bcr.bazel.build/modules/rules_proto/7.1.0/source.json": "39f89066c12c24097854e8f57ab8558929f9c8d474d34b2c00ac04630ad8940e",
     "https://bcr.bazel.build/modules/rules_python/0.10.2/MODULE.bazel": "cc82bc96f2997baa545ab3ce73f196d040ffb8756fd2d66125a530031cd90e5f",
     "https://bcr.bazel.build/modules/rules_python/0.23.1/MODULE.bazel": "49ffccf0511cb8414de28321f5fcf2a31312b47c40cc21577144b7447f2bf300",
     "https://bcr.bazel.build/modules/rules_python/0.25.0/MODULE.bazel": "72f1506841c920a1afec76975b35312410eea3aa7b63267436bfb1dd91d2d382",
     "https://bcr.bazel.build/modules/rules_python/0.28.0/MODULE.bazel": "cba2573d870babc976664a912539b320cbaa7114cd3e8f053c720171cde331ed",
     "https://bcr.bazel.build/modules/rules_python/0.31.0/MODULE.bazel": "93a43dc47ee570e6ec9f5779b2e64c1476a6ce921c48cc9a1678a91dd5f8fd58",
+    "https://bcr.bazel.build/modules/rules_python/0.33.2/MODULE.bazel": "3e036c4ad8d804a4dad897d333d8dce200d943df4827cb849840055be8d2e937",
     "https://bcr.bazel.build/modules/rules_python/0.4.0/MODULE.bazel": "9208ee05fd48bf09ac60ed269791cf17fb343db56c8226a720fbb1cdf467166c",
-    "https://bcr.bazel.build/modules/rules_python/0.40.0/MODULE.bazel": "9d1a3cd88ed7d8e39583d9ffe56ae8a244f67783ae89b60caafc9f5cf318ada7",
-    "https://bcr.bazel.build/modules/rules_python/0.40.0/source.json": "939d4bd2e3110f27bfb360292986bb79fd8dcefb874358ccd6cdaa7bda029320",
+    "https://bcr.bazel.build/modules/rules_python/1.3.0/MODULE.bazel": "8361d57eafb67c09b75bf4bbe6be360e1b8f4f18118ab48037f2bd50aa2ccb13",
+    "https://bcr.bazel.build/modules/rules_python/1.4.1/MODULE.bazel": "8991ad45bdc25018301d6b7e1d3626afc3c8af8aaf4bc04f23d0b99c938b73a6",
+    "https://bcr.bazel.build/modules/rules_python/1.6.0/MODULE.bazel": "7e04ad8f8d5bea40451cf80b1bd8262552aa73f841415d20db96b7241bd027d8",
+    "https://bcr.bazel.build/modules/rules_python/1.7.0/MODULE.bazel": "d01f995ecd137abf30238ad9ce97f8fc3ac57289c8b24bd0bf53324d937a14f8",
+    "https://bcr.bazel.build/modules/rules_python/1.7.0/source.json": "028a084b65dcf8f4dc4f82f8778dbe65df133f234b316828a82e060d81bdce32",
     "https://bcr.bazel.build/modules/rules_rust/0.74.0/MODULE.bazel": "6e6fa04d7c8202f9cd63205ec9f96da39382a4ac971ee1d7a900fe8e1f68be17",
     "https://bcr.bazel.build/modules/rules_rust/0.74.0/source.json": "04eac31b4536eb23dd8e8e8ca7e079d3c1c4ac99934d38aa54bbae36917c7507",
     "https://bcr.bazel.build/modules/rules_shell/0.2.0/MODULE.bazel": "fda8a652ab3c7d8fee214de05e7a9916d8b28082234e8d2c0094505c5268ed3c",
+    "https://bcr.bazel.build/modules/rules_shell/0.3.0/MODULE.bazel": "de4402cd12f4cc8fda2354fce179fdb068c0b9ca1ec2d2b17b3e21b24c1a937b",
     "https://bcr.bazel.build/modules/rules_shell/0.6.1/MODULE.bazel": "72e76b0eea4e81611ef5452aa82b3da34caca0c8b7b5c0c9584338aa93bae26b",
     "https://bcr.bazel.build/modules/rules_shell/0.6.1/source.json": "20ec05cd5e592055e214b2da8ccb283c7f2a421ea0dc2acbf1aa792e11c03d0c",
+    "https://bcr.bazel.build/modules/rules_swift/1.16.0/MODULE.bazel": "4a09f199545a60d09895e8281362b1ff3bb08bbde69c6fc87aff5b92fcc916ca",
+    "https://bcr.bazel.build/modules/rules_swift/2.1.1/MODULE.bazel": "494900a80f944fc7aa61500c2073d9729dff0b764f0e89b824eb746959bc1046",
+    "https://bcr.bazel.build/modules/rules_swift/2.4.0/MODULE.bazel": "1639617eb1ede28d774d967a738b4a68b0accb40650beadb57c21846beab5efd",
+    "https://bcr.bazel.build/modules/rules_swift/3.1.2/MODULE.bazel": "72c8f5cf9d26427cee6c76c8e3853eb46ce6b0412a081b2b6db6e8ad56267400",
+    "https://bcr.bazel.build/modules/rules_swift/3.1.2/source.json": "e85761f3098a6faf40b8187695e3de6d97944e98abd0d8ce579cb2daf6319a66",
     "https://bcr.bazel.build/modules/stardoc/0.5.1/MODULE.bazel": "1a05d92974d0c122f5ccf09291442580317cdd859f07a8655f1db9a60374f9f8",
     "https://bcr.bazel.build/modules/stardoc/0.5.3/MODULE.bazel": "c7f6948dae6999bf0db32c1858ae345f112cacf98f174c7a8bb707e41b974f1c",
-    "https://bcr.bazel.build/modules/stardoc/0.5.6/MODULE.bazel": "c43dabc564990eeab55e25ed61c07a1aadafe9ece96a4efabb3f8bf9063b71ef",
     "https://bcr.bazel.build/modules/stardoc/0.7.0/MODULE.bazel": "05e3d6d30c099b6770e97da986c53bd31844d7f13d41412480ea265ac9e8079c",
-    "https://bcr.bazel.build/modules/stardoc/0.7.1/MODULE.bazel": "3548faea4ee5dda5580f9af150e79d0f6aea934fc60c1cc50f4efdd9420759e7",
-    "https://bcr.bazel.build/modules/stardoc/0.7.1/source.json": "b6500ffcd7b48cd72c29bb67bcac781e12701cc0d6d55d266a652583cfcdab01",
+    "https://bcr.bazel.build/modules/stardoc/0.7.2/MODULE.bazel": "fc152419aa2ea0f51c29583fab1e8c99ddefd5b3778421845606ee628629e0e5",
+    "https://bcr.bazel.build/modules/stardoc/0.7.2/source.json": "58b029e5e901d6802967754adf0a9056747e8176f017cfe3607c0851f4d42216",
+    "https://bcr.bazel.build/modules/swift_argument_parser/1.3.1.1/MODULE.bazel": "5e463fbfba7b1701d957555ed45097d7f984211330106ccd1352c6e0af0dcf91",
+    "https://bcr.bazel.build/modules/swift_argument_parser/1.3.1.2/MODULE.bazel": "75aab2373a4bbe2a1260b9bf2a1ebbdbf872d3bd36f80bff058dccd82e89422f",
+    "https://bcr.bazel.build/modules/swift_argument_parser/1.3.1.2/source.json": "5fba48bbe0ba48761f9e9f75f92876cafb5d07c0ce059cc7a8027416de94a05b",
     "https://bcr.bazel.build/modules/upb/0.0.0-20220923-a547704/MODULE.bazel": "7298990c00040a0e2f121f6c32544bab27d4452f80d9ce51349b1a28f3005c43",
     "https://bcr.bazel.build/modules/zlib/1.2.11/MODULE.bazel": "07b389abc85fdbca459b69e2ec656ae5622873af3f845e1c9d80fe179f3effa0",
     "https://bcr.bazel.build/modules/zlib/1.3.1.bcr.5/MODULE.bazel": "eec517b5bbe5492629466e11dae908d043364302283de25581e3eb944326c4ca",
@@ -155,11 +198,11 @@
   "moduleExtensions": {
     "@@rules_kotlin+//src/main/starlark/core/repositories:bzlmod_setup.bzl%rules_kotlin_extensions": {
       "general": {
-        "bzlTransitiveDigest": "OlvsB0HsvxbR8ZN+J9Vf00X/+WVz/Y/5Xrq2LgcVfdo=",
+        "bzlTransitiveDigest": "+Kp6j204mBZ3mxlIDDR0gBoP45BZ4jYRhRAcB8sU0qc=",
         "usagesDigest": "QI2z8ZUR+mqtbwsf2fLqYdJAkPOHdOV+tF2yVAUgRzw=",
-        "recordedFileInputs": {},
-        "recordedDirentsInputs": {},
-        "envVariables": {},
+        "recordedInputs": [
+          "REPO_MAPPING:rules_kotlin+,bazel_tools bazel_tools"
+        ],
         "generatedRepoSpecs": {
           "com_github_jetbrains_kotlin_git": {
             "repoRuleId": "@@rules_kotlin+//src/main/starlark/core/repositories:compiler.bzl%kotlin_compiler_git_repository",
@@ -207,44 +250,244 @@
               ]
             }
           }
-        },
-        "recordedRepoMappingEntries": [
-          [
-            "rules_kotlin+",
-            "bazel_tools",
-            "bazel_tools"
-          ]
-        ]
+        }
+      }
+    },
+    "@@rules_python+//python/extensions:config.bzl%config": {
+      "general": {
+        "bzlTransitiveDigest": "dzD8Q2YmrP3fz8saWLHPmlwPLO91ImtTmP/c9JKTStM=",
+        "usagesDigest": "ZVSXMAGpD+xzVNPuvF1IoLBkty7TROO0+akMapt1pAg=",
+        "recordedInputs": [
+          "REPO_MAPPING:rules_python+,bazel_tools bazel_tools",
+          "REPO_MAPPING:rules_python+,pypi__build rules_python++config+pypi__build",
+          "REPO_MAPPING:rules_python+,pypi__click rules_python++config+pypi__click",
+          "REPO_MAPPING:rules_python+,pypi__colorama rules_python++config+pypi__colorama",
+          "REPO_MAPPING:rules_python+,pypi__importlib_metadata rules_python++config+pypi__importlib_metadata",
+          "REPO_MAPPING:rules_python+,pypi__installer rules_python++config+pypi__installer",
+          "REPO_MAPPING:rules_python+,pypi__more_itertools rules_python++config+pypi__more_itertools",
+          "REPO_MAPPING:rules_python+,pypi__packaging rules_python++config+pypi__packaging",
+          "REPO_MAPPING:rules_python+,pypi__pep517 rules_python++config+pypi__pep517",
+          "REPO_MAPPING:rules_python+,pypi__pip rules_python++config+pypi__pip",
+          "REPO_MAPPING:rules_python+,pypi__pip_tools rules_python++config+pypi__pip_tools",
+          "REPO_MAPPING:rules_python+,pypi__pyproject_hooks rules_python++config+pypi__pyproject_hooks",
+          "REPO_MAPPING:rules_python+,pypi__setuptools rules_python++config+pypi__setuptools",
+          "REPO_MAPPING:rules_python+,pypi__tomli rules_python++config+pypi__tomli",
+          "REPO_MAPPING:rules_python+,pypi__wheel rules_python++config+pypi__wheel",
+          "REPO_MAPPING:rules_python+,pypi__zipp rules_python++config+pypi__zipp"
+        ],
+        "generatedRepoSpecs": {
+          "rules_python_internal": {
+            "repoRuleId": "@@rules_python+//python/private:internal_config_repo.bzl%internal_config_repo",
+            "attributes": {
+              "transition_setting_generators": {},
+              "transition_settings": []
+            }
+          },
+          "pypi__build": {
+            "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
+            "attributes": {
+              "url": "https://files.pythonhosted.org/packages/e2/03/f3c8ba0a6b6e30d7d18c40faab90807c9bb5e9a1e3b2fe2008af624a9c97/build-1.2.1-py3-none-any.whl",
+              "sha256": "75e10f767a433d9a86e50d83f418e83efc18ede923ee5ff7df93b6cb0306c5d4",
+              "type": "zip",
+              "build_file_content": "package(default_visibility = [\"//visibility:public\"])\n\nload(\"@rules_python//python:py_library.bzl\", \"py_library\")\n\npy_library(\n    name = \"lib\",\n    srcs = glob([\"**/*.py\"]),\n    data = glob([\"**/*\"], exclude=[\n        # These entries include those put into user-installed dependencies by\n        # data_exclude to avoid non-determinism.\n        \"**/*.py\",\n        \"**/*.pyc\",\n        \"**/*.pyc.*\",  # During pyc creation, temp files named *.pyc.NNN are created\n        \"**/*.dist-info/RECORD\",\n        \"BUILD\",\n        \"WORKSPACE\",\n    ]),\n    # This makes this directory a top-level in the python import\n    # search path for anything that depends on this.\n    imports = [\".\"],\n)\n"
+            }
+          },
+          "pypi__click": {
+            "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
+            "attributes": {
+              "url": "https://files.pythonhosted.org/packages/00/2e/d53fa4befbf2cfa713304affc7ca780ce4fc1fd8710527771b58311a3229/click-8.1.7-py3-none-any.whl",
+              "sha256": "ae74fb96c20a0277a1d615f1e4d73c8414f5a98db8b799a7931d1582f3390c28",
+              "type": "zip",
+              "build_file_content": "package(default_visibility = [\"//visibility:public\"])\n\nload(\"@rules_python//python:py_library.bzl\", \"py_library\")\n\npy_library(\n    name = \"lib\",\n    srcs = glob([\"**/*.py\"]),\n    data = glob([\"**/*\"], exclude=[\n        # These entries include those put into user-installed dependencies by\n        # data_exclude to avoid non-determinism.\n        \"**/*.py\",\n        \"**/*.pyc\",\n        \"**/*.pyc.*\",  # During pyc creation, temp files named *.pyc.NNN are created\n        \"**/*.dist-info/RECORD\",\n        \"BUILD\",\n        \"WORKSPACE\",\n    ]),\n    # This makes this directory a top-level in the python import\n    # search path for anything that depends on this.\n    imports = [\".\"],\n)\n"
+            }
+          },
+          "pypi__colorama": {
+            "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
+            "attributes": {
+              "url": "https://files.pythonhosted.org/packages/d1/d6/3965ed04c63042e047cb6a3e6ed1a63a35087b6a609aa3a15ed8ac56c221/colorama-0.4.6-py2.py3-none-any.whl",
+              "sha256": "4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6",
+              "type": "zip",
+              "build_file_content": "package(default_visibility = [\"//visibility:public\"])\n\nload(\"@rules_python//python:py_library.bzl\", \"py_library\")\n\npy_library(\n    name = \"lib\",\n    srcs = glob([\"**/*.py\"]),\n    data = glob([\"**/*\"], exclude=[\n        # These entries include those put into user-installed dependencies by\n        # data_exclude to avoid non-determinism.\n        \"**/*.py\",\n        \"**/*.pyc\",\n        \"**/*.pyc.*\",  # During pyc creation, temp files named *.pyc.NNN are created\n        \"**/*.dist-info/RECORD\",\n        \"BUILD\",\n        \"WORKSPACE\",\n    ]),\n    # This makes this directory a top-level in the python import\n    # search path for anything that depends on this.\n    imports = [\".\"],\n)\n"
+            }
+          },
+          "pypi__importlib_metadata": {
+            "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
+            "attributes": {
+              "url": "https://files.pythonhosted.org/packages/2d/0a/679461c511447ffaf176567d5c496d1de27cbe34a87df6677d7171b2fbd4/importlib_metadata-7.1.0-py3-none-any.whl",
+              "sha256": "30962b96c0c223483ed6cc7280e7f0199feb01a0e40cfae4d4450fc6fab1f570",
+              "type": "zip",
+              "build_file_content": "package(default_visibility = [\"//visibility:public\"])\n\nload(\"@rules_python//python:py_library.bzl\", \"py_library\")\n\npy_library(\n    name = \"lib\",\n    srcs = glob([\"**/*.py\"]),\n    data = glob([\"**/*\"], exclude=[\n        # These entries include those put into user-installed dependencies by\n        # data_exclude to avoid non-determinism.\n        \"**/*.py\",\n        \"**/*.pyc\",\n        \"**/*.pyc.*\",  # During pyc creation, temp files named *.pyc.NNN are created\n        \"**/*.dist-info/RECORD\",\n        \"BUILD\",\n        \"WORKSPACE\",\n    ]),\n    # This makes this directory a top-level in the python import\n    # search path for anything that depends on this.\n    imports = [\".\"],\n)\n"
+            }
+          },
+          "pypi__installer": {
+            "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
+            "attributes": {
+              "url": "https://files.pythonhosted.org/packages/e5/ca/1172b6638d52f2d6caa2dd262ec4c811ba59eee96d54a7701930726bce18/installer-0.7.0-py3-none-any.whl",
+              "sha256": "05d1933f0a5ba7d8d6296bb6d5018e7c94fa473ceb10cf198a92ccea19c27b53",
+              "type": "zip",
+              "build_file_content": "package(default_visibility = [\"//visibility:public\"])\n\nload(\"@rules_python//python:py_library.bzl\", \"py_library\")\n\npy_library(\n    name = \"lib\",\n    srcs = glob([\"**/*.py\"]),\n    data = glob([\"**/*\"], exclude=[\n        # These entries include those put into user-installed dependencies by\n        # data_exclude to avoid non-determinism.\n        \"**/*.py\",\n        \"**/*.pyc\",\n        \"**/*.pyc.*\",  # During pyc creation, temp files named *.pyc.NNN are created\n        \"**/*.dist-info/RECORD\",\n        \"BUILD\",\n        \"WORKSPACE\",\n    ]),\n    # This makes this directory a top-level in the python import\n    # search path for anything that depends on this.\n    imports = [\".\"],\n)\n"
+            }
+          },
+          "pypi__more_itertools": {
+            "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
+            "attributes": {
+              "url": "https://files.pythonhosted.org/packages/50/e2/8e10e465ee3987bb7c9ab69efb91d867d93959095f4807db102d07995d94/more_itertools-10.2.0-py3-none-any.whl",
+              "sha256": "686b06abe565edfab151cb8fd385a05651e1fdf8f0a14191e4439283421f8684",
+              "type": "zip",
+              "build_file_content": "package(default_visibility = [\"//visibility:public\"])\n\nload(\"@rules_python//python:py_library.bzl\", \"py_library\")\n\npy_library(\n    name = \"lib\",\n    srcs = glob([\"**/*.py\"]),\n    data = glob([\"**/*\"], exclude=[\n        # These entries include those put into user-installed dependencies by\n        # data_exclude to avoid non-determinism.\n        \"**/*.py\",\n        \"**/*.pyc\",\n        \"**/*.pyc.*\",  # During pyc creation, temp files named *.pyc.NNN are created\n        \"**/*.dist-info/RECORD\",\n        \"BUILD\",\n        \"WORKSPACE\",\n    ]),\n    # This makes this directory a top-level in the python import\n    # search path for anything that depends on this.\n    imports = [\".\"],\n)\n"
+            }
+          },
+          "pypi__packaging": {
+            "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
+            "attributes": {
+              "url": "https://files.pythonhosted.org/packages/49/df/1fceb2f8900f8639e278b056416d49134fb8d84c5942ffaa01ad34782422/packaging-24.0-py3-none-any.whl",
+              "sha256": "2ddfb553fdf02fb784c234c7ba6ccc288296ceabec964ad2eae3777778130bc5",
+              "type": "zip",
+              "build_file_content": "package(default_visibility = [\"//visibility:public\"])\n\nload(\"@rules_python//python:py_library.bzl\", \"py_library\")\n\npy_library(\n    name = \"lib\",\n    srcs = glob([\"**/*.py\"]),\n    data = glob([\"**/*\"], exclude=[\n        # These entries include those put into user-installed dependencies by\n        # data_exclude to avoid non-determinism.\n        \"**/*.py\",\n        \"**/*.pyc\",\n        \"**/*.pyc.*\",  # During pyc creation, temp files named *.pyc.NNN are created\n        \"**/*.dist-info/RECORD\",\n        \"BUILD\",\n        \"WORKSPACE\",\n    ]),\n    # This makes this directory a top-level in the python import\n    # search path for anything that depends on this.\n    imports = [\".\"],\n)\n"
+            }
+          },
+          "pypi__pep517": {
+            "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
+            "attributes": {
+              "url": "https://files.pythonhosted.org/packages/25/6e/ca4a5434eb0e502210f591b97537d322546e4833dcb4d470a48c375c5540/pep517-0.13.1-py3-none-any.whl",
+              "sha256": "31b206f67165b3536dd577c5c3f1518e8fbaf38cbc57efff8369a392feff1721",
+              "type": "zip",
+              "build_file_content": "package(default_visibility = [\"//visibility:public\"])\n\nload(\"@rules_python//python:py_library.bzl\", \"py_library\")\n\npy_library(\n    name = \"lib\",\n    srcs = glob([\"**/*.py\"]),\n    data = glob([\"**/*\"], exclude=[\n        # These entries include those put into user-installed dependencies by\n        # data_exclude to avoid non-determinism.\n        \"**/*.py\",\n        \"**/*.pyc\",\n        \"**/*.pyc.*\",  # During pyc creation, temp files named *.pyc.NNN are created\n        \"**/*.dist-info/RECORD\",\n        \"BUILD\",\n        \"WORKSPACE\",\n    ]),\n    # This makes this directory a top-level in the python import\n    # search path for anything that depends on this.\n    imports = [\".\"],\n)\n"
+            }
+          },
+          "pypi__pip": {
+            "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
+            "attributes": {
+              "url": "https://files.pythonhosted.org/packages/8a/6a/19e9fe04fca059ccf770861c7d5721ab4c2aebc539889e97c7977528a53b/pip-24.0-py3-none-any.whl",
+              "sha256": "ba0d021a166865d2265246961bec0152ff124de910c5cc39f1156ce3fa7c69dc",
+              "type": "zip",
+              "build_file_content": "package(default_visibility = [\"//visibility:public\"])\n\nload(\"@rules_python//python:py_library.bzl\", \"py_library\")\n\npy_library(\n    name = \"lib\",\n    srcs = glob([\"**/*.py\"]),\n    data = glob([\"**/*\"], exclude=[\n        # These entries include those put into user-installed dependencies by\n        # data_exclude to avoid non-determinism.\n        \"**/*.py\",\n        \"**/*.pyc\",\n        \"**/*.pyc.*\",  # During pyc creation, temp files named *.pyc.NNN are created\n        \"**/*.dist-info/RECORD\",\n        \"BUILD\",\n        \"WORKSPACE\",\n    ]),\n    # This makes this directory a top-level in the python import\n    # search path for anything that depends on this.\n    imports = [\".\"],\n)\n"
+            }
+          },
+          "pypi__pip_tools": {
+            "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
+            "attributes": {
+              "url": "https://files.pythonhosted.org/packages/0d/dc/38f4ce065e92c66f058ea7a368a9c5de4e702272b479c0992059f7693941/pip_tools-7.4.1-py3-none-any.whl",
+              "sha256": "4c690e5fbae2f21e87843e89c26191f0d9454f362d8acdbd695716493ec8b3a9",
+              "type": "zip",
+              "build_file_content": "package(default_visibility = [\"//visibility:public\"])\n\nload(\"@rules_python//python:py_library.bzl\", \"py_library\")\n\npy_library(\n    name = \"lib\",\n    srcs = glob([\"**/*.py\"]),\n    data = glob([\"**/*\"], exclude=[\n        # These entries include those put into user-installed dependencies by\n        # data_exclude to avoid non-determinism.\n        \"**/*.py\",\n        \"**/*.pyc\",\n        \"**/*.pyc.*\",  # During pyc creation, temp files named *.pyc.NNN are created\n        \"**/*.dist-info/RECORD\",\n        \"BUILD\",\n        \"WORKSPACE\",\n    ]),\n    # This makes this directory a top-level in the python import\n    # search path for anything that depends on this.\n    imports = [\".\"],\n)\n"
+            }
+          },
+          "pypi__pyproject_hooks": {
+            "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
+            "attributes": {
+              "url": "https://files.pythonhosted.org/packages/ae/f3/431b9d5fe7d14af7a32340792ef43b8a714e7726f1d7b69cc4e8e7a3f1d7/pyproject_hooks-1.1.0-py3-none-any.whl",
+              "sha256": "7ceeefe9aec63a1064c18d939bdc3adf2d8aa1988a510afec15151578b232aa2",
+              "type": "zip",
+              "build_file_content": "package(default_visibility = [\"//visibility:public\"])\n\nload(\"@rules_python//python:py_library.bzl\", \"py_library\")\n\npy_library(\n    name = \"lib\",\n    srcs = glob([\"**/*.py\"]),\n    data = glob([\"**/*\"], exclude=[\n        # These entries include those put into user-installed dependencies by\n        # data_exclude to avoid non-determinism.\n        \"**/*.py\",\n        \"**/*.pyc\",\n        \"**/*.pyc.*\",  # During pyc creation, temp files named *.pyc.NNN are created\n        \"**/*.dist-info/RECORD\",\n        \"BUILD\",\n        \"WORKSPACE\",\n    ]),\n    # This makes this directory a top-level in the python import\n    # search path for anything that depends on this.\n    imports = [\".\"],\n)\n"
+            }
+          },
+          "pypi__setuptools": {
+            "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
+            "attributes": {
+              "url": "https://files.pythonhosted.org/packages/90/99/158ad0609729111163fc1f674a5a42f2605371a4cf036d0441070e2f7455/setuptools-78.1.1-py3-none-any.whl",
+              "sha256": "c3a9c4211ff4c309edb8b8c4f1cbfa7ae324c4ba9f91ff254e3d305b9fd54561",
+              "type": "zip",
+              "build_file_content": "package(default_visibility = [\"//visibility:public\"])\n\nload(\"@rules_python//python:py_library.bzl\", \"py_library\")\n\npy_library(\n    name = \"lib\",\n    srcs = glob([\"**/*.py\"]),\n    data = glob([\"**/*\"], exclude=[\n        # These entries include those put into user-installed dependencies by\n        # data_exclude to avoid non-determinism.\n        \"**/*.py\",\n        \"**/*.pyc\",\n        \"**/*.pyc.*\",  # During pyc creation, temp files named *.pyc.NNN are created\n        \"**/*.dist-info/RECORD\",\n        \"BUILD\",\n        \"WORKSPACE\",\n    ]),\n    # This makes this directory a top-level in the python import\n    # search path for anything that depends on this.\n    imports = [\".\"],\n)\n"
+            }
+          },
+          "pypi__tomli": {
+            "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
+            "attributes": {
+              "url": "https://files.pythonhosted.org/packages/97/75/10a9ebee3fd790d20926a90a2547f0bf78f371b2f13aa822c759680ca7b9/tomli-2.0.1-py3-none-any.whl",
+              "sha256": "939de3e7a6161af0c887ef91b7d41a53e7c5a1ca976325f429cb46ea9bc30ecc",
+              "type": "zip",
+              "build_file_content": "package(default_visibility = [\"//visibility:public\"])\n\nload(\"@rules_python//python:py_library.bzl\", \"py_library\")\n\npy_library(\n    name = \"lib\",\n    srcs = glob([\"**/*.py\"]),\n    data = glob([\"**/*\"], exclude=[\n        # These entries include those put into user-installed dependencies by\n        # data_exclude to avoid non-determinism.\n        \"**/*.py\",\n        \"**/*.pyc\",\n        \"**/*.pyc.*\",  # During pyc creation, temp files named *.pyc.NNN are created\n        \"**/*.dist-info/RECORD\",\n        \"BUILD\",\n        \"WORKSPACE\",\n    ]),\n    # This makes this directory a top-level in the python import\n    # search path for anything that depends on this.\n    imports = [\".\"],\n)\n"
+            }
+          },
+          "pypi__wheel": {
+            "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
+            "attributes": {
+              "url": "https://files.pythonhosted.org/packages/7d/cd/d7460c9a869b16c3dd4e1e403cce337df165368c71d6af229a74699622ce/wheel-0.43.0-py3-none-any.whl",
+              "sha256": "55c570405f142630c6b9f72fe09d9b67cf1477fcf543ae5b8dcb1f5b7377da81",
+              "type": "zip",
+              "build_file_content": "package(default_visibility = [\"//visibility:public\"])\n\nload(\"@rules_python//python:py_library.bzl\", \"py_library\")\n\npy_library(\n    name = \"lib\",\n    srcs = glob([\"**/*.py\"]),\n    data = glob([\"**/*\"], exclude=[\n        # These entries include those put into user-installed dependencies by\n        # data_exclude to avoid non-determinism.\n        \"**/*.py\",\n        \"**/*.pyc\",\n        \"**/*.pyc.*\",  # During pyc creation, temp files named *.pyc.NNN are created\n        \"**/*.dist-info/RECORD\",\n        \"BUILD\",\n        \"WORKSPACE\",\n    ]),\n    # This makes this directory a top-level in the python import\n    # search path for anything that depends on this.\n    imports = [\".\"],\n)\n"
+            }
+          },
+          "pypi__zipp": {
+            "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
+            "attributes": {
+              "url": "https://files.pythonhosted.org/packages/da/55/a03fd7240714916507e1fcf7ae355bd9d9ed2e6db492595f1a67f61681be/zipp-3.18.2-py3-none-any.whl",
+              "sha256": "dce197b859eb796242b0622af1b8beb0a722d52aa2f57133ead08edd5bf5374e",
+              "type": "zip",
+              "build_file_content": "package(default_visibility = [\"//visibility:public\"])\n\nload(\"@rules_python//python:py_library.bzl\", \"py_library\")\n\npy_library(\n    name = \"lib\",\n    srcs = glob([\"**/*.py\"]),\n    data = glob([\"**/*\"], exclude=[\n        # These entries include those put into user-installed dependencies by\n        # data_exclude to avoid non-determinism.\n        \"**/*.py\",\n        \"**/*.pyc\",\n        \"**/*.pyc.*\",  # During pyc creation, temp files named *.pyc.NNN are created\n        \"**/*.dist-info/RECORD\",\n        \"BUILD\",\n        \"WORKSPACE\",\n    ]),\n    # This makes this directory a top-level in the python import\n    # search path for anything that depends on this.\n    imports = [\".\"],\n)\n"
+            }
+          }
+        }
+      }
+    },
+    "@@rules_python+//python/uv:uv.bzl%uv": {
+      "general": {
+        "bzlTransitiveDigest": "ijW9KS7qsIY+yBVvJ+Nr1mzwQox09j13DnE3iIwaeTM=",
+        "usagesDigest": "H8dQoNZcoqP+Mu0tHZTi4KHATzvNkM5ePuEqoQdklIU=",
+        "recordedInputs": [
+          "REPO_MAPPING:rules_python+,bazel_tools bazel_tools",
+          "REPO_MAPPING:rules_python+,platforms platforms"
+        ],
+        "generatedRepoSpecs": {
+          "uv": {
+            "repoRuleId": "@@rules_python+//python/uv/private:uv_toolchains_repo.bzl%uv_toolchains_repo",
+            "attributes": {
+              "toolchain_type": "'@@rules_python+//python/uv:uv_toolchain_type'",
+              "toolchain_names": [
+                "none"
+              ],
+              "toolchain_implementations": {
+                "none": "'@@rules_python+//python:none'"
+              },
+              "toolchain_compatible_with": {
+                "none": [
+                  "@platforms//:incompatible"
+                ]
+              },
+              "toolchain_target_settings": {}
+            }
+          }
+        }
       }
     },
     "@@rules_rust+//crate_universe:extensions.bzl%crate": {
       "general": {
-        "bzlTransitiveDigest": "TBmNrkM525/d0ELiD7X48V8exkvkAczBL6bXdhLif8Y=",
+        "bzlTransitiveDigest": "ycdtxIZITYOziV+VvaC5nRkxcnOHhYaYT0HOG677nYg=",
         "usagesDigest": "23k3U/c2w8ya4RuDvXVlMAn6ER41f+Mr6nfPqlFDICY=",
-        "recordedFileInputs": {
-          "@@//Cargo.lock": "54ad2955da12bf833e0e6c377454d19bdf60509cb26af9a3cd612db56fdac6b4",
-          "@@//Cargo.toml": "8a06bdaf2ec5d433fe8aaf8ecf385b9c99671fec60693af2b27487d0ce910331",
-          "@@//crates/fjfj-bazel-compat/Cargo.toml": "9cb2b9a8c5a9083a5206635b2bacb1d1c8fceee84d1cbab8ec31f8057a06a663",
-          "@@//crates/fjfj-cli/Cargo.toml": "aa4d848ccb98598080b1d7e1f72ff6a7e7f9e76f8bcbd7a7f532ba89b81183ee",
-          "@@//crates/fjfj-exec/Cargo.toml": "e5cd9051a3b99197ca1d5c4506aadca2803d1f340baa829ae70bae1a3000a59b",
-          "@@//crates/fjfj-graph/Cargo.toml": "9f6e5996996ad7b79fd501b257e0965df673117058beec42b198df0485c79e16",
-          "@@//crates/fjfj-remote/Cargo.toml": "3fc252465fd2d7038830c9bb893ca6695f3a3e10354c962197a385c61432b472",
-          "@@//crates/fjfj-sandbox/Cargo.toml": "97d32162b897b47db2101119d2ea99c564f53a63def7bf139ae86d533c9b487f",
-          "@@//crates/fjfj-starlark/Cargo.toml": "0072afd6eafee90f3876ba8d6a0f8c351be85b2bb1d74dcb47eff13ccc349bfb",
-          "@@//crates/fjfj-telemetry/Cargo.toml": "7b7f116a9ce81b9860a67749256eb4127f41a50721de8c4a13c4c37f87631cef",
-          "@@//crates/fjfj/Cargo.toml": "e2f0b4f0f413de74e642769e0d3b5cb6c4ba687ad1b0ed3f829459b746690b4d"
-        },
-        "recordedDirentsInputs": {},
-        "envVariables": {
-          "CARGO_BAZEL_DEBUG": null,
-          "CARGO_BAZEL_GENERATOR_SHA256": null,
-          "CARGO_BAZEL_GENERATOR_URL": null,
-          "CARGO_BAZEL_ISOLATED": null,
-          "CARGO_BAZEL_REPIN": null,
-          "CARGO_BAZEL_REPIN_ONLY": null,
-          "CARGO_BAZEL_TIMEOUT": null,
-          "REPIN": null
-        },
+        "recordedInputs": [
+          "ENV:CARGO_BAZEL_DEBUG \\0",
+          "ENV:CARGO_BAZEL_GENERATOR_SHA256 \\0",
+          "ENV:CARGO_BAZEL_GENERATOR_URL \\0",
+          "ENV:CARGO_BAZEL_ISOLATED \\0",
+          "ENV:CARGO_BAZEL_REPIN \\0",
+          "ENV:CARGO_BAZEL_REPIN_ONLY \\0",
+          "ENV:CARGO_BAZEL_TIMEOUT \\0",
+          "ENV:REPIN \\0",
+          "REPO_MAPPING:bazel_features+,bazel_features_globals bazel_features++version_extension+bazel_features_globals",
+          "REPO_MAPPING:bazel_features+,bazel_features_version bazel_features++version_extension+bazel_features_version",
+          "REPO_MAPPING:rules_cc+,bazel_skylib bazel_skylib+",
+          "REPO_MAPPING:rules_cc+,bazel_tools bazel_tools",
+          "REPO_MAPPING:rules_cc+,cc_compatibility_proxy rules_cc++compatibility_proxy+cc_compatibility_proxy",
+          "REPO_MAPPING:rules_cc+,platforms platforms",
+          "REPO_MAPPING:rules_cc+,rules_cc rules_cc+",
+          "REPO_MAPPING:rules_cc++compatibility_proxy+cc_compatibility_proxy,rules_cc rules_cc+",
+          "REPO_MAPPING:rules_rust+,bazel_features bazel_features+",
+          "REPO_MAPPING:rules_rust+,bazel_skylib bazel_skylib+",
+          "REPO_MAPPING:rules_rust+,bazel_tools bazel_tools",
+          "REPO_MAPPING:rules_rust+,rules_cc rules_cc+",
+          "FILE:@@//Cargo.lock 54ad2955da12bf833e0e6c377454d19bdf60509cb26af9a3cd612db56fdac6b4",
+          "FILE:@@//Cargo.toml 8a06bdaf2ec5d433fe8aaf8ecf385b9c99671fec60693af2b27487d0ce910331",
+          "FILE:@@//crates/fjfj/Cargo.toml e2f0b4f0f413de74e642769e0d3b5cb6c4ba687ad1b0ed3f829459b746690b4d",
+          "FILE:@@//crates/fjfj-cli/Cargo.toml aa4d848ccb98598080b1d7e1f72ff6a7e7f9e76f8bcbd7a7f532ba89b81183ee",
+          "FILE:@@//crates/fjfj-starlark/Cargo.toml 0072afd6eafee90f3876ba8d6a0f8c351be85b2bb1d74dcb47eff13ccc349bfb",
+          "FILE:@@//crates/fjfj-graph/Cargo.toml 9f6e5996996ad7b79fd501b257e0965df673117058beec42b198df0485c79e16",
+          "FILE:@@//crates/fjfj-exec/Cargo.toml e5cd9051a3b99197ca1d5c4506aadca2803d1f340baa829ae70bae1a3000a59b",
+          "FILE:@@//crates/fjfj-remote/Cargo.toml 3fc252465fd2d7038830c9bb893ca6695f3a3e10354c962197a385c61432b472",
+          "FILE:@@//crates/fjfj-sandbox/Cargo.toml 97d32162b897b47db2101119d2ea99c564f53a63def7bf139ae86d533c9b487f",
+          "FILE:@@//crates/fjfj-telemetry/Cargo.toml 7b7f116a9ce81b9860a67749256eb4127f41a50721de8c4a13c4c37f87631cef",
+          "FILE:@@//crates/fjfj-bazel-compat/Cargo.toml 9cb2b9a8c5a9083a5206635b2bacb1d1c8fceee84d1cbab8ec31f8057a06a663"
+        ],
         "generatedRepoSpecs": {
           "crates": {
             "repoRuleId": "@@rules_rust+//crate_universe/private:crates_vendor.bzl%crates_vendor_remote_repository",
@@ -292,9 +535,6 @@
           "crates__Inflector-0.11.4": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "fe438c63458706e03479442743baae6c88256498e6431708f6dfc520a26515d3",
               "type": "tar.gz",
@@ -308,9 +548,6 @@
           "crates__aho-corasick-1.1.5": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "c982642fa9e8606056828ee9a8505737230110bb1099153c79efe865c59d12ba",
               "type": "tar.gz",
@@ -324,9 +561,6 @@
           "crates__allocative-0.3.6": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "d8cf9afc79c83d514444b55df3935d317da54b1ce3b17a133c646889cc260de8",
               "type": "tar.gz",
@@ -340,9 +574,6 @@
           "crates__allocative_derive-0.3.6": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "614043c56c1173b800acb007b81fd0cbc0a0d7d717b71ba705fc2230d0760a23",
               "type": "tar.gz",
@@ -356,9 +587,6 @@
           "crates__allocator-api2-0.2.21": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923",
               "type": "tar.gz",
@@ -372,9 +600,6 @@
           "crates__annotate-snippets-0.9.2": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "ccaf7e9dfbb6ab22c82e473cd1a8a7bd313c19a5b7e40970f3d89ef5a5c9e81e",
               "type": "tar.gz",
@@ -388,9 +613,6 @@
           "crates__anstream-1.0.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "824a212faf96e9acacdbd09febd34438f8f711fb84e09a8916013cd7815ca28d",
               "type": "tar.gz",
@@ -404,9 +626,6 @@
           "crates__anstyle-1.0.14": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "940b3a0ca603d1eade50a4846a2afffd5ef57a9feac2c0e2ec2e14f9ead76000",
               "type": "tar.gz",
@@ -420,9 +639,6 @@
           "crates__anstyle-parse-1.0.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "52ce7f38b242319f7cabaa6813055467063ecdc9d355bbb4ce0c68908cd8130e",
               "type": "tar.gz",
@@ -436,9 +652,6 @@
           "crates__anstyle-query-1.1.5": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "40c48f72fd53cd289104fc64099abca73db4166ad86ea0b4341abe65af83dadc",
               "type": "tar.gz",
@@ -452,9 +665,6 @@
           "crates__anstyle-wincon-3.0.11": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "291e6a250ff86cd4a820112fb8898808a366d8f9f58ce16d1f538353ad55747d",
               "type": "tar.gz",
@@ -468,9 +678,6 @@
           "crates__anyhow-1.0.104": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470",
               "type": "tar.gz",
@@ -484,9 +691,6 @@
           "crates__arrayref-0.3.9": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "76a2e8124351fda1ef8aaaa3bbd7ebbcb486bbcd4225aca0aa0d84bb2db8fecb",
               "type": "tar.gz",
@@ -500,9 +704,6 @@
           "crates__arrayvec-0.7.8": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "d3fb67a6e08acf24fdeccbac2cb6ac4305825bd1f117462e0e6f2f193345ad56",
               "type": "tar.gz",
@@ -516,9 +717,6 @@
           "crates__async-trait-0.1.92": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "82f6aeea286b8eb4dd3431a1be1b59d290ace00f5bfd8e2a159bc2a05e2c1667",
               "type": "tar.gz",
@@ -532,9 +730,6 @@
           "crates__atomic-0.5.3": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "c59bdb34bc650a32731b31bd8f0829cc15d24a708ee31559e0bb34f2bc320cba",
               "type": "tar.gz",
@@ -548,9 +743,6 @@
           "crates__atomic-polyfill-1.0.3": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "8cf2bce30dfe09ef0bfaef228b9d414faaf7e563035494d7fe092dba54b300f4",
               "type": "tar.gz",
@@ -564,9 +756,6 @@
           "crates__atomic-waker-1.1.2": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0",
               "type": "tar.gz",
@@ -580,9 +769,6 @@
           "crates__autocfg-1.5.1": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53",
               "type": "tar.gz",
@@ -596,9 +782,6 @@
           "crates__base64-0.22.1": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6",
               "type": "tar.gz",
@@ -612,9 +795,6 @@
           "crates__beef-0.5.2": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "3a8241f3ebb85c056b509d4327ad0358fbbba6ffb340bf388f26350aeda225b1",
               "type": "tar.gz",
@@ -628,9 +808,6 @@
           "crates__bit-set-0.8.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "08807e080ed7f9d5433fa9b275196cfc35414f66a0c79d864dc51a0d825231a3",
               "type": "tar.gz",
@@ -644,9 +821,6 @@
           "crates__bit-vec-0.8.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "5e764a1d40d510daf35e07be9eb06e75770908c27d411ee6c92109c9840eaaf7",
               "type": "tar.gz",
@@ -660,9 +834,6 @@
           "crates__bitflags-1.3.2": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a",
               "type": "tar.gz",
@@ -676,9 +847,6 @@
           "crates__bitflags-2.13.1": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "b588b76d00fde79687d7646a9b5bdf3cc0f655e0bbd080335a95d7e96f3587da",
               "type": "tar.gz",
@@ -692,9 +860,6 @@
           "crates__blake3-1.8.2": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "3888aaa89e4b2a40fca9848e400f6a658a5a3978de7be858e209cafa8be9a4a0",
               "type": "tar.gz",
@@ -708,9 +873,6 @@
           "crates__block-buffer-0.10.4": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "3078c7629b62d3f0439517fa394996acacc5cbc91c5a20d8c658e77abd503a71",
               "type": "tar.gz",
@@ -724,9 +886,6 @@
           "crates__block-buffer-0.12.1": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "d2f6c7dbe95a6ed67ad9f18e57daf93a2f034c524b99fd2b76d18fdfeb6660aa",
               "type": "tar.gz",
@@ -740,9 +899,6 @@
           "crates__bumpalo-3.20.3": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "72f5acc6cb2ba439de613abc23857ec3d78374d8ed5ac84e9d11336e87da8649",
               "type": "tar.gz",
@@ -756,9 +912,6 @@
           "crates__bytemuck-1.25.2": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "95832e849adfb21180ccb6826a99da14e5d266ae5c2e668e1602cf234f153797",
               "type": "tar.gz",
@@ -772,9 +925,6 @@
           "crates__bytemuck_derive-1.12.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "fc0e56a716f1e132ff6bf4bdac1c944a3fcdc1cae65f70a4a2a1ac3b401d2d1f",
               "type": "tar.gz",
@@ -788,9 +938,6 @@
           "crates__byteorder-1.5.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b",
               "type": "tar.gz",
@@ -804,9 +951,6 @@
           "crates__bytes-1.12.1": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04",
               "type": "tar.gz",
@@ -820,9 +964,6 @@
           "crates__cc-1.4.4": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "0ad534f4357a5264cce5019c989cf66a4f0dc4e0d1b1d15f8aacec0ff7360273",
               "type": "tar.gz",
@@ -836,9 +977,6 @@
           "crates__cfg-if-1.0.4": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801",
               "type": "tar.gz",
@@ -852,9 +990,6 @@
           "crates__cfg_aliases-0.1.1": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "fd16c4719339c4530435d38e511904438d07cce7950afa3718a84ac36c10e89e",
               "type": "tar.gz",
@@ -868,9 +1003,6 @@
           "crates__clap-4.6.6": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "473c7e07f409a8d772161724aa8db6a765a2532a70f9667eeb7b49d3d02fbdca",
               "type": "tar.gz",
@@ -884,9 +1016,6 @@
           "crates__clap_builder-4.6.6": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "7b48fea5a88e9ae728a2dcbedbfc0e730f7d60da42e1cb049a83c9fb8b789889",
               "type": "tar.gz",
@@ -900,9 +1029,6 @@
           "crates__clap_derive-4.6.4": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "d012d2b9d65aca7f18f4d9878a045bc17899bba951561ba5ec3c2ba1eed9a061",
               "type": "tar.gz",
@@ -916,9 +1042,6 @@
           "crates__clap_lex-1.1.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9",
               "type": "tar.gz",
@@ -932,9 +1055,6 @@
           "crates__clipboard-win-5.4.1": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "bde03770d3df201d4fb868f2c9c59e66a3e4e2bd06692a0fe701e7103c7e84d4",
               "type": "tar.gz",
@@ -948,9 +1068,6 @@
           "crates__cmp_any-0.8.1": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "e9b18233253483ce2f65329a24072ec414db782531bdbb7d0bbc4bd2ce6b7e21",
               "type": "tar.gz",
@@ -964,9 +1081,6 @@
           "crates__cobs-0.3.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "0fa961b519f0b462e3a3b4a34b64d119eeaca1d59af726fe450bbba07a9fc0a1",
               "type": "tar.gz",
@@ -980,9 +1094,6 @@
           "crates__colorchoice-1.0.5": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "1d07550c9036bf2ae0c684c4297d503f838287c83c53686d05370d0e139ae570",
               "type": "tar.gz",
@@ -996,9 +1107,6 @@
           "crates__const-oid-0.10.2": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "a6ef517f0926dd24a1582492c791b6a4818a4d94e789a334894aa15b0d12f55c",
               "type": "tar.gz",
@@ -1012,9 +1120,6 @@
           "crates__constant_time_eq-0.3.1": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "7c74b8349d32d297c9134b8c88677813a227df8f779daa29bfc29c183fe3dca6",
               "type": "tar.gz",
@@ -1028,9 +1133,6 @@
           "crates__convert_case-0.6.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "ec182b0ca2f35d8fc196cf3404988fd8b8c739a4d270ff118a398feb0cbec1ca",
               "type": "tar.gz",
@@ -1044,9 +1146,6 @@
           "crates__cpufeatures-0.3.1": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "5ca28b0ae3115b884660db4118d803791fd6756b6e88f39c0f3f7859060d7566",
               "type": "tar.gz",
@@ -1060,9 +1159,6 @@
           "crates__crc-3.4.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "5eb8a2a1cd12ab0d987a5d5e825195d372001a4094a0376319d5a0ad71c1ba0d",
               "type": "tar.gz",
@@ -1076,9 +1172,6 @@
           "crates__crc-catalog-2.5.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "217698eaf96b4a3f0bc4f3662aaa55bdf913cd54d7204591faa790070c6d0853",
               "type": "tar.gz",
@@ -1092,9 +1185,6 @@
           "crates__critical-section-1.2.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "790eea4361631c5e7d22598ecd5723ff611904e3344ce8720784c93e3d83d40b",
               "type": "tar.gz",
@@ -1108,9 +1198,6 @@
           "crates__crossbeam-deque-0.8.7": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "5181e0de7b61eb03a81e347d6dd8797bae9da5146707b51077e2d71a54ec0ceb",
               "type": "tar.gz",
@@ -1124,9 +1211,6 @@
           "crates__crossbeam-epoch-0.9.20": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "2d6914041f254d6e9176c01941b21115dcfb7089e55135a35411081bd106ef3f",
               "type": "tar.gz",
@@ -1140,9 +1224,6 @@
           "crates__crossbeam-utils-0.8.22": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "61803da095bee82a81bb1a452ecc25d3b2f1416d1897eb86430c6159ef717c17",
               "type": "tar.gz",
@@ -1156,9 +1237,6 @@
           "crates__crypto-common-0.1.7": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "78c8292055d1c1df0cce5d180393dc8cce0abec0a7102adb6c7b1eef6016d60a",
               "type": "tar.gz",
@@ -1172,9 +1250,6 @@
           "crates__crypto-common-0.2.2": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "ce6e4c961d6cd6c9a86db418387425e8bdeaf05b3c8bc1411e6dca4c252f1453",
               "type": "tar.gz",
@@ -1188,9 +1263,6 @@
           "crates__ctor-1.0.13": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "914a755b7c2d4af2bdcff7ce1739e2db9a1b81a9b07123d8015786ae03c0980d",
               "type": "tar.gz",
@@ -1204,9 +1276,6 @@
           "crates__dashmap-6.2.1": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "e6361d5c062261c78a176addb82d4c821ae42bed6089de0e12603cd25de2059c",
               "type": "tar.gz",
@@ -1220,9 +1289,6 @@
           "crates__debugserver-types-0.5.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "2bf6834a70ed14e8e4e41882df27190bea150f1f6ecf461f1033f8739cd8af4a",
               "type": "tar.gz",
@@ -1236,9 +1302,6 @@
           "crates__derivative-2.2.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "fcc3dd5e9e9c0b295d6e1e4d811fb6f157d5ffd784b8d202fc62eac8035a770b",
               "type": "tar.gz",
@@ -1252,9 +1315,6 @@
           "crates__derive_more-1.0.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "4a9b99b9cbbe49445b21764dc0625032a89b145a2642e67603e1c936f5458d05",
               "type": "tar.gz",
@@ -1268,9 +1328,6 @@
           "crates__derive_more-impl-1.0.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "cb7330aeadfbe296029522e6c40f315320aba36fc43a5b3632f3795348f3bd22",
               "type": "tar.gz",
@@ -1284,9 +1341,6 @@
           "crates__digest-0.10.7": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "9ed9a281f7bc9b7576e61468ba615a66a5c8cfdff42420a70aa82701a3b1e292",
               "type": "tar.gz",
@@ -1300,9 +1354,6 @@
           "crates__digest-0.11.3": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "f1dd6dbb5841937940781866fa1281a1ff7bd3bf827091440879f9994983d5c2",
               "type": "tar.gz",
@@ -1316,9 +1367,6 @@
           "crates__display_container-0.9.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "0a110a75c96bedec8e65823dea00a1d710288b7a369d95fd8a0f5127639466fa",
               "type": "tar.gz",
@@ -1332,9 +1380,6 @@
           "crates__displaydoc-0.2.7": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "c6232dd377dcc64799954cbd3a9bb882e9cdc1308ccd87b1c098f1fb2eaf82a8",
               "type": "tar.gz",
@@ -1348,9 +1393,6 @@
           "crates__dupe-0.9.1": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "6ed2bc011db9c93fbc2b6cdb341a53737a55bafb46dbb74cf6764fc33a2fbf9c",
               "type": "tar.gz",
@@ -1364,9 +1406,6 @@
           "crates__dupe_derive-0.9.1": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "83e195b4945e88836d826124af44fdcb262ec01ef94d44f14f4fb5103f19892a",
               "type": "tar.gz",
@@ -1380,9 +1419,6 @@
           "crates__either-1.18.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "252afb9ae5eaa683babdc6a068b3f5726eb19e05070c731f9b2a23a7c3e8ed34",
               "type": "tar.gz",
@@ -1396,9 +1432,6 @@
           "crates__embedded-io-0.4.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "ef1a6892d9eef45c8fa6b9e0086428a2cca8491aca8f787c534a3d6d0bcb3ced",
               "type": "tar.gz",
@@ -1412,9 +1445,6 @@
           "crates__embedded-io-0.6.1": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "edd0f118536f44f5ccd48bcb8b111bdc3de888b58c74639dfb034a357d0f206d",
               "type": "tar.gz",
@@ -1428,9 +1458,6 @@
           "crates__endian-type-0.1.2": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "c34f04666d835ff5d62e058c3995147c06f42fe86ff053337632bca83e42702d",
               "type": "tar.gz",
@@ -1444,9 +1471,6 @@
           "crates__env_filter-2.0.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "900d271a03799a1ee8d1ca9b19893b48ca674a9284fefcfb85f05e74ed314217",
               "type": "tar.gz",
@@ -1460,9 +1484,6 @@
           "crates__env_logger-0.11.11": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "de671bd27a75a797dc9ae289ba1e77276e75e2026408aab65185384e2d5cd3f6",
               "type": "tar.gz",
@@ -1476,9 +1497,6 @@
           "crates__equivalent-1.0.2": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f",
               "type": "tar.gz",
@@ -1492,9 +1510,6 @@
           "crates__erased-serde-0.3.31": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "6c138974f9d5e7fe373eb04df7cae98833802ae4b11c24ac7039a21d5af4b26c",
               "type": "tar.gz",
@@ -1508,9 +1523,6 @@
           "crates__erased-serde-0.4.10": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "d2add8a07dd6a8d93ff627029c51de145e12686fbc36ecb298ac22e74cf02dec",
               "type": "tar.gz",
@@ -1524,9 +1536,6 @@
           "crates__errno-0.3.14": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb",
               "type": "tar.gz",
@@ -1540,9 +1549,6 @@
           "crates__error-code-3.4.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "0b5343afd4a8365a643ac588dab4cf234a190c7f6c88c9f6dd6ffe00837661b7",
               "type": "tar.gz",
@@ -1556,9 +1562,6 @@
           "crates__fancy-regex-0.16.2": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "998b056554fbe42e03ae0e152895cd1a7e1002aec800fdc6635d20270260c46f",
               "type": "tar.gz",
@@ -1572,9 +1575,6 @@
           "crates__fd-lock-4.0.4": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "0ce92ff622d6dadf7349484f42c93271a0d49b7cc4d466a936405bacbe10aa78",
               "type": "tar.gz",
@@ -1588,9 +1588,6 @@
           "crates__find-msvc-tools-0.1.11": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "d45db016d36b838f563236e9193d0ee6ce38f3f68b6c94e914b4929c96bbb890",
               "type": "tar.gz",
@@ -1604,9 +1601,6 @@
           "crates__fluent-uri-0.1.4": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "17c704e9dbe1ddd863da1e6ff3567795087b1eb201ce80d8fa81162e1516500d",
               "type": "tar.gz",
@@ -1620,9 +1614,6 @@
           "crates__fnv-1.0.7": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1",
               "type": "tar.gz",
@@ -1636,9 +1627,6 @@
           "crates__foldhash-0.2.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "77ce24cb58228fbb8aa041425bb1050850ac19177686ea6e0f41a70416f56fdb",
               "type": "tar.gz",
@@ -1652,9 +1640,6 @@
           "crates__form_urlencoded-1.2.2": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "cb4cb245038516f5f85277875cdaa4f7d2c9a0fa0468de06ed190163b1581fcf",
               "type": "tar.gz",
@@ -1668,9 +1653,6 @@
           "crates__futures-channel-0.3.34": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "b1f9e3d69d39e4862ffed03ed071a76f9a13ba1d9109d355b0f0aa6b15e393c4",
               "type": "tar.gz",
@@ -1684,9 +1666,6 @@
           "crates__futures-core-0.3.34": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "92d699e522242e69e3003b94ecc1f960f3a5e015aa7c5d7486e65ad01dd94f5e",
               "type": "tar.gz",
@@ -1700,9 +1679,6 @@
           "crates__futures-executor-0.3.34": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "031b47cf1a3c6cc8bc2fc76cd437f521619387907d469316e7c0bc278f1f5432",
               "type": "tar.gz",
@@ -1716,9 +1692,6 @@
           "crates__futures-io-0.3.34": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "53c0fa8157de1303bfffdaa1cc2a673bfffb60102f76b0ef4441659124373fed",
               "type": "tar.gz",
@@ -1732,9 +1705,6 @@
           "crates__futures-macro-0.3.34": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "9fb9654ba8355388abeb8dcb4fc62f511300867002afc858860463bdd9fe0c44",
               "type": "tar.gz",
@@ -1748,9 +1718,6 @@
           "crates__futures-sink-0.3.34": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "1944426bf7d03f1d14f708785e4b33efd750b36d48a157b836b3efc15ede8e1d",
               "type": "tar.gz",
@@ -1764,9 +1731,6 @@
           "crates__futures-task-0.3.34": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "cd417de3d1d015fc3bfd2b1ea46dfc7bab72ef86f1cc7cc9c78e728b34a6d1fd",
               "type": "tar.gz",
@@ -1780,9 +1744,6 @@
           "crates__futures-util-0.3.34": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "0d50a92467f8ba5dd6e3ee5d4bd04d73ab2e4e1c44474a0674821dfce14b79bc",
               "type": "tar.gz",
@@ -1796,9 +1757,6 @@
           "crates__fxhash-0.2.1": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "c31b6d751ae2c7f11320402d34e41349dd1016f8d5d45e48c4312bc8625af50c",
               "type": "tar.gz",
@@ -1812,9 +1770,6 @@
           "crates__generic-array-0.14.7": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "85649ca51fd72272d7821adaf274ad91c288277713d9c18820d8499a7ff69e9a",
               "type": "tar.gz",
@@ -1828,9 +1783,6 @@
           "crates__getrandom-0.3.4": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "899def5c37c4fd7b2664648c28120ecec138e4d395b459e5ca34f9cce2dd77fd",
               "type": "tar.gz",
@@ -1844,9 +1796,6 @@
           "crates__getrandom-0.4.3": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "300e883d756b2e4ec94e02791f39b04b522276138852cfc41d9fb7e904106099",
               "type": "tar.gz",
@@ -1860,9 +1809,6 @@
           "crates__h2-0.4.19": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "ef8e5e5a340588f4452631496976cf8636d4a7ecf600239fdc27615d2530bc16",
               "type": "tar.gz",
@@ -1876,9 +1822,6 @@
           "crates__hash32-0.2.1": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "b0c35f58762feb77d74ebe43bdbc3210f09be9fe6742234d573bacc26ed92b67",
               "type": "tar.gz",
@@ -1892,9 +1835,6 @@
           "crates__hashbrown-0.14.5": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "e5274423e17b7c9fc20b6e7e208532f9b19825d82dfd615708b70edd83df41f1",
               "type": "tar.gz",
@@ -1908,9 +1848,6 @@
           "crates__hashbrown-0.16.1": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "841d1cc9bed7f9236f321df977030373f4a4163ae1a7dbfe1a51a2c1a51d9100",
               "type": "tar.gz",
@@ -1924,9 +1861,6 @@
           "crates__hashbrown-0.17.1": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a",
               "type": "tar.gz",
@@ -1940,9 +1874,6 @@
           "crates__heapless-0.7.17": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "cdc6457c0eb62c71aac4bc17216026d8410337c4126773b9c5daba343f17964f",
               "type": "tar.gz",
@@ -1956,9 +1887,6 @@
           "crates__heck-0.5.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea",
               "type": "tar.gz",
@@ -1972,9 +1900,6 @@
           "crates__hex-0.4.3": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70",
               "type": "tar.gz",
@@ -1988,9 +1913,6 @@
           "crates__home-0.5.12": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "cc627f471c528ff0c4a49e1d5e60450c8f6461dd6d10ba9dcd3a61d3dff7728d",
               "type": "tar.gz",
@@ -2004,9 +1926,6 @@
           "crates__http-1.5.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "918d3568bebf352712bc2ef3d46a8bcf1a75b373be6539de198e9105cbbf9ce0",
               "type": "tar.gz",
@@ -2020,9 +1939,6 @@
           "crates__http-body-1.1.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "ca2a8f2913ee65f60facd6a5905613afaa448497a0230cc41ce022d93290bc2c",
               "type": "tar.gz",
@@ -2036,9 +1952,6 @@
           "crates__http-body-util-0.1.5": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "23169fe34a5fbcdd3f3862e78fb9b6fccd5f02a6dc6f732547005d45631ce71c",
               "type": "tar.gz",
@@ -2052,9 +1965,6 @@
           "crates__httparse-1.10.1": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "6dbf3de79e51f3d586ab4cb9d5c3e2c14aa28ed23d180cf89b4df0454a69cc87",
               "type": "tar.gz",
@@ -2068,9 +1978,6 @@
           "crates__hybrid-array-0.4.14": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "707114b52a152fa7bdb290cd7cd5912d9467273b6d74e21b8d81aca1f8533f6b",
               "type": "tar.gz",
@@ -2084,9 +1991,6 @@
           "crates__hyper-1.11.1": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "27b501faa50e7a26c3d3560ca625132f4078a17771f4810baf70475ae48cbe43",
               "type": "tar.gz",
@@ -2100,9 +2004,6 @@
           "crates__hyper-timeout-0.5.2": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "2b90d566bffbce6a75bd8b09a05aa8c2cb1fabb6cb348f8840c9e4c90a0d83b0",
               "type": "tar.gz",
@@ -2116,9 +2017,6 @@
           "crates__hyper-util-0.1.20": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "96547c2556ec9d12fb1578c4eaf448b04993e7fb79cbaad930a656880a6bdfa0",
               "type": "tar.gz",
@@ -2132,9 +2030,6 @@
           "crates__icu_collections-2.3.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "fa68d21081c4a05d5a901a1c62add574c77048b6a1c67be3b50ce0b60d4ca513",
               "type": "tar.gz",
@@ -2148,9 +2043,6 @@
           "crates__icu_locale_core-2.3.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "d56e28588da92eee5c3201a6eff33fabdd49b62269c8938d4ff050ce4d900deb",
               "type": "tar.gz",
@@ -2164,9 +2056,6 @@
           "crates__icu_normalizer-2.3.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "12f9cf5f235641ed274641dd81c3f28d870e276763d0797aeeab72317b1c646f",
               "type": "tar.gz",
@@ -2180,9 +2069,6 @@
           "crates__icu_normalizer_data-2.3.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "1563da1ed3e0b3bf3d74c9b85917ac9c56464d2f57242270c09c9e752f8021a0",
               "type": "tar.gz",
@@ -2196,9 +2082,6 @@
           "crates__icu_properties-2.3.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "7e7ca276ad3145661a65914e6daf131ca5120cd3dcee8f8f3214b8875184a148",
               "type": "tar.gz",
@@ -2212,9 +2095,6 @@
           "crates__icu_properties_data-2.3.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "e590f038c1464a96894fd6d10127e90a8be4509f56ff7ecef851b15cee0b7caa",
               "type": "tar.gz",
@@ -2228,9 +2108,6 @@
           "crates__icu_provider-2.3.1": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "d27bbb9d3abbefac45d55f647c9de1d44aafcd1186eb91879afef17c396c3e73",
               "type": "tar.gz",
@@ -2244,9 +2121,6 @@
           "crates__idna-1.1.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "3b0875f23caa03898994f6ddc501886a45c7d3d62d04d2d90788d47be1b1e4de",
               "type": "tar.gz",
@@ -2260,9 +2134,6 @@
           "crates__idna_adapter-1.2.2": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "cb68373c0d6620ef8105e855e7745e18b0d00d3bdb07fb532e434244cdb9a714",
               "type": "tar.gz",
@@ -2276,9 +2147,6 @@
           "crates__indenter-0.3.4": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "964de6e86d545b246d84badc0fef527924ace5134f30641c203ef52ba83f58d5",
               "type": "tar.gz",
@@ -2292,9 +2160,6 @@
           "crates__indexmap-2.14.1": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "07aa2048142242915a31d35844fb311e0e53fcca590c3a0a40dcf1b841fa09eb",
               "type": "tar.gz",
@@ -2308,9 +2173,6 @@
           "crates__inventory-0.3.24": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "a4f0c30c76f2f4ccee3fe55a2435f691ca00c0e4bd87abe4f4a851b1d4dac39b",
               "type": "tar.gz",
@@ -2324,9 +2186,6 @@
           "crates__ipnet-2.12.1": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "6a756c3fac73139e83f14c2d742155dd2b78d3ee56597b419a0579b7bdd6dd78",
               "type": "tar.gz",
@@ -2340,9 +2199,6 @@
           "crates__is_terminal_polyfill-1.70.2": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "a6cb138bb79a146c1bd460005623e142ef0181e3d0219cb493e02f7d08a35695",
               "type": "tar.gz",
@@ -2356,9 +2212,6 @@
           "crates__itertools-0.14.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "2b192c782037fadd9cfa75548310488aabdbf3d2da73885b31bd0abd03351285",
               "type": "tar.gz",
@@ -2372,9 +2225,6 @@
           "crates__itoa-1.0.18": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682",
               "type": "tar.gz",
@@ -2388,9 +2238,6 @@
           "crates__js-sys-0.3.104": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "0e0c1080212aad755ea003d18543e8768dd432c48819efd73a7bf1e39b7a5a3a",
               "type": "tar.gz",
@@ -2404,9 +2251,6 @@
           "crates__lazy_static-1.5.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe",
               "type": "tar.gz",
@@ -2420,9 +2264,6 @@
           "crates__libc-0.2.189": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "3eaf3ede3fee6db1a4c2ee091bf8a8b4dccdc6d17f656fb07896ee72867612f2",
               "type": "tar.gz",
@@ -2436,9 +2277,6 @@
           "crates__link-section-0.19.3": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "39c29a617ce3df32c08497bdc1ab6e2376e0b17948ac166a2fbe5977c5954cd9",
               "type": "tar.gz",
@@ -2452,9 +2290,6 @@
           "crates__linktime-proc-macro-0.2.3": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "7e57c38c1e860fd37c604281cdfb1dd2216977fd76a50f85ba2f388ef3219616",
               "type": "tar.gz",
@@ -2468,9 +2303,6 @@
           "crates__linux-raw-sys-0.12.1": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "32a66949e030da00e8c7d4434b251670a91556f4144941d37452769c25d58a53",
               "type": "tar.gz",
@@ -2484,9 +2316,6 @@
           "crates__litemap-0.8.3": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "47d9d19d1d6efa0109d2f65ff4c85cddd50bd572e5a00127ab10987290bcefae",
               "type": "tar.gz",
@@ -2500,9 +2329,6 @@
           "crates__lock_api-0.4.14": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "224399e74b87b5f3557511d98dff8b14089b3dadafcab6bb93eab67d3aace965",
               "type": "tar.gz",
@@ -2516,9 +2342,6 @@
           "crates__lock_free_hashtable-0.1.4": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "ebf3631712f5b790675292ff827af269f5d9f920c920b77dc41d0485e3719612",
               "type": "tar.gz",
@@ -2532,9 +2355,6 @@
           "crates__log-0.4.34": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6",
               "type": "tar.gz",
@@ -2548,9 +2368,6 @@
           "crates__logos-0.15.1": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "ff472f899b4ec2d99161c51f60ff7075eeb3097069a36050d8037a6325eb8154",
               "type": "tar.gz",
@@ -2564,9 +2381,6 @@
           "crates__logos-codegen-0.15.1": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "192a3a2b90b0c05b27a0b2c43eecdb7c415e29243acc3f89cc8247a5b693045c",
               "type": "tar.gz",
@@ -2580,9 +2394,6 @@
           "crates__logos-derive-0.15.1": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "605d9697bcd5ef3a42d38efc51541aa3d6a4a25f7ab6d1ed0da5ac632a26b470",
               "type": "tar.gz",
@@ -2596,9 +2407,6 @@
           "crates__lsp-types-0.97.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "53353550a17c04ac46c585feb189c2db82154fc84b79c7a66c96c2c644f66071",
               "type": "tar.gz",
@@ -2612,9 +2420,6 @@
           "crates__maplit-1.0.2": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "3e2e65a1a2e43cfcb47a895c4c8b10d1f4a61097f9f254f183aee60cad9c651d",
               "type": "tar.gz",
@@ -2628,9 +2433,6 @@
           "crates__matchers-0.2.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "d1525a2a28c7f4fa0fc98bb91ae755d1e2d1505079e05539e35bc876b5d65ae9",
               "type": "tar.gz",
@@ -2644,9 +2446,6 @@
           "crates__memchr-2.8.3": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98",
               "type": "tar.gz",
@@ -2660,9 +2459,6 @@
           "crates__memoffset-0.9.1": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "488016bfae457b036d996092f6cb448677611ce4449e970ceaf42695203f218a",
               "type": "tar.gz",
@@ -2676,9 +2472,6 @@
           "crates__mio-1.2.3": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "4b18443e9c262bfe8fa82f51666e2642c53393f7e5c27b3e1aeab922cff5b9d8",
               "type": "tar.gz",
@@ -2692,9 +2485,6 @@
           "crates__nibble_vec-0.1.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "77a5d83df9f36fe23f0c3648c6bbb8b0298bb5f1939c8f2704431371f4b84d43",
               "type": "tar.gz",
@@ -2708,9 +2498,6 @@
           "crates__nix-0.28.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "ab2156c4fce2f8df6c499cc1c763e4394b7482525bf2a9701c9d79d215f519e4",
               "type": "tar.gz",
@@ -2724,9 +2511,6 @@
           "crates__nu-ansi-term-0.50.3": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5",
               "type": "tar.gz",
@@ -2740,9 +2524,6 @@
           "crates__num-bigint-0.4.8": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "c89e69e7e0f03bea5ef08013795c25018e101932225a656383bd384495ecc367",
               "type": "tar.gz",
@@ -2756,9 +2537,6 @@
           "crates__num-integer-0.1.47": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "7ce2d95d4b3734dc35aa2f45e1aa22cd416814592a4f9d9205e11affd5b8e10b",
               "type": "tar.gz",
@@ -2772,9 +2550,6 @@
           "crates__num-traits-0.2.19": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841",
               "type": "tar.gz",
@@ -2788,9 +2563,6 @@
           "crates__once_cell-1.21.4": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50",
               "type": "tar.gz",
@@ -2804,9 +2576,6 @@
           "crates__once_cell_polyfill-1.70.2": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe",
               "type": "tar.gz",
@@ -2820,9 +2589,6 @@
           "crates__opentelemetry-0.32.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "b0142c63252a9e054e68a4c61a5778f7b14f576274d593f8ce883d191a099682",
               "type": "tar.gz",
@@ -2836,9 +2602,6 @@
           "crates__opentelemetry-http-0.32.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "5683015d09e2df236ef005b17f6f196f0d5f6313c4fa43a7b6a53b52776e4331",
               "type": "tar.gz",
@@ -2852,9 +2615,6 @@
           "crates__opentelemetry-otlp-0.32.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "9966929966d17620d7c316c643ba62631826e10021409357772d5eea84f62c35",
               "type": "tar.gz",
@@ -2868,9 +2628,6 @@
           "crates__opentelemetry-proto-0.32.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "56d658ba1faf63f7b9c492cfbe6e0ec365440a16132d3270c1065f7b33f1b638",
               "type": "tar.gz",
@@ -2884,9 +2641,6 @@
           "crates__opentelemetry_sdk-0.32.1": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "9b59f80e1ac4d5ff7a2db8fb6c80badb7f0f3f858211fba08dd9aaec750894f9",
               "type": "tar.gz",
@@ -2900,9 +2654,6 @@
           "crates__pagable-0.4.2": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "f2b6c3024f51bd32fc2fbadedb27783151515348f24cdf2e0ad83270b844f449",
               "type": "tar.gz",
@@ -2916,9 +2667,6 @@
           "crates__pagable_derive-0.4.2": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "7332d8709796f21d6ffd1b0565e2846717cb56700f3cc1b1a3d0ba242c0b1512",
               "type": "tar.gz",
@@ -2932,9 +2680,6 @@
           "crates__parking_lot-0.12.5": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "93857453250e3077bd71ff98b6a65ea6621a19bb0f559a85248955ac12c45a1a",
               "type": "tar.gz",
@@ -2948,9 +2693,6 @@
           "crates__parking_lot_core-0.9.12": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "2621685985a2ebf1c516881c026032ac7deafcda1a2c9b7850dc81e3dfcb64c1",
               "type": "tar.gz",
@@ -2964,9 +2706,6 @@
           "crates__paste-1.0.15": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a",
               "type": "tar.gz",
@@ -2980,9 +2719,6 @@
           "crates__percent-encoding-2.3.2": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220",
               "type": "tar.gz",
@@ -2996,9 +2732,6 @@
           "crates__pin-project-1.1.13": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "2466b2336ed02bcdca6b294417127b90ec92038d1d5c4fbeac971a922e0e0924",
               "type": "tar.gz",
@@ -3012,9 +2745,6 @@
           "crates__pin-project-internal-1.1.13": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "c96395f0a926bc13b1c17622aaddda1ecb55d49c8f1bf9777e4d877800a43f8b",
               "type": "tar.gz",
@@ -3028,9 +2758,6 @@
           "crates__pin-project-lite-0.2.17": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd",
               "type": "tar.gz",
@@ -3044,9 +2771,6 @@
           "crates__portable-atomic-1.15.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "05c8b63e8d9609db387f0324918f81d68fe27748f084ef092fb35954d0539a85",
               "type": "tar.gz",
@@ -3060,9 +2784,6 @@
           "crates__postcard-1.1.3": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "6764c3b5dd454e283a30e6dfe78e9b31096d9e32036b5d1eaac7a6119ccb9a24",
               "type": "tar.gz",
@@ -3076,9 +2797,6 @@
           "crates__potential_utf-0.1.6": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "d83eb9bc6d8e5cf568e7a1101d60ee05e81ed50ea106026f3d18deeb046d7661",
               "type": "tar.gz",
@@ -3092,9 +2810,6 @@
           "crates__ppv-lite86-0.2.21": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "85eae3c4ed2f50dcfe72643da4befc30deadb458a9b590d720cde2f2b1e97da9",
               "type": "tar.gz",
@@ -3108,9 +2823,6 @@
           "crates__proc-macro2-1.0.107": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "985e7ec9bb745e6ce6535b544d84d6cd6f7ad8bd711c398938ae983b91a766d9",
               "type": "tar.gz",
@@ -3124,9 +2836,6 @@
           "crates__prost-0.14.4": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "528ac67416ff8646872a3c02cad9cc4ee5dc9f9540c9b10771855c95cb2e5ae1",
               "type": "tar.gz",
@@ -3140,9 +2849,6 @@
           "crates__prost-derive-0.14.4": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "b570b25f7617e43d59005d0990ccb79e950a423952cea19671b7a876da390adf",
               "type": "tar.gz",
@@ -3156,9 +2862,6 @@
           "crates__prost-types-0.14.4": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "f94967dc7688f3054c7fac87473ffae4cc4c3904800e2d9f5b857246d8963b0a",
               "type": "tar.gz",
@@ -3172,9 +2875,6 @@
           "crates__quickcheck-1.1.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "95c589f335db0f6aaa168a7cd27b1fc6920f5e1470c804f814d9cd6e62a0f70b",
               "type": "tar.gz",
@@ -3188,9 +2888,6 @@
           "crates__quote-1.0.47": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "1fbf4db142a473a8d80c26bbf18454ed458bf8d26c8219c331daecfdbd079001",
               "type": "tar.gz",
@@ -3204,9 +2901,6 @@
           "crates__r-efi-5.3.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "69cdb34c158ceb288df11e18b4bd39de994f6657d83847bdffdbd7f346754b0f",
               "type": "tar.gz",
@@ -3220,9 +2914,6 @@
           "crates__r-efi-6.0.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf",
               "type": "tar.gz",
@@ -3236,9 +2927,6 @@
           "crates__radix_trie-0.2.1": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "c069c179fcdc6a2fe24d8d18305cf085fdbd4f922c041943e203685d6a1c58fd",
               "type": "tar.gz",
@@ -3252,9 +2940,6 @@
           "crates__rand-0.10.2": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "c7f5fa3a058cd35567ef9bfa5e75732bee0f9e4c55fa90477bef2dfcdbc4be80",
               "type": "tar.gz",
@@ -3268,9 +2953,6 @@
           "crates__rand-0.9.5": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "b9ef1d0d795eb7d84685bca4f72f3649f064e6641543d3a8c415898726a57b41",
               "type": "tar.gz",
@@ -3284,9 +2966,6 @@
           "crates__rand_chacha-0.9.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "d3022b5f1df60f26e1ffddd6c66e8aa15de382ae63b3a0c1bfc0e4d3e3f325cb",
               "type": "tar.gz",
@@ -3300,9 +2979,6 @@
           "crates__rand_core-0.10.1": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "63b8176103e19a2643978565ca18b50549f6101881c443590420e4dc998a3c69",
               "type": "tar.gz",
@@ -3316,9 +2992,6 @@
           "crates__rand_core-0.9.5": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "76afc826de14238e6e8c374ddcc1fa19e374fd8dd986b0d2af0d02377261d83c",
               "type": "tar.gz",
@@ -3332,9 +3005,6 @@
           "crates__rayon-core-1.13.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "22e18b0f0062d30d4230b2e85ff77fdfe4326feb054b9783a3460d8435c8ab91",
               "type": "tar.gz",
@@ -3348,9 +3018,6 @@
           "crates__redox_syscall-0.5.18": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "ed2bf2547551a7053d6fdfafda3f938979645c44812fbfcda098faae3f1a362d",
               "type": "tar.gz",
@@ -3364,9 +3031,6 @@
           "crates__ref-cast-1.0.27": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "7e440fb4e4b4147295338efb76001ab9e4efc0e5839df2c47fc5ac2381d365c3",
               "type": "tar.gz",
@@ -3380,9 +3044,6 @@
           "crates__ref-cast-impl-1.0.27": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "92ecd8964f8453721699a1ed72037b0db49ce2f5a5138486ee89bed6f67cdf3a",
               "type": "tar.gz",
@@ -3396,9 +3057,6 @@
           "crates__regex-1.13.1": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "f020237b6c8eed93db2e2cb53c00c60a8e1bc73da7d073199a1180401450218d",
               "type": "tar.gz",
@@ -3412,9 +3070,6 @@
           "crates__regex-automata-0.4.18": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "ad8553b9b26413251cbf30e620595c7a41b3887f03da04579c0e6b0d6a06b4b2",
               "type": "tar.gz",
@@ -3428,9 +3083,6 @@
           "crates__regex-syntax-0.8.11": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4",
               "type": "tar.gz",
@@ -3444,9 +3096,6 @@
           "crates__reqwest-0.13.4": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "219c5811de6525e5416c7d5d53bb656d3afdbc6c5af816e0802bcfa42dbdc1c3",
               "type": "tar.gz",
@@ -3460,9 +3109,6 @@
           "crates__rustc_version-0.4.1": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "cfcb3a22ef46e85b45de6ee7e79d063319ebb6594faafcf1c225ea92ab6e9b92",
               "type": "tar.gz",
@@ -3476,9 +3122,6 @@
           "crates__rustix-1.1.4": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "b6fe4565b9518b83ef4f91bb47ce29620ca828bd32cb7e408f0062e9930ba190",
               "type": "tar.gz",
@@ -3492,9 +3135,6 @@
           "crates__rustversion-1.0.23": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f",
               "type": "tar.gz",
@@ -3508,9 +3148,6 @@
           "crates__rustyline-14.0.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "7803e8936da37efd9b6d4478277f4b2b9bb5cdb37a113e8d63222e58da647e63",
               "type": "tar.gz",
@@ -3524,9 +3161,6 @@
           "crates__schemafy-0.5.2": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "8aea5ba40287dae331f2c48b64dbc8138541f5e97ee8793caa7948c1f31d86d5",
               "type": "tar.gz",
@@ -3540,9 +3174,6 @@
           "crates__schemafy_core-0.5.2": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "41781ae092f4fd52c9287efb74456aea0d3b90032d2ecad272bd14dbbcb0511b",
               "type": "tar.gz",
@@ -3556,9 +3187,6 @@
           "crates__schemafy_lib-0.5.2": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "e953db32579999ca98c451d80801b6f6a7ecba6127196c5387ec0774c528befa",
               "type": "tar.gz",
@@ -3572,9 +3200,6 @@
           "crates__scopeguard-1.2.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49",
               "type": "tar.gz",
@@ -3588,9 +3213,6 @@
           "crates__semver-1.0.28": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "8a7852d02fc848982e0c167ef163aaff9cd91dc640ba85e263cb1ce46fae51cd",
               "type": "tar.gz",
@@ -3604,9 +3226,6 @@
           "crates__sequence_trie-0.3.6": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "1ee22067b7ccd072eeb64454b9c6e1b33b61cd0d49e895fd48676a184580e0c3",
               "type": "tar.gz",
@@ -3620,9 +3239,6 @@
           "crates__serde-1.0.229": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "4148590afebada386688f18773da617792bf2ef03ffc1e4cbd2b1d45b023e0ba",
               "type": "tar.gz",
@@ -3636,9 +3252,6 @@
           "crates__serde_core-1.0.229": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "67dca2c9c51e58a4791a4b1ed58308b39c64224d349a935ab5039aa360942a48",
               "type": "tar.gz",
@@ -3652,9 +3265,6 @@
           "crates__serde_derive-1.0.229": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "e7a5d71263a5a7d47b41f6b3f06ba276f10cc18b0931f1799f710578e2309348",
               "type": "tar.gz",
@@ -3668,9 +3278,6 @@
           "crates__serde_json-1.0.151": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "c841b55ecdae098c80dcae9cf767f6f8a0c2cdb3416bbef72181df4d0fe73f14",
               "type": "tar.gz",
@@ -3684,9 +3291,6 @@
           "crates__serde_repr-0.1.21": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "8d3b1629de253c70a0508c3899572da79ca359fdab27c7920ff00406df418906",
               "type": "tar.gz",
@@ -3700,9 +3304,6 @@
           "crates__sha2-0.11.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "446ba717509524cb3f22f17ecc096f10f4822d76ab5c0b9822c5f9c284e825f4",
               "type": "tar.gz",
@@ -3716,9 +3317,6 @@
           "crates__sharded-slab-0.1.7": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "f40ca3c46823713e0d4209592e8d6e826aa57e928f09752619fc696c499637f6",
               "type": "tar.gz",
@@ -3732,9 +3330,6 @@
           "crates__shlex-2.0.1": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba",
               "type": "tar.gz",
@@ -3748,9 +3343,6 @@
           "crates__signal-hook-registry-1.4.8": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "c4db69cba1110affc0e9f7bcd48bbf87b3f4fc7c61fc9155afd4c469eb3d6c1b",
               "type": "tar.gz",
@@ -3764,9 +3356,6 @@
           "crates__slab-0.4.12": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5",
               "type": "tar.gz",
@@ -3780,9 +3369,6 @@
           "crates__smallvec-1.16.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "b9be42f50aa861c555654aa3a37f52f4b1074bacf4e48fe0ef7fa584e80f1f0f",
               "type": "tar.gz",
@@ -3796,9 +3382,6 @@
           "crates__socket2-0.6.5": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "c3d1e2c7f27f8d4cb10542a02c49005dbd6e93095799d6f3be745fae9f8fedd4",
               "type": "tar.gz",
@@ -3812,9 +3395,6 @@
           "crates__sorted_vector_map-0.2.1": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "94bf565ee1681b4473aa5a9d71d807347c28021bd1d8947cb626b02f42a0141f",
               "type": "tar.gz",
@@ -3828,9 +3408,6 @@
           "crates__spin-0.9.9": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "3763264f6b73151db08c50ff20d7d8a0b8796e021cdea7ceedad07b80155fa0e",
               "type": "tar.gz",
@@ -3844,9 +3421,6 @@
           "crates__stable_deref_trait-1.2.1": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596",
               "type": "tar.gz",
@@ -3860,9 +3434,6 @@
           "crates__starlark-0.14.2": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "9062e866918dc4c9701c98ac99f7f4fa9e4b3b4edce306e147393bc75458c4fc",
               "type": "tar.gz",
@@ -3876,9 +3447,6 @@
           "crates__starlark_derive-0.14.2": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "797e235eb70936bfa14fabf490bf7453e6f0caaf6b9c56fe4c9aff02aee7e66d",
               "type": "tar.gz",
@@ -3892,9 +3460,6 @@
           "crates__starlark_map-0.14.2": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "234877898fd216af93b2f5798b08cbbdc1a2e8f16a622a258b1db23a61a1c4ba",
               "type": "tar.gz",
@@ -3908,9 +3473,6 @@
           "crates__starlark_syntax-0.14.2": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "7492c571c531e68099c911cfd909d32659f1cc0910cf3adee9fce66e39d21f14",
               "type": "tar.gz",
@@ -3924,9 +3486,6 @@
           "crates__static_assertions-1.1.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f",
               "type": "tar.gz",
@@ -3940,9 +3499,6 @@
           "crates__static_interner-0.1.3": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "c0a72d2480db611b8ee9287b4a2e0adc63c4d7fdd647d2a1a65d529fc234fd16",
               "type": "tar.gz",
@@ -3956,9 +3512,6 @@
           "crates__strong_hash-0.1.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "0831334aea34390b6b6ec7af0a27f9ee6324ad3a69463e6b240d83d6b7bce9c9",
               "type": "tar.gz",
@@ -3972,9 +3525,6 @@
           "crates__strong_hash_derive-0.1.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "ace6b48b7c4383a39bd3b966cca41bc999003aab9f690a2f355525c924296928",
               "type": "tar.gz",
@@ -3988,9 +3538,6 @@
           "crates__strsim-0.10.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "73473c0e59e6d5812c5dfe2a064a6444949f089e20eec9a2e5506596494e4623",
               "type": "tar.gz",
@@ -4004,9 +3551,6 @@
           "crates__strsim-0.11.1": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f",
               "type": "tar.gz",
@@ -4020,9 +3564,6 @@
           "crates__subtle-2.6.1": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292",
               "type": "tar.gz",
@@ -4036,9 +3577,6 @@
           "crates__syn-1.0.109": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "72b64191b275b66ffe2469e8af2c1cfe3bafa67b529ead792a6d0160888b4237",
               "type": "tar.gz",
@@ -4052,9 +3590,6 @@
           "crates__syn-2.0.119": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "872831b642d1a07999a962a351ed35b955ea2cfc8f3862091e2a240a84f17297",
               "type": "tar.gz",
@@ -4068,9 +3603,6 @@
           "crates__syn-3.0.4": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "e6275cddf4610d1775e6d1fe9469b2e77d0f39fd98fb7450901b821e0c53649f",
               "type": "tar.gz",
@@ -4084,9 +3616,6 @@
           "crates__sync_wrapper-1.0.2": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "0bf256ce5efdfa370213c1dabab5935a12e49f2c58d15e9eac2870d3b4f27263",
               "type": "tar.gz",
@@ -4100,9 +3629,6 @@
           "crates__synstructure-0.13.2": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "728a70f3dbaf5bab7f0c4b1ac8d7ae5ea60a4b5549c8a5914361c99147a709d2",
               "type": "tar.gz",
@@ -4116,9 +3642,6 @@
           "crates__take_mut-0.2.2": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "f764005d11ee5f36500a149ace24e00e3da98b0158b3e2d53a7495660d3f4d60",
               "type": "tar.gz",
@@ -4132,9 +3655,6 @@
           "crates__textwrap-0.11.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "d326610f408c7a4eb6f51c37c330e496b08506c9457c9d34287ecc38809fb060",
               "type": "tar.gz",
@@ -4148,9 +3668,6 @@
           "crates__thiserror-2.0.20": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "ec86235f5fcc2a73650310756d2ac5b138a5780bbbdfae3eeccec992c435ba4f",
               "type": "tar.gz",
@@ -4164,9 +3681,6 @@
           "crates__thiserror-impl-2.0.20": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "bc04cd3e1236dd4a98afca4569f2deb3f120e5422a4023be2cb683f8486292af",
               "type": "tar.gz",
@@ -4180,9 +3694,6 @@
           "crates__thread_local-1.1.10": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "1ad99c4c6d32803332c548b1af0540b357b3f5fc0be8f6c6bfe8b2e6ae784070",
               "type": "tar.gz",
@@ -4196,9 +3707,6 @@
           "crates__tinystr-0.8.4": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "b1e27c91459209c2986af3dcf603a5a74a4368754ce37414f59acc971167f643",
               "type": "tar.gz",
@@ -4212,9 +3720,6 @@
           "crates__tokio-1.53.1": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "202caea871b69668250d242070849eb495be178ed697a3e98aebce5bc81a0bed",
               "type": "tar.gz",
@@ -4228,9 +3733,6 @@
           "crates__tokio-macros-2.7.2": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "78773a2a397f451582ce068015985c33193cf6dea8b74d2a639fe457b2f07b0e",
               "type": "tar.gz",
@@ -4244,9 +3746,6 @@
           "crates__tokio-stream-0.1.19": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "a3d06f0b082ba57c26b79407372e57cf2a1e28124f78e9479fe80322cf53420b",
               "type": "tar.gz",
@@ -4260,9 +3759,6 @@
           "crates__tokio-util-0.7.19": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "494815d09bf52b5548659851081238f0ca39ff638363907596da739561c62c52",
               "type": "tar.gz",
@@ -4276,9 +3772,6 @@
           "crates__tonic-0.14.6": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "ac2a5518c70fa84342385732db33fb3f44bc4cc748936eb5833d2df34d6445ef",
               "type": "tar.gz",
@@ -4292,9 +3785,6 @@
           "crates__tonic-prost-0.14.6": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "50849f68853be452acf590cde0b146665b8d507b3b8af17261df47e02c209ea0",
               "type": "tar.gz",
@@ -4308,9 +3798,6 @@
           "crates__tonic-types-0.14.6": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "73ab1b02061f83d519bba3caa167f88f261ef05720ab8ebc954ade70de3348e8",
               "type": "tar.gz",
@@ -4324,9 +3811,6 @@
           "crates__tower-0.5.3": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "ebe5ef63511595f1344e2d5cfa636d973292adc0eec1f0ad45fae9f0851ab1d4",
               "type": "tar.gz",
@@ -4340,9 +3824,6 @@
           "crates__tower-http-0.6.11": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "4cfcf7e2740e6fc6d4d688b4ef00650406bb94adf4731e43c096c3a19fe40840",
               "type": "tar.gz",
@@ -4356,9 +3837,6 @@
           "crates__tower-layer-0.3.3": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "121c2a6cda46980bb0fcd1647ffaf6cd3fc79a013de288782836f6df9c48780e",
               "type": "tar.gz",
@@ -4372,9 +3850,6 @@
           "crates__tower-service-0.3.3": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "8df9b6e13f2d32c91b9bd719c00d1958837bc7dec474d94952798cc8e69eeec3",
               "type": "tar.gz",
@@ -4388,9 +3863,6 @@
           "crates__tracing-0.1.44": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "63e71662fa4b2a2c3a26f570f037eb95bb1f85397f3cd8076caed2f026a6d100",
               "type": "tar.gz",
@@ -4404,9 +3876,6 @@
           "crates__tracing-attributes-0.1.31": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "7490cfa5ec963746568740651ac6781f701c9c5ea257c58e057f3ba8cf69e8da",
               "type": "tar.gz",
@@ -4420,9 +3889,6 @@
           "crates__tracing-core-0.1.36": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "db97caf9d906fbde555dd62fa95ddba9eecfd14cb388e4f491a66d74cd5fb79a",
               "type": "tar.gz",
@@ -4436,9 +3902,6 @@
           "crates__tracing-log-0.2.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "ee855f1f400bd0e5c02d150ae5de3840039a3f54b025156404e34c23c03f47c3",
               "type": "tar.gz",
@@ -4452,9 +3915,6 @@
           "crates__tracing-opentelemetry-0.33.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "adbc64cba7137545b8044cb1fe9814f7aacf3c6b5f9b45be8bb5db538befdb26",
               "type": "tar.gz",
@@ -4468,9 +3928,6 @@
           "crates__tracing-serde-0.2.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "704b1aeb7be0d0a84fc9828cae51dab5970fee5088f83d1dd7ee6f6246fc6ff1",
               "type": "tar.gz",
@@ -4484,9 +3941,6 @@
           "crates__tracing-subscriber-0.3.23": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "cb7f578e5945fb242538965c2d0b04418d38ec25c79d160cd279bf0731c8d319",
               "type": "tar.gz",
@@ -4500,9 +3954,6 @@
           "crates__triomphe-0.1.16": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "b40688ea6389c8171614b25491f71d4a27946e0c7ce2da1c6de27e25abf1a0ae",
               "type": "tar.gz",
@@ -4516,9 +3967,6 @@
           "crates__try-lock-0.2.5": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b",
               "type": "tar.gz",
@@ -4532,9 +3980,6 @@
           "crates__typeid-1.0.3": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "bc7d623258602320d5c55d1bc22793b57daff0ec7efc270ea7d55ce1d5f5471c",
               "type": "tar.gz",
@@ -4548,9 +3993,6 @@
           "crates__typenum-1.20.1": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20",
               "type": "tar.gz",
@@ -4564,9 +4006,6 @@
           "crates__unicode-ident-1.0.24": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75",
               "type": "tar.gz",
@@ -4580,9 +4019,6 @@
           "crates__unicode-segmentation-1.13.3": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "c6f5d3c3b1bf09027a88a6bc961fc00497d651009560b5463668dc81b0fa87a8",
               "type": "tar.gz",
@@ -4596,9 +4032,6 @@
           "crates__unicode-width-0.1.14": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "7dd6e30e90baa6f72411720665d41d89b9a3d039dc45b8faea1ddd07f617f6af",
               "type": "tar.gz",
@@ -4612,9 +4045,6 @@
           "crates__unicode-xid-0.2.6": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853",
               "type": "tar.gz",
@@ -4628,9 +4058,6 @@
           "crates__url-2.5.8": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "ff67a8a4397373c3ef660812acab3268222035010ab8680ec4215f38ba3d0eed",
               "type": "tar.gz",
@@ -4644,9 +4071,6 @@
           "crates__utf8_iter-1.0.4": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "b6c140620e7ffbb22c2dee59cafe6084a59b5ffc27a8859a5f0d494b5d52b6be",
               "type": "tar.gz",
@@ -4660,9 +4084,6 @@
           "crates__utf8parse-0.2.2": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821",
               "type": "tar.gz",
@@ -4676,9 +4097,6 @@
           "crates__valuable-0.1.1": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "ba73ea9cf16a25df0c8caa16c51acb937d5712a8429db78a3ee29d5dcacd3a65",
               "type": "tar.gz",
@@ -4692,9 +4110,6 @@
           "crates__version_check-0.9.5": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a",
               "type": "tar.gz",
@@ -4708,9 +4123,6 @@
           "crates__want-0.3.1": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "bfa7760aed19e106de2c7c0b581b509f2f25d3dacaf737cb82ac61bc6d760b0e",
               "type": "tar.gz",
@@ -4724,9 +4136,6 @@
           "crates__wasi-0.11.1-wasi-snapshot-preview1": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "ccf3ec651a847eb01de73ccad15eb7d99f80485de043efb2f370cd654f4ea44b",
               "type": "tar.gz",
@@ -4740,9 +4149,6 @@
           "crates__wasip2-1.0.4-wasi-0.2.12": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "b67efb37e106e55ce722a510d6b5f9c17f083e5fc79afc2badeb12cc313d9487",
               "type": "tar.gz",
@@ -4756,9 +4162,6 @@
           "crates__wasm-bindgen-0.2.127": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "1b70935747edd64d89de3efa29d73789b806c15798f8e7dca4d8ac356b50ce70",
               "type": "tar.gz",
@@ -4772,9 +4175,6 @@
           "crates__wasm-bindgen-futures-0.4.77": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "6b7777d5cc23d0e91404e53ce2d5e8ec7acae3026b16233dba62cd3246457950",
               "type": "tar.gz",
@@ -4788,9 +4188,6 @@
           "crates__wasm-bindgen-macro-0.2.127": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "77775f8f3f7217702089053b94958f8f54061a3f663417df76e19cbdcca29bc1",
               "type": "tar.gz",
@@ -4804,9 +4201,6 @@
           "crates__wasm-bindgen-macro-support-0.2.127": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "e11d33f857dc2fb11b8bc75aee111aa9cbeb12cd9f25efd3d4c2a3dd4e235284",
               "type": "tar.gz",
@@ -4820,9 +4214,6 @@
           "crates__wasm-bindgen-shared-0.2.127": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "7ef64dbcc55df09c7e5a46182d181c2cfa3e925f3da937ea764728b4bbb9dcbf",
               "type": "tar.gz",
@@ -4836,9 +4227,6 @@
           "crates__web-sys-0.3.104": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "c435338968042f4f59a557f690a253676d47ce13ceb55d70100e7facf6620a30",
               "type": "tar.gz",
@@ -4852,9 +4240,6 @@
           "crates__web-time-1.1.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "5a6580f308b1fad9207618087a65c04e7a10bc77e02c8e84e9b00dd4b12fa0bb",
               "type": "tar.gz",
@@ -4868,9 +4253,6 @@
           "crates__windows-link-0.2.1": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "f0805222e57f7521d6a62e36fa9163bc891acd422f971defe97d64e70d0a4fe5",
               "type": "tar.gz",
@@ -4884,9 +4266,6 @@
           "crates__windows-sys-0.52.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "282be5f36a8ce781fad8c8ae18fa3f9beff57ec1b52cb3de0789201425d9a33d",
               "type": "tar.gz",
@@ -4900,9 +4279,6 @@
           "crates__windows-sys-0.59.0": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "1e38bc4d79ed67fd075bcc251a1c39b32a1776bbe92e5bef1f0bf1f8c531853b",
               "type": "tar.gz",
@@ -4916,9 +4292,6 @@
           "crates__windows-sys-0.61.2": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "ae137229bcbd6cdf0f7b80a31df61766145077ddf49416a728b02cb3921ff3fc",
               "type": "tar.gz",
@@ -4932,9 +4305,6 @@
           "crates__windows-targets-0.52.6": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "9b724f72796e036ab90c1021d4780d4d3d648aca59e491e6b98e725b84e99973",
               "type": "tar.gz",
@@ -4948,9 +4318,6 @@
           "crates__windows_aarch64_gnullvm-0.52.6": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "32a4622180e7a0ec044bb555404c800bc9fd9ec262ec147edd5989ccd0c02cd3",
               "type": "tar.gz",
@@ -4964,9 +4331,6 @@
           "crates__windows_aarch64_msvc-0.52.6": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "09ec2a7bb152e2252b53fa7803150007879548bc709c039df7627cabbd05d469",
               "type": "tar.gz",
@@ -4980,9 +4344,6 @@
           "crates__windows_i686_gnu-0.52.6": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "8e9b5ad5ab802e97eb8e295ac6720e509ee4c243f69d781394014ebfe8bbfa0b",
               "type": "tar.gz",
@@ -4996,9 +4357,6 @@
           "crates__windows_i686_gnullvm-0.52.6": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "0eee52d38c090b3caa76c563b86c3a4bd71ef1a819287c19d586d7334ae8ed66",
               "type": "tar.gz",
@@ -5012,9 +4370,6 @@
           "crates__windows_i686_msvc-0.52.6": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "240948bc05c5e7c6dabba28bf89d89ffce3e303022809e73deaefe4f6ec56c66",
               "type": "tar.gz",
@@ -5028,9 +4383,6 @@
           "crates__windows_x86_64_gnu-0.52.6": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "147a5c80aabfbf0c7d901cb5895d1de30ef2907eb21fbbab29ca94c5b08b1a78",
               "type": "tar.gz",
@@ -5044,9 +4396,6 @@
           "crates__windows_x86_64_gnullvm-0.52.6": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "24d5b23dc417412679681396f2b49f3de8c1473deb516bd34410872eff51ed0d",
               "type": "tar.gz",
@@ -5060,9 +4409,6 @@
           "crates__windows_x86_64_msvc-0.52.6": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "589f6da84c646204747d1270a2a5661ea66ed1cced2631d546fdfb155959f9ec",
               "type": "tar.gz",
@@ -5076,9 +4422,6 @@
           "crates__wit-bindgen-0.57.1": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e",
               "type": "tar.gz",
@@ -5092,9 +4435,6 @@
           "crates__writeable-0.6.4": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc",
               "type": "tar.gz",
@@ -5108,9 +4448,6 @@
           "crates__yoke-0.8.3": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "709fe23a0424b6a435d82152b1bd3fdfb0833487d5fa90d05d42762a9891fef5",
               "type": "tar.gz",
@@ -5124,9 +4461,6 @@
           "crates__yoke-derive-0.8.2": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "de844c262c8848816172cef550288e7dc6c7b7814b4ee56b3e1553f275f1858e",
               "type": "tar.gz",
@@ -5140,9 +4474,6 @@
           "crates__zerocopy-0.8.56": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "556764e583adb45a9f8d413c2a147fa7e8d821e48e12b14fd560b607998b75eb",
               "type": "tar.gz",
@@ -5156,9 +4487,6 @@
           "crates__zerocopy-derive-0.8.56": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "f2ab42fc20575779bd240faa45f94a74256f755c0fa9e89f0ede20d91d0cdfc1",
               "type": "tar.gz",
@@ -5172,9 +4500,6 @@
           "crates__zerofrom-0.1.8": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "0ec05a11813ea801ff6d75110ad09cd0824ddba17dfe17128ea0d5f68e6c5272",
               "type": "tar.gz",
@@ -5188,9 +4513,6 @@
           "crates__zerofrom-derive-0.1.7": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "11532158c46691caf0f2593ea8358fed6bbf68a0315e80aae9bd41fbade684a1",
               "type": "tar.gz",
@@ -5204,9 +4526,6 @@
           "crates__zerotrie-0.2.5": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "4ea269c3bd32f0a32c321907a2ae912ba6f4649bb0fc764a15627e99a7095a3f",
               "type": "tar.gz",
@@ -5220,9 +4539,6 @@
           "crates__zerovec-0.11.8": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "bb0464e17806c1d976d5cba29399c7f08e516e279e2ba493f63123b5fca67dd8",
               "type": "tar.gz",
@@ -5236,9 +4552,6 @@
           "crates__zerovec-derive-0.11.6": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "34df6fc39dbd26ddc9c10e6a2984476e13acce22e64e4487636ef494369225da",
               "type": "tar.gz",
@@ -5252,9 +4565,6 @@
           "crates__zmij-1.0.23": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "patch_args": [],
-              "patch_tool": "",
-              "patches": [],
               "remote_patch_strip": 1,
               "sha256": "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b",
               "type": "tar.gz",
@@ -5265,54 +4575,10 @@
               "build_file_content": "###############################################################################\n# @generated\n# DO NOT MODIFY: This file is auto-generated by a crate_universe tool. To \n# regenerate this file, run the following:\n#\n#     bazel mod show_repo 'fjfj'\n###############################################################################\n\nload(\n    \"@rules_rust//cargo:defs.bzl\",\n    \"cargo_build_script\",\n    \"cargo_toml_env_vars\",\n)\n\nload(\"@rules_rust//rust:defs.bzl\", \"rust_library\")\n\n# buildifier: disable=bzl-visibility\nload(\"@rules_rust//crate_universe/private:selects.bzl\", \"selects\")\n\npackage(default_visibility = [\"//visibility:public\"])\n\ncargo_toml_env_vars(\n    name = \"cargo_toml_env_vars\",\n    src = \"Cargo.toml\",\n)\n\nrust_library(\n    name = \"zmij\",\n    deps = [\n        \":build_script_build\",\n    ],\n    compile_data = glob(\n        allow_empty = True,\n        include = [\"**\"],\n        exclude = [\n            \"**/* *\",\n            \".tmp_git_root/**/*\",\n            \"BUILD\",\n            \"BUILD.bazel\",\n            \"WORKSPACE\",\n            \"WORKSPACE.bazel\",\n        ],\n    ),\n    crate_root = \"src/lib.rs\",\n    edition = \"2021\",\n    rustc_env_files = [\n        \":cargo_toml_env_vars\",\n    ],\n    rustc_flags = [\n        \"--cap-lints=allow\",\n    ],\n    srcs = glob(\n        allow_empty = True,\n        include = [\"**/*.rs\"],\n    ),\n    tags = [\n        \"cargo-bazel\",\n        \"crate-name=zmij\",\n        \"manual\",\n        \"noclippy\",\n        \"norustfmt\",\n    ],\n    target_compatible_with = select({\n        \"@rules_rust//rust/platform:aarch64-apple-darwin\": [],\n        \"@rules_rust//rust/platform:aarch64-unknown-linux-gnu\": [],\n        \"@rules_rust//rust/platform:wasm32-unknown-unknown\": [],\n        \"@rules_rust//rust/platform:wasm32-wasip1\": [],\n        \"@rules_rust//rust/platform:x86_64-pc-windows-msvc\": [],\n        \"@rules_rust//rust/platform:x86_64-unknown-linux-gnu\": [],\n        \"@rules_rust//rust/platform:x86_64-unknown-nixos-gnu\": [],\n        \"//conditions:default\": [\"@platforms//:incompatible\"],\n    }),\n    version = \"1.0.23\",\n)\n\ncargo_build_script(\n    name = \"_bs\",\n    build_script_env_files = [\n        \":cargo_toml_env_vars\",\n    ],\n    compile_data = glob(\n        allow_empty = True,\n        include = [\"**\"],\n        exclude = [\n            \"**/* *\",\n            \"**/*.rs\",\n            \".tmp_git_root/**/*\",\n            \"BUILD\",\n            \"BUILD.bazel\",\n            \"WORKSPACE\",\n            \"WORKSPACE.bazel\",\n        ],\n    ),\n    crate_name = \"build_script_build\",\n    crate_root = \"build.rs\",\n    data = glob(\n        allow_empty = True,\n        include = [\"**\"],\n        exclude = [\n            \"**/* *\",\n            \".tmp_git_root/**/*\",\n            \"BUILD\",\n            \"BUILD.bazel\",\n            \"WORKSPACE\",\n            \"WORKSPACE.bazel\",\n        ],\n    ),\n    emit_warnings = False,\n    edition = \"2021\",\n    pkg_name = \"zmij\",\n    rustc_env_files = [\n        \":cargo_toml_env_vars\",\n    ],\n    rustc_flags = [\n        \"--cap-lints=allow\",\n    ],\n    srcs = glob(\n        allow_empty = True,\n        include = [\"**/*.rs\"],\n    ),\n    tags = [\n        \"cargo-bazel\",\n        \"crate-name=zmij\",\n        \"manual\",\n        \"noclippy\",\n        \"norustfmt\",\n    ],\n    version = \"1.0.23\",\n    visibility = [\"//visibility:private\"],\n)\n\nalias(\n    name = \"build_script_build\",\n    actual = \":_bs\",\n    tags = [\"manual\"],\n)\n"
             }
           }
-        },
-        "moduleExtensionMetadata": {
-          "useAllRepos": "NO",
-          "reproducible": false
-        },
-        "recordedRepoMappingEntries": [
-          [
-            "bazel_features+",
-            "bazel_features_globals",
-            "bazel_features++version_extension+bazel_features_globals"
-          ],
-          [
-            "bazel_features+",
-            "bazel_features_version",
-            "bazel_features++version_extension+bazel_features_version"
-          ],
-          [
-            "rules_cc+",
-            "bazel_tools",
-            "bazel_tools"
-          ],
-          [
-            "rules_cc+",
-            "rules_cc",
-            "rules_cc+"
-          ],
-          [
-            "rules_rust+",
-            "bazel_features",
-            "bazel_features+"
-          ],
-          [
-            "rules_rust+",
-            "bazel_skylib",
-            "bazel_skylib+"
-          ],
-          [
-            "rules_rust+",
-            "bazel_tools",
-            "bazel_tools"
-          ],
-          [
-            "rules_rust+",
-            "rules_cc",
-            "rules_cc+"
-          ]
-        ]
+        }
       }
     }
-  }
+  },
+  "facts": {},
+  "factsVersions": {}
 }
