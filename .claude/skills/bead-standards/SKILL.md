@@ -1,17 +1,18 @@
 ---
 name: bead-standards
-description: Standards for creating and labelling beads in this repo. Use whenever creating, triaging, or claiming a bead. Every work bead (task, spike, decision, bug, milestone) carries exactly one model/* label and one effort/* label so an orchestrator can route it; epics carry neither.
+description: Standards for creating and labelling beads in this repo. Use whenever creating, triaging, or claiming a bead. Every work bead (task, spike, decision, bug) carries exactly one model/* label and one effort/* label so an orchestrator can route it; epics and milestones carry neither.
 ---
 
 # Bead standards
 
-Every work bead (task, spike, decision, bug, milestone) MUST carry:
+Every work bead (task, spike, decision, bug) MUST carry:
 
 - exactly one `model/{haiku,sonnet,opus,fable}` label
 - exactly one `effort/{low,medium,high,xhigh,max}` label
 
-Epics MUST carry neither. An epic is a container, not routable work; its
-children are labelled individually. This also stops `--parent` from copying
+Epics and milestones MUST carry neither. An epic is a container and a
+milestone is a dependency gate; neither is routable work. Epic children are
+labelled individually; a milestone depends on the work beads that close it. This also stops `--parent` from copying
 labels onto children (see below).
 
 Apply them at creation time:
@@ -69,6 +70,6 @@ bd list --json | python3 -c 'import sys,json
 for i in json.load(sys.stdin):
     L=i.get("labels") or []
     m=len([l for l in L if l.startswith("model/")]); e=len([l for l in L if l.startswith("effort/")])
-    want=0 if i.get("issue_type")=="epic" else 1
+    want=0 if i.get("issue_type") in ("epic","milestone") else 1
     if m!=want or e!=want: print(i["id"],i.get("issue_type"),L)'
 ```
