@@ -16,6 +16,7 @@ pub mod exit_code;
 pub mod flag_alias;
 pub mod flag_registry;
 pub mod misc_flags;
+pub mod output_filter;
 pub mod workspace_status;
 pub mod workspace_status_flags;
 

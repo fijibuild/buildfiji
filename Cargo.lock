@@ -876,6 +876,7 @@ dependencies = [
  "chumsky",
  "clap",
  "fjfj-graph",
+ "regex",
  "serde",
  "serde_json",
  "thiserror",

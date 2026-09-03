@@ -11,7 +11,7 @@ use clap::Parser;
 use fjfj_bazel_compat::exit_code::{ExitCode, messages};
 use fjfj_bazel_compat::{
     Cli, Command, TargetPattern, canonicalize_flags, diagnostics_flags, flag_alias, misc_flags,
-    workspace_status_flags,
+    output_filter, workspace_status_flags,
 };
 
 /// `fjfj license`'s output. Bazel's own prints an equivalent short notice
@@ -119,17 +119,23 @@ async fn run(cli: Cli) -> Result<(), CliError> {
             let (diagnostics, rest) = diagnostics_flags::extract(&rest, "build");
             let (workspace_status, rest) = workspace_status_flags::extract(&rest, "build");
             let (misc, rest) = misc_flags::extract(&rest, "build");
+            let (output_filter_flags, rest) = output_filter::extract(&rest, "build");
             let patterns = rest
                 .iter()
                 .map(|p| p.parse::<TargetPattern>())
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(CliError::CommandLine)?;
+            let command_line_packages = patterns.iter().map(|p| p.package.clone());
+            let _output_filter =
+                output_filter::OutputFilter::compile(&output_filter_flags, command_line_packages)
+                    .map_err(|e| CliError::CommandLine(anyhow::Error::from(e)))?;
             tracing::info!(
                 ?patterns,
                 ?diagnostics,
                 ?workspace_status,
                 ?misc,
                 ?aliases,
+                ?output_filter_flags,
                 "build requested"
             );
             // Computed and logged now so `--workspace_status_command` and
