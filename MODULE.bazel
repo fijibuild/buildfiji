@@ -39,7 +39,6 @@ crate.from_cargo(
         "//crates/fjfj-bazel-compat:Cargo.toml",
         "//crates/fjfj-models:Cargo.toml",
         "//crates/fjfj-proto:Cargo.toml",
-        "//crates/fjfj-spike-persist:Cargo.toml",
     ],
 )
 use_repo(crate, "crates")

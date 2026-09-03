@@ -45,7 +45,6 @@ and remote executors with Bazel.
 | `fjfj-telemetry` | `tracing` setup, OTLP export, BEP/profile exporters. |
 | `fjfj-models` | Stateright models of protocols (publish, scheduler, daemon, compaction); not shipped. |
 | `fjfj-proto` | Command service proto (`RunCommand` streaming, `Cancel`, `Ping`, `Shutdown`, `Info`); prost/tonic codegen under both Cargo (`build.rs`) and Bazel (`rust_prost_library`) from one `.proto` source. |
-| `fjfj-spike-persist` | Persistence-format spike: encodes a real (or replicated-to-scale) Bazel graph in candidate formats and reports size and load time; not shipped. |
 
 Planned crates: `fjfj-engine` (incremental memoising graph), `fjfj-daemon` (gRPC over UDS client/server, consumes `fjfj-proto`), `fjfj-bzlmod`
 (module resolution and repository rules), `fjfj-query` (query/cquery/aquery).

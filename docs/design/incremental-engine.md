@@ -87,9 +87,10 @@ target: action argv lists dominate it and should be deduplicated by content
 like edge lists.
 
 Budget confirmed (buildfiji-23d.19) on two other graph shapes and a
-synthetic 1M-node graph, same machine/method as above, `crates/fjfj-spike-persist`
-restored from commit 8a6ed31 (`fixtures/generate.sh` reproduces the first
-two dumps; `--replicate` produces the third):
+synthetic 1M-node graph, same machine/method as above. Spike crate restored
+at commit 440cfc5 (`fixtures/generate.sh` reproduces the first two dumps;
+`--replicate` produces the third), removed again afterwards; the code
+stays in history at that commit:
 
 | graph | nodes | edges | columnar+zstd bytes/node | cold load |
 |---|---:|---:|---:|---:|
