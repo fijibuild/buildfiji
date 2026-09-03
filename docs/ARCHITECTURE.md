@@ -13,11 +13,9 @@ and remote executors with Bazel.
    Bazel's observable behaviour (flags, target patterns, Starlark builtins,
    providers, output layout), not its implementation (Skyframe, Java).
 3. **Reuse over rebuild.** Prefer existing crates and protocols:
-   - Starlark: the `starlark` crate (Buck2's implementation). If its parser
-     proves too slow for very large BUILD trees, the fallback is a custom
-     lexer built on [regal](https://github.com/NathanHowell/regal) (build-time
-     minimal-DFA, incremental relexing) feeding a hand-written parser that
-     produces the same `starlark_syntax` AST.
+   - Starlark: the `starlark` crate (Buck2's implementation), front end
+     included; the custom-lexer fallback was measured and rejected in
+     docs/design/starlark-and-loading.md.
    - Remote execution / caching: REAPI v2 via the `bazel-remote-apis` crate.
    - Telemetry: `tracing` + OpenTelemetry (OTLP). Bazel's Build Event Protocol
      and `--profile` JSON are *exports derived from the trace*, not separate

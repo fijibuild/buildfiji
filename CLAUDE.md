@@ -79,7 +79,6 @@ See `docs/ARCHITECTURE.md` (crate map, principles) and `docs/design/*.md` (one d
 - Bazel 9.2.0 observable behaviour is the spec: flags, --incompatible_* defaults, Starlark builtins, output layout, exit codes.
 - Reuse crates and protocols (starlark, bazel-remote-apis, tonic, tracing/OpenTelemetry, clap) before writing custom code.
 - Telemetry: everything is a `tracing` span; BEP and profiles are exports of the trace.
-- Parser fallback if starlark crate is slow: lexer on https://github.com/NathanHowell/regal, target the `starlark_syntax` AST.
 - Architecture is recorded in Lean 4 under spec/ (checked by `lake build`); docs/design markdown is the prose companion. Fable-level decisions get a Lean module before closing.
 - Model checking in Rust: Stateright for protocol interleavings (crash and kill as actions), Loom for engine internals, Kani for pure codecs. TLA+ only by decision.
 - Kani: `cargo kani -p <crate>` (cargo is acceptable here until Bazel wiring lands). Keep harnesses on pure, allocation-free functions with `#[kani::unwind(N)]` matching the input bound; BTreeMap/String code does not terminate under CBMC.
