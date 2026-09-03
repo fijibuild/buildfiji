@@ -8,6 +8,7 @@ repository.workspace = true
 [dependencies]
 clap.workspace = true
 anyhow.workspace = true
+thiserror.workspace = true
 tracing.workspace = true
 tokio.workspace = true
 fjfj-bazel-compat.workspace = true

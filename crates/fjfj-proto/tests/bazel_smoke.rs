@@ -2,7 +2,10 @@
 //! only under `bazel test`. The Cargo-generated bindings (build.rs +
 //! tonic-prost-build) have the equivalent test in src/lib.rs; the two
 //! codegen paths nest their modules differently (see BUILD.bazel), so the
-//! two tests can't share source.
+//! two tests can't share source. `cfg(bazel)` (set by this crate's
+//! `rust_test` via `rustc_flags`, absent under `cargo test`) keeps this
+//! file a no-op under Cargo instead of failing to find `fjfj_proto::fjfj`.
+#![cfg(bazel)]
 
 use fjfj_proto::fjfj::v1::{CommandEvent, CommandResult, RunCommandRequest, command_event};
 

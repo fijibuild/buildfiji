@@ -30,5 +30,6 @@ rust_test(
     name = "fjfj-proto_test",
     srcs = ["tests/bazel_smoke.rs"],
     edition = "2024",
+    rustc_flags = ["--cfg=bazel", "--check-cfg=cfg(bazel)", "--check-cfg=cfg(test)"],
     deps = [":fjfj-proto"],
 )

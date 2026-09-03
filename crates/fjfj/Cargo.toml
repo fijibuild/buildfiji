@@ -7,8 +7,6 @@ repository.workspace = true
 
 [dependencies]
 fjfj-cli.workspace = true
-anyhow.workspace = true
-tokio.workspace = true
 
 [[bin]]
 name = "fjfj"
