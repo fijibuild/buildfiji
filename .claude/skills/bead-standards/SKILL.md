@@ -52,3 +52,17 @@ Suspicious pairs worth a second look: `haiku+high` or above (under-modelled), `f
 ## Description quality
 
 A bead is ready to route only if its description states: the Bazel behaviour being matched (flag, builtin, doc link), the crate(s) it lands in, how it will be verified (test, conformance fixture, benchmark number), and what is explicitly out of scope. Spikes must name the question and the form of the answer. Decisions must list options considered.
+
+## Labels and `--parent`
+
+`bd create --parent=<epic>` copies the epic's labels onto the child. After
+adding the child's own `model/*` and `effort/*`, remove the inherited pair
+with `bd label remove <id> <label>` (one label per call), or the child ends
+up with two of each. Audit with:
+
+```bash
+bd list --json | python3 -c 'import sys,json
+for i in json.load(sys.stdin):
+    L=i.get("labels") or []
+    if len([l for l in L if l.startswith("model/")])!=1 or len([l for l in L if l.startswith("effort/")])!=1: print(i["id"],L)'
+```
