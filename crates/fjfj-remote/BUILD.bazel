@@ -5,13 +5,24 @@ package(default_visibility = ["//visibility:public"])
 rust_library(
     name = "fjfj-remote",
     srcs = glob(["src/**/*.rs"]),
+    compile_data = glob(["testdata/**"]),
     crate_name = "fjfj_remote",
     edition = "2024",
     version = "0.0.1",
-    deps = ["@crates//:anyhow", "@crates//:hex", "@crates//:sha2", "@crates//:thiserror", "@crates//:tokio", "@crates//:tracing", ],
+    deps = [
+        "@crates//:anyhow",
+        "@crates//:bazel-remote-apis",
+        "@crates//:hex",
+        "@crates//:prost",
+        "@crates//:sha2",
+        "@crates//:thiserror",
+        "@crates//:tokio",
+        "@crates//:tracing",
+    ],
 )
 
 rust_test(
     name = "fjfj-remote_test",
     crate = ":fjfj-remote",
+    deps = ["@crates//:serde_json"],
 )

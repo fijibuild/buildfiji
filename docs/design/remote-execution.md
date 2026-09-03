@@ -21,6 +21,26 @@
    lazy output tree (a virtual filesystem or on-demand materialisation);
    design this into `fjfj-exec` from day one rather than retrofitting.
 
+## Parity findings (verified 2026-09-03 against Bazel 9.2.0 CAS blobs)
+
+`fjfj-remote::action_key` reproduces Bazel's `Command` and `Action` bytes
+and the logged action digest for a genrule fixture
+(`crates/fjfj-remote/testdata/genrule`). Facts that were not obvious from
+the REAPI spec:
+
+- Bazel sets `is_executable = true` on every input `FileNode`, regardless
+  of filesystem mode.
+- `Action.salt` is a serialised `CacheSalt { may_be_executed_remotely }`
+  message, never empty.
+- The deprecated `Command.platform` is still populated and repeated in
+  `Action.platform`; `output_paths` is used, not `output_files`.
+- Environment variables, platform properties and output paths are sorted;
+  directory entries are sorted by name.
+
+Still to verify with more fixtures: tree artifacts, symlink inputs,
+runfiles trees, `exec_properties` from platforms, tool inputs, timeouts,
+and `--experimental_remote_cache_key_workspace`-style salt fields.
+
 ## Design sketch
 - `fjfj-graph::Action` is shaped like REAPI `Command` + input Merkle tree.
 - `fjfj-remote` exposes `ContentAddressableStore`, `ActionCache`, `Executor`

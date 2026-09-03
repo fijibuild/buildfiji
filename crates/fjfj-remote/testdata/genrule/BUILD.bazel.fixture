@@ -1,0 +1,6 @@
+genrule(
+    name = "hello",
+    srcs = ["in.txt", "sub/deep.txt"],
+    outs = ["out.txt"],
+    cmd = "cat $(location in.txt) $(location sub/deep.txt) > $@",
+)

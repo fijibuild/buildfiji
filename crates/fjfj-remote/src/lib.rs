@@ -1,10 +1,13 @@
 //! Remote execution and caching via the Bazel Remote Execution API (REAPI v2).
 //!
-//! Plan: depend on the `bazel-remote-apis` crate (prost/tonic bindings) rather
-//! than vendoring protos. Wire compatibility with Bazel means fjfj can share
-//! a CAS/action cache (bazel-remote, Buildbarn, BuildBuddy, EngFlow, NativeLink)
-//! with Bazel builds of the same repo, and even hit the same cache keys when
-//! action digests match.
+//! Wire types come from the `bazel-remote-apis` crate. `action_key` holds the
+//! canonical encoding of `Directory`, `Command` and `Action` messages, which
+//! must be byte-identical to Bazel's so that both tools share cache entries.
+//! See `docs/design/remote-execution.md` and `spec/Fjfj/ActionKey.lean`.
+
+pub mod action_key;
+
+pub use bazel_remote_apis::build::bazel::remote::execution::v2 as reapi;
 
 /// A content-addressable store. Implemented locally (disk cache) and remotely (gRPC CAS).
 pub trait ContentAddressableStore: Send + Sync {

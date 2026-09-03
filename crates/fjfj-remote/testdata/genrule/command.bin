@@ -1,0 +1,7 @@
+
+	/bin/bash
+-c
+Žsource external/bazel_tools/tools/genrule/genrule-setup.sh; cat pkg/in.txt pkg/sub/deep.txt > bazel-out/darwin_arm64-fastbuild/bin/pkg/out.txt$
+PATH/bin:/usr/bin:/usr/local/bin*
+
+OSFamilydarwin:0bazel-out/darwin_arm64-fastbuild/bin/pkg/out.txt
