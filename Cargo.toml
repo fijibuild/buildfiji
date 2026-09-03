@@ -11,36 +11,36 @@ repository = "https://github.com/fijibuild/buildfiji"
 
 [workspace.dependencies]
 # Internal crates
+fjfj-bazel-compat = { path = "crates/fjfj-bazel-compat" }
 fjfj-cli = { path = "crates/fjfj-cli" }
-fjfj-starlark = { path = "crates/fjfj-starlark" }
-fjfj-graph = { path = "crates/fjfj-graph" }
 fjfj-exec = { path = "crates/fjfj-exec" }
+fjfj-graph = { path = "crates/fjfj-graph" }
+fjfj-models = { path = "crates/fjfj-models" }
 fjfj-remote = { path = "crates/fjfj-remote" }
 fjfj-sandbox = { path = "crates/fjfj-sandbox" }
+fjfj-starlark = { path = "crates/fjfj-starlark" }
 fjfj-telemetry = { path = "crates/fjfj-telemetry" }
-fjfj-bazel-compat = { path = "crates/fjfj-bazel-compat" }
-fjfj-models = { path = "crates/fjfj-models" }
 
 # Reused ecosystem libraries (see docs/ARCHITECTURE.md "Reuse over rebuild")
 anyhow = "1"
-thiserror = "2"
+ariadne = "0.6"
+bazel-remote-apis = "0.28"
+chumsky = "0.13"
 clap = { version = "4", features = ["derive", "env"] }
-tokio = { version = "1", features = ["full"] }
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
-tracing-opentelemetry = "0.33"
-opentelemetry = "0.32"
-opentelemetry_sdk = { version = "0.32", features = ["rt-tokio"] }
-opentelemetry-otlp = { version = "0.32", features = ["grpc-tonic"] }
-starlark = "0.14"
-starlark_syntax = "0.14"
-sha2 = "0.11"
 hex = "0.4"
+opentelemetry = "0.32"
+opentelemetry-otlp = { version = "0.32", features = ["grpc-tonic"] }
+opentelemetry_sdk = { version = "0.32", features = ["rt-tokio"] }
+prost = "0.14"
+regal = { git = "https://github.com/NathanHowell/regal" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha2 = "0.11"
+starlark = "0.14"
+starlark_syntax = "0.14"
 stateright = "0.31"
-bazel-remote-apis = "0.28"
-prost = "0.14"
-chumsky = "1.0.0-alpha.8"
-ariadne = "0.6"
-regal = { git = "https://github.com/NathanHowell/regal" }
+thiserror = "2"
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+tracing-opentelemetry = "0.33"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
