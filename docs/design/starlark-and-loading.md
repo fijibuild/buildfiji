@@ -24,3 +24,13 @@ the evaluator and all builtins are untouched.
 Run Bazel's own Starlark test corpus and the `starlark-spec` test files;
 run `rules_rust`, `rules_go`, `rules_python`, `aspect_bazel_lib` loading
 phase as integration tests and diff `fjfj query` against `bazel query`.
+
+## No native modules (decision 2026-09-03)
+
+fjfj implements no native Starlark modules. `cc_common`, `java_common`,
+`proto_common`, `apple_common`, `platform_common` and `coverage_common` are
+written in Starlark, either shipped by fjfj as a builtins overlay (the
+equivalent of Bazel's `@_builtins`) or provided by the rules themselves.
+Rust implements only the core language plus the rule, aspect, provider,
+`ctx`, `Args`, depset, transition, toolchain and exec-group primitives, and
+those must be complete enough to express the native modules in Starlark.
