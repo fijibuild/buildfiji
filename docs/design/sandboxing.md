@@ -37,3 +37,22 @@ remote execution (Merkle tree -> execroot) and cache it across actions
 - Hermetic `/tmp` and network isolation defaults.
 - Sandboxing on Windows (Bazel has none; likely `local` only initially).
 - Whether `Oci` is worth maintaining vs. delegating to remote execution.
+
+## Cancellation and crash safety
+
+- Every action runs in its own process group (and cgroup / PID namespace on
+  Linux). Cancel is an immediate SIGKILL of the group; no SIGTERM grace.
+  Reap with `pidfd` (Linux) or `kqueue` `EVFILT_PROC` (macOS) before the
+  sandbox directory is released.
+- Persistent workers get one protocol cancel request, then a kill on a
+  short deadline; killed workers are respawned.
+- Outputs are written to a per-action scratch directory and published into
+  `bazel-out` by rename; CAS blobs are temp + fsync + rename. The action
+  cache entry is written only after outputs are verified. A kill at any
+  point costs at most a rerun.
+- The daemon is multithreaded tokio and never calls `fork()`. Spawning uses
+  `posix_spawn` / `clone3`; Linux namespace setup lives in a small static
+  helper binary, as Bazel's `linux-sandbox` does.
+- Children must not outlive a dead daemon: `PR_SET_PDEATHSIG` on Linux,
+  process groups recorded in the output_base lock file, and a startup sweep
+  that kills leftovers.
