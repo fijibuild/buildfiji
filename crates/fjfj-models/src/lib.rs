@@ -5,6 +5,7 @@
 //! SIGKILL are explicit actions, so every property holds at every
 //! interleaving of a kill with the protocol.
 
+pub mod compaction;
 pub mod daemon;
 pub mod dynamic;
 pub mod publish;

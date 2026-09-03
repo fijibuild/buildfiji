@@ -3,6 +3,7 @@ import Fjfj.Publish
 import Fjfj.Daemon
 import Fjfj.ActionKey
 import Fjfj.Dynamic
+import Fjfj.Persistence
 /-!
 # fjfj architecture specification
 

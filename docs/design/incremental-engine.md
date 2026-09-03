@@ -53,3 +53,10 @@ small hot indexes (file digests, action cache) in a pure-Rust compressed KV
 store (fjall). RocksDB is a fallback if a single store for everything is
 worth its C++ build cost. The CAS keeps Bazel's `--disk_cache` layout so it
 can be shared with Bazel.
+
+Crash-consistency rules (model-checked, `crates/fjfj-models/src/compaction.rs`):
+fsync the temp snapshot, rename it over the old one, and only then truncate
+the log up to the snapshot version. Truncating first loses acknowledged
+writes on a crash in between. Acknowledge writes only after the log fsync.
+The invariant "recoverable version >= acknowledged version" must hold in
+every state, and recovery replays durable log entries past the snapshot.
