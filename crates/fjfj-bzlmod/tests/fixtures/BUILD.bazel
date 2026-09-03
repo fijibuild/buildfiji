@@ -1,0 +1,29 @@
+load("@rules_python//python:py_binary.bzl", "py_binary")
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+
+# Fixtures for the bzlmod conformance tests: one local module registry and
+# a workspace per resolution scenario, each with the module graph real
+# Bazel resolves for it (see refresh_golden.sh).
+
+filegroup(
+    name = "fixtures",
+    srcs = glob([
+        "registry/**",
+        "workspaces/**",
+    ]),
+    visibility = ["//crates/fjfj-bzlmod:__pkg__"],
+)
+
+py_binary(
+    name = "graph_to_golden",
+    srcs = ["graph_to_golden.py"],
+)
+
+sh_binary(
+    name = "refresh_golden",
+    srcs = ["refresh_golden.sh"],
+    data = [
+        ":graph_to_golden",
+        "@bazel_tools//tools/bash/runfiles",
+    ],
+)

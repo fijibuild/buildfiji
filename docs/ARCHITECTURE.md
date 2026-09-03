@@ -35,6 +35,7 @@ and remote executors with Bazel.
 | `fjfj` | Binary entry point only. |
 | `fjfj-cli` | Command dispatch, server mode, output formatting. |
 | `fjfj-bazel-compat` | Bazel flag parsing, `.bazelrc`, target patterns, unknown-flag policy. |
+| `fjfj-bzlmod` | `MODULE.bazel` evaluation, module discovery, Minimal Version Selection, registry (BCR) client. |
 | `fjfj-starlark` | Starlark evaluation, Bazel builtins (`rule`, `aspect`, `provider`, `native`, `select`, `ctx`). |
 | `fjfj-graph` | Labels, packages, targets, configured targets, aspects, actions, digests. Pure data. |
 | `fjfj-exec` | Action scheduler: strategy selection, action cache lookup, local vs remote. |
@@ -44,8 +45,9 @@ and remote executors with Bazel.
 | `fjfj-models` | Stateright models of protocols (publish, scheduler, daemon, compaction); not shipped. |
 | `fjfj-proto` | Command service proto (`RunCommand` streaming, `Cancel`, `Ping`, `Shutdown`, `Info`); prost/tonic codegen under both Cargo (`build.rs`) and Bazel (`rust_prost_library`) from one `.proto` source. |
 
-Planned crates: `fjfj-engine` (incremental memoising graph), `fjfj-daemon` (gRPC over UDS client/server, consumes `fjfj-proto`), `fjfj-bzlmod`
-(module resolution and repository rules), `fjfj-query` (query/cquery/aquery).
+Planned crates: `fjfj-engine` (incremental memoising graph), `fjfj-daemon`
+(gRPC over UDS client/server, consumes `fjfj-proto`), `fjfj-query`
+(query/cquery/aquery).
 
 ## Where the hard problems live
 

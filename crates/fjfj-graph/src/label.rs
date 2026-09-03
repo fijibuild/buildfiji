@@ -49,6 +49,16 @@ pub enum LabelError {
     TargetNonPrintable(u8),
     #[error("target names may not contain {0:?}")]
     TargetInvalidChar(char),
+    #[error(
+        "invalid repository name '{0}': valid names may contain only A-Z, a-z, 0-9, '-', '_', \
+         '.' and '+'"
+    )]
+    RepoInvalidChar(String),
+    #[error(
+        "invalid user-provided repo name '{0}': valid names may contain only A-Z, a-z, 0-9, '-', \
+         '_', '.', and must start with a letter or a number"
+    )]
+    UserProvidedRepoName(String),
 }
 
 /// ASCII characters (besides letters and digits) a package name may
@@ -153,8 +163,65 @@ fn is_always_allowed_target_char(c: char) -> bool {
         || !c.is_ascii()
 }
 
+/// Bazel's `RepositoryName.VALID_REPO_NAME` (`[\w\-.+]*`): the character
+/// set of a *canonical* repo name, which is wider than a user may write.
+/// The `+` is there because bzlmod builds canonical names by joining a
+/// module name and version with it (`rules_foo+`, `rules_foo+1.2.3`), and
+/// the empty string is legal because that is the main repository.
+pub fn validate_repo_name(repo: &str) -> Result<(), LabelError> {
+    let ok = repo
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.' | '+'));
+    if ok {
+        Ok(())
+    } else {
+        Err(LabelError::RepoInvalidChar(repo.to_owned()))
+    }
+}
+
+/// Bazel's `RepositoryName.validateUserProvidedRepoName`
+/// (`[a-zA-Z0-9][-.\w]*`): the narrower set a user may write in
+/// `repo_name = ...` on `module()`, `bazel_dep()` or `use_repo()`. Note
+/// the two asymmetries with [`validate_repo_name`]: a user-provided name
+/// may not be empty and may not contain `+`, which keeps user-written
+/// names disjoint from generated canonical ones.
+pub fn validate_user_provided_repo_name(repo: &str) -> Result<(), LabelError> {
+    let mut chars = repo.chars();
+    let first_ok = chars.next().is_some_and(|c| c.is_ascii_alphanumeric());
+    let rest_ok = chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'));
+    if first_ok && rest_ok {
+        Ok(())
+    } else {
+        Err(LabelError::UserProvidedRepoName(repo.to_owned()))
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn canonical_repo_names_allow_plus_and_empty() {
+        // The main repository, and the two shapes bzlmod generates.
+        validate_repo_name("").unwrap();
+        validate_repo_name("rules_foo+").unwrap();
+        validate_repo_name("rules_foo+1.2.3").unwrap();
+        validate_repo_name("rules_foo++ext+repo").unwrap();
+        assert!(validate_repo_name("has space").is_err());
+        assert!(validate_repo_name("has/slash").is_err());
+        assert!(validate_repo_name("has@at").is_err());
+    }
+
+    #[test]
+    fn user_provided_repo_names_are_narrower() {
+        validate_user_provided_repo_name("foo").unwrap();
+        validate_user_provided_repo_name("foo_bar-1.2").unwrap();
+        validate_user_provided_repo_name("0abc").unwrap();
+        // Empty, leading punctuation and '+' are all canonical-only.
+        assert!(validate_user_provided_repo_name("").is_err());
+        assert!(validate_user_provided_repo_name("_foo").is_err());
+        assert!(validate_user_provided_repo_name("-foo").is_err());
+        assert!(validate_user_provided_repo_name("rules_foo+").is_err());
+    }
+
     use super::*;
 
     #[test]

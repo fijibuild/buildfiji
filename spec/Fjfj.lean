@@ -5,6 +5,7 @@ import Fjfj.ActionKey
 import Fjfj.Dynamic
 import Fjfj.Persistence
 import Fjfj.Configuration
+import Fjfj.Bzlmod
 /-!
 # fjfj architecture specification
 

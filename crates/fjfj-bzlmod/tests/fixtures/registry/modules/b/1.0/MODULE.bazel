@@ -1,0 +1,2 @@
+module(name = "b", version = "1.0")
+bazel_dep(name = "c", version = "2.0")

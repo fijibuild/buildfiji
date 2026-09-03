@@ -1,0 +1,42 @@
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+
+package(default_visibility = ["//visibility:public"])
+
+rust_library(
+    name = "fjfj-bzlmod",
+    srcs = glob(["src/**/*.rs"]),
+    crate_name = "fjfj_bzlmod",
+    edition = "2024",
+    version = "0.0.1",
+    deps = [
+        "//crates/fjfj-graph",
+        "@crates//:allocative",
+        "@crates//:anyhow",
+        "@crates//:base64",
+        "@crates//:hex",
+        "@crates//:regex",
+        "@crates//:reqwest",
+        "@crates//:serde",
+        "@crates//:serde_json",
+        "@crates//:sha2",
+        "@crates//:starlark",
+        "@crates//:thiserror",
+        "@crates//:tracing",
+    ],
+    proc_macro_deps = ["@crates//:starlark_derive"],
+)
+
+rust_test(
+    name = "fjfj-bzlmod_test",
+    crate = ":fjfj-bzlmod",
+)
+
+# Resolution conformance against real Bazel: the goldens under
+# tests/fixtures are Bazel's own output, not hand-written expectations.
+rust_test(
+    name = "fjfj-bzlmod_conformance_test",
+    srcs = ["tests/conformance.rs"],
+    data = ["//crates/fjfj-bzlmod/tests/fixtures"],
+    edition = "2024",
+    deps = [":fjfj-bzlmod"],
+)

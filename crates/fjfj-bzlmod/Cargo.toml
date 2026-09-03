@@ -1,0 +1,22 @@
+[package]
+name = "fjfj-bzlmod"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+allocative.workspace = true
+anyhow.workspace = true
+base64.workspace = true
+fjfj-graph.workspace = true
+hex.workspace = true
+regex.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+starlark.workspace = true
+starlark_derive.workspace = true
+thiserror.workspace = true
+tracing.workspace = true

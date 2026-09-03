@@ -1,0 +1,11 @@
+{
+  "homepage": "",
+  "maintainers": [],
+  "versions": [
+    "1.0",
+    "2.0"
+  ],
+  "yanked_versions": {
+    "2.0": "a bad release"
+  }
+}

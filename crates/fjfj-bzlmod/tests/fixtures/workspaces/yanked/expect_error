@@ -1,0 +1,2 @@
+Yanked version detected in your resolved dependency graph: y@2.0, for the reason: a bad release.
+Yanked versions may contain serious vulnerabilities and should not be used. To fix this, use a bazel_dep on a newer version of this module. To continue using this version, allow it using the --allow_yanked_versions flag or the BZLMOD_ALLOW_YANKED_VERSIONS env variable.

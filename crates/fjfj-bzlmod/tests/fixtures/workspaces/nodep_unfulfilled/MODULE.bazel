@@ -1,0 +1,2 @@
+module(name = "root", version = "0")
+bazel_dep(name = "f", version = "1.0")

@@ -110,3 +110,126 @@ paths, not to a `String` that has already lost the platform's native
 encoding. Label validation (above) stays on `&str`, since labels are
 Bazel-language identifiers with a defined character set, not filesystem
 paths.
+
+## bzlmod: module resolution (implemented 2026-09-03, buildfiji-mum.6)
+
+`crates/fjfj-bzlmod` evaluates `MODULE.bazel`, walks out to the whole
+dependency graph, and runs Minimal Version Selection over it. The
+algorithms are ports of Bazel 9.2.0's `ModuleFileGlobals`, `Discovery`,
+`Selection`, `Version` and `IndexRegistry`, not reconstructions from the
+documentation: a resolution that differs from Bazel's by one version is a
+different build.
+
+Spec: `spec/Fjfj/Bzlmod.lean`. Out of scope here and tracked separately:
+running module extensions and repository rules (buildfiji-mum.8),
+`MODULE.bazel.lock` (buildfiji-mum.7), the apparent-name half of repo
+mapping (buildfiji-mum.15), and `include()` (buildfiji-mum.22).
+
+### Compatibility levels are gone, and selection is simpler for it
+
+Bazel 9.2.0 accepts `compatibility_level` on `module()` and
+`max_compatibility_level` on `bazel_dep()`, warns that they are no-ops,
+and then hard-codes every module's level to 0 —
+`ModuleFileGlobals.module` calls `setCompatibilityLevel(0)`
+unconditionally, whatever the argument said.
+
+That collapses a large part of `Selection.java`. With one level, a
+`DepSpec` has exactly one candidate version, so Bazel's search over
+combinations of candidates (`enumerateStrategies`, a cartesian product of
+per-edge choices, retried until a walk succeeds) always has exactly one
+element. fjfj evaluates that single strategy directly. Selection groups,
+the "snap up to the nearest allowed version" rule for
+`multiple_version_override`, and the walk's error checks are all ported
+as they stand; only the search around them is absent.
+
+The observable consequence is a theorem rather than a comment:
+`Fjfj.Bzlmod.one_version_per_name` says two modules in the resolved graph
+with the same name are the same module. That is what makes an apparent
+repo name unambiguous, and it is precisely what a
+`multiple_version_override` opts out of. If compatibility levels ever come
+back, the choice would key on `(name, level)`, the theorem would fail, and
+the search would have to come back with it.
+
+### The `MODULE.bazel` dialect
+
+A module file is a declaration, not a program. Bazel enforces that with
+`DotBazelFileSyntaxChecker`; fjfj gets the same result from the parser by
+turning the features off in the dialect, so a rejected file is rejected at
+parse time with a location:
+
+| Setting | Why |
+|---|---|
+| `enable_def: false` | no functions in a module file |
+| `enable_lambda: false` | Bazel has no `lambda` anywhere |
+| `enable_load: false` | `include()` is the only way to pull in another file, and it is checked syntactically |
+| `enable_top_level_stmt: false` | no top-level `if`/`for`, as in every `.bazel` file |
+
+`print` is a Bazel builtin but a starlark-crate *extension*, so it has to
+be added explicitly — real module files use it (bazel_gazelle's prints a
+warning). For a dependency it is wired to a discarding handler, as Bazel
+does with `printIsNoop`: a module from a registry must not be able to spam
+the console during resolution.
+
+### One flag behind two documented rules
+
+"A dependency's dev dependencies don't affect your build" and "a
+dependency's overrides are ignored" read as two features. In Bazel they
+are one flag: `ignoreDevDeps`, set for every non-root module, which
+`ModuleThreadContext.addOverride` checks before recording anything. fjfj
+keeps them as one flag (`EvalOptions::ignore_dev_deps`) for the same
+reason — splitting them would be an invitation for the two to drift.
+
+### Registry client
+
+A Bazel registry is an index of files under a base URL, so the client is
+URL construction, JSON parsing and integrity checking. Transport is behind
+a `Fetcher` trait because a `file://` registry is a first-class case: it
+is how the BCR's own tests run and how the fixtures below work.
+
+HTTP is `reqwest` with rustls. One HTTP stack for the whole tool, since
+repository rules need the same downloader (`repository_ctx.download`,
+`http_archive`, buildfiji-mum.8) — a second client for that would be two
+sets of proxy, redirect and TLS behaviour to keep in step. It builds under
+Bazel unmodified; `aws-lc-sys` compiles through `crate_universe` with no
+annotation, taking about 80 seconds once.
+
+### `bazel_tools` is a placeholder
+
+Every module implicitly depends on `bazel_tools`, which Bazel ships inside
+its own binary rather than serving from a registry. fjfj has no embedded
+tools repository yet, so `RegistrySource` supplies a `bazel_tools` module
+file with no dependencies (buildfiji-mum.23). This is invisible to
+`fjfj mod graph`, which hides the `bazel_tools` subtree as Bazel does, but
+it is not invisible to resolution: Bazel's real `bazel_tools` has
+`bazel_dep`s of its own, and they raise selected versions elsewhere in the
+graph. Feeding fjfj the real file makes the difference disappear (below).
+
+### Conformance method
+
+The fixtures under `crates/fjfj-bzlmod/tests/fixtures` are a local module
+registry and one workspace per resolution scenario — MVS, pruning of a
+module that lost its only dependent, both override kinds, fulfilled and
+unfulfilled nodep edges, a yanked version. The expected result of each is
+**Bazel's own output**, captured by
+`bazel run //crates/fjfj-bzlmod/tests/fixtures:refresh_golden` and
+committed, so the test compares against Bazel rather than against a
+restatement of the implementation.
+
+Two ignored tests reach the network, run by hand: one reads real modules,
+`source.json` and `metadata.json` from `bcr.bazel.build`, and one resolves
+this repository's own `MODULE.bazel` against it. On the run that closed
+buildfiji-mum.6, the second produced the same selected version as
+`bazel mod graph` for all 29 modules Bazel reports for this repository —
+including the ones where the answer is not the obvious one, such as
+protobuf 33.4 winning over the 29.1 that `rules_proto` and `rules_python`
+ask for. That match requires the real `bazel_tools` module file; with the
+placeholder, protobuf resolves to 29.1 instead, which is the clearest
+statement of why buildfiji-mum.23 matters.
+
+### `include()` is refused, not ignored
+
+`include()` pulls more directives in from another file. fjfj records the
+labels but does not resolve them, and `resolve()` returns an error when
+the root module has any. Ignoring them would silently resolve a different
+graph than the one the user wrote — the one failure mode a resolver must
+not have.
