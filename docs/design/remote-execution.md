@@ -60,6 +60,27 @@ and `--experimental_remote_cache_key_workspace`-style salt fields.
 - Tree artifacts and symlink handling parity with Bazel.
 - Remote persistent workers (Bazel has none; do we want them?).
 
+## gRPC call log and cache blob compression (decision 2026-09-03)
+
+`--remote_grpc_log`'s wire format (`remote_execution_log.proto`'s
+`LogEntry`, length-delimited and *not* compressed — unlike the compact
+execution log, this is Bazel's older, simpler `writeDelimitedTo` framing
+with no outer zstd frame) is hand-transcribed in `fjfj_remote::grpc_log`,
+the same approach `action_key::CacheSalt` and `execution_log` use for their
+protos. Its `RpcCallDetails` oneof reuses this crate's existing REAPI types
+(`reapi::*`) plus `bazel_remote_apis::google::{rpc,longrunning,bytestream}`,
+which the crate's dependency already generates in full — no second proto
+vendored just for the half-dozen `remote_logging`-only wrapper messages.
+Every oneof variant is boxed, since several details messages embed a whole
+REAPI request/response (`ActionResult`, `ExecuteRequest`) and an unboxed
+oneof would size every `LogEntry` to its single largest variant.
+
+`--remote_cache_compression`/`--experimental_remote_cache_compression_threshold`
+select zstd for CAS blob transfer per REAPI's `Compressor.Value.ZSTD`; this
+is a decision REAPI clients and servers negotiate per-blob over the wire,
+not a log format, so it stays a flag value in `fjfj-bazel-compat` with no
+corresponding wire-format module until there is a CAS client to apply it to.
+
 ## Shared disk cache rules (model-checked, `crates/fjfj-models/src/disk_cache.rs`)
 
 Bazel and fjfj may share one `--disk_cache`. Blobs and action-cache

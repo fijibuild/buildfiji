@@ -11,7 +11,7 @@ use clap::Parser;
 use fjfj_bazel_compat::exit_code::{ExitCode, messages};
 use fjfj_bazel_compat::{
     Cli, Command, TargetPattern, canonicalize_flags, diagnostics_flags, execution_log_flags,
-    flag_alias, misc_flags, output_filter, workspace_status_flags,
+    flag_alias, misc_flags, output_filter, remote_flags, workspace_status_flags,
 };
 use fjfj_remote::execution_log::{CompactExecutionLogWriter, EntryType, ExecLogEntry, Invocation};
 
@@ -122,6 +122,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
             let (misc, rest) = misc_flags::extract(&rest, "build");
             let (output_filter_flags, rest) = output_filter::extract(&rest, "build");
             let (execution_log, rest) = execution_log_flags::extract(&rest, "build");
+            let (remote, rest) = remote_flags::extract(&rest, "build");
             let patterns = rest
                 .iter()
                 .map(|p| p.parse::<TargetPattern>())
@@ -139,8 +140,21 @@ async fn run(cli: Cli) -> Result<(), CliError> {
                 ?aliases,
                 ?output_filter_flags,
                 ?execution_log,
+                ?remote,
                 "build requested"
             );
+            // Just a writability check: there is no REAPI client yet to
+            // make a gRPC call worth logging, so unlike the execution log
+            // above there is no header entry to write. Still fails fast on
+            // a bad path rather than waiting for remote execution to exist.
+            if let Some(path) = &remote.remote_grpc_log {
+                std::fs::File::create(path).map_err(|e| {
+                    CliError::CommandLine(anyhow::anyhow!(
+                        "couldn't open --remote_grpc_log {}: {e}",
+                        path.display()
+                    ))
+                })?;
+            }
             // Opened and given its Invocation header now, for the same
             // fail-fast reason as --workspace_status_command above: an
             // unwritable --execution_log_compact_file path should reject
