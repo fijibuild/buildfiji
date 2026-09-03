@@ -9,6 +9,10 @@ use std::path::PathBuf;
 
 use crate::flag_registry::FlagRegistry;
 
+/// Flag names this module reads, for `clap_flags::validate`'s
+/// unimplemented-flag gate.
+pub const IMPLEMENTED: &[&str] = &["workspace_status_command", "stamp", "embed_label"];
+
 /// Values for the flags in this module, defaulting to Bazel's own:
 /// `--nostamp` (test rules always build unstamped regardless), no
 /// `--workspace_status_command` (equivalent to Bazel's documented

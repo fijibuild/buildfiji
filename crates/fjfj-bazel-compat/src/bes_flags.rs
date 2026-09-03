@@ -15,6 +15,14 @@ use std::time::Duration;
 
 use crate::flag_registry::FlagRegistry;
 
+/// Flag names this module reads, for `clap_flags::validate`'s
+/// unimplemented-flag gate.
+pub const IMPLEMENTED: &[&str] = &[
+    "build_event_publish_all_actions",
+    "bes_results_url",
+    "bes_timeout",
+];
+
 /// Flag values for this module, defaulting to Bazel's own: don't publish
 /// every action, no results URL to print, and no upload timeout (Bazel
 /// documents `0` as "wait indefinitely").

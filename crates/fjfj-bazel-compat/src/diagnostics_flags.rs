@@ -10,6 +10,16 @@ use std::path::PathBuf;
 
 use crate::flag_registry::FlagRegistry;
 
+/// Flag names this module reads, for `clap_flags::validate`'s
+/// unimplemented-flag gate.
+pub const IMPLEMENTED: &[&str] = &[
+    "keep_going",
+    "verbose_failures",
+    "subcommands",
+    "explain",
+    "verbose_explanations",
+];
+
 /// Values for the flags in this module, defaulting to Bazel's own (all
 /// off, no `--explain` file).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

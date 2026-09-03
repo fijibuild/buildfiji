@@ -4,14 +4,17 @@
 //! startup/command options, `.bazelrc` files and target-pattern syntax as
 //! Bazel, so that existing scripts and CI can swap the binary name.
 //!
-//! Unknown Bazel flags are *accepted and recorded* (not rejected) so that a
-//! `.bazelrc` shared with Bazel keeps working; see
-//! [`flag_registry::UnknownFlagPolicy`].
+//! A command's flag surface is validated against the generated
+//! `bazel_flags` table before anything runs: a flag that isn't real Bazel
+//! usage for that command, or is but no typed extractor reads it yet,
+//! fails the invocation loudly rather than being silently accepted with
+//! no effect — see [`clap_flags::validate`].
 
 pub mod bazel_flags;
 pub mod bazelrc;
 pub mod bes_flags;
 pub mod canonicalize_flags;
+pub mod clap_flags;
 pub mod diagnostics_flags;
 pub mod execution_log_flags;
 pub mod exit_code;

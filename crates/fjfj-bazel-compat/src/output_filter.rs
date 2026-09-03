@@ -29,6 +29,10 @@ pub enum AutoOutputFilter {
     Subpackages,
 }
 
+/// Flag names this module reads, for `clap_flags::validate`'s
+/// unimplemented-flag gate.
+pub const IMPLEMENTED: &[&str] = &["output_filter", "auto_output_filter"];
+
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct OutputFilterFlags {
     /// `--output_filter=<regex>`, kept as source text: compiling it is

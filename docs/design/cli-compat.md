@@ -9,10 +9,11 @@ Target: `sed -i s/bazel/fjfj/ .github/workflows/*.yml` is enough to switch.
 - Same target pattern syntax and `--` handling; same exit codes (0, 1
   build failed, 2 command line, 3 tests failed, 4 no tests found, 8
   interrupted, 36/37 infra).
-- Flag policy: known flags are typed; flags Bazel accepts but fjfj does not
-  implement are accepted with a one-line warning (opt-in
-  `--fjfj_strict_flags` turns them into errors). This keeps shared
-  `.bazelrc` files working during the transition.
+- Flag policy (superseded 2026-09-03, see "Flag surface" below): a flag
+  Bazel accepts but fjfj doesn't implement now fails the invocation
+  rather than being accepted with a warning — a `.bazelrc` shared with
+  Bazel that uses a flag fjfj hasn't wired up yet stops fjfj outright
+  instead of quietly building with that flag doing nothing.
 - Output layout: `bazel-bin`, `bazel-out`, `bazel-testlogs` convenience
   symlinks are created with the same names (configurable via
   `--symlink_prefix`).
@@ -77,11 +78,51 @@ command, distinguishing "not a flag at all" from "a real Bazel flag, just
 not for this command" (the latter still reports which commands it *is*
 known for). `"startup"` is the pseudo-command for startup options.
 
-`UnknownFlagPolicy` (`Warn` default, `Strict` behind `--fjfj_strict_flags`)
-turns an unresolved token into either a one-line warning to print and
-continue, or the error to propagate — Bazel-flag-compatibility-during-
-migration is the point of `Warn`, per this doc's "Flag policy" section
-above.
+`UnknownFlagPolicy` (`Warn`/`Strict`) and `apply_policy` still back
+`canonicalize_flags`, which reports Bazel's own `unrecognized option`
+message for a single flag in isolation; `build`'s own leftover-token
+handling moved to `clap_flags::validate`, below.
+
+## Flag surface (decision 2026-09-03, supersedes "Flag policy" above)
+
+`fjfj-bazel-compat::clap_flags::command_for(command)` builds a
+`clap::Command` with one `Arg` per `bazel_flags::FLAGS` entry
+`command` accepts — negatable flags get a second hidden `--no<name>`
+switch, `old_name`/abbreviation become a clap alias/short, value-taking
+flags accept one attached-or-space-separated string each (`Append` when
+`allows_multiple`). It doesn't attempt real per-flag typed parsing (no
+`type_converter` -> `clap::builder::ValueParser` mapping) — that's still
+each `*_flags` module's job over the same raw tokens, run separately.
+
+`clap_flags::validate(args, command, implemented)` runs `command`'s raw
+argv slice (after `flag_alias::apply`) through that `Command` and fails
+loudly rather than warning: a token that isn't a real Bazel flag for
+`command` fails via clap's own strict argument matching (its usual
+unknown-flag behavior, which this module doesn't relax); a token that
+*is* a real flag but isn't in the caller's `implemented` list — the union
+of every `*_flags` module's own `IMPLEMENTED` constant for that command —
+also fails, with a distinct message ("recognized... but not implemented
+by fjfj yet"). Both cases used to be `UnknownFlagPolicy::Warn`'s job
+(print a warning, keep going): a flag Bazel accepts but fjfj silently
+does nothing with is a *worse* failure mode than refusing to run, since
+the build proceeds looking like it honored a flag it didn't — see
+`buildfiji-gwl.15`/`buildfiji-gwl.16`.
+
+One wrinkle clap's own hyphen-token handling can't resolve on its own: a
+negative target pattern (`-//pkg:excluded`, `-@repo//pkg:excluded`) looks
+exactly like an unmatched flag syntactically. `command_for`'s trailing
+positional deliberately has no `allow_hyphen_values` (that would swallow
+*any* unmatched hyphen token, typos included, defeating the fail-loud
+goal), so `validate` pulls out anything shaped like a negative target
+pattern before handing the rest to clap; `TargetPattern::from_str` still
+does the real parsing (and can still reject a malformed one) on the
+original, unfiltered tokens downstream.
+
+`fjfj build`'s dispatch runs `validate` once, right after
+`flag_alias::apply`, before any `*_flags::extract` call — once it passes,
+every remaining `*_flags::extract` call and the final
+`TargetPattern::from_str` pass only ever see tokens `validate` already
+vouched for.
 
 ## Diagnostics flags (decision 2026-09-03)
 

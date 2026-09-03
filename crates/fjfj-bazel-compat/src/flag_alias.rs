@@ -24,6 +24,10 @@ pub enum FlagAliasError {
 /// Alias name -> the build setting label it stands for.
 pub type FlagAliasTable = BTreeMap<String, String>;
 
+/// Flag names this module reads, for `clap_flags::validate`'s
+/// unimplemented-flag gate.
+pub const IMPLEMENTED: &[&str] = &["flag_alias"];
+
 /// Pull every `--flag_alias=<name>=<label>` (attached or space-separated
 /// form) out of `args`, returning the alias table and every other
 /// argument untouched, in order. `flag_alias` itself is accepted by every

@@ -10,8 +10,8 @@
 use clap::Parser;
 use fjfj_bazel_compat::exit_code::{ExitCode, messages};
 use fjfj_bazel_compat::{
-    Cli, Command, TargetPattern, bes_flags, canonicalize_flags, diagnostics_flags,
-    execution_log_flags, flag_alias, flag_registry, misc_flags, output_filter, remote_flags,
+    Cli, Command, TargetPattern, bes_flags, canonicalize_flags, clap_flags, diagnostics_flags,
+    execution_log_flags, flag_alias, misc_flags, output_filter, remote_flags,
     workspace_status_flags,
 };
 use fjfj_remote::execution_log::{CompactExecutionLogWriter, EntryType, ExecLogEntry, Invocation};
@@ -118,6 +118,34 @@ async fn run(cli: Cli) -> Result<(), CliError> {
             let (aliases, rest) = flag_alias::extract(&args.patterns)
                 .map_err(|e| CliError::CommandLine(anyhow::Error::from(e)))?;
             let rest = flag_alias::apply(&aliases, &rest);
+            // buildfiji-gwl.15/gwl.16: validate every flag token against
+            // the full generated `bazel_flags` table *before* any typed
+            // extraction runs, and fail loudly — rather than warning and
+            // continuing — on a flag that isn't a real Bazel flag for
+            // `build`, or is one but no module below actually reads it.
+            // Silently accepting the latter would let a build proceed
+            // with the flag's value doing nothing, which is worse than
+            // refusing to run: see `docs/design/cli-compat.md`'s "Flag
+            // surface" decision. This also keeps a leftover token from
+            // ever reaching `TargetPattern::from_str`, whose "pattern
+            // must start with // or @" error is misleading for a flag
+            // typo.
+            const BUILD_IMPLEMENTED: &[&[&str]] = &[
+                flag_alias::IMPLEMENTED,
+                diagnostics_flags::IMPLEMENTED,
+                workspace_status_flags::IMPLEMENTED,
+                misc_flags::IMPLEMENTED,
+                output_filter::IMPLEMENTED,
+                execution_log_flags::IMPLEMENTED,
+                remote_flags::IMPLEMENTED,
+                bes_flags::IMPLEMENTED,
+            ];
+            let implemented: Vec<&'static str> = BUILD_IMPLEMENTED
+                .iter()
+                .flat_map(|s| s.iter().copied())
+                .collect();
+            clap_flags::validate(&rest, "build", &implemented)
+                .map_err(|e| CliError::CommandLine(anyhow::Error::from(e)))?;
             let (diagnostics, rest) = diagnostics_flags::extract(&rest, "build");
             let (workspace_status, rest) = workspace_status_flags::extract(&rest, "build");
             let (misc, rest) = misc_flags::extract(&rest, "build");
@@ -125,22 +153,9 @@ async fn run(cli: Cli) -> Result<(), CliError> {
             let (execution_log, rest) = execution_log_flags::extract(&rest, "build");
             let (remote, rest) = remote_flags::extract(&rest, "build");
             let (bes, rest) = bes_flags::extract(&rest, "build");
-            // buildfiji-gwl.15: whatever's left here is either a target
-            // pattern or a flag no typed extractor above claimed (known
-            // but unimplemented, or genuinely unrecognized) — send it
-            // through the flag registry first so it gets the same
-            // Warn/Strict unknown-flag handling other flags get, rather
-            // than a misleading "pattern must start with // or @".
-            let (pattern_tokens, flag_warnings) = flag_registry::partition_patterns(
-                &rest,
-                "build",
-                flag_registry::UnknownFlagPolicy::default(),
-            )
-            .map_err(|e| CliError::CommandLine(anyhow::Error::from(e)))?;
-            for warning in &flag_warnings {
-                eprintln!("{warning}");
-            }
-            let patterns = pattern_tokens
+            // Everything left is a bare positional now that `validate`
+            // above has ruled out any unimplemented or unrecognized flag.
+            let patterns = rest
                 .iter()
                 .map(|p| p.parse::<TargetPattern>())
                 .collect::<Result<Vec<_>, _>>()

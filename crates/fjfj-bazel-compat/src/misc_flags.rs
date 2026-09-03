@@ -8,6 +8,10 @@ use std::path::PathBuf;
 
 use crate::flag_registry::FlagRegistry;
 
+/// Flag names this module reads, for `clap_flags::validate`'s
+/// unimplemented-flag gate.
+pub const IMPLEMENTED: &[&str] = &["check_visibility", "memory_profile"];
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MiscFlags {
     /// `--[no]check_visibility`: Bazel defaults to `true` (a visibility

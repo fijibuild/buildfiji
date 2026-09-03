@@ -13,6 +13,10 @@ use std::path::PathBuf;
 
 use crate::flag_registry::FlagRegistry;
 
+/// Flag names this module reads, for `clap_flags::validate`'s
+/// unimplemented-flag gate.
+pub const IMPLEMENTED: &[&str] = &["execution_log_compact_file"];
+
 /// Flag values for this module, defaulting to Bazel's own: no log written.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ExecutionLogFlags {

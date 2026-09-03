@@ -8,6 +8,14 @@ use std::path::PathBuf;
 
 use crate::flag_registry::FlagRegistry;
 
+/// Flag names this module reads, for `clap_flags::validate`'s
+/// unimplemented-flag gate.
+pub const IMPLEMENTED: &[&str] = &[
+    "remote_grpc_log",
+    "remote_cache_compression",
+    "experimental_remote_cache_compression_threshold",
+];
+
 /// Flag values for this module, defaulting to Bazel's own: no gRPC log, no
 /// cache compression, and a 100-byte compression threshold (ineffectual
 /// while compression itself is off).

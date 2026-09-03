@@ -172,44 +172,6 @@ impl FlagRegistry {
     }
 }
 
-/// Partition whatever's left after every command-specific `extract` call
-/// (target patterns, `.bazelrc` leftovers, …) into target-pattern tokens
-/// and flag tokens still unaccounted for, applying `policy` to the latter
-/// instead of letting them fall into `TargetPattern::from_str` — which
-/// would otherwise report the misleading "pattern must start with // or
-/// @" for e.g. an unrecognized `--flag=value`, or a real Bazel flag no
-/// typed extractor has claimed yet (see `buildfiji-gwl.15`). A token is
-/// sent through [`FlagRegistry::resolve`] the moment it starts with `-`;
-/// only tokens that don't even look like a flag ever reach pattern
-/// parsing. `Warn` collects a one-line message per flag (both genuinely
-/// unknown ones and known-but-unimplemented ones) and drops the token;
-/// `Strict` fails on the first unrecognized one — a known flag still
-/// warns rather than erroring, since it *is* valid Bazel usage, just not
-/// wired up yet.
-pub fn partition_patterns(
-    rest: &[String],
-    command: &str,
-    policy: UnknownFlagPolicy,
-) -> Result<(Vec<String>, Vec<String>), UnknownFlagError> {
-    let registry = FlagRegistry::global();
-    let mut patterns = Vec::new();
-    let mut warnings = Vec::new();
-    for token in rest {
-        if !token.starts_with('-') {
-            patterns.push(token.clone());
-            continue;
-        }
-        match registry.resolve(token, command) {
-            Ok(m) => warnings.push(format!(
-                "WARNING: flag '--{}' is recognized but not yet implemented for command '{command}'",
-                m.flag.name
-            )),
-            Err(e) => warnings.push(apply_policy(e, policy)?),
-        }
-    }
-    Ok((patterns, warnings))
-}
-
 /// Split `--name=value`'s tail into `("name", Some("value"))`, or
 /// `--name` into `("name", None)`.
 fn split_value(rest: &str) -> (&str, Option<&str>) {
@@ -300,47 +262,6 @@ mod tests {
             .resolve("--not-a-real-flag", "build")
             .unwrap_err();
         assert!(apply_policy(err, UnknownFlagPolicy::Strict).is_err());
-    }
-
-    #[test]
-    fn partition_patterns_leaves_bare_tokens_as_patterns() {
-        let rest = vec!["//foo:bar".to_string(), "//baz/...".to_string()];
-        let (patterns, warnings) =
-            partition_patterns(&rest, "build", UnknownFlagPolicy::Warn).unwrap();
-        assert_eq!(patterns, rest);
-        assert!(warnings.is_empty());
-    }
-
-    #[test]
-    fn partition_patterns_warns_and_drops_an_unrecognized_flag_under_warn_policy() {
-        // buildfiji-gwl.15: an unrecognized flag must not be handed to
-        // TargetPattern parsing, which would report a misleading error.
-        let rest = vec!["--not-a-real-flag=1".to_string(), "//foo:bar".to_string()];
-        let (patterns, warnings) =
-            partition_patterns(&rest, "build", UnknownFlagPolicy::Warn).unwrap();
-        assert_eq!(patterns, vec!["//foo:bar".to_string()]);
-        assert_eq!(warnings.len(), 1);
-        assert!(warnings[0].contains("not-a-real-flag"));
-    }
-
-    #[test]
-    fn partition_patterns_errors_on_an_unrecognized_flag_under_strict_policy() {
-        let rest = vec!["--not-a-real-flag".to_string()];
-        let err = partition_patterns(&rest, "build", UnknownFlagPolicy::Strict).unwrap_err();
-        assert_eq!(err.token, "--not-a-real-flag");
-    }
-
-    #[test]
-    fn partition_patterns_warns_on_a_known_flag_no_extractor_has_claimed() {
-        // A real Bazel build flag fjfj hasn't wired to a typed extractor
-        // yet still resolves, so it gets a warning, not the strict-policy
-        // error path (it's valid Bazel usage, just unimplemented).
-        let rest = vec!["--copt=-O2".to_string()];
-        let (patterns, warnings) =
-            partition_patterns(&rest, "build", UnknownFlagPolicy::Strict).unwrap();
-        assert!(patterns.is_empty());
-        assert_eq!(warnings.len(), 1);
-        assert!(warnings[0].contains("copt"));
     }
 
     #[test]
