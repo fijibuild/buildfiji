@@ -53,6 +53,6 @@ def emptyDirectory : Directory :=
   { files := [], dirs := [], links := [],
     filesCanonical := List.Pairwise.nil, dirsCanonical := List.Pairwise.nil,
     linksCanonical := List.Pairwise.nil,
-    disjoint := fun _ => ⟨fun h => nomatch h.1, fun h => nomatch h.1, fun h => nomatch h.1⟩ }
+    disjoint := fun _ => ⟨(fun h => nomatch h.1), (fun h => nomatch h.1), (fun h => nomatch h.1)⟩ }
 
 end Fjfj.ActionKey
