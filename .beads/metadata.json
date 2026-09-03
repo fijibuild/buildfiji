@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "buildfiji",
+  "project_id": "cef2de26-403d-4538-86d9-3f53f90996bb"
+}
