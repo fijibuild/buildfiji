@@ -1,0 +1,5 @@
+name = "fjfj-spec"
+defaultTargets = ["Fjfj"]
+
+[[lean_lib]]
+name = "Fjfj"

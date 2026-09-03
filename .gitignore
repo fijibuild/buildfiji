@@ -7,3 +7,6 @@
 user.bazelrc
 /target
 bazel-*
+
+# Lean
+spec/.lake/
