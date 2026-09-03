@@ -11,7 +11,7 @@ use clap::Parser;
 use fjfj_bazel_compat::exit_code::{ExitCode, messages};
 use fjfj_bazel_compat::{
     Cli, Command, TargetPattern, bes_flags, canonicalize_flags, diagnostics_flags,
-    execution_log_flags, flag_alias, misc_flags, output_filter, remote_flags,
+    execution_log_flags, flag_alias, flag_registry, misc_flags, output_filter, remote_flags,
     workspace_status_flags,
 };
 use fjfj_remote::execution_log::{CompactExecutionLogWriter, EntryType, ExecLogEntry, Invocation};
@@ -125,7 +125,22 @@ async fn run(cli: Cli) -> Result<(), CliError> {
             let (execution_log, rest) = execution_log_flags::extract(&rest, "build");
             let (remote, rest) = remote_flags::extract(&rest, "build");
             let (bes, rest) = bes_flags::extract(&rest, "build");
-            let patterns = rest
+            // buildfiji-gwl.15: whatever's left here is either a target
+            // pattern or a flag no typed extractor above claimed (known
+            // but unimplemented, or genuinely unrecognized) — send it
+            // through the flag registry first so it gets the same
+            // Warn/Strict unknown-flag handling other flags get, rather
+            // than a misleading "pattern must start with // or @".
+            let (pattern_tokens, flag_warnings) = flag_registry::partition_patterns(
+                &rest,
+                "build",
+                flag_registry::UnknownFlagPolicy::default(),
+            )
+            .map_err(|e| CliError::CommandLine(anyhow::Error::from(e)))?;
+            for warning in &flag_warnings {
+                eprintln!("{warning}");
+            }
+            let patterns = pattern_tokens
                 .iter()
                 .map(|p| p.parse::<TargetPattern>())
                 .collect::<Result<Vec<_>, _>>()
