@@ -43,6 +43,8 @@ and remote executors with Bazel.
 | `fjfj-sandbox` | Local execution strategies (`local`, linux namespaces, darwin seatbelt, OCI). |
 | `fjfj-remote` | REAPI client: CAS, action cache, execution, capabilities. Disk cache. |
 | `fjfj-telemetry` | `tracing` setup, OTLP export, BEP/profile exporters. |
+| `fjfj-models` | Stateright models of protocols (publish, scheduler, daemon, compaction); not shipped. |
+| `fjfj-spike-persist` | Persistence-format spike: encodes a real Bazel graph in candidate formats and reports size and load time; not shipped. |
 
 Planned crates: `fjfj-engine` (incremental memoising graph), `fjfj-proto` and `fjfj-daemon` (gRPC over UDS client/server), `fjfj-bzlmod`
 (module resolution and repository rules), `fjfj-query` (query/cquery/aquery).

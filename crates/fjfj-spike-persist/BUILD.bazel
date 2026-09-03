@@ -1,0 +1,29 @@
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_test")
+
+package(default_visibility = ["//visibility:public"])
+
+# Spike for buildfiji-23d.9: encodes a real Bazel graph (aquery + cquery
+# jsonproto dumps) in the candidate persistence formats and reports size and
+# load time. Not part of fjfj proper.
+rust_binary(
+    name = "fjfj-spike-persist",
+    srcs = glob(["src/**/*.rs"]),
+    edition = "2024",
+    version = "0.0.1",
+    deps = [
+        "@crates//:anyhow",
+        "@crates//:clap",
+        "@crates//:fjall",
+        "@crates//:redb",
+        "@crates//:rkyv",
+        "@crates//:serde",
+        "@crates//:serde_json",
+        "@crates//:sha2",
+        "@crates//:zstd",
+    ],
+)
+
+rust_test(
+    name = "fjfj-spike-persist_test",
+    crate = ":fjfj-spike-persist",
+)

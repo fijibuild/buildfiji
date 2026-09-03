@@ -20,6 +20,7 @@ fjfj-sandbox = { path = "crates/fjfj-sandbox" }
 fjfj-telemetry = { path = "crates/fjfj-telemetry" }
 fjfj-bazel-compat = { path = "crates/fjfj-bazel-compat" }
 fjfj-models = { path = "crates/fjfj-models" }
+fjfj-spike-persist = { path = "crates/fjfj-spike-persist" }
 
 # Reused ecosystem libraries (see docs/ARCHITECTURE.md "Reuse over rebuild")
 anyhow = "1"
@@ -41,3 +42,7 @@ serde_json = "1"
 stateright = "0.31"
 bazel-remote-apis = "0.28"
 prost = "0.14"
+zstd = "0.13"
+rkyv = "0.8"
+redb = "4"
+fjall = "3"

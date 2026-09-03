@@ -40,19 +40,55 @@ exports OTLP and also emits daemon-lifecycle metrics.
 
 The spike (buildfiji-23d.1) studies dice and salsa to decide what to borrow.
 
-## Persistence (open; see decision bead)
+## Persistence (decided 2026-09-03)
 
-Compactness comes from the encoding, not the store: intern labels, paths and
-mnemonics to u32 ids; store dependency edges as sorted delta+varint lists,
-deduplicated by hash; content-address values by digest and deduplicate;
-zstd block compression with a trained dictionary.
+Decision: a single format, snapshot + append-only delta log, and no separate
+KV store. Because every configuration stays resident in memory, disk is a
+serialization of the in-memory graph, not a store that is queried during a
+build. The action cache and file digests are engine nodes in the same
+snapshot and log. The CAS keeps Bazel's `--disk_cache` layout so it can be
+shared with Bazel.
 
-Leading option: an immutable zero-copy snapshot (rkyv or columnar) that the
-daemon mmaps on start, plus an append-only delta log compacted on idle, with
-small hot indexes (file digests, action cache) in a pure-Rust compressed KV
-store (fjall). RocksDB is a fallback if a single store for everything is
-worth its C++ build cost. The CAS keeps Bazel's `--disk_cache` layout so it
-can be shared with Bazel.
+Encoding: hand-rolled columnar sections, each one zstd frame, decoded eagerly
+on daemon start:
+- one string table (labels, paths, mnemonics, argv words), referenced by
+  `u32` id everywhere else;
+- dependency edge lists as sorted delta+varint byte strings, deduplicated by
+  content and referenced by index;
+- per-node columns (kind, key ids, value ids, digest, edge-list ref).
+
+Rejected: rkyv zero-copy (raw is 6x larger; with zstd it loses zero-copy and
+is still 33% larger than columnar for a 2x faster scan-only load, which
+eager materialisation erases); redb and fjall (7 to 8x larger, 3x and 18x
+slower to load; per-row storage defeats cross-node compression); RocksDB
+(not built: the KV layout loses regardless of store, so its C++ build under
+Bazel was never worth measuring).
+
+Spike (`crates/fjfj-spike-persist`, bead buildfiji-23d.9) on this repo's own
+graph from `bazel aquery`/`cquery` jsonproto dumps, Bazel 9.2.0, arm64,
+`-c opt`, best of 5. 37,685 nodes (15,034 configured targets, 2,003
+actions, 4,501 depsets, 16,147 files), 98,239 edges, 40,225 strings:
+
+| candidate | bytes | bytes/node | write | cold load |
+|---|---:|---:|---:|---:|
+| columnar raw (uncompressed) | 4,420,718 | 117.3 | 9.6ms | 7.9ms |
+| columnar + zstd, eager decode | 1,095,514 | 29.1 | 9.6ms | 7.9ms |
+| rkyv raw, validated access + scan | 6,925,120 | 183.8 | 4.0ms | 1.4ms |
+| rkyv raw, materialised | 6,925,120 | 183.8 | 4.0ms | 7.8ms |
+| rkyv + zstd, validated access + scan | 1,459,999 | 38.7 | 15.0ms | 4.2ms |
+| redb (B-tree, no compression) | 8,425,472 | 223.6 | 102.9ms | 25.4ms |
+| fjall (LSM, lz4) | 8,345,648 | 221.5 | 253.3ms | 143.6ms |
+
+Section sizes (raw/zstd): strings 3.2MB/317KB, edges 126KB/58KB (6,948
+unique lists), nodes 1.1MB/720KB. Budget derived from this: 30 bytes/node
+and 250ns/node cold load, so a 10M-node graph is about 300MB and 2.5s
+single-threaded (sections decode in parallel). The nodes section is the next
+target: action argv lists dominate it and should be deduplicated by content
+like edge lists.
+
+Lean: `spec/Fjfj/Persistence.lean` (crash contract and delta-coding
+roundtrip). Later, profile-driven: lazy per-section loading, zstd dictionary
+for small delta-log entries, LRU eviction.
 
 Crash-consistency rules (model-checked, `crates/fjfj-models/src/compaction.rs`):
 fsync the temp snapshot, rename it over the old one, and only then truncate
