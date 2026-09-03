@@ -1,0 +1,39 @@
+# buildfiji-k62.14: receives OTLP from `fjfj` (see crates/fjfj-telemetry)
+# on both gRPC and HTTP, and pushes it onward — traces via OTLP/gRPC to
+# VictoriaTraces, metrics via OTLP/HTTP to VictoriaMetrics's native OTLP
+# ingestion endpoint. No Prometheus-style scrape config anywhere: both
+# VictoriaTraces and VictoriaMetrics take a direct OTLP push.
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+exporters:
+  otlp/victoriatraces:
+    endpoint: victoriatraces:4317
+    tls:
+      insecure: true
+  otlphttp/victoriametrics:
+    # VictoriaMetrics' OTLP metrics path isn't the OTLP-standard
+    # `/v1/metrics` the otlphttp exporter would otherwise append to a
+    # bare `endpoint`, so it's spelled out here.
+    metrics_endpoint: http://victoriametrics:8428/opentelemetry/v1/metrics
+  debug:
+    verbosity: basic
+
+processors:
+  batch: {}
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/victoriatraces, debug]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlphttp/victoriametrics, debug]

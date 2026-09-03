@@ -1,0 +1,35 @@
+# buildfiji-k62.14: one-command local OTel backend for `fjfj`'s telemetry
+# (see crates/fjfj-telemetry). Fans OTLP in on one endpoint, out to
+# VictoriaTraces for traces and VictoriaMetrics for metrics — both take a
+# direct OTLP push, no Prometheus-style scraping. See README.md to run it.
+services:
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.159.0
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    ports:
+      # fjfj points OTEL_EXPORTER_OTLP_ENDPOINT here (gRPC) — the only
+      # protocol fjfj-telemetry speaks, for both traces and metrics.
+      - "4317:4317"
+      - "4318:4318" # OTLP/HTTP, for anything that can't do gRPC.
+    depends_on:
+      - victoriatraces
+      - victoriametrics
+
+  victoriatraces:
+    image: victoriametrics/victoria-traces:v0.10.0
+    command:
+      - "-storageDataPath=/vtraces"
+      # otel-collector's own OTLP/gRPC exporter reaches this directly;
+      # not published to the host.
+      - "-otlpGRPCListenAddr=:4317"
+    ports:
+      - "10428:10428" # VMUI (/select/vmui) and Jaeger query API (/select/jaeger)
+
+  victoriametrics:
+    image: victoriametrics/victoria-metrics:v1.151.0
+    command:
+      - "-storageDataPath=/vmetrics"
+    ports:
+      - "8428:8428" # VMUI, PromQL-compatible query API, and OTLP/HTTP ingest
