@@ -1,0 +1,18 @@
+[package]
+name = "fjfj-spike-starlark-parse"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Spike: measure starlark crate lex/parse/eval throughput and memory on large BUILD trees (buildfiji-mum.1)"
+
+[[bin]]
+name = "fjfj-spike-starlark-parse"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+fjfj-starlark.workspace = true
+starlark.workspace = true
+starlark_syntax.workspace = true

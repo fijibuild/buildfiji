@@ -18,9 +18,15 @@ pub fn build_dialect() -> Dialect {
     }
 }
 
-/// Dialect for `.bzl` files.
+/// Dialect for `.bzl` files. Bazel allows keyword-only parameters after `*`
+/// or `*args`; its own `@_builtins` (`common/cc/cc_common.bzl`) and rule sets
+/// such as TensorFlow's use them, and `Dialect::Standard` rejects them
+/// (buildfiji-mum.1).
 pub fn bzl_dialect() -> Dialect {
-    Dialect::Standard
+    Dialect {
+        enable_keyword_only_arguments: true,
+        ..Dialect::Standard
+    }
 }
 
 /// Evaluate a BUILD/bzl source string. Placeholder: returns the module's
@@ -40,6 +46,19 @@ pub fn eval_source(path: &str, src: &str, dialect: Dialect) -> anyhow::Result<St
 
 #[cfg(test)]
 mod tests {
+    use starlark::syntax::AstModule;
+
+    #[test]
+    fn bzl_dialect_accepts_keyword_only_parameters() {
+        AstModule::parse(
+            "t.bzl",
+            "def f(*, a):\n    return a\n".to_owned(),
+            &super::bzl_dialect(),
+        )
+        .map_err(|e| e.into_anyhow())
+        .unwrap();
+    }
+
     #[test]
     fn evaluates_expression() {
         assert_eq!(
