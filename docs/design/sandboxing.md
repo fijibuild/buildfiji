@@ -56,3 +56,12 @@ remote execution (Merkle tree -> execroot) and cache it across actions
 - Children must not outlive a dead daemon: `PR_SET_PDEATHSIG` on Linux,
   process groups recorded in the output_base lock file, and a startup sweep
   that kills leftovers.
+
+## Dynamic execution rules (model-checked, `crates/fjfj-models/src/dynamic.rs`)
+
+- Winning is an atomic claim taken before publishing. A check-then-publish
+  sequence double-publishes when both branches finish; the checker finds it.
+- A failed branch does not win; the other branch continues. The action
+  fails only when no branch succeeds.
+- Cancellation is asynchronous and may lose to the loser finishing; a
+  finished loser's outputs are discarded and its scratch cleaned up.

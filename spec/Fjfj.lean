@@ -2,6 +2,7 @@ import Fjfj.Engine
 import Fjfj.Publish
 import Fjfj.Daemon
 import Fjfj.ActionKey
+import Fjfj.Dynamic
 /-!
 # fjfj architecture specification
 

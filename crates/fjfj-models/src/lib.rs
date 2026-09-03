@@ -6,5 +6,6 @@
 //! interleaving of a kill with the protocol.
 
 pub mod daemon;
+pub mod dynamic;
 pub mod publish;
 pub mod scheduler;
