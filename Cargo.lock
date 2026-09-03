@@ -972,17 +972,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fjfj-spike-starlark-parse"
-version = "0.0.1"
-dependencies = [
- "anyhow",
- "clap",
- "fjfj-starlark",
- "starlark",
- "starlark_syntax",
-]
-
-[[package]]
 name = "fjfj-starlark"
 version = "0.0.1"
 dependencies = [
