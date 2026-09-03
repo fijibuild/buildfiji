@@ -76,7 +76,7 @@ See `docs/ARCHITECTURE.md` (crate map, principles) and `docs/design/*.md` (one d
 
 ## Conventions & Patterns
 
-- Bazel observable behaviour is the spec: flags, Starlark builtins, output layout, exit codes.
+- Bazel 9.2.0 observable behaviour is the spec: flags, --incompatible_* defaults, Starlark builtins, output layout, exit codes.
 - Reuse crates and protocols (starlark, bazel-remote-apis, tonic, tracing/OpenTelemetry, clap) before writing custom code.
 - Telemetry: everything is a `tracing` span; BEP and profiles are exports of the trace.
 - Parser fallback if starlark crate is slow: lexer on https://github.com/NathanHowell/regal, target the `starlark_syntax` AST.

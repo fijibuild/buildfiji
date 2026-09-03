@@ -8,10 +8,11 @@ and remote executors with Bazel.
 
 ## Principles
 
-1. **Command-line and Starlark compatibility over internal fidelity.** We copy
+1. **Bazel 9.2.0 is the compatibility target** (decided 2026-09-03). Flags, `--incompatible_*` defaults and Starlark builtins follow that release.
+2. **Command-line and Starlark compatibility over internal fidelity.** We copy
    Bazel's observable behaviour (flags, target patterns, Starlark builtins,
    providers, output layout), not its implementation (Skyframe, Java).
-2. **Reuse over rebuild.** Prefer existing crates and protocols:
+3. **Reuse over rebuild.** Prefer existing crates and protocols:
    - Starlark: the `starlark` crate (Buck2's implementation). If its parser
      proves too slow for very large BUILD trees, the fallback is a custom
      lexer built on [regal](https://github.com/NathanHowell/regal) (build-time
@@ -24,7 +25,7 @@ and remote executors with Bazel.
    - CLI: `clap`, with a Bazel-flag compatibility layer on top.
    - Sandboxing: OS primitives (Linux namespaces, macOS seatbelt) behind one
      trait, with OCI as an optional strategy.
-3. **Three phases, one graph.** Loading (Starlark evaluation), analysis
+4. **Three phases, one graph.** Loading (Starlark evaluation), analysis
    (rules + aspects produce providers and actions), execution (actions run
    locally or remotely). All three are nodes in one memoised, incremental
    key/value graph so that `fjfj` can be a persistent server like Bazel.
