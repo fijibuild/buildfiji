@@ -43,7 +43,7 @@ and remote executors with Bazel.
 | `fjfj-remote` | REAPI client: CAS, action cache, execution, capabilities. Disk cache. |
 | `fjfj-telemetry` | `tracing` setup, OTLP export, BEP/profile exporters. |
 
-Planned crates: `fjfj-engine` (incremental memoising graph), `fjfj-bzlmod`
+Planned crates: `fjfj-engine` (incremental memoising graph), `fjfj-proto` and `fjfj-daemon` (gRPC over UDS client/server), `fjfj-bzlmod`
 (module resolution and repository rules), `fjfj-query` (query/cquery/aquery).
 
 ## Where the hard problems live
