@@ -14,6 +14,30 @@ Bazel compatibility exports derived from the same span stream:
 Metrics (`opentelemetry` meters): action counts by strategy and cache
 status, critical path, CAS bytes up/down, worker pool utilisation.
 
+## Build metrics (decision 2026-09-03)
+
+`fjfj_telemetry::metrics::BuildMetrics` wraps the four instruments named
+above as real `opentelemetry::metrics` handles (`Counter`, `Histogram`,
+`Gauge`), created from `fjfj_telemetry::meter()` — the global OTel meter,
+mirroring how the tracer is reached, and safe to call whether or not
+`init` set up an OTLP meter provider (OTel's own no-op meter otherwise).
+`init` now builds a `SdkMeterProvider` alongside the existing
+`SdkTracerProvider` when `OTEL_EXPORTER_OTLP_ENDPOINT` is set, exported the
+same way (periodic OTLP push), and shuts both down on drop.
+
+Attributes are attached at the call site (`strategy`/`cache_status` on the
+action counter, `direction` on CAS bytes) rather than one instrument per
+label value, so a backend can slice by any combination without fjfj
+enumerating them. Worker utilisation is recorded as a `0.0..=1.0` fraction
+(`busy / total`) rather than two raw counts, since the fraction is what a
+dashboard actually wants and computing it consistently belongs here rather
+than in every caller.
+
+Tested against a real in-process OTel pipeline
+(`opentelemetry_sdk::metrics::ManualReader`, not a bespoke assertion helper)
+so the test suite confirms actual OTel aggregation behaviour — sums,
+histogram buckets, gauge values — not just that fjfj's own code ran.
+
 ## Output filtering and warning deduplication (decision 2026-09-03)
 
 `--output_filter`/`--auto_output_filter` decide which rule's warnings and

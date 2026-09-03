@@ -32,7 +32,7 @@ clap = { version = "4", features = ["derive", "env"] }
 hex = "0.4"
 opentelemetry = "0.32"
 opentelemetry-otlp = { version = "0.32", features = ["grpc-tonic"] }
-opentelemetry_sdk = { version = "0.32", features = ["rt-tokio"] }
+opentelemetry_sdk = { version = "0.32", features = ["rt-tokio", "experimental_metrics_custom_reader"] }
 prost = "0.14"
 protobuf-src = "2"
 regal = { git = "https://github.com/NathanHowell/regal" }
