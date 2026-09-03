@@ -34,3 +34,17 @@ in gRPC metadata so client and daemon spans form one trace; the daemon
 exports OTLP and also emits daemon-lifecycle metrics.
 
 The spike (buildfiji-23d.1) studies dice and salsa to decide what to borrow.
+
+## Persistence (open; see decision bead)
+
+Compactness comes from the encoding, not the store: intern labels, paths and
+mnemonics to u32 ids; store dependency edges as sorted delta+varint lists,
+deduplicated by hash; content-address values by digest and deduplicate;
+zstd block compression with a trained dictionary.
+
+Leading option: an immutable zero-copy snapshot (rkyv or columnar) that the
+daemon mmaps on start, plus an append-only delta log compacted on idle, with
+small hot indexes (file digests, action cache) in a pure-Rust compressed KV
+store (fjall). RocksDB is a fallback if a single store for everything is
+worth its C++ build cost. The CAS keeps Bazel's `--disk_cache` layout so it
+can be shared with Bazel.
