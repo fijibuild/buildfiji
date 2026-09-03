@@ -1,0 +1,106 @@
+syntax = "proto3";
+
+// Client/daemon command service. The client parses argv and .bazelrc,
+// connects to (or spawns) the daemon for output_base, and streams the
+// invocation over this service. See docs/design/incremental-engine.md
+// ("Daemon" section) for the transport (gRPC over a Unix domain socket)
+// and tracing (W3C traceparent propagated in gRPC metadata) decisions.
+package fjfj.v1;
+
+service CommandService {
+  // Runs one command (e.g. `build //...`) and streams back everything the
+  // client needs to reproduce Bazel's console output and exit code:
+  // interleaved stdout/stderr chunks, in-progress state, and a final
+  // result carrying the exit code. Cancelled by the client calling Cancel
+  // with the same invocation_id, or by the client dropping the stream
+  // (Ctrl-C), per docs/design/sandboxing.md.
+  rpc RunCommand(RunCommandRequest) returns (stream CommandEvent);
+
+  // Requests cancellation of an in-flight RunCommand invocation. Advisory:
+  // the daemon acknowledges receipt, not completion. Cancellation is
+  // asynchronous and may lose a race with the invocation finishing.
+  rpc Cancel(CancelRequest) returns (CancelResponse);
+
+  // Cheap liveness check; also used by the client to decide whether an
+  // existing output_base lock belongs to a live daemon or a crashed one.
+  rpc Ping(PingRequest) returns (PingResponse);
+
+  // Requests an orderly daemon shutdown once idle (no blocked or
+  // in-flight invocations), matching `bazel shutdown`.
+  rpc Shutdown(ShutdownRequest) returns (ShutdownResponse);
+
+  // Equivalent of `bazel info`: workspace-relative paths and other
+  // key/value facts about the current output_base and server.
+  rpc Info(InfoRequest) returns (InfoResponse);
+}
+
+message RunCommandRequest {
+  // Client-generated, unique for the lifetime of the daemon. Used to
+  // correlate Cancel requests and to key the invocation's tracing span.
+  string invocation_id = 1;
+
+  // argv[1:] as the client received it: the command name (e.g. "build")
+  // followed by its arguments, already split by the client's shell but
+  // not yet flag-parsed. The daemon applies .bazelrc resolution and flag
+  // parsing so behavior matches running the equivalent bazel invocation.
+  repeated string args = 2;
+
+  // Directory the client was invoked from; used to resolve the workspace
+  // and relative target patterns exactly as Bazel does.
+  string working_directory = 3;
+
+  // Client environment, filtered to variables Bazel/fjfj treat as
+  // significant (e.g. PATH, action_env passthroughs); not the full
+  // environment.
+  map<string, string> env = 4;
+}
+
+message CommandEvent {
+  oneof event {
+    OutputChunk stdout = 1;
+    OutputChunk stderr = 2;
+    CommandResult result = 3;
+  }
+}
+
+message OutputChunk {
+  bytes data = 1;
+}
+
+message CommandResult {
+  // Process exit code semantics match Bazel's (0/1/2/3/4/8/36/37, see
+  // docs/design/cli-compat.md).
+  int32 exit_code = 1;
+}
+
+message CancelRequest {
+  string invocation_id = 1;
+}
+
+message CancelResponse {
+  // True if invocation_id was known and cancellation was requested; false
+  // if it had already finished or was never seen.
+  bool accepted = 1;
+}
+
+message PingRequest {}
+
+message PingResponse {
+  int32 pid = 1;
+  string version = 2;
+}
+
+message ShutdownRequest {
+  // Optional human-readable reason, echoed in daemon logs.
+  string reason = 1;
+}
+
+message ShutdownResponse {}
+
+message InfoRequest {}
+
+message InfoResponse {
+  // Mirrors `bazel info`'s key/value output (output_base, execution_root,
+  // bazel-bin, server_pid, ...).
+  map<string, string> items = 1;
+}

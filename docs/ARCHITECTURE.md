@@ -44,8 +44,9 @@ and remote executors with Bazel.
 | `fjfj-remote` | REAPI client: CAS, action cache, execution, capabilities. Disk cache. |
 | `fjfj-telemetry` | `tracing` setup, OTLP export, BEP/profile exporters. |
 | `fjfj-models` | Stateright models of protocols (publish, scheduler, daemon, compaction); not shipped. |
+| `fjfj-proto` | Command service proto (`RunCommand` streaming, `Cancel`, `Ping`, `Shutdown`, `Info`); prost/tonic codegen under both Cargo (`build.rs`) and Bazel (`rust_prost_library`) from one `.proto` source. |
 
-Planned crates: `fjfj-engine` (incremental memoising graph), `fjfj-proto` and `fjfj-daemon` (gRPC over UDS client/server), `fjfj-bzlmod`
+Planned crates: `fjfj-engine` (incremental memoising graph), `fjfj-daemon` (gRPC over UDS client/server, consumes `fjfj-proto`), `fjfj-bzlmod`
 (module resolution and repository rules), `fjfj-query` (query/cquery/aquery).
 
 ## Where the hard problems live

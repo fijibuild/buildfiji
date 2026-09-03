@@ -16,6 +16,7 @@ fjfj-cli = { path = "crates/fjfj-cli" }
 fjfj-exec = { path = "crates/fjfj-exec" }
 fjfj-graph = { path = "crates/fjfj-graph" }
 fjfj-models = { path = "crates/fjfj-models" }
+fjfj-proto = { path = "crates/fjfj-proto" }
 fjfj-remote = { path = "crates/fjfj-remote" }
 fjfj-sandbox = { path = "crates/fjfj-sandbox" }
 fjfj-starlark = { path = "crates/fjfj-starlark" }
@@ -33,6 +34,7 @@ opentelemetry = "0.32"
 opentelemetry-otlp = { version = "0.32", features = ["grpc-tonic"] }
 opentelemetry_sdk = { version = "0.32", features = ["rt-tokio"] }
 prost = "0.14"
+protobuf-src = "2"
 regal = { git = "https://github.com/NathanHowell/regal" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -42,6 +44,9 @@ starlark_syntax = "0.14"
 stateright = "0.31"
 thiserror = "2"
 tokio = { version = "1", features = ["full"] }
+tonic = "0.14"
+tonic-prost = "0.14"
+tonic-prost-build = "0.14"
 tracing = "0.1"
 tracing-opentelemetry = "0.33"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
