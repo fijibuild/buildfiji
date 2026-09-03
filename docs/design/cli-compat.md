@@ -65,3 +65,20 @@ field-number mapping must be kept in sync with the vendored `.proto` by
 hand if Bazel ever changes it. It is a `cargo run`-only dev tool (writes
 into the source tree, shells out to `bazel`), not built by
 `bazel build //...` — see `BUILD.bazel`'s glob exclude.
+
+## Flag registry (decision 2026-09-03)
+
+`fjfj-bazel-compat::flag_registry::FlagRegistry` indexes the generated
+`bazel_flags::FLAGS` table by every name a flag can be written with — its
+own name, a deprecated `old_name`, `--no<name>` (if negatable), and its
+single-character abbreviation (Bazel's `-j`/`-c`/etc.) — and resolves one
+raw token (`--name`, `--name=value`, `--noname`, `-x`, `-xvalue`) against a
+command, distinguishing "not a flag at all" from "a real Bazel flag, just
+not for this command" (the latter still reports which commands it *is*
+known for). `"startup"` is the pseudo-command for startup options.
+
+`UnknownFlagPolicy` (`Warn` default, `Strict` behind `--fjfj_strict_flags`)
+turns an unresolved token into either a one-line warning to print and
+continue, or the error to propagate — Bazel-flag-compatibility-during-
+migration is the point of `Warn`, per this doc's "Flag policy" section
+above.

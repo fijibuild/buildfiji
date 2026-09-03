@@ -5,10 +5,12 @@
 //! Bazel, so that existing scripts and CI can swap the binary name.
 //!
 //! Unknown Bazel flags are *accepted and recorded* (not rejected) so that a
-//! `.bazelrc` shared with Bazel keeps working; see `UnknownFlagPolicy`.
+//! `.bazelrc` shared with Bazel keeps working; see
+//! [`flag_registry::UnknownFlagPolicy`].
 
 pub mod bazel_flags;
 pub mod bazelrc;
+pub mod flag_registry;
 
 use clap::{Parser, Subcommand};
 
