@@ -10,8 +10,9 @@
 use clap::Parser;
 use fjfj_bazel_compat::exit_code::{ExitCode, messages};
 use fjfj_bazel_compat::{
-    Cli, Command, TargetPattern, canonicalize_flags, diagnostics_flags, execution_log_flags,
-    flag_alias, misc_flags, output_filter, remote_flags, workspace_status_flags,
+    Cli, Command, TargetPattern, bes_flags, canonicalize_flags, diagnostics_flags,
+    execution_log_flags, flag_alias, misc_flags, output_filter, remote_flags,
+    workspace_status_flags,
 };
 use fjfj_remote::execution_log::{CompactExecutionLogWriter, EntryType, ExecLogEntry, Invocation};
 
@@ -123,6 +124,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
             let (output_filter_flags, rest) = output_filter::extract(&rest, "build");
             let (execution_log, rest) = execution_log_flags::extract(&rest, "build");
             let (remote, rest) = remote_flags::extract(&rest, "build");
+            let (bes, rest) = bes_flags::extract(&rest, "build");
             let patterns = rest
                 .iter()
                 .map(|p| p.parse::<TargetPattern>())
@@ -141,6 +143,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
                 ?output_filter_flags,
                 ?execution_log,
                 ?remote,
+                ?bes,
                 "build requested"
             );
             // Just a writability check: there is no REAPI client yet to

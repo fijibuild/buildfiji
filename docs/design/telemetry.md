@@ -38,6 +38,18 @@ Tested against a real in-process OTel pipeline
 so the test suite confirms actual OTel aggregation behaviour — sums,
 histogram buckets, gauge values — not just that fjfj's own code ran.
 
+## BES-facing flags (decision 2026-09-03)
+
+`--build_event_publish_all_actions`, `--bes_results_url`, and
+`--bes_timeout` are what an IDE or CI dashboard driving fjfj through BEP
+actually reads, ahead of the BEP writer itself existing. `bes_flags`
+extracts them the same way every other `*_flags` module does; the one
+Bazel-specific behaviour worth a note is `--bes_timeout`'s duration syntax
+(`Converters.DurationConverter`, `^([0-9]+)(d|h|m|s|ms|ns)$`, with bare `0`
+special-cased to need no unit) — a single number plus one unit, never a
+combination like `1h30m`, so `bes_flags::parse_duration` is a small
+standalone parser rather than reaching for a duration-parsing crate.
+
 ## Output filtering and warning deduplication (decision 2026-09-03)
 
 `--output_filter`/`--auto_output_filter` decide which rule's warnings and

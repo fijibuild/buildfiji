@@ -10,6 +10,7 @@
 
 pub mod bazel_flags;
 pub mod bazelrc;
+pub mod bes_flags;
 pub mod canonicalize_flags;
 pub mod diagnostics_flags;
 pub mod execution_log_flags;
