@@ -44,7 +44,7 @@ end Fjfj.Persistence
 
 One format: columnar snapshot + delta log, no separate KV store. Strings are
 interned to ids; dependency edge lists are sorted and delta-coded, then
-deduplicated by content. The spike (`crates/fjfj-spike-persist`) measured
+deduplicated by content. The spike (`crates/fjfj-spike-persist`, commit 8a6ed31) measured
 29 bytes/node for this encoding against 184 (rkyv) and 220+ (redb, fjall).
 -/
 namespace Fjfj.Persistence.Snapshot
@@ -70,7 +70,7 @@ def undeltas : List Nat → Nat → List Nat
   | d :: ds, prev => (prev + d) :: undeltas ds (prev + d)
 
 /-- Delta coding is lossless on ascending lists. Mirrors
-`crates/fjfj-spike-persist/src/varint.rs` (`put_deltas`/`get_deltas`), which
+`crates/fjfj-spike-persist/src/varint.rs` at commit 8a6ed31 (`put_deltas`/`get_deltas`), which
 is the Kani target once it moves into `fjfj-engine` (bead buildfiji-2h9.8). -/
 theorem undeltas_deltas :
     ∀ (l : List Nat) (prev : Nat), Ascending prev l → undeltas (deltas l prev) prev = l

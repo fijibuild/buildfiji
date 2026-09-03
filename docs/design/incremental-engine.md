@@ -64,7 +64,7 @@ slower to load; per-row storage defeats cross-node compression); RocksDB
 (not built: the KV layout loses regardless of store, so its C++ build under
 Bazel was never worth measuring).
 
-Spike (`crates/fjfj-spike-persist`, bead buildfiji-23d.9) on this repo's own
+Spike (`crates/fjfj-spike-persist` at commit 8a6ed31, removed afterwards; bead buildfiji-23d.9) on this repo's own
 graph from `bazel aquery`/`cquery` jsonproto dumps, Bazel 9.2.0, arm64,
 `-c opt`, best of 5. 37,685 nodes (15,034 configured targets, 2,003
 actions, 4,501 depsets, 16,147 files), 98,239 edges, 40,225 strings:
