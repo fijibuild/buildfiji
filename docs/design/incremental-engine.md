@@ -60,3 +60,16 @@ the log up to the snapshot version. Truncating first loses acknowledged
 writes on a crash in between. Acknowledge writes only after the log fsync.
 The invariant "recoverable version >= acknowledged version" must hold in
 every state, and recovery replays durable log entries past the snapshot.
+
+## Phases and configurations (decided 2026-09-03)
+
+- Analysis and execution interleave from day one (Skymeld). There is no
+  phase barrier: an action is demanded as soon as its configured target is
+  analysed. Conformance diffs against Bazel compare outputs, not phase
+  timing.
+- Configured target keys carry the configuration hash, and nodes from every
+  configuration stay resident in memory and on disk. Changing build options
+  never discards the analysis cache; switching `-c opt` and back is a no-op
+  build. Memory grows with the number of configurations used; an LRU
+  eviction policy is a later optimisation, not part of the key design.
+  Lean: `spec/Fjfj/Configuration.lean`.
