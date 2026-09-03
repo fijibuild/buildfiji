@@ -1,0 +1,17 @@
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+
+package(default_visibility = ["//visibility:public"])
+
+rust_library(
+    name = "fjfj-remote",
+    srcs = glob(["src/**/*.rs"]),
+    crate_name = "fjfj_remote",
+    edition = "2024",
+    version = "0.0.1",
+    deps = ["@crates//:anyhow", "@crates//:hex", "@crates//:sha2", "@crates//:thiserror", "@crates//:tokio", "@crates//:tracing", ],
+)
+
+rust_test(
+    name = "fjfj-remote_test",
+    crate = ":fjfj-remote",
+)

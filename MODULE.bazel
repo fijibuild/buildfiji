@@ -1,0 +1,36 @@
+"""fjfj: a Bazel-compatible build tool written in Rust.
+
+This file lets `bazel build //...` and `fjfj build //...` both work on this
+repository. The Rust workspace is authoritative (Cargo.toml / Cargo.lock);
+Bazel consumes it through rules_rust's crate_universe.
+"""
+
+module(name = "fjfj", version = "0.0.1")
+
+bazel_dep(name = "rules_rust", version = "0.74.0")
+bazel_dep(name = "platforms", version = "1.0.0")
+
+rust = use_extension("@rules_rust//rust:extensions.bzl", "rust")
+rust.toolchain(edition = "2024", versions = ["1.97.1"])
+use_repo(rust, "rust_toolchains")
+
+register_toolchains("@rust_toolchains//:all")
+
+crate = use_extension("@rules_rust//crate_universe:extensions.bzl", "crate")
+crate.from_cargo(
+    name = "crates",
+    cargo_lockfile = "//:Cargo.lock",
+    manifests = [
+        "//:Cargo.toml",
+        "//crates/fjfj:Cargo.toml",
+        "//crates/fjfj-cli:Cargo.toml",
+        "//crates/fjfj-starlark:Cargo.toml",
+        "//crates/fjfj-graph:Cargo.toml",
+        "//crates/fjfj-exec:Cargo.toml",
+        "//crates/fjfj-remote:Cargo.toml",
+        "//crates/fjfj-sandbox:Cargo.toml",
+        "//crates/fjfj-telemetry:Cargo.toml",
+        "//crates/fjfj-bazel-compat:Cargo.toml",
+    ],
+)
+use_repo(crate, "crates")

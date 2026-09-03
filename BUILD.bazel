@@ -1,0 +1,5 @@
+package(default_visibility = ["//visibility:public"])
+
+exports_files(["Cargo.toml", "Cargo.lock", "rustfmt.toml"])
+
+alias(name = "fjfj", actual = "//crates/fjfj")

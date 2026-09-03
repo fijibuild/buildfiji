@@ -1,0 +1,17 @@
+[package]
+name = "fjfj-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+clap.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tokio.workspace = true
+fjfj-bazel-compat.workspace = true
+fjfj-starlark.workspace = true
+fjfj-graph.workspace = true
+fjfj-exec.workspace = true
+fjfj-telemetry.workspace = true

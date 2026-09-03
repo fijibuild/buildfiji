@@ -60,18 +60,25 @@ This protocol applies when ending a Beads implementation workflow. It is subordi
 
 ## Build & Test
 
-_Add your build and test commands here_
-
 ```bash
-# Example:
-# npm install
-# npm test
+cargo build && cargo test          # Rust workspace (authoritative)
+bazel build //... && bazel test //...  # via rules_rust + crate_universe from Cargo.lock
+./target/debug/fjfj build //...       # dogfood
 ```
+
+After changing any Cargo.toml, run `CARGO_BAZEL_REPIN=1 bazel build //...` and update the crate BUILD.bazel deps by hand.
+
 
 ## Architecture Overview
 
-_Add a brief overview of your project architecture_
+See `docs/ARCHITECTURE.md` (crate map, principles) and `docs/design/*.md` (one doc per hard problem, each backed by a beads epic).
 
 ## Conventions & Patterns
 
-_Add your project-specific conventions here_
+- Bazel observable behaviour is the spec: flags, Starlark builtins, output layout, exit codes.
+- Reuse crates and protocols (starlark, bazel-remote-apis, tonic, tracing/OpenTelemetry, clap) before writing custom code.
+- Telemetry: everything is a `tracing` span; BEP and profiles are exports of the trace.
+- Parser fallback if starlark crate is slow: lexer on https://github.com/NathanHowell/regal, target the `starlark_syntax` AST.
+- Keep `fjfj-graph` free of I/O.
+- Edition 2024, latest stable Rust (pinned in rust-toolchain.toml and MODULE.bazel), latest crate versions only.
+- Clippy and rustfmt run as aspects on every `bazel build` via .bazelrc; run `cargo fmt --all` before building.

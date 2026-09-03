@@ -1,0 +1,17 @@
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+
+package(default_visibility = ["//visibility:public"])
+
+rust_library(
+    name = "fjfj-exec",
+    srcs = glob(["src/**/*.rs"]),
+    crate_name = "fjfj_exec",
+    edition = "2024",
+    version = "0.0.1",
+    deps = ["@crates//:anyhow", "@crates//:thiserror", "@crates//:tokio", "@crates//:tracing", "//crates/fjfj-graph", "//crates/fjfj-remote", "//crates/fjfj-sandbox", ],
+)
+
+rust_test(
+    name = "fjfj-exec_test",
+    crate = ":fjfj-exec",
+)

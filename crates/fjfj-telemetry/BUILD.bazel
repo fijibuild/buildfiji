@@ -1,0 +1,17 @@
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+
+package(default_visibility = ["//visibility:public"])
+
+rust_library(
+    name = "fjfj-telemetry",
+    srcs = glob(["src/**/*.rs"]),
+    crate_name = "fjfj_telemetry",
+    edition = "2024",
+    version = "0.0.1",
+    deps = ["@crates//:anyhow", "@crates//:opentelemetry_sdk", "@crates//:opentelemetry-otlp", "@crates//:opentelemetry", "@crates//:tracing-opentelemetry", "@crates//:tracing-subscriber", "@crates//:tracing", ],
+)
+
+rust_test(
+    name = "fjfj-telemetry_test",
+    crate = ":fjfj-telemetry",
+)

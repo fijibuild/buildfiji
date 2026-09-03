@@ -1,0 +1,11 @@
+# Shared with fjfj: fjfj reads the same rc files and accepts the same flags.
+common --enable_bzlmod
+build --incompatible_strict_action_env
+test --test_output=errors
+try-import %workspace%/user.bazelrc
+
+# Lint on every build: rules_rust clippy + rustfmt aspects apply to all Rust targets.
+build --aspects=@rules_rust//rust:defs.bzl%rust_clippy_aspect,@rules_rust//rust:defs.bzl%rustfmt_aspect
+build --output_groups=+clippy_checks,+rustfmt_checks
+build --@rules_rust//rust/settings:clippy_flags=-Dwarnings
+build --@rules_rust//rust/settings:error_format=human

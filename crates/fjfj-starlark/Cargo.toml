@@ -1,0 +1,13 @@
+[package]
+name = "fjfj-starlark"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+starlark.workspace = true
+starlark_syntax.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+tracing.workspace = true

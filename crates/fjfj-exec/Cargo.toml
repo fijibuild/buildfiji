@@ -1,0 +1,15 @@
+[package]
+name = "fjfj-exec"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tokio.workspace = true
+fjfj-graph.workspace = true
+fjfj-sandbox.workspace = true
+fjfj-remote.workspace = true

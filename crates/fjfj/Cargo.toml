@@ -1,0 +1,15 @@
+[package]
+name = "fjfj"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+fjfj-cli.workspace = true
+anyhow.workspace = true
+tokio.workspace = true
+
+[[bin]]
+name = "fjfj"
+path = "src/main.rs"
