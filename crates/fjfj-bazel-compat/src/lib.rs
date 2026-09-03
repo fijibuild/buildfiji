@@ -10,6 +10,7 @@
 
 pub mod bazel_flags;
 pub mod bazelrc;
+pub mod canonicalize_flags;
 pub mod diagnostics_flags;
 pub mod exit_code;
 pub mod flag_registry;
@@ -45,6 +46,15 @@ pub enum Command {
     Shutdown,
     /// Bzlmod module management.
     Mod(QueryArgs),
+    /// Prints the command line args for compiling a file.
+    #[command(name = "print_action")]
+    PrintAction(TargetArgs),
+    /// Dumps the internal state of the fjfj server process.
+    Dump,
+    /// Canonicalizes a list of fjfj options.
+    CanonicalizeFlags(CanonicalizeFlagsArgs),
+    /// Prints the license of this software.
+    License,
 }
 
 #[derive(Parser, Debug, Clone, Default)]
@@ -56,6 +66,20 @@ pub struct TargetArgs {
         allow_hyphen_values = true
     )]
     pub patterns: Vec<String>,
+}
+
+#[derive(Parser, Debug, Clone, Default)]
+pub struct CanonicalizeFlagsArgs {
+    /// The command for which the options should be canonicalized.
+    #[arg(long, default_value = "build")]
+    pub for_command: String,
+    /// The flags to canonicalize, e.g. `-k --nostamp`.
+    #[arg(
+        value_name = "FLAG",
+        trailing_var_arg = true,
+        allow_hyphen_values = true
+    )]
+    pub flags: Vec<String>,
 }
 
 #[derive(Parser, Debug, Clone, Default)]

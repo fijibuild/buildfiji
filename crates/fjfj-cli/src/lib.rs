@@ -9,7 +9,27 @@
 
 use clap::Parser;
 use fjfj_bazel_compat::exit_code::{ExitCode, messages};
-use fjfj_bazel_compat::{Cli, Command, TargetPattern, diagnostics_flags, workspace_status_flags};
+use fjfj_bazel_compat::{
+    Cli, Command, TargetPattern, canonicalize_flags, diagnostics_flags, workspace_status_flags,
+};
+
+/// `fjfj license`'s output. Bazel's own prints an equivalent short notice
+/// (not the full license text — that's `LICENSE` in the repository root).
+const LICENSE_NOTICE: &str = "\
+Copyright 2026 The buildfiji Authors. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the \"License\");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an \"AS IS\" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+";
 
 /// A command failure, tagged with the Bazel exit code it corresponds to.
 /// `clap::Cli::parse()` handles its own flag-syntax errors (already exits
@@ -79,6 +99,16 @@ async fn run(cli: Cli) -> Result<(), CliError> {
     match cli.command {
         Command::Version => {
             println!("fjfj {}", env!("CARGO_PKG_VERSION"));
+            Ok(())
+        }
+        Command::License => {
+            print!("{LICENSE_NOTICE}");
+            Ok(())
+        }
+        Command::CanonicalizeFlags(args) => {
+            let canonical = canonicalize_flags::canonicalize(&args.flags, &args.for_command)
+                .map_err(|e| CliError::CommandLine(anyhow::Error::from(e)))?;
+            println!("{}", canonical.join(" "));
             Ok(())
         }
         Command::Build(args) => {
