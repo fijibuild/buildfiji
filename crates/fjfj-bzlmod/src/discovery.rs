@@ -24,7 +24,12 @@ use crate::version::Version;
 
 /// Where a module file comes from, given the module's key and the override
 /// (if any) that applies to it.
-pub trait ModuleFileSource {
+///
+/// `Sync`: one horizon's worth of module files are fetched concurrently
+/// (buildfiji-mum.24), sharing one `&dyn ModuleFileSource` across threads.
+/// `RegistrySource`'s own `Fetcher` bound is already `Send + Sync`, so
+/// nothing had to change for it to satisfy this.
+pub trait ModuleFileSource: Sync {
     /// Returns the file's text and the registry URL it came from, or
     /// `None` for a module that did not come from a registry.
     fn module_file(
@@ -254,9 +259,31 @@ fn discover_round(
             }
         }
 
-        let mut next_horizon = Vec::new();
-        for key in next_keys {
-            let module = read_module(&key, overrides, source, apply)?;
+        // One horizon's module files are independent fetches — fetching
+        // them one at a time paid a full round trip's latency per module,
+        // which against a real registry (not this crate's in-memory or
+        // local-file test doubles) dominates resolution time. `apply` only
+        // borrows `root.module.name` and `overrides`, so it's `Copy` and
+        // each thread gets its own.
+        let modules: Vec<Result<(ModuleKey, Module)>> = std::thread::scope(|scope| {
+            next_keys
+                .iter()
+                .map(|key| {
+                    let key = key.clone();
+                    scope.spawn(move || {
+                        let module = read_module(&key, overrides, source, apply)?;
+                        Ok((key, module))
+                    })
+                })
+                .collect::<Vec<_>>()
+                .into_iter()
+                .map(|handle| handle.join().expect("module-fetch thread panicked"))
+                .collect()
+        });
+
+        let mut next_horizon = Vec::with_capacity(modules.len());
+        for result in modules {
+            let (key, module) = result?;
             graph.insert(key.clone(), module);
             next_horizon.push(key);
         }
@@ -313,5 +340,102 @@ fn apply_overrides(dep: &DepSpec, root_module_name: &str, overrides: &Overrides)
             dep.with_version(svo.version.clone())
         }
         _ => dep.clone(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+    use std::sync::Mutex;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::Duration;
+
+    use super::*;
+    use crate::eval::EvalOptions;
+
+    /// A [`ModuleFileSource`] that hands out canned `module()`-only text
+    /// per name and, along the way, records the highest number of
+    /// `module_file` calls it ever saw in flight at once — the thing
+    /// buildfiji-mum.24 is actually about. A brief sleep widens the window
+    /// a genuinely sequential caller could never produce overlap in.
+    struct ConcurrentProbeSource {
+        files: BTreeMap<&'static str, &'static str>,
+        active: AtomicUsize,
+        max_active: Mutex<usize>,
+    }
+
+    impl ConcurrentProbeSource {
+        fn new(files: BTreeMap<&'static str, &'static str>) -> ConcurrentProbeSource {
+            ConcurrentProbeSource {
+                files,
+                active: AtomicUsize::new(0),
+                max_active: Mutex::new(0),
+            }
+        }
+
+        fn max_concurrent(&self) -> usize {
+            *self.max_active.lock().unwrap()
+        }
+    }
+
+    impl ModuleFileSource for ConcurrentProbeSource {
+        fn module_file(
+            &self,
+            key: &ModuleKey,
+            _module_override: Option<&ModuleOverride>,
+        ) -> Result<(String, Option<String>)> {
+            let now_active = self.active.fetch_add(1, Ordering::SeqCst) + 1;
+            {
+                let mut max_active = self.max_active.lock().unwrap();
+                *max_active = (*max_active).max(now_active);
+            }
+            std::thread::sleep(Duration::from_millis(20));
+            self.active.fetch_sub(1, Ordering::SeqCst);
+
+            let text = self
+                .files
+                .get(key.name.as_str())
+                .unwrap_or_else(|| panic!("no fixture module file for {}", key.name));
+            Ok((text.to_string(), None))
+        }
+    }
+
+    #[test]
+    fn one_horizons_module_files_are_fetched_concurrently() {
+        let root = eval_module_file(
+            "MODULE.bazel",
+            r#"
+module(name = "root", version = "0")
+bazel_dep(name = "a", version = "1")
+bazel_dep(name = "b", version = "1")
+bazel_dep(name = "c", version = "1")
+"#,
+            &{
+                let mut options = EvalOptions::root();
+                options.builtin_modules = Vec::new();
+                options
+            },
+        )
+        .unwrap();
+
+        let source = ConcurrentProbeSource::new(BTreeMap::from([
+            ("a", "module(name = 'a', version = '1')"),
+            ("b", "module(name = 'b', version = '1')"),
+            ("c", "module(name = 'c', version = '1')"),
+            // Every EvalOptions::dependency() implicitly depends on
+            // bazel_tools (eval.rs), so a/b/c's own evaluation each need
+            // it too — same as any real ModuleFileSource would.
+            ("bazel_tools", "module(name = 'bazel_tools')"),
+        ]));
+
+        let graph = discover(&root, &Overrides::new(), &source).unwrap();
+
+        assert_eq!(graph.len(), 5); // root + a + b + c + bazel_tools
+        assert!(
+            source.max_concurrent() > 1,
+            "expected a's/b's/c's module_file calls to overlap, but the highest \
+             concurrency observed was {}",
+            source.max_concurrent()
+        );
     }
 }

@@ -258,3 +258,29 @@ override's contents fetched first, which is buildfiji-mum.8 territory.
 Conformance: `tests/fixtures/workspaces/include` — real Bazel needs a
 `BUILD.bazel` in a workspace before `//:foo.MODULE.bazel` resolves at all,
 even for the *root* package, so the fixture carries an empty one.
+
+### Discovery fetches one horizon concurrently (buildfiji-mum.24)
+
+`discover_round` (discovery.rs) already computes a horizon — every module
+key newly reachable this round — as a batch before fetching any of them;
+the only change here is fetching that batch with one OS thread per key
+(`std::thread::scope`) instead of a loop. `ModuleFileSource` gained a
+`Sync` supertrait bound for it, which cost nothing to satisfy:
+`RegistrySource`'s own `Fetcher` trait was already `Send + Sync`
+(`reqwest::blocking::Client` is both).
+
+No async runtime involved — this crate doesn't depend on tokio, and
+plain OS threads are the right tool for a handful of blocking HTTP calls
+per round, not a scheduler. `apply` (the override-rewriting closure
+`read_module` takes) only borrows `root.module.name` and `overrides`, so
+it's `Copy`, and each spawned thread gets its own.
+
+Measured on this repository's own `MODULE.bazel` against the real BCR
+(`resolves_this_repository_against_the_real_registry`, ignored by default
+— reaches the network): 10.05s sequential → 2.74s concurrent, a real
+resolution with several rounds and multiple modules per round, not a
+synthetic worst case. `discovery::tests::
+one_horizons_module_files_are_fetched_concurrently` pins the mechanism
+itself down with a fake source that records the highest number of
+`module_file` calls it ever saw in flight — a sleep-and-count probe, not
+a timing assertion, so it can't flake on a loaded CI box.
