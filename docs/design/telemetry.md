@@ -85,3 +85,54 @@ Only the `Invocation`, `File`, `InputSet` and `Spawn` variants of
 `UnresolvedSymlink`, `SymlinkAction`, `SymlinkEntrySet` and `RunfilesTree`
 exist in Bazel's proto for runfiles-tree reconstruction, which fjfj doesn't
 build yet.
+
+## Console UI (decision 2026-09-04)
+
+`--color`, `--curses`, `--show_progress` and `--ui_event_filters` split the
+same way as `--workspace_status_command`: `fjfj-bazel-compat::console_flags`
+extracts raw values (a `TriState` for the two `YES`/`NO`/AUTO flags), and
+`fjfj-bazel-compat::console` (pure, no I/O — no terminal, no clock) turns
+them into a `ConsoleConfig` and knows how to render one `ProgressUpdate` —
+`[<done> / <total>] <message>`, Bazel's own shape, `total: 0` meaning
+"unknown yet". `fjfj-exec::console::ConsoleUi` is the I/O half: it owns the
+output stream and the one bit of state rendering needs (was the last write
+a progress line), and writes what the pure half computes.
+
+`--color=auto`/`--curses=auto` resolve against a tty-ness `bool` the
+*caller* supplies (`std::io::IsTerminal` on the real stream), not something
+`ConsoleUi` detects itself — `IsTerminal` is a sealed trait, so no test
+double can implement it, and Bazel resolves `auto` per output stream
+anyway (stdout might be a tty while stderr is redirected, or vice versa).
+
+The curses invariant that makes overwriting work: a progress line **never**
+gets a trailing `\n` — every update is `\r\x1b[K<line>` (return to the
+line's start, clear it, write the new text), so the next one lands in the
+same place. The line only becomes permanent, and gets its `\n`, when
+`ConsoleUi::line` needs to write something else after it. Getting this
+backwards (appending `\n` to the *first* progress write, which seemed
+natural until a second update needed to land on the same line) was caught
+by a test that asserts the exact bytes two successive updates produce, not
+just that each one's text is right in isolation.
+
+`--ui_event_filters`'s grammar (leading `+`/`-` adjust Bazel's default set;
+a bare name overrides it completely, from that point forward) is
+`UiEventFilters::parse`, fed one flag occurrence at a time in argument
+order — mixing `+DEBUG` (add) with a later bare `INFO,ERROR` (override) is
+legal and does what the flag's own docs say: everything before the bare
+entry is discarded once it appears. The default set is every `EventKind`
+but `DEBUG` — Bazel's own default is documented the same way, but the
+exact enumeration wasn't independently verified against Bazel's source, so
+treat it as reasonable rather than exact.
+
+Real fallout discovered wiring this in (buildfiji-gwl.17's own bzlmod
+resolution, exercised for the first time by an actual `fjfj build //...`
+run rather than a unit test): `reqwest::blocking::Client` (behind
+`Registry::remote`) owns and tears down its own inner Tokio runtime, and
+dropping it from a thread that's already inside `rt.block_on` — exactly
+where `fjfj-cli`'s dispatch runs — panics ("Cannot drop a runtime in a
+context where blocking is not allowed"). `fjfj-cli` now runs the whole
+`resolve_bzlmod` call, `HttpFetcher` construction through drop, inside
+`tokio::task::spawn_blocking`. No unit test caught this — `#[test]` fns
+aren't async, so `resolve_bzlmod`'s own tests never ran inside a runtime —
+which is the case for dogfooding `fjfj build //...` against this
+repository's own `MODULE.bazel` after wiring in real console output.

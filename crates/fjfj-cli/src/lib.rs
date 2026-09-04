@@ -7,13 +7,16 @@
 //! `main` would always exit 1 with Rust's own `Error: {debug}` formatting,
 //! which matches neither.
 
+use std::io::IsTerminal;
+
 use clap::Parser;
 use fjfj_bazel_compat::bzlmod_flags::BzlmodFlags;
+use fjfj_bazel_compat::console::ProgressUpdate;
 use fjfj_bazel_compat::exit_code::{ExitCode, messages};
 use fjfj_bazel_compat::{
     Cli, Command, TargetPattern, bes_flags, bzlmod_flags, canonicalize_flags, clap_flags,
-    diagnostics_flags, execution_log_flags, flag_alias, misc_flags, output_filter, remote_flags,
-    workspace_status_flags,
+    console_flags, diagnostics_flags, execution_log_flags, flag_alias, misc_flags, output_filter,
+    remote_flags, workspace_status_flags,
 };
 use fjfj_bzlmod::attrs::AttrValue;
 use fjfj_bzlmod::discovery::RegistrySource;
@@ -22,6 +25,7 @@ use fjfj_bzlmod::{
     BAZEL_CENTRAL_REGISTRY, Registry, Resolution, ResolveOptions, WorkspaceIncludeSource,
     YankedPolicy,
 };
+use fjfj_exec::console::ConsoleUi;
 use fjfj_remote::execution_log::{CompactExecutionLogWriter, EntryType, ExecLogEntry, Invocation};
 
 /// `fjfj license`'s output. Bazel's own prints an equivalent short notice
@@ -226,6 +230,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
                 remote_flags::IMPLEMENTED,
                 bes_flags::IMPLEMENTED,
                 bzlmod_flags::IMPLEMENTED,
+                console_flags::IMPLEMENTED,
             ];
             let implemented: Vec<&'static str> = BUILD_IMPLEMENTED
                 .iter()
@@ -241,6 +246,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
             let (remote, rest) = remote_flags::extract(&rest, "build");
             let (bes, rest) = bes_flags::extract(&rest, "build");
             let (bzlmod, rest) = bzlmod_flags::extract(&rest, "build");
+            let (console_flags, rest) = console_flags::extract(&rest, "build");
             // Everything left is a bare positional now that `validate`
             // above has ruled out any unimplemented or unrecognized flag.
             let patterns = rest
@@ -263,8 +269,20 @@ async fn run(cli: Cli) -> Result<(), CliError> {
                 ?remote,
                 ?bes,
                 ?bzlmod,
+                ?console_flags,
                 "build requested"
             );
+            // buildfiji-k62.5: real console output for the two steps that
+            // exist so far. `total: 0` is `ProgressUpdate`'s "unknown yet"
+            // form — there's no fixed step count worth promising the user,
+            // only "here's what's happening now" until real action counts
+            // exist to build a `[done / total]` bar from.
+            let mut console = ConsoleUi::new(
+                std::io::stdout(),
+                &console_flags,
+                std::io::stdout().is_terminal(),
+            )
+            .map_err(|e| CliError::CommandLine(anyhow::anyhow!("--ui_event_filters: {e}")))?;
             // Just a writability check: there is no REAPI client yet to
             // make a gRPC call worth logging, so unlike the execution log
             // above there is no header entry to write. Still fails fast on
@@ -314,6 +332,13 @@ async fn run(cli: Cli) -> Result<(), CliError> {
             // yet since there's no execroot/bazel-out layout for
             // stable-status.txt/volatile-status.txt to land in (see
             // fjfj_exec::workspace_status).
+            console
+                .progress(&ProgressUpdate {
+                    done: 1,
+                    total: 0,
+                    message: "Computing workspace status".to_owned(),
+                })
+                .map_err(|e| CliError::Internal(anyhow::anyhow!("console write failed: {e}")))?;
             let status = fjfj_exec::workspace_status::compute(&workspace_status)
                 .await
                 .map_err(|e| CliError::Build(anyhow::anyhow!(e)))?;
@@ -323,6 +348,13 @@ async fn run(cli: Cli) -> Result<(), CliError> {
             // above. No workspace-root search exists yet, so this is the
             // current directory's own MODULE.bazel — matching how `bazel
             // build` is invoked from the workspace root in this repo today.
+            console
+                .progress(&ProgressUpdate {
+                    done: 2,
+                    total: 0,
+                    message: "Resolving MODULE.bazel".to_owned(),
+                })
+                .map_err(|e| CliError::Internal(anyhow::anyhow!("console write failed: {e}")))?;
             let workspace_root = std::env::current_dir().map_err(|e| {
                 CliError::Internal(anyhow::anyhow!("couldn't get current directory: {e}"))
             })?;
@@ -333,11 +365,37 @@ async fn run(cli: Cli) -> Result<(), CliError> {
                         workspace_root.display()
                     ))
                 })?;
-            let resolution = resolve_bzlmod(&module_bazel_text, &workspace_root, &bzlmod)?;
+            // `reqwest::blocking::Client` (behind `Registry::remote`, which
+            // a real `--registry` or the BCR default builds) spins up and
+            // tears down its own inner Tokio runtime; dropping it from a
+            // thread that's itself inside `rt.block_on` — which is exactly
+            // where this call would otherwise run — panics ("Cannot drop a
+            // runtime in a context where blocking is not allowed").
+            // `spawn_blocking` moves the whole call, `HttpFetcher`
+            // construction through drop, onto a thread outside the async
+            // runtime's worker pool, where that's fine.
+            let resolution = {
+                let bzlmod = bzlmod.clone();
+                let module_bazel_text = module_bazel_text.clone();
+                let workspace_root = workspace_root.clone();
+                tokio::task::spawn_blocking(move || {
+                    resolve_bzlmod(&module_bazel_text, &workspace_root, &bzlmod)
+                })
+                .await
+                .map_err(|e| {
+                    CliError::Internal(anyhow::anyhow!("bzlmod resolution task panicked: {e}"))
+                })??
+            };
             tracing::info!(
                 selected_modules = resolution.selection.keys().count(),
                 "bzlmod module graph resolved"
             );
+            console
+                .line(&format!(
+                    "Resolved {} bzlmod module(s)",
+                    resolution.selection.keys().count()
+                ))
+                .map_err(|e| CliError::Internal(anyhow::anyhow!("console write failed: {e}")))?;
             Err(CliError::Build(anyhow::anyhow!(
                 "fjfj build is not implemented yet; see `bd ready`"
             )))

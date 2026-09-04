@@ -16,6 +16,8 @@ pub mod bes_flags;
 pub mod bzlmod_flags;
 pub mod canonicalize_flags;
 pub mod clap_flags;
+pub mod console;
+pub mod console_flags;
 pub mod diagnostics_flags;
 pub mod execution_log_flags;
 pub mod exit_code;
