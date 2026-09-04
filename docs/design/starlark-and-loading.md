@@ -284,3 +284,33 @@ one_horizons_module_files_are_fetched_concurrently` pins the mechanism
 itself down with a fake source that records the highest number of
 `module_file` calls it ever saw in flight — a sleep-and-count probe, not
 a timing assertion, so it can't flake on a loaded CI box.
+
+### `fjfj mod` (buildfiji-9s8.4)
+
+Rendering, not resolution: `fjfj-cli::mod_command` takes a `&Resolution`
+`fjfj-bzlmod` already produced and presents it four ways —
+`graph` (a tree, indented text by default or Bazel's own `--output=json`
+shape), `deps <module>...` (a module's own edges and what they resolved
+to), `show_repo <repo>...` (what fjfj knows about a repo — name, version,
+canonical/apparent names, registry; not the repo rule's own attributes,
+which need it fetched first, buildfiji-mum.8), and `explain <repo>...`
+(every requester in the *unpruned* graph, which is exactly what
+`Selection.unpruned` exists for). None of the four talk to a registry or
+touch a file — `Command::Build` and `Command::Mod` share one
+`resolve_workspace_bzlmod` for that.
+
+`graph --output=json`'s shape (`key`/`name`/`version`/`apparentName`/
+`dependencies`/`indirectDependencies`/`cycles`, `root: true` only on the
+root) is transcribed from a real `bazel mod graph --output=json` run
+against `fjfj-bzlmod`'s own conformance fixtures, not reconstructed from
+docs — and `mod_command`'s own test flattens its JSON tree back into the
+`<parent> <apparent> <child>` edge format those fixtures' golden files
+already use, so the same golden data conformance-tests two things: bzlmod
+resolution (buildfiji-mum.6) and its `mod graph` rendering, without a
+second run of real Bazel. `bazel_tools`'s subtree is hidden the same way
+`bazel mod graph` hides it — it isn't something the user wrote
+(`RegistrySource`'s placeholder module, discovery.rs).
+
+`--output=text` is not byte-matched against Bazel's own box-drawing tree,
+and `deps`/`show_repo`/`explain`'s text isn't matched against Bazel's at
+all — only the JSON graph shape is a conformance point today.

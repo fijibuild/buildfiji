@@ -998,6 +998,7 @@ dependencies = [
  "fjfj-remote",
  "fjfj-starlark",
  "fjfj-telemetry",
+ "serde_json",
  "thiserror",
  "tokio",
  "tracing",

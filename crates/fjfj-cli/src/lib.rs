@@ -28,6 +28,8 @@ use fjfj_bzlmod::{
 use fjfj_exec::console::ConsoleUi;
 use fjfj_remote::execution_log::{CompactExecutionLogWriter, EntryType, ExecLogEntry, Invocation};
 
+mod mod_command;
+
 /// `fjfj license`'s output. Bazel's own prints an equivalent short notice
 /// (not the full license text — that's `LICENSE` in the repository root).
 const LICENSE_NOTICE: &str = "\
@@ -151,6 +153,34 @@ fn resolve_bzlmod(
     let options = bzlmod_resolve_options(flags, workspace_root)?;
     fjfj_bzlmod::resolve(module_bazel_text, &source, &options)
         .map_err(|e| CliError::Build(anyhow::anyhow!(e)))
+}
+
+/// Reads `MODULE.bazel` from the current directory and resolves it —
+/// shared by `Command::Build` and `Command::Mod`, both of which need the
+/// module graph before doing anything else. No workspace-root search
+/// exists yet, so this is the current directory's own `MODULE.bazel`,
+/// matching how `bazel build`/`bazel mod` are invoked from the workspace
+/// root in this repo today.
+///
+/// Runs `resolve_bzlmod` inside `spawn_blocking`: `Registry::remote`
+/// builds a `reqwest::blocking::Client`, which owns and tears down its
+/// own inner Tokio runtime, and dropping it from a thread already inside
+/// `rt.block_on` — exactly where this would otherwise run — panics
+/// (buildfiji-k62.16).
+async fn resolve_workspace_bzlmod(flags: &BzlmodFlags) -> Result<Resolution, CliError> {
+    let workspace_root = std::env::current_dir()
+        .map_err(|e| CliError::Internal(anyhow::anyhow!("couldn't get current directory: {e}")))?;
+    let module_bazel_text =
+        std::fs::read_to_string(workspace_root.join("MODULE.bazel")).map_err(|e| {
+            CliError::CommandLine(anyhow::anyhow!(
+                "no MODULE.bazel found in {}: {e}",
+                workspace_root.display()
+            ))
+        })?;
+    let flags = flags.clone();
+    tokio::task::spawn_blocking(move || resolve_bzlmod(&module_bazel_text, &workspace_root, &flags))
+        .await
+        .map_err(|e| CliError::Internal(anyhow::anyhow!("bzlmod resolution task panicked: {e}")))?
 }
 
 pub fn main() -> std::process::ExitCode {
@@ -345,9 +375,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
             tracing::info!(stable = ?status.stable, "workspace status computed");
             // buildfiji-gwl.17: resolve the bzlmod module graph now, same
             // fail-fast reasoning as the workspace status and execution log
-            // above. No workspace-root search exists yet, so this is the
-            // current directory's own MODULE.bazel — matching how `bazel
-            // build` is invoked from the workspace root in this repo today.
+            // above.
             console
                 .progress(&ProgressUpdate {
                     done: 2,
@@ -355,37 +383,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
                     message: "Resolving MODULE.bazel".to_owned(),
                 })
                 .map_err(|e| CliError::Internal(anyhow::anyhow!("console write failed: {e}")))?;
-            let workspace_root = std::env::current_dir().map_err(|e| {
-                CliError::Internal(anyhow::anyhow!("couldn't get current directory: {e}"))
-            })?;
-            let module_bazel_text = std::fs::read_to_string(workspace_root.join("MODULE.bazel"))
-                .map_err(|e| {
-                    CliError::CommandLine(anyhow::anyhow!(
-                        "no MODULE.bazel found in {}: {e}",
-                        workspace_root.display()
-                    ))
-                })?;
-            // `reqwest::blocking::Client` (behind `Registry::remote`, which
-            // a real `--registry` or the BCR default builds) spins up and
-            // tears down its own inner Tokio runtime; dropping it from a
-            // thread that's itself inside `rt.block_on` — which is exactly
-            // where this call would otherwise run — panics ("Cannot drop a
-            // runtime in a context where blocking is not allowed").
-            // `spawn_blocking` moves the whole call, `HttpFetcher`
-            // construction through drop, onto a thread outside the async
-            // runtime's worker pool, where that's fine.
-            let resolution = {
-                let bzlmod = bzlmod.clone();
-                let module_bazel_text = module_bazel_text.clone();
-                let workspace_root = workspace_root.clone();
-                tokio::task::spawn_blocking(move || {
-                    resolve_bzlmod(&module_bazel_text, &workspace_root, &bzlmod)
-                })
-                .await
-                .map_err(|e| {
-                    CliError::Internal(anyhow::anyhow!("bzlmod resolution task panicked: {e}"))
-                })??
-            };
+            let resolution = resolve_workspace_bzlmod(&bzlmod).await?;
             tracing::info!(
                 selected_modules = resolution.selection.keys().count(),
                 "bzlmod module graph resolved"
@@ -399,6 +397,52 @@ async fn run(cli: Cli) -> Result<(), CliError> {
             Err(CliError::Build(anyhow::anyhow!(
                 "fjfj build is not implemented yet; see `bd ready`"
             )))
+        }
+        Command::Mod(args) => {
+            let (subcommand, rest) = args.expr.split_first().ok_or_else(|| {
+                CliError::CommandLine(anyhow::anyhow!(
+                    "usage: fjfj mod <graph|deps|show_repo|explain> [args...]"
+                ))
+            })?;
+            let (bzlmod, rest) = bzlmod_flags::extract(rest, "mod");
+            // `--output=text|json` only means anything to `graph`; kept as
+            // a plain scan rather than its own `*_flags` module, since no
+            // other subcommand reads it and Bazel doesn't offer it to them
+            // either.
+            let mut output_json = false;
+            let mut names: Vec<String> = Vec::new();
+            for arg in &rest {
+                match arg.as_str() {
+                    "--output=json" => output_json = true,
+                    "--output=text" => output_json = false,
+                    other => names.push(other.to_owned()),
+                }
+            }
+            let resolution = resolve_workspace_bzlmod(&bzlmod).await?;
+            let output = match subcommand.as_str() {
+                "graph" if output_json => {
+                    let mut json =
+                        serde_json::to_string_pretty(&mod_command::render_graph_json(&resolution))
+                            .map_err(|e| CliError::Internal(anyhow::anyhow!(e)))?;
+                    json.push('\n');
+                    json
+                }
+                "graph" => mod_command::render_graph_text(&resolution),
+                "deps" => {
+                    mod_command::render_deps(&resolution, &names).map_err(CliError::CommandLine)?
+                }
+                "show_repo" => mod_command::render_show_repo(&resolution, &names)
+                    .map_err(CliError::CommandLine)?,
+                "explain" => mod_command::render_explain(&resolution, &names)
+                    .map_err(CliError::CommandLine)?,
+                other => {
+                    return Err(CliError::CommandLine(anyhow::anyhow!(
+                        "unknown mod subcommand '{other}'; expected graph, deps, show_repo, or explain"
+                    )));
+                }
+            };
+            print!("{output}");
+            Ok(())
         }
         other => Err(CliError::Build(anyhow::anyhow!(
             "command not implemented yet: {other:?}"
