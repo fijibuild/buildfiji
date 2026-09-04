@@ -122,8 +122,8 @@ different build.
 
 Spec: `spec/Fjfj/Bzlmod.lean`. Out of scope here and tracked separately:
 running module extensions and repository rules (buildfiji-mum.8),
-`MODULE.bazel.lock` (buildfiji-mum.7), the apparent-name half of repo
-mapping (buildfiji-mum.15), and `include()` (buildfiji-mum.22).
+`MODULE.bazel.lock` (buildfiji-mum.7), and the apparent-name half of repo
+mapping (buildfiji-mum.15).
 
 ### Compatibility levels are gone, and selection is simpler for it
 
@@ -226,10 +226,35 @@ ask for. That match requires the real `bazel_tools` module file; with the
 placeholder, protobuf resolves to 29.1 instead, which is the clearest
 statement of why buildfiji-mum.23 matters.
 
-### `include()` is refused, not ignored
+### `include()` runs inline, in the same evaluation
 
-`include()` pulls more directives in from another file. fjfj records the
-labels but does not resolve them, and `resolve()` returns an error when
-the root module has any. Ignoring them would silently resolve a different
-graph than the one the user wrote — the one failure mode a resolver must
-not have.
+`include()` pulls more directives in from another file, and Bazel's own
+`ModuleFileFunction.execModuleFile` runs them in the *same*
+`ModuleThreadContext` as the including file, at the call site — not merged
+in before or after. fjfj gets that literally: the `include()` builtin
+(eval.rs) makes a second, nested `Evaluator::eval_module` call against the
+same `Evaluator` and the same `ModuleContext`, so a `bazel_dep` inside an
+include lands exactly where it would if the included text had been pasted
+in place. This works because `Evaluator::eval_module` is designed to be
+re-entrant (it saves and restores `module_def_info` around the call); nesting
+it from inside one of its own builtins is unusual but not unsupported.
+
+A label is validated before it is resolved: it must be repo-relative
+(start with `//`), and its basename must be a real `*.MODULE.bazel`
+file that doesn't start with a dot. `include()` is refused outright in a
+registry module — only the root module and a module with a non-registry
+override may call it — and a self- or mutually-including cycle is caught
+by an explicit stack (`ModuleContext::include_stack`), since Bazel relies
+on Skyframe's cycle detector for that and fjfj has no equivalent yet.
+
+Resolving a label to text is the caller's job (`eval::IncludeSource`),
+since eval.rs has no filesystem access. `resolve()` wires this up for the
+root module only, via `WorkspaceIncludeSource`, which reads the label
+relative to the workspace directory the root `MODULE.bazel` came from.
+`include()` inside a non-registry-overridden dependency validates and
+permits, but has no source configured yet — resolving one needs the
+override's contents fetched first, which is buildfiji-mum.8 territory.
+
+Conformance: `tests/fixtures/workspaces/include` — real Bazel needs a
+`BUILD.bazel` in a workspace before `//:foo.MODULE.bazel` resolves at all,
+even for the *root* package, so the fixture carries an empty one.

@@ -38,6 +38,6 @@ pub mod version;
 pub use error::{BzlmodError, Result};
 pub use module::{DepSpec, Module, ModuleKey};
 pub use registry::{BAZEL_CENTRAL_REGISTRY, Registry};
-pub use resolve::{Resolution, ResolveOptions, YankedPolicy, resolve};
+pub use resolve::{Resolution, ResolveOptions, WorkspaceIncludeSource, YankedPolicy, resolve};
 pub use selection::Selection;
 pub use version::Version;

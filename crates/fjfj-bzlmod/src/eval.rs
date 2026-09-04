@@ -15,6 +15,7 @@
 //! either (see [`crate::discovery`]).
 
 use std::cell::RefCell;
+use std::rc::Rc;
 
 use allocative::Allocative;
 use starlark::collections::SmallMap;
@@ -60,6 +61,16 @@ pub fn module_dialect() -> Dialect {
     }
 }
 
+/// The globals a module file evaluates against — built fresh each time
+/// rather than shared, since an `include()`d file needs the exact same set
+/// for its own nested `eval_module` call and `Evaluator` doesn't hand back
+/// the `Globals` it was started with.
+fn module_file_globals_instance() -> starlark::environment::Globals {
+    GlobalsBuilder::extended_by(&[LibraryExtension::Print])
+        .with(module_file_globals)
+        .build()
+}
+
 /// The result of evaluating one module file.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ModuleFile {
@@ -72,6 +83,17 @@ pub struct ModuleFile {
     pub includes: Vec<String>,
     /// Non-fatal diagnostics, e.g. a no-op `compatibility_level`.
     pub warnings: Vec<String>,
+}
+
+/// Supplies the source text `include()` names, so eval.rs never has to know
+/// about the filesystem: the caller resolves a label to a file however it
+/// resolves any other module file (a workspace path for the root, an
+/// extracted repo's path for a non-registry override).
+pub trait IncludeSource: std::fmt::Debug {
+    /// `label` has already passed [`validate_include_label`]: it starts
+    /// with `//`, and its basename ends in `.MODULE.bazel` without
+    /// starting with a dot.
+    fn read(&self, label: &str) -> Result<String>;
 }
 
 /// How to evaluate a module file.
@@ -93,26 +115,90 @@ pub struct EvalOptions {
     /// Modules every module implicitly depends on. Bazel's is
     /// `{bazel_tools}`; a module never gets an implicit dep on itself.
     pub builtin_modules: Vec<String>,
+    /// Whether `include()` is allowed in this file at all — Bazel allows it
+    /// only in the root module and in modules with a non-registry override;
+    /// a registry module using it is an error (buildfiji-mum.22).
+    pub allow_include: bool,
+    /// How to fetch an `include()`d file's text. `None` with
+    /// `allow_include: true` still lets the file *validate* its `include()`
+    /// calls, but resolving one is then a "not configured" error rather
+    /// than an unresolved-label refusal.
+    pub include_source: Option<Rc<dyn IncludeSource>>,
 }
 
 impl EvalOptions {
-    /// Options for the root module: its own dev deps and overrides count.
+    /// Options for the root module: its own dev deps and overrides count,
+    /// and it may use `include()`.
     pub fn root() -> EvalOptions {
         EvalOptions {
             key: ModuleKey::root(),
             ignore_dev_deps: false,
             builtin_modules: vec!["bazel_tools".to_owned()],
+            allow_include: true,
+            include_source: None,
         }
     }
 
-    /// Options for a module fetched from a registry.
+    /// Options for a module fetched from a registry. `include()` is
+    /// refused there regardless of `include_source` — call
+    /// [`Self::with_include_source`] for a non-registry override instead.
     pub fn dependency(key: ModuleKey) -> EvalOptions {
         EvalOptions {
             key,
             ignore_dev_deps: true,
             builtin_modules: vec!["bazel_tools".to_owned()],
+            allow_include: false,
+            include_source: None,
         }
     }
+
+    /// Lets this file use `include()`, resolved through `source`. For
+    /// [`Self::dependency`], only a module with a non-registry override
+    /// should get this — a registry module using `include()` is an error.
+    pub fn with_include_source(mut self, source: Rc<dyn IncludeSource>) -> EvalOptions {
+        self.allow_include = true;
+        self.include_source = Some(source);
+        self
+    }
+}
+
+/// Bazel's rule for an `include()` argument: repo-relative (starts with
+/// `//`), and the basename is a real `.MODULE.bazel` segment file — not a
+/// hidden file, and not the root `MODULE.bazel` itself (which would make
+/// the include recursive by definition, though the cycle check catches
+/// that too).
+pub fn validate_include_label(label: &str) -> starlark::Result<()> {
+    let Some(rest) = label.strip_prefix("//") else {
+        return Err(err(format!(
+            "include() label must be repo-relative (start with '//'): {label}"
+        )));
+    };
+    let (package, target) = rest.split_once(':').unwrap_or((rest, ""));
+    if target.is_empty() {
+        return Err(err(format!(
+            "include() label must name a target after ':': {label}"
+        )));
+    }
+    if !package.is_empty() {
+        fjfj_graph::label::validate_package_name(package)
+            .map_err(|e| err(format!("include() label {label}: {e}")))?;
+    }
+    fjfj_graph::label::validate_target_name(target)
+        .map_err(|e| err(format!("include() label {label}: {e}")))?;
+    // "basename" here is the target's own last path segment: a target name
+    // may itself contain '/' (a file nested under the package directory).
+    let basename = target.rsplit('/').next().unwrap_or(target);
+    if basename.starts_with('.') {
+        return Err(err(format!(
+            "the file referenced by include() must not start with '.': {label}"
+        )));
+    }
+    if !basename.ends_with(".MODULE.bazel") {
+        return Err(err(format!(
+            "the file referenced by include() must be named *.MODULE.bazel: {label}"
+        )));
+    }
+    Ok(())
 }
 
 /// Parses and evaluates a module file.
@@ -129,9 +215,7 @@ pub fn eval_module_file(filename: &str, source: &str, options: &EvalOptions) -> 
     // module files in the wild use it (bazel_gazelle prints a warning from
     // its MODULE.bazel). Its output goes nowhere for a dependency; see
     // below.
-    let globals = GlobalsBuilder::extended_by(&[LibraryExtension::Print])
-        .with(module_file_globals)
-        .build();
+    let globals = module_file_globals_instance();
     StarlarkModuleEnv::with_temp_heap(|env| {
         let mut eval = Evaluator::new(&env);
         eval.extra = Some(&ctx);
@@ -172,6 +256,11 @@ static DISCARD_PRINT: DiscardPrint = DiscardPrint;
 struct ModuleContext {
     options: EvalOptions,
     state: RefCell<ModuleState>,
+    /// Labels currently being `include()`d, innermost last — Bazel's own
+    /// `ModuleFileFunction` doesn't need this (Skyframe's cycle detector
+    /// catches it for them), but a naive recursive `eval_module` call here
+    /// would just overflow the stack on a self-include.
+    include_stack: RefCell<Vec<String>>,
 }
 
 #[derive(Debug, Default)]
@@ -205,6 +294,7 @@ impl ModuleContext {
                 version,
                 ..ModuleState::default()
             }),
+            include_stack: RefCell::new(Vec::new()),
         }
     }
 
@@ -892,16 +982,58 @@ fn module_file_globals(builder: &mut GlobalsBuilder) {
         Ok(NoneType)
     }
 
-    /// Includes another module file segment. Recorded, not resolved: the
-    /// caller owns the filesystem.
+    /// Executes another module file segment inline, in this same
+    /// evaluation (Bazel's `ModuleFileFunction.execModuleFile`): the
+    /// included file's directives land in the same accumulating
+    /// [`ModuleState`] as if they had been written at the call site, not
+    /// merged in afterwards. Allowed only in the root module and in a
+    /// module with a non-registry override — [`EvalOptions::allow_include`]
+    /// is what the caller decided that to be.
     fn include(
         #[starlark(require = pos)] label: &str,
         eval: &mut Evaluator,
     ) -> starlark::Result<NoneType> {
         let ctx = ModuleContext::from_eval(eval).map_err(|e| err(e.to_string()))?;
         ctx.set_non_module_called();
+        validate_include_label(label)?;
+        if !ctx.options.allow_include {
+            return Err(err(format!(
+                "include() is only allowed in the root module or a module with a non-registry \
+                 override, not in {}: {label}",
+                ctx.options.key
+            )));
+        }
+        let source = ctx.options.include_source.as_ref().ok_or_else(|| {
+            err(format!(
+                "include(\"{label}\") could not be resolved: no include source is configured"
+            ))
+        })?;
+
+        {
+            let mut stack = ctx.include_stack.borrow_mut();
+            if stack.iter().any(|l| l == label) {
+                let mut cycle = stack.clone();
+                cycle.push(label.to_owned());
+                return Err(err(format!("include() cycle: {}", cycle.join(" -> "))));
+            }
+            stack.push(label.to_owned());
+        }
+        // Recorded before resolving, so a failed include still shows up in
+        // an error report of what was reached.
         ctx.state.borrow_mut().includes.push(label.to_owned());
-        Ok(NoneType)
+
+        let result = source
+            .read(label)
+            .map_err(|e| err(e.to_string()))
+            .and_then(|text| {
+                let ast = AstModule::parse(label, text, &module_dialect())
+                    .map_err(|e| err(e.into_anyhow().to_string()))?;
+                eval.eval_module(ast, &module_file_globals_instance())
+                    .map(|_| ())
+            });
+
+        ctx.include_stack.borrow_mut().pop();
+        result.map(|()| NoneType)
     }
 
     /// Pins a dep to one version, and/or redirects its registry, and/or
@@ -1469,9 +1601,149 @@ override_repo(ext, "shared")
         .unwrap();
     }
 
+    /// An in-memory [`IncludeSource`] for tests: a fixed table of label ->
+    /// source text.
+    #[derive(Debug)]
+    struct FakeIncludeSource(std::collections::BTreeMap<&'static str, &'static str>);
+
+    impl IncludeSource for FakeIncludeSource {
+        fn read(&self, label: &str) -> Result<String> {
+            self.0
+                .get(label)
+                .map(|s| s.to_string())
+                .ok_or_else(|| BzlmodError::BadModule {
+                    key: "<test>".to_owned(),
+                    message: format!("no such fake include: {label}"),
+                })
+        }
+    }
+
+    fn eval_root_with_includes(
+        source: &str,
+        includes: &[(&'static str, &'static str)],
+    ) -> Result<ModuleFile> {
+        let mut options = EvalOptions::root();
+        options.builtin_modules = Vec::new();
+        options = options.with_include_source(Rc::new(FakeIncludeSource(
+            includes.iter().copied().collect(),
+        )));
+        eval_module_file("MODULE.bazel", source, &options)
+    }
+
     #[test]
-    fn include_labels_are_recorded() {
-        let file = eval_root_no_builtins("include('//:extra.MODULE.bazel')").unwrap();
+    fn include_label_must_be_repo_relative_and_name_a_dot_module_bazel_file() {
+        for bad in [
+            "extra.MODULE.bazel",      // not repo-relative
+            "//:.hidden.MODULE.bazel", // starts with a dot
+            "//:extra.bzl",            // wrong suffix
+            "//:extra",                // wrong suffix
+        ] {
+            let err = eval_root_with_includes(&format!("include('{bad}')"), &[]).unwrap_err();
+            assert!(
+                matches!(err, BzlmodError::BadModule { .. }),
+                "expected {bad:?} to be rejected, got {err}"
+            );
+        }
+        // A well-formed label, even with no configured source, fails for a
+        // different reason (unresolved), so validation alone must have let
+        // it through above.
+    }
+
+    #[test]
+    fn include_without_a_configured_source_is_an_error() {
+        let err = eval_root_no_builtins("include('//:extra.MODULE.bazel')").unwrap_err();
+        assert!(err.to_string().contains("no include source"), "{err}");
+    }
+
+    #[test]
+    fn include_runs_inline_in_the_same_state() {
+        // A bazel_dep before the include, one inside it, and one after: all
+        // three end up as deps of the including module, in that order —
+        // exactly as if the included text had been pasted in place.
+        let file = eval_root_with_includes(
+            r#"
+bazel_dep(name = "before", version = "1")
+include("//:extra.MODULE.bazel")
+bazel_dep(name = "after", version = "1")
+"#,
+            &[(
+                "//:extra.MODULE.bazel",
+                "bazel_dep(name = 'middle', version = '1')",
+            )],
+        )
+        .unwrap();
+        assert_eq!(
+            file.module
+                .deps
+                .iter()
+                .map(|d| d.spec.name.as_str())
+                .collect::<Vec<_>>(),
+            ["before", "middle", "after"]
+        );
         assert_eq!(file.includes, ["//:extra.MODULE.bazel"]);
+    }
+
+    #[test]
+    fn include_can_itself_include() {
+        let file = eval_root_with_includes(
+            "include('//:a.MODULE.bazel')",
+            &[
+                ("//:a.MODULE.bazel", "include('//:b.MODULE.bazel')"),
+                (
+                    "//:b.MODULE.bazel",
+                    "bazel_dep(name = 'leaf', version = '1')",
+                ),
+            ],
+        )
+        .unwrap();
+        assert_eq!(file.module.deps[0].spec.name, "leaf");
+        assert_eq!(file.includes, ["//:a.MODULE.bazel", "//:b.MODULE.bazel"]);
+    }
+
+    #[test]
+    fn include_cycle_is_rejected() {
+        let err = eval_root_with_includes(
+            "include('//:a.MODULE.bazel')",
+            &[("//:a.MODULE.bazel", "include('//:a.MODULE.bazel')")],
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("cycle"), "{err}");
+    }
+
+    #[test]
+    fn include_is_refused_outside_root_and_non_registry_overrides() {
+        // EvalOptions::dependency() defaults to allow_include: false — a
+        // registry module using include() is an error, not a silent
+        // no-op.
+        let mut options =
+            EvalOptions::dependency(ModuleKey::new("dep", Version::parse("1").unwrap()));
+        options.builtin_modules = Vec::new();
+        let err = eval_module_file(
+            "MODULE.bazel",
+            "module(name = 'dep', version = '1')\ninclude('//:extra.MODULE.bazel')",
+            &options,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("only allowed"), "{err}");
+
+        // A non-registry override lifts that, same as the root.
+        let mut options =
+            EvalOptions::dependency(ModuleKey::new("dep", Version::parse("1").unwrap()))
+                .with_include_source(Rc::new(FakeIncludeSource(
+                    [(
+                        "//:extra.MODULE.bazel",
+                        "bazel_dep(name = 'x', version = '1')",
+                    )]
+                    .into_iter()
+                    .collect(),
+                )));
+        options.builtin_modules = Vec::new();
+        let file = eval_module_file(
+            "MODULE.bazel",
+            "module(name = 'dep', version = '1')\ninclude('//:extra.MODULE.bazel')",
+            &options,
+        )
+        .unwrap();
+        assert_eq!(file.module.deps[0].spec.name, "x");
     }
 }

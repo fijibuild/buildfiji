@@ -1,0 +1,3 @@
+module(name = "root", version = "0")
+bazel_dep(name = "b", version = "1.0")
+include("//:extra.MODULE.bazel")

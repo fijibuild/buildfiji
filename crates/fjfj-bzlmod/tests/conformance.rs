@@ -17,7 +17,7 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use fjfj_bzlmod::discovery::RegistrySource;
-use fjfj_bzlmod::{Registry, Resolution, ResolveOptions, resolve};
+use fjfj_bzlmod::{Registry, Resolution, ResolveOptions, WorkspaceIncludeSource, resolve};
 
 fn fixtures_dir() -> PathBuf {
     // Under `bazel test` the runfiles root is the working directory;
@@ -38,7 +38,13 @@ fn resolve_workspace(workspace: &Path) -> fjfj_bzlmod::Result<Resolution> {
             .expect("fixture registry"),
     );
     let source = RegistrySource::new(vec![registry]);
-    resolve(&source_text, &source, &ResolveOptions::default())
+    // Harmless for a fixture with no include(): the source is only ever
+    // asked to resolve a label if the root MODULE.bazel calls include().
+    let options = ResolveOptions {
+        include_source: Some(std::rc::Rc::new(WorkspaceIncludeSource::new(workspace))),
+        ..ResolveOptions::default()
+    };
+    resolve(&source_text, &source, &options)
 }
 
 /// Renders a resolution in the same shape as

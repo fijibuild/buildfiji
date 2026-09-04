@@ -7,10 +7,14 @@
 //! buildfiji-mum.8 and buildfiji-mum.7).
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::PathBuf;
+use std::rc::Rc;
 
 use crate::discovery::{ModuleFileSource, discover};
 use crate::error::{BzlmodError, Result};
-use crate::eval::{EvalOptions, ModuleFile, eval_module_file};
+use crate::eval::{
+    EvalOptions, IncludeSource, ModuleFile, eval_module_file, validate_include_label,
+};
 use crate::module::{Module, ModuleKey};
 use crate::overrides::{ModuleOverride, NonRegistryOverride, RepoRule, RepoSpec};
 use crate::selection::{self, Overrides, Selection};
@@ -44,6 +48,61 @@ pub struct ResolveOptions {
     /// Overrides supplied on the command line, which win over the ones in
     /// the file.
     pub command_overrides: Vec<(String, ModuleOverride)>,
+    /// How to fetch the text an `include()` in the root module names.
+    /// `None` makes an `include()` in the root file an error — same as
+    /// having no include source at all (buildfiji-mum.22).
+    pub include_source: Option<Rc<dyn IncludeSource>>,
+}
+
+/// Resolves `include()` labels against the workspace directory the root
+/// `MODULE.bazel` lives in — the ordinary case, and the only one
+/// buildfiji-mum.22 wires up; a non-registry override's own `include()`s
+/// are still refused (buildfiji-mum.8 territory: that needs the override
+/// fetched first).
+#[derive(Debug)]
+pub struct WorkspaceIncludeSource {
+    workspace_root: PathBuf,
+}
+
+impl WorkspaceIncludeSource {
+    pub fn new(workspace_root: impl Into<PathBuf>) -> WorkspaceIncludeSource {
+        WorkspaceIncludeSource {
+            workspace_root: workspace_root.into(),
+        }
+    }
+}
+
+impl IncludeSource for WorkspaceIncludeSource {
+    fn read(&self, label: &str) -> Result<String> {
+        let path = self.workspace_root.join(label_to_relative_path(label)?);
+        std::fs::read_to_string(&path).map_err(|e| BzlmodError::BadModule {
+            key: "<root>".to_owned(),
+            message: format!(
+                "include(\"{label}\") could not read {}: {e}",
+                path.display()
+            ),
+        })
+    }
+}
+
+/// `//dir1/dir2:name.MODULE.bazel` -> `dir1/dir2/name.MODULE.bazel`,
+/// `//:name.MODULE.bazel` -> `name.MODULE.bazel`. Trusts the label has
+/// already passed [`validate_include_label`] for everything except the
+/// package/target split, which it re-derives the same way.
+fn label_to_relative_path(label: &str) -> Result<PathBuf> {
+    validate_include_label(label).map_err(|e| BzlmodError::BadModule {
+        key: "<root>".to_owned(),
+        message: e.into_anyhow().to_string(),
+    })?;
+    // Already validated to start with "//" and contain ':'.
+    let rest = &label[2..];
+    let (package, target) = rest.split_once(':').expect("validated above");
+    let mut path = PathBuf::new();
+    if !package.is_empty() {
+        path.push(package);
+    }
+    path.push(target);
+    Ok(path)
 }
 
 /// A resolved module graph.
@@ -75,20 +134,14 @@ pub fn resolve(
 ) -> Result<Resolution> {
     let mut root_options = EvalOptions::root();
     root_options.ignore_dev_deps = options.ignore_dev_dependency;
-    let root = eval_module_file("MODULE.bazel", root_module_file, &root_options)?;
-
-    // `include()` pulls in more directives from another file, so ignoring
-    // it would silently resolve a different graph than the one the user
-    // wrote. Refuse instead.
-    if !root.includes.is_empty() {
-        return Err(BzlmodError::BadModule {
-            key: "<root>".to_owned(),
-            message: format!(
-                "include() is not implemented yet (buildfiji-mum.22); found {}",
-                root.includes.join(", ")
-            ),
-        });
+    if let Some(include_source) = &options.include_source {
+        root_options = root_options.with_include_source(include_source.clone());
     }
+    // `include()` executes inline during evaluation (eval.rs), landing in
+    // `root.module`/`root.overrides` exactly as if the included text had
+    // been pasted at the call site — nothing left to resolve here.
+    // `root.includes` is only the audit trail of labels that were reached.
+    let root = eval_module_file("MODULE.bazel", root_module_file, &root_options)?;
 
     let overrides = build_overrides(&root, options)?;
     let dep_graph = discover(&root, &overrides, source)?;
