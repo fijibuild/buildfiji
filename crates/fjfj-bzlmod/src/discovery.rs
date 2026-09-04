@@ -313,10 +313,40 @@ fn read_module(
 ) -> Result<Module> {
     let module_override = overrides.get(&key.name);
     let (text, registry) = source.module_file(key, module_override)?;
-    let file = eval_module_file("MODULE.bazel", &text, &EvalOptions::dependency(key.clone()))?;
+    let options = dependency_eval_options(key, module_override);
+    let file = eval_module_file("MODULE.bazel", &text, &options)?;
     let mut module = file.module.with_deps_transformed(apply);
     module.registry = registry;
     Ok(module)
+}
+
+/// [`EvalOptions`] for a dependency module: `include()` is allowed exactly
+/// when Bazel allows it there — a non-registry override (root modules go
+/// through [`EvalOptions::root`] instead, never this function).
+///
+/// A `local_path_override`'s contents sit on disk already, so its
+/// `include()`s resolve against that path right away. An `archive_override`
+/// or `git_override`'s contents don't exist as filesystem content until
+/// fetched (buildfiji-mum.8), so those get `allow_include: true` with no
+/// source: an `include()` call there still validates, but resolving one
+/// fails with "not configured" until fetching lands.
+fn dependency_eval_options(
+    key: &ModuleKey,
+    module_override: Option<&ModuleOverride>,
+) -> EvalOptions {
+    let options = EvalOptions::dependency(key.clone());
+    let Some(ModuleOverride::NonRegistry(non_registry)) = module_override else {
+        return options;
+    };
+    match local_repository_path(non_registry) {
+        Some(path) => options.with_include_source(std::rc::Rc::new(
+            crate::resolve::WorkspaceIncludeSource::new(path),
+        )),
+        None => EvalOptions {
+            allow_include: true,
+            ..options
+        },
+    }
 }
 
 /// Rewrites a dependency edge for the overrides in force.
@@ -436,6 +466,83 @@ bazel_dep(name = "c", version = "1")
             "expected a's/b's/c's module_file calls to overlap, but the highest \
              concurrency observed was {}",
             source.max_concurrent()
+        );
+    }
+
+    fn non_registry_override(
+        rule: crate::overrides::RepoRule,
+        path: Option<&str>,
+    ) -> ModuleOverride {
+        use crate::attrs::AttrValue;
+        use crate::overrides::{NonRegistryOverride, RepoSpec};
+        let attrs = path
+            .map(|p| vec![("path".to_owned(), AttrValue::String(p.to_owned()))])
+            .unwrap_or_default();
+        ModuleOverride::NonRegistry(NonRegistryOverride {
+            repo_spec: RepoSpec { rule, attrs },
+        })
+    }
+
+    /// buildfiji-mum.25: a `local_path_override`'s `include()` resolves
+    /// against the override's own path, right away — no fetch needed.
+    #[test]
+    fn local_path_override_module_can_include() {
+        let dir = std::env::temp_dir().join(format!(
+            "fjfj-bzlmod-test-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("extra.MODULE.bazel"),
+            "bazel_dep(name = 'c', version = '1')\n",
+        )
+        .unwrap();
+
+        let key = ModuleKey::new("dep", Version::EMPTY);
+        let module_override = non_registry_override(
+            crate::overrides::RepoRule::LocalRepository,
+            Some(dir.to_str().unwrap()),
+        );
+        let options = dependency_eval_options(&key, Some(&module_override));
+        assert!(options.allow_include);
+
+        let file = eval_module_file(
+            "MODULE.bazel",
+            "module(name = 'dep', version = '1')\ninclude('//:extra.MODULE.bazel')\n",
+            &options,
+        )
+        .unwrap();
+        assert!(
+            file.module.deps.iter().any(|d| d.spec.name == "c"),
+            "{:?}",
+            file.module.deps
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// An `archive_override`/`git_override` module may still *call*
+    /// `include()` — Bazel's rule allows it for any non-registry override —
+    /// but resolving it needs the fetched checkout (buildfiji-mum.8), which
+    /// doesn't exist yet at discovery time.
+    #[test]
+    fn archive_override_module_can_call_include_but_not_resolve_it_yet() {
+        let key = ModuleKey::new("dep", Version::EMPTY);
+        let module_override = non_registry_override(crate::overrides::RepoRule::HttpArchive, None);
+        let options = dependency_eval_options(&key, Some(&module_override));
+        assert!(options.allow_include);
+        assert!(options.include_source.is_none());
+
+        let err = eval_module_file(
+            "MODULE.bazel",
+            "module(name = 'dep', version = '1')\ninclude('//:extra.MODULE.bazel')\n",
+            &options,
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("no include source is configured"),
+            "{err}"
         );
     }
 }
