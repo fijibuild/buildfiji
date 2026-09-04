@@ -12,6 +12,7 @@ thiserror.workspace = true
 tracing.workspace = true
 tokio.workspace = true
 fjfj-bazel-compat.workspace = true
+fjfj-bzlmod.workspace = true
 fjfj-starlark.workspace = true
 fjfj-graph.workspace = true
 fjfj-exec.workspace = true

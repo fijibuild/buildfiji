@@ -8,11 +8,19 @@
 //! which matches neither.
 
 use clap::Parser;
+use fjfj_bazel_compat::bzlmod_flags::BzlmodFlags;
 use fjfj_bazel_compat::exit_code::{ExitCode, messages};
 use fjfj_bazel_compat::{
-    Cli, Command, TargetPattern, bes_flags, canonicalize_flags, clap_flags, diagnostics_flags,
-    execution_log_flags, flag_alias, misc_flags, output_filter, remote_flags,
+    Cli, Command, TargetPattern, bes_flags, bzlmod_flags, canonicalize_flags, clap_flags,
+    diagnostics_flags, execution_log_flags, flag_alias, misc_flags, output_filter, remote_flags,
     workspace_status_flags,
+};
+use fjfj_bzlmod::attrs::AttrValue;
+use fjfj_bzlmod::discovery::RegistrySource;
+use fjfj_bzlmod::overrides::{ModuleOverride, NonRegistryOverride, RepoRule, RepoSpec};
+use fjfj_bzlmod::{
+    BAZEL_CENTRAL_REGISTRY, Registry, Resolution, ResolveOptions, WorkspaceIncludeSource,
+    YankedPolicy,
 };
 use fjfj_remote::execution_log::{CompactExecutionLogWriter, EntryType, ExecLogEntry, Invocation};
 
@@ -70,6 +78,75 @@ impl CliError {
             CliError::Internal(e) => messages::fatal(e),
         }
     }
+}
+
+/// The registries `--registry` names, or Bazel's own default list (just
+/// `https://bcr.bazel.build`) when it wasn't given at all — repeatable
+/// `--registry` *replaces* the default rather than adding to it.
+fn bzlmod_registries(flags: &BzlmodFlags) -> Result<Vec<Registry>, CliError> {
+    let urls: Vec<&str> = if flags.registry.is_empty() {
+        vec![BAZEL_CENTRAL_REGISTRY]
+    } else {
+        flags.registry.iter().map(String::as_str).collect()
+    };
+    urls.into_iter()
+        .map(|url| {
+            Registry::remote(url)
+                .map_err(|e| CliError::Internal(anyhow::anyhow!("--registry {url}: {e}")))
+        })
+        .collect()
+}
+
+/// [`ResolveOptions`] for `--allow_yanked_versions`, `--ignore_dev_dependency`
+/// and `--override_module`, plus `include()` support rooted at
+/// `workspace_root` (buildfiji-mum.22).
+fn bzlmod_resolve_options(
+    flags: &BzlmodFlags,
+    workspace_root: &std::path::Path,
+) -> Result<ResolveOptions, CliError> {
+    let yanked = match &flags.allow_yanked_versions {
+        Some(value) => YankedPolicy::parse(value)
+            .map_err(|e| CliError::CommandLine(anyhow::anyhow!("--allow_yanked_versions: {e}")))?,
+        None => YankedPolicy::default(),
+    };
+    let command_overrides = flags
+        .override_module
+        .iter()
+        .map(|(name, path)| {
+            (
+                name.clone(),
+                ModuleOverride::NonRegistry(NonRegistryOverride {
+                    repo_spec: RepoSpec {
+                        rule: RepoRule::LocalRepository,
+                        attrs: vec![("path".to_owned(), AttrValue::String(path.clone()))],
+                    },
+                }),
+            )
+        })
+        .collect();
+    Ok(ResolveOptions {
+        yanked,
+        ignore_dev_dependency: flags.ignore_dev_dependency,
+        command_overrides,
+        include_source: Some(std::rc::Rc::new(WorkspaceIncludeSource::new(
+            workspace_root,
+        ))),
+    })
+}
+
+/// Resolves the bzlmod module graph for `module_bazel_text` (the root
+/// `MODULE.bazel`, already read from `workspace_root`) against the flags a
+/// command was given.
+fn resolve_bzlmod(
+    module_bazel_text: &str,
+    workspace_root: &std::path::Path,
+    flags: &BzlmodFlags,
+) -> Result<Resolution, CliError> {
+    let registries = bzlmod_registries(flags)?;
+    let source = RegistrySource::new(registries);
+    let options = bzlmod_resolve_options(flags, workspace_root)?;
+    fjfj_bzlmod::resolve(module_bazel_text, &source, &options)
+        .map_err(|e| CliError::Build(anyhow::anyhow!(e)))
 }
 
 pub fn main() -> std::process::ExitCode {
@@ -148,6 +225,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
                 execution_log_flags::IMPLEMENTED,
                 remote_flags::IMPLEMENTED,
                 bes_flags::IMPLEMENTED,
+                bzlmod_flags::IMPLEMENTED,
             ];
             let implemented: Vec<&'static str> = BUILD_IMPLEMENTED
                 .iter()
@@ -162,6 +240,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
             let (execution_log, rest) = execution_log_flags::extract(&rest, "build");
             let (remote, rest) = remote_flags::extract(&rest, "build");
             let (bes, rest) = bes_flags::extract(&rest, "build");
+            let (bzlmod, rest) = bzlmod_flags::extract(&rest, "build");
             // Everything left is a bare positional now that `validate`
             // above has ruled out any unimplemented or unrecognized flag.
             let patterns = rest
@@ -183,6 +262,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
                 ?execution_log,
                 ?remote,
                 ?bes,
+                ?bzlmod,
                 "build requested"
             );
             // Just a writability check: there is no REAPI client yet to
@@ -238,6 +318,26 @@ async fn run(cli: Cli) -> Result<(), CliError> {
                 .await
                 .map_err(|e| CliError::Build(anyhow::anyhow!(e)))?;
             tracing::info!(stable = ?status.stable, "workspace status computed");
+            // buildfiji-gwl.17: resolve the bzlmod module graph now, same
+            // fail-fast reasoning as the workspace status and execution log
+            // above. No workspace-root search exists yet, so this is the
+            // current directory's own MODULE.bazel — matching how `bazel
+            // build` is invoked from the workspace root in this repo today.
+            let workspace_root = std::env::current_dir().map_err(|e| {
+                CliError::Internal(anyhow::anyhow!("couldn't get current directory: {e}"))
+            })?;
+            let module_bazel_text = std::fs::read_to_string(workspace_root.join("MODULE.bazel"))
+                .map_err(|e| {
+                    CliError::CommandLine(anyhow::anyhow!(
+                        "no MODULE.bazel found in {}: {e}",
+                        workspace_root.display()
+                    ))
+                })?;
+            let resolution = resolve_bzlmod(&module_bazel_text, &workspace_root, &bzlmod)?;
+            tracing::info!(
+                selected_modules = resolution.selection.keys().count(),
+                "bzlmod module graph resolved"
+            );
             Err(CliError::Build(anyhow::anyhow!(
                 "fjfj build is not implemented yet; see `bd ready`"
             )))
@@ -251,6 +351,58 @@ async fn run(cli: Cli) -> Result<(), CliError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The bzlmod fixture registry `fjfj-bzlmod` already maintains
+    /// (`tests/fixtures/registry`, containing modules `a`-`f` and `y`) —
+    /// reused here rather than duplicated, since this test exercises the
+    /// CLI's flag-to-`ResolveOptions` plumbing, not resolution itself
+    /// (that's `fjfj-bzlmod`'s own conformance suite).
+    fn fixture_registry_dir() -> std::path::PathBuf {
+        let bazel_path = std::path::Path::new("crates/fjfj-bzlmod/tests/fixtures/registry");
+        if bazel_path.is_dir() {
+            return bazel_path.canonicalize().unwrap();
+        }
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../fjfj-bzlmod/tests/fixtures/registry")
+            .canonicalize()
+            .expect("fjfj-bzlmod fixture registry")
+    }
+
+    #[test]
+    fn registry_flag_resolves_a_fixture_workspace() {
+        let args = vec![format!(
+            "--registry=file://{}",
+            fixture_registry_dir().display()
+        )];
+        let (bzlmod, rest) = bzlmod_flags::extract(&args, "build");
+        assert!(rest.is_empty());
+        assert_eq!(bzlmod.registry.len(), 1);
+
+        let module_bazel =
+            "module(name = 'root', version = '0')\nbazel_dep(name = 'a', version = '1.0')\n";
+        let resolution = resolve_bzlmod(module_bazel, std::path::Path::new("."), &bzlmod).unwrap();
+        assert!(
+            resolution
+                .selection
+                .keys()
+                .any(|k| k.to_string() == "a@1.0")
+        );
+    }
+
+    #[test]
+    fn allow_yanked_versions_and_override_module_flow_into_resolve_options() {
+        let args = vec![
+            "--allow_yanked_versions=all".to_owned(),
+            "--override_module=foo=../foo".to_owned(),
+        ];
+        let (bzlmod, rest) = bzlmod_flags::extract(&args, "build");
+        assert!(rest.is_empty());
+        let options = bzlmod_resolve_options(&bzlmod, std::path::Path::new(".")).unwrap();
+        assert_eq!(options.yanked, YankedPolicy::AllowAll);
+        assert_eq!(options.command_overrides.len(), 1);
+        assert_eq!(options.command_overrides[0].0, "foo");
+        assert!(options.command_overrides[0].1.is_non_registry());
+    }
 
     #[test]
     fn command_line_error_maps_to_exit_code_2() {

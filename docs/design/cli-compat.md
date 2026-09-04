@@ -198,3 +198,33 @@ name, the same as any other Starlark flag today.
 `misc_flags` module rather than given one each: both are single-field
 concerns with no implementation to attach to yet (visibility enforcement,
 memory profiling), so a struct-per-flag module would be pure ceremony.
+
+## `--registry`, `--allow_yanked_versions`, `--ignore_dev_dependency`, `--override_module` (decision 2026-09-04)
+
+Split across two crates on purpose. `fjfj-bazel-compat::bzlmod_flags`
+extracts these into a `BzlmodFlags` of raw strings — same shape as every
+other `*_flags` module — and stops there: turning
+`--allow_yanked_versions`'s value into a `fjfj_bzlmod::YankedPolicy`, or
+`--override_module=name=path` into a `ModuleOverride`, needs types from
+`fjfj-bzlmod`, and this crate doesn't depend on it (bazel-compat is a
+flag/CLI-syntax layer, bzlmod resolution is a separate concern one layer
+up). `fjfj-cli` is where both meet: `bzlmod_registries` turns `--registry`
+into `fjfj_bzlmod::Registry`s (repeated occurrences *replace* Bazel's
+`https://bcr.bazel.build` default, per the flag's own docs, rather than
+adding to it), and `bzlmod_resolve_options` turns the rest into a
+`ResolveOptions` — including wiring `include()` support
+(buildfiji-mum.22) to a `WorkspaceIncludeSource` rooted at the workspace
+directory.
+
+`fjfj build`'s dispatch resolves the module graph right after computing
+the workspace status snapshot, same fail-fast reasoning: reads
+`MODULE.bazel` from the current directory (no workspace-root search
+exists yet — matching how `bazel build` is invoked from the repository
+root in this repo today) and logs the selected module count. There is no
+`fjfj build` yet for it to feed into; this is forward progress on a real
+prerequisite, not a finished pipeline.
+
+`--check_direct_dependencies` and the lockfile modes are out of scope
+here — the former needs the direct-dependency comparison Bazel's `mod`
+output would show (buildfiji-9s8.4), the latter needs
+`MODULE.bazel.lock` (buildfiji-mum.7).

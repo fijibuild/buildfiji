@@ -11,7 +11,12 @@ filegroup(
         "registry/**",
         "workspaces/**",
     ]),
-    visibility = ["//crates/fjfj-bzlmod:__pkg__"],
+    # buildfiji-gwl.17: fjfj-cli's own bzlmod-flag test reuses the registry
+    # fixture rather than duplicating it.
+    visibility = [
+        "//crates/fjfj-bzlmod:__pkg__",
+        "//crates/fjfj-cli:__pkg__",
+    ],
 )
 
 py_binary(

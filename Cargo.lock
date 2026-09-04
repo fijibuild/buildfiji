@@ -992,6 +992,7 @@ dependencies = [
  "anyhow",
  "clap",
  "fjfj-bazel-compat",
+ "fjfj-bzlmod",
  "fjfj-exec",
  "fjfj-graph",
  "fjfj-remote",

@@ -8,10 +8,11 @@ rust_library(
     crate_name = "fjfj_cli",
     edition = "2024",
     version = "0.0.1",
-    deps = ["@crates//:anyhow", "@crates//:clap", "@crates//:thiserror", "@crates//:tokio", "@crates//:tracing", "//crates/fjfj-bazel-compat", "//crates/fjfj-exec", "//crates/fjfj-graph", "//crates/fjfj-remote", "//crates/fjfj-starlark", "//crates/fjfj-telemetry", ],
+    deps = ["@crates//:anyhow", "@crates//:clap", "@crates//:thiserror", "@crates//:tokio", "@crates//:tracing", "//crates/fjfj-bazel-compat", "//crates/fjfj-bzlmod", "//crates/fjfj-exec", "//crates/fjfj-graph", "//crates/fjfj-remote", "//crates/fjfj-starlark", "//crates/fjfj-telemetry", ],
 )
 
 rust_test(
     name = "fjfj-cli_test",
     crate = ":fjfj-cli",
+    data = ["//crates/fjfj-bzlmod/tests/fixtures"],
 )

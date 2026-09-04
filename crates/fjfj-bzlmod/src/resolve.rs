@@ -37,6 +37,32 @@ pub enum YankedPolicy {
     Allow(BTreeSet<ModuleKey>),
 }
 
+impl YankedPolicy {
+    /// Parses `--allow_yanked_versions`' value (also
+    /// `BZLMOD_ALLOW_YANKED_VERSIONS`'s): the literal `all`, or a
+    /// comma-separated `name@version` list. Bazel calls this exact grammar
+    /// out in the flag's own help text.
+    pub fn parse(value: &str) -> std::result::Result<YankedPolicy, String> {
+        if value == "all" {
+            return Ok(YankedPolicy::AllowAll);
+        }
+        let mut keys = BTreeSet::new();
+        for entry in value.split(',') {
+            let entry = entry.trim();
+            if entry.is_empty() {
+                continue;
+            }
+            let (name, version) = entry.split_once('@').ok_or_else(|| {
+                format!("invalid --allow_yanked_versions entry '{entry}': expected name@version")
+            })?;
+            let version = Version::parse(version)
+                .map_err(|e| format!("invalid --allow_yanked_versions entry '{entry}': {e}"))?;
+            keys.insert(ModuleKey::new(name, version));
+        }
+        Ok(YankedPolicy::Allow(keys))
+    }
+}
+
 /// How to resolve.
 #[derive(Debug, Clone, Default)]
 pub struct ResolveOptions {
@@ -246,3 +272,43 @@ fn check_yanked(
 
 /// A yanked version, and why.
 pub type YankedVersions = BTreeMap<Version, String>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn yanked_policy_parses_all() {
+        assert_eq!(YankedPolicy::parse("all").unwrap(), YankedPolicy::AllowAll);
+    }
+
+    #[test]
+    fn yanked_policy_parses_name_at_version_list() {
+        let policy = YankedPolicy::parse("a@1.2.3,b@2.0").unwrap();
+        assert_eq!(
+            policy,
+            YankedPolicy::Allow(BTreeSet::from([
+                ModuleKey::new("a", Version::parse("1.2.3").unwrap()),
+                ModuleKey::new("b", Version::parse("2.0").unwrap()),
+            ]))
+        );
+    }
+
+    #[test]
+    fn yanked_policy_rejects_missing_at_version() {
+        assert!(YankedPolicy::parse("a").is_err());
+    }
+
+    #[test]
+    fn include_label_to_path_splits_package_and_target() {
+        assert_eq!(
+            label_to_relative_path("//dir1/dir2:name.MODULE.bazel").unwrap(),
+            PathBuf::from("dir1/dir2/name.MODULE.bazel")
+        );
+        assert_eq!(
+            label_to_relative_path("//:name.MODULE.bazel").unwrap(),
+            PathBuf::from("name.MODULE.bazel")
+        );
+        assert!(label_to_relative_path("not/a/label").is_err());
+    }
+}
