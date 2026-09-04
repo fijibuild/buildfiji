@@ -1,0 +1,39 @@
+# buildfiji-4b0.4: Bazel target graph for spec/, mirroring Fjfj.lean's
+# import graph. `lean_library` (//bazel/lean:lean.bzl) is a placeholder — it
+# tracks sources and deps only, it does not compile anything yet. Real
+# compilation lands with buildfiji-4b0.1 (hermetic toolchain) and
+# buildfiji-4b0.2 (compile actions). Until then `lake build` is the actual
+# spec/ gate (buildfiji-cmd.19, spec/README.md); :module_list_test only
+# guards against Fjfj.lean's imports and this file's targets drifting apart.
+load("//bazel/lean:lean.bzl", "lean_library")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+
+package(default_visibility = ["//visibility:public"])
+
+_MODULE_FILES = glob(["Fjfj/*.lean"])
+
+[
+    lean_library(
+        name = f.removeprefix("Fjfj/").removesuffix(".lean"),
+        srcs = [f],
+    )
+    for f in _MODULE_FILES
+]
+
+lean_library(
+    name = "Fjfj",
+    srcs = ["Fjfj.lean"],
+    deps = [":" + f.removeprefix("Fjfj/").removesuffix(".lean") for f in _MODULE_FILES],
+)
+
+alias(
+    name = "all",
+    actual = ":Fjfj",
+)
+
+sh_test(
+    name = "module_list_test",
+    srcs = ["check_modules.sh"],
+    args = ["$(location Fjfj.lean)"] + ["$(location %s)" % f for f in _MODULE_FILES],
+    data = ["Fjfj.lean"] + _MODULE_FILES,
+)

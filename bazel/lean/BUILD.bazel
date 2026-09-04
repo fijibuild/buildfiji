@@ -8,3 +8,11 @@
 load(":versions.bzl", "LEAN_TOOLCHAINS", "LEAN_VERSION")
 
 exports_files(["versions.bzl"])
+
+# buildfiji-4b0.4: same load-forces-parse rationale as above, for the
+# interim lean_library macro.
+load(":lean.bzl", "lean_library")
+
+exports_files(["lean.bzl"])
+
+package(default_visibility = ["//visibility:public"])
