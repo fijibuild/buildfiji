@@ -28,6 +28,13 @@ use_repo(rust, "rust_toolchains")
 
 register_toolchains("@rust_toolchains//:all")
 
+# buildfiji-4b0.3: interim, non-hermetic — finds the PATH-installed `lean`
+# binary so lean_test can depend on it as a normal label (see
+# bazel/lean/repo.bzl). buildfiji-4b0.1 replaces this with a real pinned,
+# per-platform download.
+local_lean_repo = use_repo_rule("//bazel/lean:repo.bzl", "local_lean_repo")
+local_lean_repo(name = "lean_local")
+
 crate = use_extension("@rules_rust//crate_universe:extensions.bzl", "crate")
 crate.from_cargo(
     name = "crates",

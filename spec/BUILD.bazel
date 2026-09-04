@@ -5,7 +5,7 @@
 # buildfiji-4b0.2 (compile actions). Until then `lake build` is the actual
 # spec/ gate (buildfiji-cmd.19, spec/README.md); :module_list_test only
 # guards against Fjfj.lean's imports and this file's targets drifting apart.
-load("//bazel/lean:lean.bzl", "lean_library")
+load("//bazel/lean:lean.bzl", "lean_library", "lean_test")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
 package(default_visibility = ["//visibility:public"])
@@ -16,6 +16,16 @@ _MODULE_FILES = glob(["Fjfj/*.lean"])
     lean_library(
         name = f.removeprefix("Fjfj/").removesuffix(".lean"),
         srcs = [f],
+    )
+    for f in _MODULE_FILES
+]
+
+# buildfiji-4b0.3: one lean_test per module — see bazel/lean/lean.bzl for
+# why this only works because none of them import each other yet.
+[
+    lean_test(
+        name = f.removeprefix("Fjfj/").removesuffix(".lean") + "_check",
+        src = f,
     )
     for f in _MODULE_FILES
 ]

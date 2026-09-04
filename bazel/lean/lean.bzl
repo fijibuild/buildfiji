@@ -49,3 +49,50 @@ lean_library = rule(
     },
     doc = "Placeholder lean_library: tracks sources and deps only, no compilation (buildfiji-4b0.2 adds that).",
 )
+
+# buildfiji-4b0.3: lean_test — type-check one module (theorems and all;
+# Lean elaborates a theorem's proof as part of type-checking its
+# statement, so a real one gives this something to fail on).
+#
+# `lean` needs precompiled .olean for every module it imports, and this
+# repo doesn't produce any yet (lean_library above is a placeholder) — so
+# lean_test only handles a module with no Fjfj.* imports of its own. Every
+# spec/Fjfj/*.lean module qualifies today (only the aggregate root,
+# Fjfj.lean, imports the others). buildfiji-4b0.2's real compile actions
+# are what let a future lean_test resolve deps via LEAN_PATH.
+
+def _lean_test_impl(ctx):
+    lean = ctx.file._lean
+    src = ctx.file.src
+    runner = ctx.actions.declare_file(ctx.label.name + ".sh")
+    ctx.actions.write(
+        output = runner,
+        content = "#!/usr/bin/env bash\nset -euo pipefail\nexec {lean} {src}\n".format(
+            lean = lean.short_path,
+            src = src.short_path,
+        ),
+        is_executable = True,
+    )
+    return [DefaultInfo(
+        executable = runner,
+        runfiles = ctx.runfiles(files = [lean, src]),
+    )]
+
+lean_test = rule(
+    implementation = _lean_test_impl,
+    test = True,
+    attrs = {
+        "src": attr.label(
+            allow_single_file = [".lean"],
+            mandatory = True,
+            doc = "The module to type-check. Must have no Fjfj.* imports of its own (see rule doc).",
+        ),
+        "_lean": attr.label(
+            default = "@lean_local//:lean",
+            allow_single_file = True,
+            executable = True,
+            cfg = "exec",
+        ),
+    },
+    doc = "Type-checks one dependency-free .lean module by shelling out to the locally installed `lean` (bazel/lean/repo.bzl — interim, non-hermetic, until buildfiji-4b0.1). No lake, no network.",
+)
