@@ -65,6 +65,8 @@ use std::time::{Duration, Instant};
 /// An attribute value a repository rule is called with, as `ctx.attr` shows it.
 #[derive(Debug, Clone, PartialEq)]
 pub enum RepoAttr {
+    /// An attribute with no value, such as a label that was not given.
+    None,
     Bool(bool),
     Int(i64),
     String(String),
@@ -283,7 +285,7 @@ fn lexical(path: &Path) -> PathBuf {
 
 /// `ctx.os`.
 #[derive(Debug, ProvidesStaticType, NoSerialize, Allocative)]
-struct RepoOs {
+pub(crate) struct RepoOs {
     #[allocative(skip)]
     environ: BTreeMap<String, String>,
 }
@@ -448,8 +450,9 @@ fn label_value<'v>(heap: Heap<'v>, label: &Label) -> Value<'v> {
 }
 
 impl RepoAttr {
-    fn to_value<'v>(&self, heap: Heap<'v>) -> Value<'v> {
+    pub(crate) fn to_value<'v>(&self, heap: Heap<'v>) -> Value<'v> {
         match self {
+            RepoAttr::None => Value::new_none(),
             RepoAttr::Bool(b) => Value::new_bool(*b),
             RepoAttr::Int(i) => heap.alloc(*i as i32),
             RepoAttr::String(s) => string_value(heap, s),
@@ -549,10 +552,20 @@ impl<'v> StarlarkValue<'v> for RepositoryCtx {
 }
 
 fn env_of<'v>(this: Value<'v>) -> &'v Arc<RepoEnv> {
+    if let Some(ctx) = this.downcast_ref::<RepositoryCtx>() {
+        return &ctx.env;
+    }
     &this
-        .downcast_ref::<RepositoryCtx>()
-        .expect("a repository_ctx method is called on one")
+        .downcast_ref::<crate::module_ctx::ModuleCtx>()
+        .expect("a context method is called on a repository_ctx or module_ctx")
         .env
+}
+
+/// The `os` of a context.
+pub(crate) fn os_members_for(env: &RepoEnv) -> RepoOs {
+    RepoOs {
+        environ: env.environ.clone(),
+    }
 }
 
 /// A path a rule named, and how it was named if by label.
@@ -762,21 +775,375 @@ fn flag(value: Option<Value<'_>>, default: bool) -> bool {
     value.and_then(|v| v.unpack_bool()).unwrap_or(default)
 }
 
+pub(crate) fn op_path<'v>(
+    this: Value<'v>,
+    args: &Arguments<'v, '_>,
+    eval: &mut Evaluator<'v, '_, '_>,
+) -> starlark::Result<Value<'v>> {
+    const PARAMS: &[P] = &[path_arg("path")];
+    let bound = bind_checked("path", PARAMS, args, eval)?;
+    let resolved = resolve(env_of(this), bound[0].expect("required"))?;
+    Ok(eval.heap().alloc(RepoPath {
+        path: resolved.path,
+    }))
+}
+
+pub(crate) fn op_file<'v>(
+    this: Value<'v>,
+    args: &Arguments<'v, '_>,
+    eval: &mut Evaluator<'v, '_, '_>,
+) -> starlark::Result<NoneType> {
+    let env = env_of(this);
+    let bound = bind_checked("file", FILE_PARAMS, args, eval)?;
+    let resolved = resolve(env, arg(FILE_PARAMS, &bound, "path").expect("required"))?;
+    let content = arg(FILE_PARAMS, &bound, "content")
+        .and_then(|c| c.unpack_str())
+        .unwrap_or_default();
+    let executable = flag(arg(FILE_PARAMS, &bound, "executable"), true);
+    write_file(env, &resolved, content.as_bytes(), executable)?;
+    Ok(NoneType)
+}
+
+pub(crate) fn op_template<'v>(
+    this: Value<'v>,
+    args: &Arguments<'v, '_>,
+    eval: &mut Evaluator<'v, '_, '_>,
+) -> starlark::Result<NoneType> {
+    let env = env_of(this);
+    let bound = bind_checked("template", TEMPLATE_PARAMS, args, eval)?;
+    let substitutions = match arg(TEMPLATE_PARAMS, &bound, "substitutions") {
+        Some(dict) => {
+            let dict = DictRef::from_value(dict).expect("checked");
+            if let Some((k, v)) = dict
+                .iter()
+                .find(|(k, v)| k.unpack_str().is_none() || v.unpack_str().is_none())
+            {
+                return Err(fatal(format!(
+                    "got dict<{}, {}> for 'substitutions', want dict<string, string>",
+                    k.get_type(),
+                    v.get_type()
+                )));
+            }
+            dict.iter()
+                .map(|(k, v)| {
+                    (
+                        k.unpack_str().expect("checked").to_owned(),
+                        v.unpack_str().expect("checked").to_owned(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        }
+        None => Vec::new(),
+    };
+    let target = resolve(env, arg(TEMPLATE_PARAMS, &bound, "path").expect("required"))?;
+    let template = resolve(
+        env,
+        arg(TEMPLATE_PARAMS, &bound, "template").expect("required"),
+    )?;
+    check_watch(
+        env,
+        &template,
+        arg(TEMPLATE_PARAMS, &bound, "watch_template"),
+    )?;
+    let mut text = read_text(&template)?;
+    for (from, to) in &substitutions {
+        if !from.is_empty() {
+            text = text.replace(from.as_str(), to);
+        }
+    }
+    let executable = flag(arg(TEMPLATE_PARAMS, &bound, "executable"), true);
+    write_file(env, &target, text.as_bytes(), executable)?;
+    Ok(NoneType)
+}
+
+pub(crate) fn op_read<'v>(
+    this: Value<'v>,
+    args: &Arguments<'v, '_>,
+    eval: &mut Evaluator<'v, '_, '_>,
+) -> starlark::Result<String> {
+    const PARAMS: &[P] = &[path_arg("path"), p("watch", false, false, "string", is_str)];
+    let env = env_of(this);
+    let bound = bind_checked("read", PARAMS, args, eval)?;
+    let resolved = resolve(env, arg(PARAMS, &bound, "path").expect("required"))?;
+    check_watch(env, &resolved, arg(PARAMS, &bound, "watch"))?;
+    read_text(&resolved)
+}
+
+pub(crate) fn op_delete<'v>(
+    this: Value<'v>,
+    args: &Arguments<'v, '_>,
+    eval: &mut Evaluator<'v, '_, '_>,
+) -> starlark::Result<bool> {
+    const PARAMS: &[P] =
+        &[p("path", true, true, "string or path", is_string_or_path).positional_only()];
+    let bound = bind_checked("delete", PARAMS, args, eval)?;
+    let resolved = resolve(env_of(this), bound[0].expect("required"))?;
+    let path = &resolved.path;
+    match std::fs::symlink_metadata(path) {
+        Ok(meta) if meta.is_dir() => std::fs::remove_dir_all(path)
+            .map(|()| true)
+            .map_err(|e| io_error(&e)),
+        Ok(_) => std::fs::remove_file(path)
+            .map(|()| true)
+            .map_err(|e| io_error(&e)),
+        Err(_) => Ok(false),
+    }
+}
+
+pub(crate) fn op_rename<'v>(
+    this: Value<'v>,
+    args: &Arguments<'v, '_>,
+    eval: &mut Evaluator<'v, '_, '_>,
+) -> starlark::Result<NoneType> {
+    const PARAMS: &[P] = &[path_arg("src"), path_arg("dst")];
+    let env = env_of(this);
+    let bound = bind_checked("rename", PARAMS, args, eval)?;
+    let from = resolve(env, bound[0].expect("required"))?;
+    let to = resolve(env, bound[1].expect("required"))?;
+    writable(env, &to)?;
+    let (src, dst) = (from.path.display(), to.path.display());
+    if std::fs::symlink_metadata(&to.path).is_ok() {
+        return Err(fatal(format!(
+            "java.io.IOException: Could not rename {src} to {dst}: already exists"
+        )));
+    }
+    make_parents(&to.path)?;
+    std::fs::rename(&from.path, &to.path).map_err(|e| {
+        fatal(format!(
+            "java.io.IOException: Could not rename {src} to {dst}: {}",
+            errno_text(&e, &format!("{src} -> {dst}"), 638)
+        ))
+    })?;
+    Ok(NoneType)
+}
+
+pub(crate) fn op_symlink<'v>(
+    this: Value<'v>,
+    args: &Arguments<'v, '_>,
+    eval: &mut Evaluator<'v, '_, '_>,
+) -> starlark::Result<NoneType> {
+    const PARAMS: &[P] = &[path_arg("target"), path_arg("link_name")];
+    let env = env_of(this);
+    let bound = bind_checked("symlink", PARAMS, args, eval)?;
+    let target = resolve(env, bound[0].expect("required"))?;
+    let link = resolve(env, bound[1].expect("required"))?;
+    writable(env, &link)?;
+    make_parents(&link.path)?;
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(&target.path, &link.path).map_err(|e| {
+        fatal(format!(
+            "java.io.IOException: Could not create symlink from {} to {}: {}",
+            target.path.display(),
+            link.path.display(),
+            errno_text(&e, &link.path.display().to_string(), 297)
+        ))
+    })?;
+    #[cfg(not(unix))]
+    return Err(fatal("symlink() is not supported on this platform"));
+    Ok(NoneType)
+}
+
+pub(crate) fn op_execute<'v>(
+    this: Value<'v>,
+    args: &Arguments<'v, '_>,
+    eval: &mut Evaluator<'v, '_, '_>,
+) -> starlark::Result<Value<'v>> {
+    const PARAMS: &[P] = &[
+        p("arguments", true, true, "sequence", is_sequence).positional_only(),
+        p("timeout", true, false, "int", is_int),
+        p("environment", true, false, "dict", is_dict),
+        p("quiet", true, false, "bool", is_bool),
+        p("working_directory", true, false, "string", is_str),
+    ];
+    let env = env_of(this);
+    let bound = bind_checked("execute", PARAMS, args, eval)?;
+    let heap = eval.heap();
+    let mut argv: Vec<String> = Vec::new();
+    for (i, item) in sequence(arg(PARAMS, &bound, "arguments").expect("required"), heap)
+        .unwrap_or_default()
+        .iter()
+        .enumerate()
+    {
+        if !is_path_like(*item) {
+            return Err(fatal(format!(
+                "Argument {i} of execute is neither a path, label, nor string."
+            )));
+        }
+        argv.push(resolve_text(env, *item)?);
+    }
+    let timeout = arg(PARAMS, &bound, "timeout")
+        .and_then(|t| t.unpack_i32())
+        .unwrap_or(600);
+    let mut vars = env.environ.clone();
+    if let Some(dict) = arg(PARAMS, &bound, "environment").and_then(DictRef::from_value) {
+        for (k, v) in dict.iter() {
+            let Some(k) = k.unpack_str() else {
+                return Err(fatal(format!(
+                    "environment keys must be strings, got {}",
+                    k.get_type()
+                )));
+            };
+            if v.is_none() {
+                vars.remove(k);
+            } else if let Some(v) = v.unpack_str() {
+                vars.insert(k.to_owned(), v.to_owned());
+            } else {
+                return Err(fatal(format!(
+                    "environment values must be strings or None, got {v}"
+                )));
+            }
+        }
+    }
+    let quiet = flag(arg(PARAMS, &bound, "quiet"), true);
+    let directory = match arg(PARAMS, &bound, "working_directory").and_then(|d| d.unpack_str()) {
+        Some(d) if !d.is_empty() => lexical(&env.output.join(d)),
+        _ => env.output.clone(),
+    };
+    std::fs::create_dir_all(&directory).map_err(|e| io_error(&e))?;
+    let result = run_process(&argv, &vars, &directory, timeout, quiet);
+    Ok(heap.alloc(result))
+}
+
+pub(crate) fn op_which<'v>(
+    this: Value<'v>,
+    args: &Arguments<'v, '_>,
+    eval: &mut Evaluator<'v, '_, '_>,
+) -> starlark::Result<Value<'v>> {
+    const PARAMS: &[P] = &[p("program", true, true, "string", is_str).positional_only()];
+    let env = env_of(this);
+    let bound = bind_checked("which", PARAMS, args, eval)?;
+    let program = bound[0].expect("required").unpack_str().expect("checked");
+    if program.contains('/') || program.contains('\\') {
+        return Err(fatal(format!(
+            "Program argument of which() may not contain a / or a \\ ('{program}' given)"
+        )));
+    }
+    let found = env
+        .environ
+        .get("PATH")
+        .into_iter()
+        .flat_map(|path| std::env::split_paths(path))
+        .map(|dir| dir.join(program))
+        .find(|candidate| is_executable(candidate));
+    Ok(match found {
+        Some(path) => eval.heap().alloc(RepoPath { path }),
+        None => Value::new_none(),
+    })
+}
+
+pub(crate) fn op_getenv<'v>(
+    this: Value<'v>,
+    args: &Arguments<'v, '_>,
+    eval: &mut Evaluator<'v, '_, '_>,
+) -> starlark::Result<Value<'v>> {
+    const PARAMS: &[P] = &[
+        p("name", true, true, "string", is_str).positional_only(),
+        p("default", true, false, "string or NoneType", is_str_or_none).positional_only(),
+    ];
+    let env = env_of(this);
+    let bound = bind_checked("getenv", PARAMS, args, eval)?;
+    let name = bound[0].expect("required").unpack_str().expect("checked");
+    Ok(match env.environ.get(name) {
+        Some(value) => string_value(eval.heap(), value),
+        None => bound[1].unwrap_or_else(Value::new_none),
+    })
+}
+
+pub(crate) fn op_report_progress<'v>(
+    this: Value<'v>,
+    args: &Arguments<'v, '_>,
+    eval: &mut Evaluator<'v, '_, '_>,
+) -> starlark::Result<NoneType> {
+    const PARAMS: &[P] = &[p("status", true, false, "string", is_str).positional_only()];
+    let _ = this;
+    bind_checked("report_progress", PARAMS, args, eval)?;
+    Ok(NoneType)
+}
+
+pub(crate) fn op_watch<'v>(
+    this: Value<'v>,
+    args: &Arguments<'v, '_>,
+    eval: &mut Evaluator<'v, '_, '_>,
+) -> starlark::Result<NoneType> {
+    watch_under(this, "watch", args, eval)
+}
+
+pub(crate) fn op_watch_tree<'v>(
+    this: Value<'v>,
+    args: &Arguments<'v, '_>,
+    eval: &mut Evaluator<'v, '_, '_>,
+) -> starlark::Result<NoneType> {
+    watch_under(this, "watch_tree", args, eval)
+}
+
+pub(crate) fn op_repo_metadata<'v>(
+    this: Value<'v>,
+    args: &Arguments<'v, '_>,
+    eval: &mut Evaluator<'v, '_, '_>,
+) -> starlark::Result<Value<'v>> {
+    const PARAMS: &[P] = &[
+        p("reproducible", false, false, "bool", is_bool),
+        p("attrs_for_reproducibility", false, false, "dict", is_dict),
+    ];
+    let _ = this;
+    bind_checked("repo_metadata", PARAMS, args, eval)?;
+    Ok(eval.heap().alloc(RepoMetadata))
+}
+
+pub(crate) fn op_download<'v>(
+    this: Value<'v>,
+    args: &Arguments<'v, '_>,
+    eval: &mut Evaluator<'v, '_, '_>,
+) -> starlark::Result<Value<'v>> {
+    let _ = (this, args, eval);
+    Err(not_yet("download"))
+}
+
+pub(crate) fn op_download_and_extract<'v>(
+    this: Value<'v>,
+    args: &Arguments<'v, '_>,
+    eval: &mut Evaluator<'v, '_, '_>,
+) -> starlark::Result<Value<'v>> {
+    let _ = (this, args, eval);
+    Err(not_yet("download_and_extract"))
+}
+
+pub(crate) fn op_extract<'v>(
+    this: Value<'v>,
+    args: &Arguments<'v, '_>,
+    eval: &mut Evaluator<'v, '_, '_>,
+) -> starlark::Result<Value<'v>> {
+    let _ = (this, args, eval);
+    Err(not_yet("extract"))
+}
+
+pub(crate) fn op_patch<'v>(
+    this: Value<'v>,
+    args: &Arguments<'v, '_>,
+    eval: &mut Evaluator<'v, '_, '_>,
+) -> starlark::Result<Value<'v>> {
+    let _ = (this, args, eval);
+    Err(not_yet("patch"))
+}
+
 #[starlark_module]
 fn ctx_members(builder: &mut MethodsBuilder) {
     /// The canonical name of the repository.
+
     #[starlark(attribute)]
     fn name<'v>(this: Value<'v>) -> starlark::Result<String> {
         Ok(env_of(this).name.clone())
     }
 
     /// The name the repository was declared under.
+
     #[starlark(attribute)]
     fn original_name<'v>(this: Value<'v>) -> starlark::Result<String> {
         Ok(env_of(this).original_name.clone())
     }
 
     /// The attributes the rule was called with.
+
     #[starlark(attribute)]
     fn attr<'v>(this: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
         Ok(heap.alloc(RepoAttrs {
@@ -785,6 +1152,7 @@ fn ctx_members(builder: &mut MethodsBuilder) {
     }
 
     /// The main repository's directory.
+
     #[starlark(attribute)]
     fn workspace_root<'v>(this: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
         Ok(heap.alloc(RepoPath {
@@ -793,6 +1161,7 @@ fn ctx_members(builder: &mut MethodsBuilder) {
     }
 
     /// The operating system.
+
     #[starlark(attribute)]
     fn os<'v>(this: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
         Ok(heap.alloc(RepoOs {
@@ -806,12 +1175,7 @@ fn ctx_members(builder: &mut MethodsBuilder) {
         args: &Arguments<'v, '_>,
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> starlark::Result<Value<'v>> {
-        const PARAMS: &[P] = &[path_arg("path")];
-        let bound = bind_checked("path", PARAMS, args, eval)?;
-        let resolved = resolve(env_of(this), bound[0].expect("required"))?;
-        Ok(eval.heap().alloc(RepoPath {
-            path: resolved.path,
-        }))
+        op_path(this, args, eval)
     }
 
     /// `ctx.file(path, content, executable, legacy_utf8)`.
@@ -820,15 +1184,7 @@ fn ctx_members(builder: &mut MethodsBuilder) {
         args: &Arguments<'v, '_>,
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> starlark::Result<NoneType> {
-        let env = env_of(this);
-        let bound = bind_checked("file", FILE_PARAMS, args, eval)?;
-        let resolved = resolve(env, arg(FILE_PARAMS, &bound, "path").expect("required"))?;
-        let content = arg(FILE_PARAMS, &bound, "content")
-            .and_then(|c| c.unpack_str())
-            .unwrap_or_default();
-        let executable = flag(arg(FILE_PARAMS, &bound, "executable"), true);
-        write_file(env, &resolved, content.as_bytes(), executable)?;
-        Ok(NoneType)
+        op_file(this, args, eval)
     }
 
     /// `ctx.template(path, template, substitutions, executable, watch_template)`.
@@ -837,51 +1193,7 @@ fn ctx_members(builder: &mut MethodsBuilder) {
         args: &Arguments<'v, '_>,
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> starlark::Result<NoneType> {
-        let env = env_of(this);
-        let bound = bind_checked("template", TEMPLATE_PARAMS, args, eval)?;
-        let substitutions = match arg(TEMPLATE_PARAMS, &bound, "substitutions") {
-            Some(dict) => {
-                let dict = DictRef::from_value(dict).expect("checked");
-                if let Some((k, v)) = dict
-                    .iter()
-                    .find(|(k, v)| k.unpack_str().is_none() || v.unpack_str().is_none())
-                {
-                    return Err(fatal(format!(
-                        "got dict<{}, {}> for 'substitutions', want dict<string, string>",
-                        k.get_type(),
-                        v.get_type()
-                    )));
-                }
-                dict.iter()
-                    .map(|(k, v)| {
-                        (
-                            k.unpack_str().expect("checked").to_owned(),
-                            v.unpack_str().expect("checked").to_owned(),
-                        )
-                    })
-                    .collect::<Vec<_>>()
-            }
-            None => Vec::new(),
-        };
-        let target = resolve(env, arg(TEMPLATE_PARAMS, &bound, "path").expect("required"))?;
-        let template = resolve(
-            env,
-            arg(TEMPLATE_PARAMS, &bound, "template").expect("required"),
-        )?;
-        check_watch(
-            env,
-            &template,
-            arg(TEMPLATE_PARAMS, &bound, "watch_template"),
-        )?;
-        let mut text = read_text(&template)?;
-        for (from, to) in &substitutions {
-            if !from.is_empty() {
-                text = text.replace(from.as_str(), to);
-            }
-        }
-        let executable = flag(arg(TEMPLATE_PARAMS, &bound, "executable"), true);
-        write_file(env, &target, text.as_bytes(), executable)?;
-        Ok(NoneType)
+        op_template(this, args, eval)
     }
 
     /// `ctx.read(path, watch)`.
@@ -890,12 +1202,7 @@ fn ctx_members(builder: &mut MethodsBuilder) {
         args: &Arguments<'v, '_>,
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> starlark::Result<String> {
-        const PARAMS: &[P] = &[path_arg("path"), p("watch", false, false, "string", is_str)];
-        let env = env_of(this);
-        let bound = bind_checked("read", PARAMS, args, eval)?;
-        let resolved = resolve(env, arg(PARAMS, &bound, "path").expect("required"))?;
-        check_watch(env, &resolved, arg(PARAMS, &bound, "watch"))?;
-        read_text(&resolved)
+        op_read(this, args, eval)
     }
 
     /// `ctx.delete(path)`: whether there was something to delete.
@@ -904,20 +1211,7 @@ fn ctx_members(builder: &mut MethodsBuilder) {
         args: &Arguments<'v, '_>,
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> starlark::Result<bool> {
-        const PARAMS: &[P] =
-            &[p("path", true, true, "string or path", is_string_or_path).positional_only()];
-        let bound = bind_checked("delete", PARAMS, args, eval)?;
-        let resolved = resolve(env_of(this), bound[0].expect("required"))?;
-        let path = &resolved.path;
-        match std::fs::symlink_metadata(path) {
-            Ok(meta) if meta.is_dir() => std::fs::remove_dir_all(path)
-                .map(|()| true)
-                .map_err(|e| io_error(&e)),
-            Ok(_) => std::fs::remove_file(path)
-                .map(|()| true)
-                .map_err(|e| io_error(&e)),
-            Err(_) => Ok(false),
-        }
+        op_delete(this, args, eval)
     }
 
     /// `ctx.rename(src, dst)`.
@@ -926,26 +1220,7 @@ fn ctx_members(builder: &mut MethodsBuilder) {
         args: &Arguments<'v, '_>,
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> starlark::Result<NoneType> {
-        const PARAMS: &[P] = &[path_arg("src"), path_arg("dst")];
-        let env = env_of(this);
-        let bound = bind_checked("rename", PARAMS, args, eval)?;
-        let from = resolve(env, bound[0].expect("required"))?;
-        let to = resolve(env, bound[1].expect("required"))?;
-        writable(env, &to)?;
-        let (src, dst) = (from.path.display(), to.path.display());
-        if std::fs::symlink_metadata(&to.path).is_ok() {
-            return Err(fatal(format!(
-                "java.io.IOException: Could not rename {src} to {dst}: already exists"
-            )));
-        }
-        make_parents(&to.path)?;
-        std::fs::rename(&from.path, &to.path).map_err(|e| {
-            fatal(format!(
-                "java.io.IOException: Could not rename {src} to {dst}: {}",
-                errno_text(&e, &format!("{src} -> {dst}"), 638)
-            ))
-        })?;
-        Ok(NoneType)
+        op_rename(this, args, eval)
     }
 
     /// `ctx.symlink(target, link_name)`.
@@ -954,25 +1229,7 @@ fn ctx_members(builder: &mut MethodsBuilder) {
         args: &Arguments<'v, '_>,
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> starlark::Result<NoneType> {
-        const PARAMS: &[P] = &[path_arg("target"), path_arg("link_name")];
-        let env = env_of(this);
-        let bound = bind_checked("symlink", PARAMS, args, eval)?;
-        let target = resolve(env, bound[0].expect("required"))?;
-        let link = resolve(env, bound[1].expect("required"))?;
-        writable(env, &link)?;
-        make_parents(&link.path)?;
-        #[cfg(unix)]
-        std::os::unix::fs::symlink(&target.path, &link.path).map_err(|e| {
-            fatal(format!(
-                "java.io.IOException: Could not create symlink from {} to {}: {}",
-                target.path.display(),
-                link.path.display(),
-                errno_text(&e, &link.path.display().to_string(), 297)
-            ))
-        })?;
-        #[cfg(not(unix))]
-        return Err(fatal("symlink() is not supported on this platform"));
-        Ok(NoneType)
+        op_symlink(this, args, eval)
     }
 
     /// `ctx.execute(arguments, timeout, environment, quiet, working_directory)`.
@@ -981,61 +1238,7 @@ fn ctx_members(builder: &mut MethodsBuilder) {
         args: &Arguments<'v, '_>,
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> starlark::Result<Value<'v>> {
-        const PARAMS: &[P] = &[
-            p("arguments", true, true, "sequence", is_sequence).positional_only(),
-            p("timeout", true, false, "int", is_int),
-            p("environment", true, false, "dict", is_dict),
-            p("quiet", true, false, "bool", is_bool),
-            p("working_directory", true, false, "string", is_str),
-        ];
-        let env = env_of(this);
-        let bound = bind_checked("execute", PARAMS, args, eval)?;
-        let heap = eval.heap();
-        let mut argv: Vec<String> = Vec::new();
-        for (i, item) in sequence(arg(PARAMS, &bound, "arguments").expect("required"), heap)
-            .unwrap_or_default()
-            .iter()
-            .enumerate()
-        {
-            if !is_path_like(*item) {
-                return Err(fatal(format!(
-                    "Argument {i} of execute is neither a path, label, nor string."
-                )));
-            }
-            argv.push(resolve_text(env, *item)?);
-        }
-        let timeout = arg(PARAMS, &bound, "timeout")
-            .and_then(|t| t.unpack_i32())
-            .unwrap_or(600);
-        let mut vars = env.environ.clone();
-        if let Some(dict) = arg(PARAMS, &bound, "environment").and_then(DictRef::from_value) {
-            for (k, v) in dict.iter() {
-                let Some(k) = k.unpack_str() else {
-                    return Err(fatal(format!(
-                        "environment keys must be strings, got {}",
-                        k.get_type()
-                    )));
-                };
-                if v.is_none() {
-                    vars.remove(k);
-                } else if let Some(v) = v.unpack_str() {
-                    vars.insert(k.to_owned(), v.to_owned());
-                } else {
-                    return Err(fatal(format!(
-                        "environment values must be strings or None, got {v}"
-                    )));
-                }
-            }
-        }
-        let quiet = flag(arg(PARAMS, &bound, "quiet"), true);
-        let directory = match arg(PARAMS, &bound, "working_directory").and_then(|d| d.unpack_str())
-        {
-            Some(d) if !d.is_empty() => lexical(&env.output.join(d)),
-            _ => env.output.clone(),
-        };
-        std::fs::create_dir_all(&directory).map_err(|e| io_error(&e))?;
-        let result = run_process(&argv, &vars, &directory, timeout, quiet);
-        Ok(heap.alloc(result))
+        op_execute(this, args, eval)
     }
 
     /// `ctx.which(program)`.
@@ -1044,26 +1247,7 @@ fn ctx_members(builder: &mut MethodsBuilder) {
         args: &Arguments<'v, '_>,
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> starlark::Result<Value<'v>> {
-        const PARAMS: &[P] = &[p("program", true, true, "string", is_str).positional_only()];
-        let env = env_of(this);
-        let bound = bind_checked("which", PARAMS, args, eval)?;
-        let program = bound[0].expect("required").unpack_str().expect("checked");
-        if program.contains('/') || program.contains('\\') {
-            return Err(fatal(format!(
-                "Program argument of which() may not contain a / or a \\ ('{program}' given)"
-            )));
-        }
-        let found = env
-            .environ
-            .get("PATH")
-            .into_iter()
-            .flat_map(|path| std::env::split_paths(path))
-            .map(|dir| dir.join(program))
-            .find(|candidate| is_executable(candidate));
-        Ok(match found {
-            Some(path) => eval.heap().alloc(RepoPath { path }),
-            None => Value::new_none(),
-        })
+        op_which(this, args, eval)
     }
 
     /// `ctx.getenv(name, default)`.
@@ -1072,17 +1256,7 @@ fn ctx_members(builder: &mut MethodsBuilder) {
         args: &Arguments<'v, '_>,
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> starlark::Result<Value<'v>> {
-        const PARAMS: &[P] = &[
-            p("name", true, true, "string", is_str).positional_only(),
-            p("default", true, false, "string or NoneType", is_str_or_none).positional_only(),
-        ];
-        let env = env_of(this);
-        let bound = bind_checked("getenv", PARAMS, args, eval)?;
-        let name = bound[0].expect("required").unpack_str().expect("checked");
-        Ok(match env.environ.get(name) {
-            Some(value) => string_value(eval.heap(), value),
-            None => bound[1].unwrap_or_else(Value::new_none),
-        })
+        op_getenv(this, args, eval)
     }
 
     /// `ctx.report_progress(status)`.
@@ -1091,10 +1265,7 @@ fn ctx_members(builder: &mut MethodsBuilder) {
         args: &Arguments<'v, '_>,
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> starlark::Result<NoneType> {
-        const PARAMS: &[P] = &[p("status", true, false, "string", is_str).positional_only()];
-        let _ = this;
-        bind_checked("report_progress", PARAMS, args, eval)?;
-        Ok(NoneType)
+        op_report_progress(this, args, eval)
     }
 
     /// `ctx.watch(path)`.
@@ -1103,7 +1274,7 @@ fn ctx_members(builder: &mut MethodsBuilder) {
         args: &Arguments<'v, '_>,
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> starlark::Result<NoneType> {
-        watch_under(this, "watch", args, eval)
+        op_watch(this, args, eval)
     }
 
     /// `ctx.watch_tree(path)`.
@@ -1112,7 +1283,7 @@ fn ctx_members(builder: &mut MethodsBuilder) {
         args: &Arguments<'v, '_>,
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> starlark::Result<NoneType> {
-        watch_under(this, "watch_tree", args, eval)
+        op_watch_tree(this, args, eval)
     }
 
     /// `ctx.repo_metadata(reproducible, attrs_for_reproducibility)`.
@@ -1121,13 +1292,7 @@ fn ctx_members(builder: &mut MethodsBuilder) {
         args: &Arguments<'v, '_>,
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> starlark::Result<Value<'v>> {
-        const PARAMS: &[P] = &[
-            p("reproducible", false, false, "bool", is_bool),
-            p("attrs_for_reproducibility", false, false, "dict", is_dict),
-        ];
-        let _ = this;
-        bind_checked("repo_metadata", PARAMS, args, eval)?;
-        Ok(eval.heap().alloc(RepoMetadata))
+        op_repo_metadata(this, args, eval)
     }
 
     /// `ctx.download(...)`: buildfiji-mum.8.3.
@@ -1136,8 +1301,7 @@ fn ctx_members(builder: &mut MethodsBuilder) {
         args: &Arguments<'v, '_>,
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> starlark::Result<Value<'v>> {
-        let _ = (this, args, eval);
-        Err(not_yet("download"))
+        op_download(this, args, eval)
     }
 
     /// `ctx.download_and_extract(...)`: buildfiji-mum.8.3.
@@ -1146,8 +1310,7 @@ fn ctx_members(builder: &mut MethodsBuilder) {
         args: &Arguments<'v, '_>,
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> starlark::Result<Value<'v>> {
-        let _ = (this, args, eval);
-        Err(not_yet("download_and_extract"))
+        op_download_and_extract(this, args, eval)
     }
 
     /// `ctx.extract(...)`: buildfiji-mum.8.3.
@@ -1156,8 +1319,7 @@ fn ctx_members(builder: &mut MethodsBuilder) {
         args: &Arguments<'v, '_>,
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> starlark::Result<Value<'v>> {
-        let _ = (this, args, eval);
-        Err(not_yet("extract"))
+        op_extract(this, args, eval)
     }
 
     /// `ctx.patch(...)`: buildfiji-mum.8.3.
@@ -1166,8 +1328,7 @@ fn ctx_members(builder: &mut MethodsBuilder) {
         args: &Arguments<'v, '_>,
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> starlark::Result<Value<'v>> {
-        let _ = (this, args, eval);
-        Err(not_yet("patch"))
+        op_patch(this, args, eval)
     }
 }
 
@@ -1357,9 +1518,12 @@ pub fn run_repository_rule(
     mappings: &RepoMappings,
     print: Option<&dyn starlark::PrintHandler>,
 ) -> Result<(), RepoError> {
-    let rule = module.get(rule_name).map_err(|_| RepoError {
-        message: format!("no repository rule named {rule_name}"),
-    })?;
+    let rule = module
+        .get_any_visibility(rule_name)
+        .map(|(value, _)| value)
+        .map_err(|_| RepoError {
+            message: format!("no repository rule named {rule_name}"),
+        })?;
     let env = Arc::new(env);
     let result = Module::with_temp_heap(|scratch| {
         scratch.frozen_heap().add_reference(rule.owner());
@@ -1407,7 +1571,7 @@ pub fn run_repository_rule(
 pub fn repository_rule_defaults(module: &FrozenModule, rule_name: &str) -> Vec<(String, RepoAttr)> {
     use crate::attr::view as attribute_view;
     use fjfj_graph::rule::AttrValue;
-    let Ok(rule) = module.get(rule_name) else {
+    let Ok((rule, _)) = module.get_any_visibility(rule_name) else {
         return Vec::new();
     };
     let Some(attrs) = repository_rule_arg(rule.value(), "attrs").and_then(DictRef::from_value)
@@ -1421,6 +1585,7 @@ pub fn repository_rule_defaults(module: &FrozenModule, rule_name: &str) -> Vec<(
         };
         let value = view.def.default.clone().or_else(|| view.def.ty.zero());
         let converted = match value {
+            None => RepoAttr::None,
             Some(AttrValue::Bool(b)) => RepoAttr::Bool(b),
             Some(AttrValue::Int(i)) => RepoAttr::Int(i64::from(i)),
             Some(AttrValue::String(s)) => RepoAttr::String(s),

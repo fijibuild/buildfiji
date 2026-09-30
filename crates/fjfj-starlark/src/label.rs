@@ -96,7 +96,7 @@ impl RepoMappings {
 
     /// The canonical repo `apparent` names in `from`, or the placeholder
     /// Bazel puts in a label whose repo `from` cannot name.
-    pub(crate) fn resolve_apparent(&self, from: &str, apparent: &str) -> String {
+    pub fn resolve_apparent(&self, from: &str, apparent: &str) -> String {
         let entries = self.by_repo.get(from);
         if let Some(canonical) = entries.and_then(|e| e.get(apparent)) {
             return canonical.clone();
@@ -135,6 +135,11 @@ pub(crate) struct BzlEval<'a> {
     mappings: &'a RepoMappings,
     /// The names the file assigns at its top level, in order.
     assigned: Vec<String>,
+    /// The file's own code is being run, as opposed to a function of it
+    /// called later (a repository rule's implementation).
+    loading: bool,
+    /// A module extension is running, and what it has made so far.
+    pub(crate) extension: Option<std::cell::RefCell<crate::module_ctx::ExtensionState>>,
 }
 
 impl<'a> BzlEval<'a> {
@@ -145,6 +150,8 @@ impl<'a> BzlEval<'a> {
         BzlEval {
             mappings,
             assigned: Vec::new(),
+            loading: false,
+            extension: None,
         }
     }
 }
@@ -160,6 +167,8 @@ pub fn evaluate_bzl(input: &BzlFile<'_>) -> starlark::Result<FrozenModule> {
     let env = BzlEval {
         mappings: input.mappings,
         assigned: assigned_names(&ast),
+        loading: true,
+        extension: None,
     };
     Module::with_temp_heap(|module| {
         {
@@ -181,7 +190,8 @@ pub fn evaluate_bzl(input: &BzlFile<'_>) -> starlark::Result<FrozenModule> {
 /// the module it looks at is not the one that made a value).
 pub(crate) fn evaluating_bzl(eval: &Evaluator<'_, '_, '_>) -> bool {
     eval.extra
-        .is_some_and(|e| e.downcast_ref::<BzlEval>().is_some())
+        .and_then(|e| e.downcast_ref::<BzlEval>())
+        .is_some_and(|e| e.loading)
 }
 
 /// Whether the `.bzl` being evaluated assigns a top-level name that starts
@@ -288,6 +298,16 @@ pub(crate) struct StarlarkLabel {
 }
 
 starlark_simple_value!(StarlarkLabel);
+
+impl StarlarkLabel {
+    pub(crate) fn into_label(self) -> Label {
+        Label {
+            repo: self.repo,
+            package: self.package,
+            name: self.name,
+        }
+    }
+}
 
 impl From<Label> for StarlarkLabel {
     fn from(label: Label) -> Self {

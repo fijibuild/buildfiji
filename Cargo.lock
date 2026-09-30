@@ -1076,6 +1076,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "fjfj-repo"
+version = "0.0.1"
+dependencies = [
+ "fjfj-bzlmod",
+ "fjfj-graph",
+ "fjfj-loading",
+ "fjfj-starlark",
+ "starlark",
+ "tempfile",
+ "thiserror",
+ "tracing",
+]
+
+[[package]]
 name = "fjfj-sandbox"
 version = "0.0.1"
 dependencies = [

@@ -53,6 +53,33 @@ pub(crate) fn assigned_name(eval: &Evaluator<'_, '_, '_>) -> Option<String> {
     identifier.then(|| name.to_owned())
 }
 
+/// Where the call being made is, the way Bazel writes a location:
+/// `ext.bzl:6:9`, the file path in its package, the line, and the column of the
+/// call's opening parenthesis.
+pub(crate) fn paren_location(eval: &Evaluator<'_, '_, '_>) -> String {
+    let Some(at) = eval.call_stack_top_location() else {
+        return String::new();
+    };
+    let resolved = at.resolve();
+    let begin = at.span.begin();
+    let line = at.file.find_line(begin);
+    let start = at.file.line_span(line).begin();
+    let text = at.file.source_line(line);
+    let offset = (begin.get() - start.get()) as usize;
+    let paren = text
+        .get(offset..)
+        .and_then(|rest| rest.find('(').map(|i| offset + i))
+        .unwrap_or(offset);
+    let column = text.get(..paren).map_or(paren, |s| s.chars().count()) + 1;
+    // `@@repo//pkg:file.bzl` as the path `pkg/file.bzl`.
+    let file = resolved.file.as_str();
+    let path = match file.split_once("//") {
+        Some((_, rest)) => rest.replace(':', "/").trim_start_matches('/').to_owned(),
+        None => file.to_owned(),
+    };
+    format!("{path}:{}:{column}", resolved.span.begin.line + 1)
+}
+
 /// Give the value `cell` belongs to the name it is assigned to on the line
 /// being run, if there is one, and the error if its kind may not have it.
 pub(crate) fn name_at_assignment(

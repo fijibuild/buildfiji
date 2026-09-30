@@ -1,0 +1,18 @@
+[package]
+name = "fjfj-repo"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+fjfj-bzlmod.workspace = true
+fjfj-graph.workspace = true
+fjfj-loading.workspace = true
+fjfj-starlark.workspace = true
+starlark.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

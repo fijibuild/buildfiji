@@ -227,10 +227,21 @@ where
 {
     fn invoke(
         &self,
-        _me: Value<'v>,
+        me: Value<'v>,
         args: &Arguments<'v, '_>,
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> starlark::Result<Value<'v>> {
+        if crate::module_ctx::extension_running(eval) {
+            let Some(name) = self.name.get() else {
+                return Err(fatal(
+                    "attempting to instantiate a non-exported repository rule",
+                ));
+            };
+            let id = format!("{}%{name}", self.file);
+            if let Some(made) = crate::module_ctx::call_repository_rule(me, id, name, args, eval)? {
+                return Ok(made);
+            }
+        }
         if args.positions(eval.heap())?.next().is_some() {
             return Err(fatal("unexpected positional arguments"));
         }
@@ -303,6 +314,10 @@ fn make_repository_rule<'v>(
 pub(crate) struct ModuleExtensionGen<V> {
     #[trace(static)]
     id: u64,
+    /// Where `module_extension()` was called, `ext.bzl:7:23`.
+    #[trace(static)]
+    #[allocative(skip)]
+    location: String,
     #[trace(static)]
     #[allocative(skip)]
     names: Vec<&'static str>,
@@ -317,6 +332,7 @@ impl<'v> Freeze for ModuleExtension<'v> {
     fn freeze(self, freezer: &Freezer) -> FreezeResult<FrozenModuleExtension> {
         Ok(ModuleExtensionGen {
             id: self.id,
+            location: self.location,
             names: self.names,
             args: self
                 .args
@@ -346,8 +362,18 @@ fn module_extension_id(value: Value<'_>) -> Option<u64> {
     }
 }
 
+/// Where `module_extension()` was called to make `value`.
+pub(crate) fn module_extension_def_location(value: Value<'_>) -> Option<String> {
+    if let Some(live) = value.downcast_ref::<ModuleExtension<'_>>() {
+        Some(live.location.clone())
+    } else {
+        value
+            .downcast_ref::<FrozenModuleExtension>()
+            .map(|frozen| frozen.location.clone())
+    }
+}
+
 /// What the module extension `value` was made with for the parameter `name`.
-#[allow(dead_code)]
 pub(crate) fn module_extension_arg<'v>(value: Value<'v>, name: &str) -> Option<Value<'v>> {
     fn of<'v, V: ValueLike<'v>>(a: &ModuleExtensionGen<V>, name: &str) -> Option<Value<'v>> {
         let at = a.names.iter().position(|n| *n == name)?;
@@ -414,8 +440,10 @@ fn make_module_extension<'v>(
         environ_strings("environ", environ, heap)?;
     }
     let (names, values) = given(MODULE_EXTENSION_PARAMS, &bound);
+    let location = crate::exports::paren_location(eval);
     Ok(heap.alloc_complex(ModuleExtensionGen {
         id: next_id(),
+        location,
         names,
         args: values,
     }))

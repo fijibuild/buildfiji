@@ -20,6 +20,7 @@ fjfj-loading = { path = "crates/fjfj-loading" }
 fjfj-models = { path = "crates/fjfj-models" }
 fjfj-proto = { path = "crates/fjfj-proto" }
 fjfj-remote = { path = "crates/fjfj-remote" }
+fjfj-repo = { path = "crates/fjfj-repo" }
 fjfj-sandbox = { path = "crates/fjfj-sandbox" }
 fjfj-starlark = { path = "crates/fjfj-starlark" }
 fjfj-telemetry = { path = "crates/fjfj-telemetry" }

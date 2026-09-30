@@ -49,6 +49,7 @@ mod macros;
 mod macros_matrix;
 #[cfg(test)]
 mod macros_tests;
+mod module_ctx;
 mod native;
 mod proto;
 mod provider;
@@ -77,6 +78,10 @@ pub use dialect::{FileKind, build_dialect, bzl_dialect, parse};
 pub use label::{BzlFile, RepoMappings, bzl_name, evaluate_bzl};
 pub use load_visibility::{LoadVisibility, check_load_visibility, load_visibility};
 pub use loader::{BzlLoader, Importing};
+pub use module_ctx::{
+    ExtensionInput, ExtensionOutput, GeneratedRepo, ModuleUse, TagUse, TagValue,
+    convert_repo_attrs, has_module_extension, has_repository_rule, run_module_extension,
+};
 pub use native::{
     BuildFile, BuildFileError, BuildFileOutput, build_globals, bzl_globals, evaluate_build_file,
 };

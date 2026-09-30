@@ -282,7 +282,8 @@ struct ModuleState {
     warnings: Vec<String>,
     /// Every repo name this file has claimed, and how, so a collision can
     /// name both sides — Bazel's `repoNameUsages`.
-    repo_name_usages: Vec<(String, String)>,
+    /// Each repo name in use, how it came to be, and where.
+    repo_name_usages: Vec<(String, String, String)>,
 }
 
 impl ModuleContext {
@@ -308,21 +309,26 @@ impl ModuleContext {
         self.state.borrow_mut().had_non_module_call = true;
     }
 
-    fn add_repo_name_usage(&self, repo_name: &str, how: &str) -> starlark::Result<()> {
+    fn add_repo_name_usage(
+        &self,
+        repo_name: &str,
+        how: &str,
+        location: &str,
+    ) -> starlark::Result<()> {
         let mut state = self.state.borrow_mut();
-        if let Some((_, existing_how)) = state
+        if let Some((_, existing_how, existing_at)) = state
             .repo_name_usages
             .iter()
-            .find(|(name, _)| name == repo_name)
+            .find(|(name, _, _)| name == repo_name)
         {
             return Err(err(format!(
-                "The repo name '{repo_name}' cannot be defined {how} as it is already defined \
-                 {existing_how}"
+                "The repo name '{repo_name}' cannot be defined {how} at {location} as it is \
+                 already defined {existing_how} at {existing_at}"
             )));
         }
         state
             .repo_name_usages
-            .push((repo_name.to_owned(), how.to_owned()));
+            .push((repo_name.to_owned(), how.to_owned(), location.to_owned()));
         Ok(())
     }
 
@@ -359,6 +365,7 @@ impl ModuleContext {
             imports: Vec::new(),
             tags: Vec::new(),
             repo_overrides: Vec::new(),
+            location: String::new(),
         });
         state.extension_usages.len() - 1
     }
@@ -375,7 +382,7 @@ impl ModuleContext {
             if state
                 .repo_name_usages
                 .iter()
-                .any(|(name, _)| name == builtin)
+                .any(|(name, _, _)| name == builtin)
             {
                 return Err(BzlmodError::BadModule {
                     key: self.options.key.to_string(),
@@ -500,6 +507,30 @@ fn attrs_from_kwargs(kwargs: SmallMap<String, Value<'_>>) -> starlark::Result<At
         .collect()
 }
 
+/// Where the call being made is, as Bazel writes it: the file, the line, and
+/// the column of the call's opening parenthesis (`MODULE.bazel:3:8`).
+fn call_location(eval: &Evaluator<'_, '_, '_>) -> String {
+    let Some(at) = eval.call_stack_top_location() else {
+        return String::new();
+    };
+    let resolved = at.resolve();
+    let begin = at.span.begin();
+    let line = at.file.find_line(begin);
+    let start = at.file.line_span(line).begin();
+    let text = at.file.source_line(line);
+    let offset = (begin.get() - start.get()) as usize;
+    let paren = text
+        .get(offset..)
+        .and_then(|rest| rest.find('(').map(|i| offset + i))
+        .unwrap_or(offset);
+    let column = text.get(..paren).map_or(paren, |s| s.chars().count()) + 1;
+    format!(
+        "{}:{}:{column}",
+        resolved.file,
+        resolved.span.begin.line + 1
+    )
+}
+
 /// The proxy `use_extension` returns.
 ///
 /// It carries only an index into the context's usage list: the tags it
@@ -569,6 +600,7 @@ impl<'v> StarlarkValue<'v> for TagCallable {
                 AttrValue::from_value(value).map_err(|e| err(e.to_string()))?,
             ));
         }
+        let location = call_location(eval);
         let ctx = ModuleContext::from_eval(eval).map_err(|e| err(e.to_string()))?;
         ctx.set_non_module_called();
         ctx.state.borrow_mut().extension_usages[self.usage_index]
@@ -577,6 +609,7 @@ impl<'v> StarlarkValue<'v> for TagCallable {
                 tag_class: self.tag_class.clone(),
                 attrs,
                 dev_dependency: self.dev_dependency,
+                location,
             });
         Ok(Value::new_none())
     }
@@ -585,7 +618,9 @@ impl<'v> StarlarkValue<'v> for TagCallable {
 /// The file a `use_repo_rule` repo is attributed to. Bazel uses the module
 /// file itself, since the rule call is written there rather than in an
 /// extension.
-const INNATE_EXTENSION_FILE: &str = "//:MODULE.bazel";
+/// The `.bzl` an innate extension (a `use_repo_rule`) is recorded under; its
+/// name is `<bzl> <rule>`.
+pub const INNATE_EXTENSION_FILE: &str = "//:MODULE.bazel";
 
 /// The callable `use_repo_rule` returns.
 #[derive(Debug, PartialEq, ProvidesStaticType, NoSerialize, StarlarkPagable, Allocative)]
@@ -633,18 +668,20 @@ impl<'v> StarlarkValue<'v> for RepoRuleProxy {
         }
         let repo_name = repo_name.ok_or_else(|| err("use_repo_rule() requires a name"))?;
 
+        let location = call_location(eval);
         let ctx = ModuleContext::from_eval(eval).map_err(|e| err(e.to_string()))?;
         ctx.set_non_module_called();
         if ctx.options.ignore_dev_deps && dev_dependency {
             return Ok(Value::new_none());
         }
-        ctx.add_repo_name_usage(&repo_name, "by a repo rule")?;
+        ctx.add_repo_name_usage(&repo_name, "by a repo rule", &location)?;
         let mut state = ctx.state.borrow_mut();
         let usage = &mut state.extension_usages[self.usage_index];
         usage.tags.push(Tag {
             tag_class: "repo".to_owned(),
             attrs,
             dev_dependency,
+            location,
         });
         usage.imports.push((repo_name.clone(), repo_name));
         Ok(Value::new_none())
@@ -718,11 +755,15 @@ fn module_file_globals(builder: &mut GlobalsBuilder) {
         let version = parse_version("module", version)?;
 
         let repo_name = if repo_name.is_empty() {
-            ctx.add_repo_name_usage(name, "as the current module name")?;
+            ctx.add_repo_name_usage(name, "as the current module name", &call_location(eval))?;
             None
         } else {
             check_user_repo_name(repo_name)?;
-            ctx.add_repo_name_usage(repo_name, "as the module's own repo name")?;
+            ctx.add_repo_name_usage(
+                repo_name,
+                "as the module's own repo name",
+                &call_location(eval),
+            )?;
             Some(repo_name.to_owned())
         };
 
@@ -795,7 +836,7 @@ fn module_file_globals(builder: &mut GlobalsBuilder) {
             }
         }
         if let Some(repo_name) = &repo_name {
-            ctx.add_repo_name_usage(repo_name, "by a bazel_dep")?;
+            ctx.add_repo_name_usage(repo_name, "by a bazel_dep", &call_location(eval))?;
         }
         Ok(NoneType)
     }
@@ -848,6 +889,7 @@ fn module_file_globals(builder: &mut GlobalsBuilder) {
                 "extension name is not a valid identifier: {extension_name}"
             )));
         }
+        let location = call_location(eval);
         let usage_index = {
             let mut state = ctx.state.borrow_mut();
             // Non-isolated usages of the same extension share one row, so
@@ -874,6 +916,7 @@ fn module_file_globals(builder: &mut GlobalsBuilder) {
                         imports: Vec::new(),
                         tags: Vec::new(),
                         repo_overrides: Vec::new(),
+                        location,
                     });
                     state.extension_usages.len() - 1
                 }
@@ -920,7 +963,7 @@ fn module_file_globals(builder: &mut GlobalsBuilder) {
             .collect();
         for (local_name, _) in &imports {
             check_user_repo_name(local_name)?;
-            ctx.add_repo_name_usage(local_name, "by a use_repo() call")?;
+            ctx.add_repo_name_usage(local_name, "by a use_repo() call", &call_location(eval))?;
         }
         ctx.state.borrow_mut().extension_usages[proxy.usage_index]
             .imports

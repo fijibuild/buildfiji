@@ -175,6 +175,9 @@ pub struct ExtensionUsage {
     pub tags: Vec<Tag>,
     /// `override_repo` and `inject_repo` calls on this extension.
     pub repo_overrides: Vec<RepoOverride>,
+    /// Where the `use_extension` call was, `MODULE.bazel:2:20`: the column is
+    /// the call's opening parenthesis, as Bazel reports it.
+    pub location: String,
 }
 
 /// A repo an extension generates, redirected to one the module already
@@ -196,6 +199,8 @@ pub struct Tag {
     pub tag_class: String,
     pub attrs: Attrs,
     pub dev_dependency: bool,
+    /// Where the call was, `MODULE.bazel:3:8`.
+    pub location: String,
 }
 
 /// One evaluated `MODULE.bazel` file.
