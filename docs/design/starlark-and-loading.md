@@ -1049,6 +1049,36 @@ Not covered: a module whose source is an archive or git repository
 `http_archive_matrix` replays), `archive_override` and friends, and several
 threads asking for repos at once (a repo may then be made twice).
 
+## Carrying changes to the `starlark` crate (decided 2026-09-30, buildfiji-6z4)
+
+**Decision: a patch queue, applied by Bazel to the crate it downloads.** `MODULE.bazel`
+has `crate.annotation(crate = "starlark", patches = ["//third_party/starlark/NNNN-*.patch"],
+patch_args = ["-p1"])`; `third_party/starlark/README.md` says how to make one. It was tried
+on buildfiji-b9c (`"%s" % label`) and works: the patched crate is what `bazel build` links,
+the probe row that was skipped now passes, and cargo (which builds nothing here) is unaffected.
+
+Options considered:
+
+1. **A fork under `[patch.crates-io]`.** The same patches, plus a copy of four crates
+   (`starlark`, `starlark_syntax`, `starlark_derive`, `starlark_map`) to keep in step with
+   every release, and a splice of path crates into crate_universe. Rejected: the patch queue
+   gives the same diff without the copy.
+2. **Upstream PRs only.** Right for changes Buck2 wants, but it leaves fjfj with Bazel
+   differences for as long as a review takes. Kept as the second step: each patch says
+   whether it was sent.
+3. **Workarounds in fjfj** (AST rewrites, wrappers, hooks), as mum.3.x did. Kept where it
+   reaches the gap cheaply and cleanly: buildfiji-8q5 (`\u`, `\U`, `\x` escapes) is a
+   check over the string literals after parsing, in `dialect.rs`, and stays there.
+4. **Replacing the evaluator.** Not reconsidered: the mum.1 spike rejected a custom parser on
+   speed, and nothing here is about evaluation speed.
+
+What goes where: patch: buildfiji-b9c (done, `0001`), buildfiji-tg2 (in-place set
+operators: `stmt.rs`), buildfiji-2r5 (recursion: the call path of `def`), buildfiji-gpj (a
+huge repeat panics), buildfiji-sib (cyclic `repr`, raw strings) and buildfiji-wtt, buildfiji-9zq
+(split keywords, `elems()` iterators) when each is taken; fjfj side: buildfiji-8q5. Error
+wording (buildfiji-v32, print of a label) is decided row by row: a patch when a whole family of
+messages is the crate's, a wrapper when it is one call.
+
 ## Bazel's own `http_archive` and `git_repository` (implemented 2026-09-30, buildfiji-mum.12)
 
 `@bazel_tools`' repository rules are Starlark, and they run as Bazel ships

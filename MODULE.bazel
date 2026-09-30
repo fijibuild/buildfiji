@@ -55,4 +55,12 @@ crate.from_cargo(
         "//crates/fjfj-proto:Cargo.toml",
     ],
 )
+# The patch queue of the starlark crate (docs/design/starlark-and-loading.md,
+# buildfiji-6z4): each patch is a difference from Bazel 9.2.0 that only a change
+# inside the crate can fix.
+crate.annotation(
+    crate = "starlark",
+    patch_args = ["-p1"],
+    patches = ["//third_party/starlark:0001-percent-s-is-str.patch"],
+)
 use_repo(crate, "crates")

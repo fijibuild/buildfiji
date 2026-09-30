@@ -410,10 +410,7 @@ fn bazels_http_archive_and_http_file_replay_bazel() {
         let got = run(row);
         let error_ok = match (&got.error, row.error) {
             (None, None) => true,
-            // buildfiji-b9c: `"%s" % path` quotes the path, as repr does.
-            (Some(got), Some(want)) => {
-                got.contains(want) || got.replace("\"\"", "\"").contains(want)
-            }
+            (Some(got), Some(want)) => got.contains(want),
             _ => false,
         };
         let want_tree: BTreeMap<String, String> = row

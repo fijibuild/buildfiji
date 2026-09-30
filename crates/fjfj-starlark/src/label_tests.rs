@@ -19,7 +19,7 @@ const GENERIC: &[&str] = &[
 /// Probes with a known difference: `.name()` calls the attribute as if it
 /// were a method (buildfiji-v32), and `%s` and an unnumbered `{}` format a
 /// label with `repr` (buildfiji-b9c).
-const SKIPPED: &[&str] = &[".name()", ".package()", "\"%s %r\"", "\"{}\".format(Label"];
+const SKIPPED: &[&str] = &[".name()", ".package()", "\"{}\".format(Label"];
 
 fn assert_replays(wrong: Vec<String>) {
     assert!(
