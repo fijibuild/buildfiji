@@ -17,22 +17,22 @@
 //! ...`), and an *event* is reported, recorded, and the file goes on, so one
 //! run can list several. Events fail the package at the end.
 
-use fjfj_graph::package::{Package, PackageBuilder, PackageSettings, Target, TargetKind};
-use fjfj_graph::rule::{
-    self, AttrSpec, AttrType, AttrValue, RuleClass, label_relative_to, native_rule,
-};
+use crate::instantiate::{call_rule, native_schema, rule_view};
+use fjfj_graph::package::{Package, PackageBuilder, PackageSettings};
+use fjfj_graph::rule;
+use fjfj_graph::schema::RuleSchema;
 use fjfj_graph::visibility::{PackageGroup, PackageSpec, Visibility};
 use fjfj_graph::{Label, LabelContext};
 use fjfj_loading::{GlobOptions, PackageLookup};
-use starlark::collections::SmallMap;
 use starlark::environment::{Globals, GlobalsBuilder, LibraryExtension, Module};
 use starlark::eval::{Arguments, Evaluator, FileLoader};
 use starlark::starlark_module;
 use starlark::values::dict::AllocDict;
 use starlark::values::none::NoneType;
-use starlark::values::tuple::AllocTuple;
-use starlark::values::{ProvidesStaticType, StringValue, Value};
+use starlark::values::{ProvidesStaticType, Value};
 use std::cell::RefCell;
+use std::collections::HashMap;
+use std::sync::Arc;
 
 use crate::args::{
     Wording, bind, describe, fatal, param, positional_only, sequence, want_sequence,
@@ -43,6 +43,7 @@ use crate::json::JsonModule;
 use crate::label::{RepoMappings, label_globals, relative_to_package};
 use crate::proto::ProtoModule;
 use crate::provider::provider_globals;
+use crate::rule::rule_globals;
 use crate::set::set_globals;
 use crate::structs::struct_globals;
 use crate::{FileKind, parse};
@@ -61,8 +62,12 @@ pub enum BuildFileError {
     #[error("{0:#}")]
     Eval(anyhow::Error),
     /// The file ran to the end but reported errors.
-    #[error("package contains errors:\n{}", .0.join("\n"))]
-    Package(Vec<String>),
+    #[error("package contains errors:\n{}", .events.join("\n"))]
+    Package {
+        events: Vec<String>,
+        /// What `print()` wrote before the end, for whoever wants it.
+        printed: Vec<String>,
+    },
 }
 
 /// What evaluating a BUILD file needs.
@@ -107,6 +112,7 @@ pub fn bzl_globals() -> Globals {
         .with(depset_globals)
         .with(attr_globals)
         .with(provider_globals)
+        .with(rule_globals)
         .with(label_globals)
         .with(struct_globals)
         .with(module_globals)
@@ -127,8 +133,10 @@ pub fn evaluate_build_file(input: &BuildFile<'_>) -> Result<BuildFileOutput, Bui
         state: RefCell::new(BuildState {
             builder: PackageBuilder::new(input.repo, input.package, &is_package),
             errors: Vec::new(),
+            late: Vec::new(),
         }),
         printed: RefCell::new(Vec::new()),
+        schemas: RefCell::new(HashMap::new()),
     };
     let globals = build_globals();
     Module::with_temp_heap(|module| {
@@ -141,9 +149,13 @@ pub fn evaluate_build_file(input: &BuildFile<'_>) -> Result<BuildFileOutput, Bui
             .map_err(|e| BuildFileError::Eval(e.into_anyhow()))
     })?;
     let BuildContext { state, printed, .. } = ctx;
-    let state = state.into_inner();
+    let mut state = state.into_inner();
+    state.errors.append(&mut state.late);
     if !state.errors.is_empty() {
-        return Err(BuildFileError::Package(state.errors));
+        return Err(BuildFileError::Package {
+            events: state.errors,
+            printed: printed.into_inner(),
+        });
     }
     Ok(BuildFileOutput {
         package: state.builder.build(),
@@ -156,18 +168,23 @@ pub fn evaluate_build_file(input: &BuildFile<'_>) -> Result<BuildFileOutput, Bui
 /// but the finished [`Package`].
 #[derive(ProvidesStaticType)]
 pub(crate) struct BuildContext<'a> {
-    repo: &'a str,
-    package: &'a str,
-    lookup: &'a PackageLookup,
+    pub(crate) repo: &'a str,
+    pub(crate) package: &'a str,
+    pub(crate) lookup: &'a PackageLookup,
     pub(crate) mappings: &'a RepoMappings,
-    state: RefCell<BuildState<'a>>,
+    pub(crate) state: RefCell<BuildState<'a>>,
     printed: RefCell<Vec<String>>,
+    /// The schema each rule of the package was called with, by target name,
+    /// for `existing_rule`.
+    pub(crate) schemas: RefCell<HashMap<String, Arc<RuleSchema>>>,
 }
 
-struct BuildState<'a> {
-    builder: PackageBuilder<'a>,
+pub(crate) struct BuildState<'a> {
+    pub(crate) builder: PackageBuilder<'a>,
     /// Events, as `location: message`.
     errors: Vec<String>,
+    /// Events Bazel reports when the BUILD file is done, after the others.
+    late: Vec<String>,
 }
 
 impl starlark::PrintHandler for BuildContext<'_> {
@@ -178,14 +195,23 @@ impl starlark::PrintHandler for BuildContext<'_> {
 }
 
 impl BuildContext<'_> {
-    fn label_context(&self) -> LabelContext<'_> {
+    pub(crate) fn label_context(&self) -> LabelContext<'_> {
         LabelContext {
             repo: self.repo,
             package: self.package,
         }
     }
 
-    fn event(&self, location: &str, message: impl AsRef<str>) {
+    /// An event Bazel reports when the BUILD file is done: a label in an
+    /// attribute that reaches into a subpackage.
+    pub(crate) fn late_event(&self, location: &str, message: impl AsRef<str>) {
+        self.state
+            .borrow_mut()
+            .late
+            .push(format!("{location}: {}", message.as_ref()));
+    }
+
+    pub(crate) fn event(&self, location: &str, message: impl AsRef<str>) {
         self.state
             .borrow_mut()
             .errors
@@ -201,6 +227,14 @@ fn context<'a, 'e>(
     function: &str,
 ) -> starlark::Result<&'a BuildContext<'e>> {
     context_in(eval, function, "a legacy macro")
+}
+
+/// [`context`], for the rules instantiate.rs calls.
+pub(crate) fn context_for<'a, 'e>(
+    eval: &Evaluator<'_, 'a, 'e>,
+    function: &str,
+) -> starlark::Result<&'a BuildContext<'e>> {
+    context(eval, function)
 }
 
 /// [`context`], for a function whose error names the macros it may be
@@ -221,8 +255,19 @@ fn context_in<'a, 'e>(
 
 /// `file:line:col` of the call being made, at its `(` the way Bazel reports
 /// it.
-fn location(eval: &Evaluator<'_, '_, '_>) -> String {
-    let Some(span) = eval.call_stack_top_location() else {
+pub(crate) fn location(eval: &Evaluator<'_, '_, '_>) -> String {
+    // A rule called from a macro is reported where the BUILD file called the
+    // macro: the outermost frame that is not a `.bzl` (those are named by
+    // their canonical label, `@@repo//pkg:file.bzl`).
+    let mut chosen = eval.call_stack_top_location();
+    let mut depth = 0;
+    while let Some(span) = eval.call_stack_nth_location(depth) {
+        if !span.resolve().file.starts_with("@@") {
+            chosen = Some(span);
+        }
+        depth += 1;
+    }
+    let Some(span) = chosen else {
         return "<unknown>".to_owned();
     };
     let resolved = span.resolve();
@@ -531,14 +576,26 @@ fn native_functions(builder: &mut GlobalsBuilder) {
         args: &Arguments<'v, '_>,
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> starlark::Result<NoneType> {
-        call_native_rule(&rule::FILEGROUP, args, eval)
+        call_rule(
+            &native_schema(&rule::FILEGROUP),
+            rule::FILEGROUP.name,
+            None,
+            args,
+            eval,
+        )
     }
 
     fn alias<'v>(
         args: &Arguments<'v, '_>,
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> starlark::Result<NoneType> {
-        call_native_rule(&rule::ALIAS, args, eval)
+        call_rule(
+            &native_schema(&rule::ALIAS),
+            rule::ALIAS.name,
+            None,
+            args,
+            eval,
+        )
     }
 
     fn existing_rule<'v>(
@@ -563,7 +620,7 @@ fn native_functions(builder: &mut GlobalsBuilder) {
         })?;
         let state = ctx.state.borrow();
         Ok(match state.builder.rule(name) {
-            Some(target) => rule_view(ctx, target, eval),
+            Some(target) => rule_view(ctx, target, eval.heap()),
             None => Value::new_none(),
         })
     }
@@ -578,7 +635,7 @@ fn native_functions(builder: &mut GlobalsBuilder) {
         let entries: Vec<(String, Value<'v>)> = state
             .builder
             .rules()
-            .map(|target| (target.name.clone(), rule_view(ctx, target, eval)))
+            .map(|target| (target.name.clone(), rule_view(ctx, target, eval.heap())))
             .collect();
         Ok(eval.heap().alloc(AllocDict(entries)))
     }
@@ -654,287 +711,12 @@ fn package_string(value: Value<'_>, noun: &str) -> starlark::Result<String> {
     })
 }
 
-// ---- rules -------------------------------------------------------------------
-
-/// Instantiate a native rule from the keyword arguments of its call.
-fn call_native_rule<'v>(
-    class: &'static RuleClass,
-    args: &Arguments<'v, '_>,
-    eval: &mut Evaluator<'v, '_, '_>,
-) -> starlark::Result<NoneType> {
-    let ctx = context(eval, class.name)?;
-    let at = location(eval);
-    if args.positions(eval.heap())?.next().is_some() {
-        return Err(fatal("unexpected positional arguments"));
-    }
-    let named: SmallMap<StringValue<'v>, Value<'v>> = args.names_map()?;
-    let name_value = named
-        .iter()
-        .find(|(k, _)| k.as_str() == "name")
-        .map(|(_, v)| *v)
-        .ok_or_else(|| fatal(format!("{} rule has no 'name' attribute", class.name)))?;
-    let name = name_value
-        .unpack_str()
-        .ok_or_else(|| fatal(format!("{} 'name' attribute must be a string", class.name)))?
-        .to_owned();
-    let me = Label {
-        repo: ctx.repo.to_owned(),
-        package: ctx.package.to_owned(),
-        name: name.clone(),
-    };
-    let event = |message: String| ctx.event(&at, format!("{me}: {message}"));
-
-    let mut attrs: Vec<(String, AttrValue)> = Vec::new();
-    let mut provided: Vec<&str> = Vec::new();
-    for (key, value) in named.iter() {
-        let key = key.as_str();
-        if key == "name" {
-            continue;
-        }
-        let Some(spec) = class.attr(key) else {
-            let hint = class
-                .suggest(key)
-                .map(|s| format!(" (did you mean '{s}'?)"))
-                .unwrap_or_default();
-            event(format!(
-                "no such attribute '{key}' in '{}' rule{hint}",
-                class.name
-            ));
-            continue;
-        };
-        match attr_value(ctx, class, spec, *value) {
-            Ok(Some(v)) => {
-                provided.push(spec.name);
-                attrs.push((key.to_owned(), v));
-            }
-            // `None` says "as if unset", and counts as having been given.
-            Ok(None) => provided.push(spec.name),
-            Err(message) => event(message),
-        }
-    }
-    for spec in class.attrs.iter().filter(|s| s.mandatory) {
-        if !provided.contains(&spec.name) {
-            event(format!(
-                "missing value for mandatory attribute '{}' in '{}' rule",
-                spec.name, class.name
-            ));
-        }
-    }
-    for (attr, value) in &attrs {
-        if attr == "visibility" {
-            continue;
-        }
-        if let AttrValue::LabelList(labels) = value {
-            let mut seen: Vec<&Label> = Vec::new();
-            for label in labels {
-                if seen.contains(&label) {
-                    ctx.event(
-                        &at,
-                        format!(
-                            "Label '{label}' is duplicated in the '{attr}' attribute of rule \
-                             '{name}'"
-                        ),
-                    );
-                    break;
-                }
-                seen.push(label);
-            }
-        }
-    }
-    let visibility = attrs.iter().find_map(|(k, v)| match (k.as_str(), v) {
-        ("visibility", AttrValue::LabelList(labels)) => Some(visibility_of(ctx, labels)),
-        _ => None,
-    });
-    ctx.state
-        .borrow_mut()
-        .builder
-        .add_rule_with(&name, class.name, attrs, visibility, &at)
-        .map_err(|e| fatal(e.to_string()))?;
-    Ok(NoneType)
-}
-
-/// Check one attribute value against its type. `Ok(None)` is `None`, taken
-/// as unset; `Err` is the event message.
-fn attr_value(
-    ctx: &BuildContext<'_>,
-    class: &RuleClass,
-    spec: &AttrSpec,
-    value: Value<'_>,
-) -> Result<Option<AttrValue>, String> {
-    if value.is_none() {
-        return Ok(None);
-    }
-    let attr = spec.name;
-    let rule = class.name;
-    let wrong_type = |expected: &str| {
-        format!(
-            "expected value of type '{expected}' for attribute '{attr}' of '{rule}', but got {}",
-            describe(value)
-        )
-    };
-    let string_at = |i: usize, item: Value<'_>| {
-        item.unpack_str().map(str::to_owned).ok_or_else(|| {
-            format!(
-                "expected value of type 'string' for element {i} of attribute '{attr}' of \
-                 '{rule}', but got {}",
-                describe(item)
-            )
-        })
-    };
-    let label_at = |i: usize, item: Value<'_>| -> Result<Label, String> {
-        let s = string_at(i, item)?;
-        Label::parse(&s, ctx.label_context()).map_err(|e| {
-            format!("invalid label '{s}' in element {i} of attribute '{attr}' of '{rule}': {e}")
-        })
-    };
-    Ok(Some(match spec.ty {
-        AttrType::Bool => match (value.unpack_bool(), value.unpack_i32()) {
-            (Some(b), _) => AttrValue::Bool(b),
-            (None, Some(0)) => AttrValue::Bool(false),
-            (None, Some(1)) => AttrValue::Bool(true),
-            _ => {
-                return Err(format!(
-                    "expected one of [False, True, 0, 1] for attribute '{attr}' of '{rule}', but \
-                     got {}",
-                    describe(value)
-                ));
-            }
-        },
-        AttrType::String => AttrValue::String(
-            value
-                .unpack_str()
-                .map(str::to_owned)
-                .ok_or_else(|| wrong_type("string"))?,
-        ),
-        AttrType::Label => {
-            let s = value.unpack_str().ok_or_else(|| wrong_type("string"))?;
-            AttrValue::Label(Label::parse(s, ctx.label_context()).map_err(|e| {
-                format!("invalid label '{s}' in attribute '{attr}' of '{rule}': {e}")
-            })?)
-        }
-        AttrType::StringList => {
-            let items = sequence(value).ok_or_else(|| wrong_type("list(string)"))?;
-            AttrValue::StringList(
-                items
-                    .iter()
-                    .enumerate()
-                    .map(|(i, item)| string_at(i, *item))
-                    .collect::<Result<_, _>>()?,
-            )
-        }
-        AttrType::LabelList => {
-            let items = sequence(value).ok_or_else(|| wrong_type("list(label)"))?;
-            AttrValue::LabelList(
-                items
-                    .iter()
-                    .enumerate()
-                    .map(|(i, item)| label_at(i, *item))
-                    .collect::<Result<_, _>>()?,
-            )
-        }
-        // No native rule has an attribute of the other kinds.
-        other => {
-            return Err(format!(
-                "attribute '{attr}' of '{rule}' is of type {}, which a native rule cannot take",
-                other.name()
-            ));
-        }
-    }))
-}
-
-/// What `native.existing_rule` returns for a rule: a dict of its attributes
-/// as Bazel lists them, with lists as tuples and labels written relative to
-/// this package. It shows what the rule set and its class's defaults, and
-/// nothing of `package()`'s defaults.
-///
-/// Bazel returns a live read-only view; this is a snapshot, a `dict`.
-fn rule_view<'v>(
-    ctx: &BuildContext<'_>,
-    target: &Target,
-    eval: &Evaluator<'v, '_, '_>,
-) -> Value<'v> {
-    let heap = eval.heap();
-    let TargetKind::Rule { rule_class, attrs } = &target.kind else {
-        return Value::new_none();
-    };
-    let mut entries: Vec<(&str, Value<'v>)> = vec![
-        ("name", heap.alloc(target.name.as_str())),
-        ("kind", heap.alloc(rule_class.as_str())),
-    ];
-    let class = native_rule(rule_class);
-    for spec in class.map_or(&[][..], |c| c.attrs) {
-        let set = attrs.iter().find(|(k, _)| k == spec.name).map(|(_, v)| v);
-        let default;
-        let value = match set {
-            Some(v) => v,
-            None => match spec.default.value(spec.ty) {
-                Some(v) => {
-                    default = v;
-                    &default
-                }
-                None => continue,
-            },
-        };
-        entries.push((spec.name, attr_to_value(ctx, value, eval)));
-    }
-    heap.alloc(AllocDict(entries))
-}
-
-fn attr_to_value<'v>(
-    ctx: &BuildContext<'_>,
-    value: &AttrValue,
-    eval: &Evaluator<'v, '_, '_>,
-) -> Value<'v> {
-    let heap = eval.heap();
-    let relative = |l: &Label| label_relative_to(l, ctx.repo, ctx.package);
-    match value {
-        AttrValue::Bool(b) => Value::new_bool(*b),
-        AttrValue::String(s) => heap.alloc(s.as_str()),
-        AttrValue::Label(l) => heap.alloc(relative(l)),
-        AttrValue::StringList(items) => {
-            heap.alloc(AllocTuple(items.iter().map(|s| heap.alloc(s.as_str()))))
-        }
-        AttrValue::LabelList(items) => {
-            heap.alloc(AllocTuple(items.iter().map(|l| heap.alloc(relative(l)))))
-        }
-        AttrValue::Int(i) => heap.alloc(*i),
-        AttrValue::IntList(items) => heap.alloc(AllocTuple(items.iter().map(|i| heap.alloc(*i)))),
-        AttrValue::StringDict(entries) => heap.alloc(AllocDict(
-            entries
-                .iter()
-                .map(|(k, v)| (heap.alloc(k.as_str()), heap.alloc(v.as_str()))),
-        )),
-        AttrValue::StringListDict(entries) => {
-            heap.alloc(AllocDict(entries.iter().map(|(k, v)| {
-                (
-                    heap.alloc(k.as_str()),
-                    heap.alloc(AllocTuple(v.iter().map(|s| heap.alloc(s.as_str())))),
-                )
-            })))
-        }
-        AttrValue::LabelKeyedStringDict(entries) => heap.alloc(AllocDict(
-            entries
-                .iter()
-                .map(|(k, v)| (heap.alloc(relative(k)), heap.alloc(v.as_str()))),
-        )),
-        AttrValue::StringKeyedLabelDict(entries) => heap.alloc(AllocDict(
-            entries
-                .iter()
-                .map(|(k, v)| (heap.alloc(k.as_str()), heap.alloc(relative(v)))),
-        )),
-        AttrValue::LabelListDict(entries) => heap.alloc(AllocDict(entries.iter().map(|(k, v)| {
-            (
-                heap.alloc(k.as_str()),
-                heap.alloc(AllocTuple(v.iter().map(|l| heap.alloc(relative(l))))),
-            )
-        }))),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::label::{BzlFile, evaluate_bzl};
+    use fjfj_graph::package::TargetKind;
+    use fjfj_graph::rule::AttrValue;
     use std::collections::HashMap;
     use std::fs;
     use std::path::Path;
@@ -1077,13 +859,13 @@ mod tests {
         match load(build) {
             Ok(_) => panic!("accepted:\n{build}"),
             Err(BuildFileError::Eval(e)) => format!("{e:#}"),
-            Err(BuildFileError::Package(events)) => events.join("\n"),
+            Err(BuildFileError::Package { events, .. }) => events.join("\n"),
         }
     }
 
     fn events(build: &str) -> Vec<String> {
         match load(build) {
-            Err(BuildFileError::Package(events)) => events,
+            Err(BuildFileError::Package { events, .. }) => events,
             Err(BuildFileError::Eval(e)) => panic!("fatal: {e:#}"),
             Ok(_) => panic!("accepted:\n{build}"),
         }
@@ -1744,7 +1526,9 @@ mod tests {
         .unwrap();
         assert_eq!(
             out.printed,
-            [r#"(":x", "//q:y", "@@//m:z", "@@r//s:t") "@dep+" "dep+""#]
+            [
+                r#"(":x", "//q:y", "@@[unknown repo '' requested from @@dep+]//m:z", "@@[unknown repo 'r' requested from @@dep+]//s:t") "@dep+" "dep+""#
+            ]
         );
     }
 

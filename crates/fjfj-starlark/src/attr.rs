@@ -22,8 +22,8 @@
 
 use crate::args::{describe, fatal};
 use crate::depset::{depset_to_list, is_depset};
+use crate::exports::is_exported;
 use crate::label::{display_label, label_of_value, parse_in_caller};
-use crate::provider::is_exported;
 use allocative::Allocative;
 use fjfj_graph::Label;
 use fjfj_graph::rule::{

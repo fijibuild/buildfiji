@@ -123,3 +123,16 @@ assignment hook and hides `_private` names from a native function: use
 `provider::is_exported`, not the raw name, to ask whether one may be named in
 `providers=` or `provides=`. Design and known gaps:
 `docs/design/starlark-and-loading.md`.
+
+## rule and instantiating a rule
+
+`rule()` (`rule.rs`) builds a `rule` whose schema is a
+`fjfj_graph::schema::RuleSchema`; `filegroup` and `alias` have one too
+(`RuleSchema::native`), and `instantiate::call_rule` is the only code that
+checks a call against a schema and records a target, so a change to how a rule
+call behaves goes there and covers both. Naming (`exports.rs`) is shared with
+`provider()`. Events are at the BUILD file's call, label-crossing events come
+last (`BuildContext::late_event`), and the conversion wording is Bazel's per
+attribute type: add a probe row to `rule_tests.rs` (`rbuild`-style: a `.bzl`
+and a BUILD file, with prints, events and fatal) before changing one.
+Design and known gaps: `docs/design/starlark-and-loading.md`.

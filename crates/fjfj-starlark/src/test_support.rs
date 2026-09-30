@@ -1,6 +1,6 @@
 //! Shared by the tests that replay Bazel 9.2.0 probes.
 
-use crate::{BzlFile, RepoMappings, bzl_globals, evaluate_bzl};
+use crate::{BuildFile, BuildFileError, BzlFile, RepoMappings, bzl_globals, evaluate_bzl};
 use fjfj_graph::Label;
 use starlark::environment::FrozenModule;
 use starlark::eval::FileLoader;
@@ -188,6 +188,122 @@ pub(crate) fn replay_in(
         };
         if !ok {
             wrong.push(format!("{src}\n  want: {want:?}\n  got:  {:?}", run(src)));
+        }
+    }
+    wrong
+}
+
+/// What a BUILD file did, for [`replay_build`]: what it printed, the events
+/// it reported, and the fatal error that stopped it.
+#[derive(Debug, Default)]
+pub(crate) struct BuildOutcome {
+    pub(crate) printed: Vec<String>,
+    pub(crate) events: Vec<String>,
+    pub(crate) fatal: Option<String>,
+    pub(crate) package: Option<fjfj_graph::package::Package>,
+}
+
+/// Load `build`, after a line that loads `r` from `:u.bzl`, as the BUILD file
+/// of the main repo of the probe workspace
+/// (`f1.txt` and `sub/x.txt` are files in it, and `sub` is a package), with
+/// `bzl` as the `.bzl` file `:u.bzl` it may load.
+pub(crate) fn run_build(bzl: &str, build: &str) -> BuildOutcome {
+    use std::fs;
+    let dir = tempfile::tempdir().unwrap();
+    for file in ["f1.txt", "sub/x.txt", "sub/BUILD.bazel", "BUILD.bazel"] {
+        let path = dir.path().join(file);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, "").unwrap();
+    }
+    let lookup = fjfj_loading::PackageLookup::new(dir.path()).unwrap();
+    let mappings = probe_mappings();
+    let loader = Files {
+        sources: [("u.bzl", bzl)].into_iter().collect(),
+        loaded: RefCell::new(HashMap::new()),
+    };
+    let out = crate::evaluate_build_file(&BuildFile {
+        repo: "",
+        package: "",
+        lookup: &lookup,
+        mappings: &mappings,
+        path: "BUILD.bazel",
+        source: &format!("load(':u.bzl', 'r')\n{build}"),
+        loader: &loader,
+    });
+    match out {
+        Ok(out) => BuildOutcome {
+            printed: out.printed,
+            package: Some(out.package),
+            ..Default::default()
+        },
+        Err(BuildFileError::Eval(e)) => BuildOutcome {
+            fatal: Some(format!("{e:#}")),
+            ..Default::default()
+        },
+        Err(BuildFileError::Package { events, printed }) => BuildOutcome {
+            printed,
+            events,
+            ..Default::default()
+        },
+    }
+}
+
+/// A row of a BUILD-file probe table: the `.bzl` and the BUILD file, and
+/// what Bazel 9.2.0 printed, reported and stopped with.
+pub(crate) struct BuildRow {
+    pub(crate) bzl: &'static str,
+    pub(crate) build: &'static str,
+    pub(crate) printed: &'static [&'static str],
+    pub(crate) events: &'static [&'static str],
+    pub(crate) fatal: Option<&'static str>,
+}
+
+/// Replay [`BuildRow`]s. A row that stopped with a fatal error (or whose
+/// `.bzl` failed to load, which Bazel reports as an event at the `.bzl`)
+/// must stop with it; a row with events must report exactly those, and
+/// print what it did; any other prints what Bazel did. Rows containing one
+/// of `skip` are known differences, and a fatal message containing one of
+/// `relaxed` only has to be some fatal error.
+pub(crate) fn replay_build(rows: &[BuildRow], skip: &[&str], relaxed: &[&str]) -> Vec<String> {
+    let mut wrong = Vec::new();
+    for row in rows {
+        if skip
+            .iter()
+            .any(|marker| row.bzl.contains(marker) || row.build.contains(marker))
+        {
+            continue;
+        }
+        // `print("")` is a line Bazel's own log drops the end of.
+        let mut got = run_build(row.bzl, row.build);
+        got.printed.retain(|p| !p.is_empty());
+        let want_printed: Vec<&str> = row
+            .printed
+            .iter()
+            .copied()
+            .filter(|p| !p.is_empty())
+            .collect();
+        // A `.bzl` that does not load is an event at `u.bzl:L:C:`.
+        let load_failure = row
+            .events
+            .first()
+            .and_then(|e| e.strip_prefix("u.bzl:"))
+            .and_then(|e| e.splitn(3, ':').nth(2))
+            .map(|m| m.trim_start());
+        let want_fatal = row.fatal.or(load_failure);
+        let ok = match want_fatal {
+            Some(message) => got.fatal.as_deref().is_some_and(|f| {
+                f.contains(message) || relaxed.iter().any(|p| message.contains(p))
+            }),
+            None if !row.events.is_empty() => {
+                got.fatal.is_none() && got.events == row.events && got.printed == want_printed
+            }
+            None => got.fatal.is_none() && got.events.is_empty() && got.printed == want_printed,
+        };
+        if !ok {
+            wrong.push(format!(
+                "{}\n---\n{}\n  want: printed {:?} events {:?} fatal {:?}\n  got:  printed {:?} events {:?} fatal {:?}",
+                row.bzl, row.build, row.printed, row.events, row.fatal, got.printed, got.events, got.fatal
+            ));
         }
     }
     wrong

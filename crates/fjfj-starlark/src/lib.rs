@@ -17,7 +17,9 @@ mod depset;
 #[cfg(test)]
 mod depset_tests;
 mod dialect;
+mod exports;
 mod floats;
+mod instantiate;
 mod json;
 mod label;
 #[cfg(test)]
@@ -27,6 +29,9 @@ mod proto;
 mod provider;
 #[cfg(test)]
 mod provider_tests;
+mod rule;
+#[cfg(test)]
+mod rule_tests;
 mod set;
 mod structs;
 #[cfg(test)]

@@ -34,11 +34,11 @@
 
 use crate::args::fatal;
 use crate::attr::sequence;
-use crate::label::{assigns_private_names, evaluating_bzl};
+use crate::exports::{Kind, Named, next_id, resolve_name};
 use crate::structs::new_instance;
 use allocative::Allocative;
 use starlark::collections::StarlarkHasher;
-use starlark::environment::{FrozenModule, GlobalsBuilder};
+use starlark::environment::GlobalsBuilder;
 use starlark::eval::{Arguments, Evaluator};
 use starlark::starlark_complex_value;
 use starlark::starlark_module;
@@ -51,7 +51,6 @@ use starlark_derive::starlark_value;
 use std::fmt;
 use std::hash::Hash;
 use std::sync::OnceLock;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 /// What an unnamed provider is called in an error.
 const NO_NAME: &str = "<no name>";
@@ -160,6 +159,21 @@ fn view<'v>(value: Value<'v>) -> Option<View<'v>> {
     }
 }
 
+/// Whether `value` is a provider made by `provider()`, as opposed to a
+/// built-in one.
+pub(crate) fn is_provider(value: Value<'_>) -> bool {
+    view(value).is_some()
+}
+
+/// A provider, for [`crate::exports`] to name.
+pub(crate) fn named<'v>(value: Value<'v>) -> Option<Named<'v>> {
+    view(value).map(|p| Named {
+        id: p.id,
+        name: p.name,
+        kind: Kind::Provider,
+    })
+}
+
 /// The name of the provider of an instance, for an error: `struct` for what
 /// `struct()` made.
 pub(crate) fn instance_of(provider: Option<Value<'_>>) -> String {
@@ -180,53 +194,6 @@ pub(crate) fn same_provider(a: Option<Value<'_>>, b: Option<Value<'_>>) -> bool 
             _ => false,
         },
         _ => false,
-    }
-}
-
-/// The name of `value` if it is a provider bound to one, looking for it in
-/// the module `eval` is running if it is not named yet.
-fn resolve_name<'v>(value: Value<'v>, eval: &Evaluator<'v, '_, '_>) -> Option<String> {
-    let me = view(value)?;
-    if let Some(name) = me.name.get() {
-        return Some(name.clone());
-    }
-    if !evaluating_bzl(eval) {
-        return None;
-    }
-    let module = eval.module();
-    for name in module.names() {
-        let bound = module.get(name.as_str()).and_then(view);
-        if bound.is_some_and(|bound| bound.id == me.id) {
-            let _ = me.name.set(name.as_str().to_owned());
-            return Some(name.as_str().to_owned());
-        }
-    }
-    None
-}
-
-/// Whether `value` is a provider made by `provider()`, as opposed to a
-/// built-in one.
-pub(crate) fn is_provider(value: Value<'_>) -> bool {
-    view(value).is_some()
-}
-
-/// Whether `value`, a provider, may be named in `providers` or `provides`: it
-/// is bound to a top-level name of a `.bzl`.
-pub(crate) fn is_exported<'v>(value: Value<'v>, eval: &Evaluator<'v, '_, '_>) -> bool {
-    resolve_name(value, eval).is_some() || (evaluating_bzl(eval) && assigns_private_names(eval))
-}
-
-/// Name the providers `module` holds in `assigned`, which are its top-level
-/// assignments in order, when it is finished: the first name of a provider
-/// is its name.
-pub(crate) fn export_providers(module: &FrozenModule, assigned: &[String]) {
-    for name in assigned {
-        let Ok((value, _)) = module.get_any_visibility(name) else {
-            continue;
-        };
-        if let Some(provider) = view(value.value()) {
-            let _ = provider.name.set(name.clone());
-        }
     }
 }
 
@@ -297,7 +264,7 @@ where
         args: &Arguments<'v, '_>,
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> starlark::Result<Value<'v>> {
-        let name = resolve_name(me, eval);
+        let name = resolve_name(me, eval)?;
         let heap = eval.heap();
         let who = name.as_deref().unwrap_or(NO_NAME);
         let Some(init) = self.init.first() else {
@@ -351,7 +318,7 @@ where
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> starlark::Result<Value<'v>> {
         let provider = self.provider.to_value();
-        let name = resolve_name(provider, eval);
+        let name = resolve_name(provider, eval)?;
         let who = match &name {
             Some(name) => format!("<raw constructor for {name}>"),
             None => "<raw constructor>".to_owned(),
@@ -492,7 +459,7 @@ fn make_provider<'v>(
     let init: Vec<Value<'v>> = init.filter(|i| !i.is_none()).into_iter().collect();
     let has_init = !init.is_empty();
     let provider = heap.alloc_complex(ProviderGen {
-        id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
+        id: next_id(),
         fields,
         doc: doc.and_then(|d| d.unpack_str()).map(str::to_owned),
         init,
@@ -504,8 +471,6 @@ fn make_provider<'v>(
     let raw = heap.alloc_complex(RawConstructorGen { provider });
     Ok(heap.alloc((provider, raw)))
 }
-
-static NEXT_ID: AtomicU64 = AtomicU64::new(1);
 
 #[starlark_module]
 pub(crate) fn provider_globals(builder: &mut GlobalsBuilder) {

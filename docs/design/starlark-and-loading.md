@@ -477,12 +477,86 @@ and `load()`.
   generic operator errors its own way (buildfiji-v32). `DefaultInfo` and
   the other predeclared providers are buildfiji-136.4's.
 
+## `rule()` and instantiating a rule (implemented 2026-09-30, buildfiji-mum.3.5)
+
+`rule(implementation, *, test, attrs, outputs, executable, ...)` (`rule.rs`,
+`.bzl` only, and only while a `.bzl` initialises) returns a `rule`, which
+prints as `<rule NAME>` once named and `<rule>` before, hashes by identity
+and equals only itself. About 450 probes of `rule()` and 800 of BUILD files
+that call rules (and `filegroup` and `alias`, which now take the same path)
+are replayed in `rule_tests.rs`.
+
+- **One schema.** A rule class is a `fjfj_graph::schema::RuleSchema`: the
+  attributes a call may set, in the order `native.existing_rule` lists them,
+  each an `AttrDef` (type, default, flags) with the `values` it may take. A
+  native rule's static `RuleClass` and a `rule()`'s `attrs` both become one
+  (`RuleSchema::native`, `RuleSchema::starlark`), and `instantiate.rs`, which
+  is all that calls a rule, reads nothing else. A Starlark rule's schema is
+  the universal attributes (`name`, `visibility`, `tags`, ... with their
+  types and defaults, read off Bazel), an executable's `args` and
+  `output_licenses`, a test's `size`, `timeout`, `flaky`, `shard_count`,
+  `local` and `args` (and a `testonly` that defaults to true), and then the
+  rule's own in declaration order. None of those names can be redeclared
+  (`attribute `x`: built-in attributes cannot be overridden.`), nor an
+  invalid identifier; a `_private` attribute cannot be set by a call or seen
+  in `existing_rule`; `applicable_licenses` is an alias of `package_metadata`
+  unless the rule declares its own.
+- **Naming.** A rule is named like a provider (`exports.rs`: the first
+  top-level name it is bound to, by value, found in the running module or at
+  its end), a rule that is never named fails with `Invalid rule class hasn't
+  been exported by a bzl file`, a test rule must be named `*_test` and no
+  other may be, and `rule()` called from a function that runs while a BUILD
+  file is loaded is `rule() can only be used during .bzl initialization
+  (top-level evaluation)`. Calling a rule while a `.bzl` loads is `a rule can
+  only be instantiated while evaluating a BUILD file or a legacy or symbolic
+  macro`.
+- **Argument checks** of `rule()` are in `provider()`'s order (positional
+  `implementation`, each keyword as bound, a surplus positional last) with
+  the signature's wording; what is checked afterwards is Bazel's own: the
+  names of `attrs`, `provides` (an element must be an exported provider),
+  `toolchains`, `exec_compatible_with` and `fragments`. `cfg`,
+  `build_setting`, `exec_groups`, `parent` and `subrules` only take their
+  empty values until the beads that build what they take do
+  (buildfiji-mum.3.7).
+- **A call** takes keywords only (`Unexpected positional arguments` for a
+  Starlark rule, `unexpected positional arguments` for a native one). An
+  unknown or private attribute, a value of the wrong type, a label that does
+  not parse, a mandatory attribute left out (`None` counts as left out for a
+  `rule()`, not for a native rule), and a value outside `values` are events
+  and the file goes on. A list-typed attribute takes a list, tuple, range,
+  dict (its keys), set or depset; a label is a string read in the BUILD
+  file's package and through its repo's mapping, or a `Label`; a dict-typed
+  attribute's errors do not name the attribute. Then come the events for a
+  label given twice (not in `visibility`, `transitive_configs` (a sorted
+  set), outputs or dict keys), a test's size and timeout, and a rule name that
+  enters a subpackage (an event, the rule is still added); and a label
+  attribute that enters a subpackage is reported when the BUILD file is done,
+  after every other event. An event is at the `(` of the call *in the BUILD
+  file*, even when a macro makes the call.
+- **Outputs.** `outputs = {"o": "%{name}.txt"}` (and `outputs = f`, called
+  with `name` and the attributes its parameters name) and each `attr.output`
+  or `attr.output_list` value make `GeneratedFile` targets of the package.
+  `%{attr}` is a string attribute's value, a label's name without its
+  extension, or one output per element of a list. A file that conflicts with
+  another target, or that the rule makes twice, is fatal; one that is not a
+  legal name is an event.
+- **`existing_rule`** shows the attributes the call set and the schema's
+  defaults, skipping `_private` ones and what has no default; the schema a
+  call used is kept by target name in the `BuildContext`.
+- **Known differences.** A rule bound only to a `_private` name is anonymous
+  until its module ends, so `print(R)` right after `R = rule(...)` prints
+  `<rule>` (buildfiji-10f). Native rules' attribute labels are now read
+  through the repo mapping like a `rule()`'s, so an unknown repo is
+  `@@[unknown repo 'r' requested from @@dep+]//s:t` for them too.
+  `provider(init = struct)`-style crate differences and the crate's generic
+  wording are as for `attr.*` (buildfiji-v32).
+
 ## Bazel 9.2.0's builtin namespaces, and who owns each name (buildfiji-mum.3)
 
 Read off Bazel 9.2.0 by asking `type(name)` in a BUILD file and in a `.bzl`
 loaded by one, and `dir()` of each namespace. `B` is visible in BUILD files,
 `Z` in `.bzl` files. fjfj has, so far, `depset` (B, Z), `set`, `json`, `proto` (B, Z),
-`struct`, `Label`, `attr` and `provider` (Z), `print` and the standard Starlark library, and the natives of
+`struct`, `Label`, `attr`, `provider` and `rule` (Z), `print` and the standard Starlark library, and the natives of
 buildfiji-mum.4.
 
 | Names | Where | Owner |
@@ -494,7 +568,7 @@ buildfiji-mum.4.
 | `Label` (`name package relative repo_name same_package_label workspace_name workspace_root`) | Z only | buildfiji-mum.3.2, done |
 | `attr` (`bool int int_list label label_keyed_string_dict label_list label_list_dict output output_list string string_dict string_keyed_label_dict string_list string_list_dict`) | Z only | buildfiji-mum.3.3, done |
 | `provider` | Z only | buildfiji-mum.3.4, done |
-| `rule` | Z only | buildfiji-mum.3.5 |
+| `rule` | Z only | buildfiji-mum.3.5, done |
 | `select` | B Z | buildfiji-mum.3.6 |
 | `aspect transition exec_group configuration_field subrule analysis_test_transition` | Z only | buildfiji-mum.3.7 |
 | `macro` | Z only | buildfiji-mum.3.8 |

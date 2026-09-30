@@ -26,6 +26,11 @@ pub enum TargetKind {
     /// package are not targets.
     SourceFile,
     PackageGroup(PackageGroup),
+    /// A file a rule declares it creates: an `attr.output`, or one of the
+    /// `outputs` of a `rule()`.
+    GeneratedFile {
+        rule: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -46,6 +51,7 @@ impl Target {
             TargetKind::Rule { rule_class, .. } => format!("{rule_class} rule"),
             TargetKind::SourceFile => "source file".to_owned(),
             TargetKind::PackageGroup(_) => "package group".to_owned(),
+            TargetKind::GeneratedFile { rule } => format!("generated file from rule '{rule}'"),
         }
     }
 }
@@ -131,6 +137,16 @@ pub enum PackageError {
         existing: String,
         location: String,
     },
+    #[error(
+        "illegal output file name '{name}' in rule {rule} due to: invalid target name '{name}': {source}"
+    )]
+    IllegalOutputName {
+        name: String,
+        rule: String,
+        source: LabelError,
+    },
+    #[error("rule '{rule}' has more than one generated file named '{name}'")]
+    DuplicateOutput { rule: String, name: String },
     #[error("'package' can only be used once per BUILD file")]
     PackageCalledTwice,
     #[error("visibility for exported file '{0}' declared twice")]
@@ -245,11 +261,16 @@ impl<'a> PackageBuilder<'a> {
         visibility: Option<Visibility>,
         location: &str,
     ) -> Result<(), PackageError> {
-        self.add_rule_with(name, rule_class, Vec::new(), visibility, location)
+        match self.add_rule_with(name, rule_class, Vec::new(), visibility, location)? {
+            None => Ok(()),
+            Some(crossing) => Err(crossing),
+        }
     }
 
     /// [`add_rule`](Self::add_rule), recording the attributes the BUILD file
-    /// set (see [`TargetKind::Rule`]).
+    /// set (see [`TargetKind::Rule`]). A name that enters a subpackage does
+    /// not stop the rule being added, as it does not in Bazel: it comes back
+    /// as `Ok(Some(error))`, for the caller to report.
     pub fn add_rule_with(
         &mut self,
         name: &str,
@@ -257,12 +278,12 @@ impl<'a> PackageBuilder<'a> {
         attrs: Vec<(String, AttrValue)>,
         visibility: Option<Visibility>,
         location: &str,
-    ) -> Result<(), PackageError> {
+    ) -> Result<Option<PackageError>, PackageError> {
         label::validate_target_name(name).map_err(|source| PackageError::IllegalRuleName {
             name: name.to_owned(),
             source,
         })?;
-        self.check_crossing(name)?;
+        let crossing = self.check_crossing(name).err();
         self.check_conflict(name, &format!("{rule_class} rule '{name}'"))?;
         self.push(Target {
             name: name.to_owned(),
@@ -271,6 +292,45 @@ impl<'a> PackageBuilder<'a> {
                 attrs,
             },
             visibility,
+            location: location.to_owned(),
+        });
+        Ok(crossing)
+    }
+
+    /// A file the rule called `rule` (whose label is `rule_label`, for
+    /// the error) creates. A file that is the rule's own name is not another
+    /// target, and one created twice by the rule is an error.
+    pub fn add_generated_file(
+        &mut self,
+        name: &str,
+        rule: &str,
+        rule_label: &str,
+        location: &str,
+    ) -> Result<(), PackageError> {
+        label::validate_target_name(name).map_err(|source| PackageError::IllegalOutputName {
+            name: name.to_owned(),
+            rule: rule_label.to_owned(),
+            source,
+        })?;
+        if name == rule {
+            return Ok(());
+        }
+        if let Some(&i) = self.index.get(name)
+            && let TargetKind::GeneratedFile { rule: made_by } = &self.targets[i].kind
+            && made_by == rule
+        {
+            return Err(PackageError::DuplicateOutput {
+                rule: rule.to_owned(),
+                name: name.to_owned(),
+            });
+        }
+        self.check_conflict(name, &format!("generated file '{name}' in rule '{rule}'"))?;
+        self.push(Target {
+            name: name.to_owned(),
+            kind: TargetKind::GeneratedFile {
+                rule: rule.to_owned(),
+            },
+            visibility: None,
             location: location.to_owned(),
         });
         Ok(())

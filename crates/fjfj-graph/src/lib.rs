@@ -10,6 +10,7 @@ pub mod label;
 pub mod package;
 pub mod parse;
 pub mod rule;
+pub mod schema;
 pub mod visibility;
 
 pub use label::LabelError;

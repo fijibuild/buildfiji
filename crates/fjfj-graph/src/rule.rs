@@ -215,6 +215,9 @@ pub struct AttrDef {
     /// `configurable = ...` if it was given.
     pub configurable: Option<bool>,
     pub skip_validations: bool,
+    /// The attribute has no value until a rule sets one, though its type has
+    /// a zero (`deprecation`, which `native.existing_rule` leaves out).
+    pub no_default: bool,
 }
 
 impl AttrDef {
@@ -230,6 +233,7 @@ impl AttrDef {
             cfg: Cfg::Target,
             configurable: None,
             skip_validations: false,
+            no_default: false,
         }
     }
 
@@ -253,7 +257,7 @@ impl AttrDef {
     /// The value the attribute has when a rule sets none. `None` if it has
     /// no value, or if the default is computed.
     pub fn default_value(&self) -> Option<AttrValue> {
-        if self.computed_default {
+        if self.computed_default || (self.no_default && self.default.is_none()) {
             return None;
         }
         self.default.clone().or_else(|| self.ty.zero())
@@ -265,6 +269,7 @@ impl From<&AttrSpec> for AttrDef {
     fn from(spec: &AttrSpec) -> AttrDef {
         let mut def = AttrDef::new(spec.ty);
         def.default = spec.default.value(spec.ty);
+        def.no_default = spec.default == AttrDefault::Unset;
         if spec.mandatory {
             def.flags.insert(AttrFlag::Mandatory);
         }
@@ -326,7 +331,7 @@ pub static FILEGROUP: RuleClass = RuleClass {
     name: "filegroup",
     attrs: &[
         attr("visibility", LabelList, EmptyList),
-        attr("transitive_configs", StringList, EmptyList),
+        attr("transitive_configs", LabelList, EmptyList),
         attr("deprecation", Str, Unset),
         attr("tags", StringList, EmptyList),
         attr("generator_name", Str, EmptyString),
@@ -355,7 +360,7 @@ pub static ALIAS: RuleClass = RuleClass {
     name: "alias",
     attrs: &[
         attr("visibility", LabelList, EmptyList),
-        attr("transitive_configs", StringList, EmptyList),
+        attr("transitive_configs", LabelList, EmptyList),
         attr("deprecation", Str, Unset),
         attr("tags", StringList, EmptyList),
         attr("generator_name", Str, EmptyString),

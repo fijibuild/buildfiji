@@ -37,8 +37,8 @@
 
 use crate::args::{Wording, bind, fatal, positional_only};
 use crate::dialect::assigned_names;
+use crate::exports::export_all;
 use crate::native::BuildContext;
-use crate::provider::export_providers;
 use crate::{FileKind, parse};
 use allocative::Allocative;
 use fjfj_graph::label::validate_target_name;
@@ -85,7 +85,7 @@ impl RepoMappings {
 
     /// The canonical repo `apparent` names in `from`, or the placeholder
     /// Bazel puts in a label whose repo `from` cannot name.
-    fn resolve(&self, from: &str, apparent: &str) -> String {
+    pub(crate) fn resolve_apparent(&self, from: &str, apparent: &str) -> String {
         let entries = self.by_repo.get(from);
         if let Some(canonical) = entries.and_then(|e| e.get(apparent)) {
             return canonical.clone();
@@ -146,7 +146,7 @@ pub fn evaluate_bzl(input: &BzlFile<'_>) -> starlark::Result<FrozenModule> {
             eval.eval_module(ast, input.globals)?;
         }
         let frozen = module.freeze()?;
-        export_providers(&frozen, &env.assigned);
+        export_all(&frozen, &env.assigned)?;
         Ok(frozen)
     })
 }
@@ -214,7 +214,7 @@ pub(crate) fn resolve(
     mappings: &RepoMappings,
 ) -> Result<StarlarkLabel, LabelParseError> {
     Label::parse_mapped(text, at, &mut |apparent| {
-        mappings.resolve(written_in, apparent)
+        mappings.resolve_apparent(written_in, apparent)
     })
     .map(StarlarkLabel::from)
 }
@@ -234,7 +234,7 @@ pub(crate) fn parse_in_caller(
             repo: &file.repo,
             package: &file.package,
         },
-        &mut |apparent| mappings.resolve(&file.repo, apparent),
+        &mut |apparent| mappings.resolve_apparent(&file.repo, apparent),
     ))
 }
 
