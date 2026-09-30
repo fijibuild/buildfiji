@@ -1,0 +1,8 @@
+# Bazel needs a package to load the `.bzl` files of this workspace. It also makes
+# this directory a package of its own, which the parent's glob does not cross,
+# so the files are exported here.
+filegroup(
+    name = "files",
+    srcs = glob(["**"]),
+    visibility = ["//crates/fjfj-bzlmod/tests/fixtures:__pkg__"],
+)

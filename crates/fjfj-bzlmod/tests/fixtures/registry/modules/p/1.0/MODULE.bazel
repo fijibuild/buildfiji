@@ -1,0 +1,9 @@
+module(name = "p", version = "1.0")
+bazel_dep(name = "ext", version = "2.0")
+gen = use_extension("@ext//:b.bzl", "gen")
+use_repo(gen, "s1")
+
+# Only the root module's override_repo counts.
+override_repo(gen, s1 = "ext")
+made = use_repo_rule("@ext//:rr.bzl", "rr")
+made(name = "made")

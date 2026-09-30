@@ -169,10 +169,28 @@ fn resolution_matches_bazel() {
 /// The repo mappings of a resolution as `expected_repo_mapping.txt` holds
 /// Bazel's (`dump_mappings.py`): a line per repo, sorted, of its canonical
 /// name, a tab, and the mapping as a JSON object in the order it was built.
-fn render_repo_mappings(resolution: &Resolution) -> String {
+///
+/// `extension_repos` is what running each extension makes, `<repo of the
+/// .bzl>+<unique extension name>` and the names of its repos (a workspace's
+/// `extension_repos.txt`): running them is not this crate's job.
+fn render_repo_mappings(resolution: &Resolution, extension_repos: &str) -> String {
     // `dump_mappings.py` walks the mappings out from the main repo and leaves
     // `@bazel_tools` (and so what only it reaches) out.
-    let all = resolution.repo_mappings();
+    let mut all = resolution.repo_mappings();
+    for extension in resolution.extensions() {
+        let prefix = format!("{}+{}", extension.bzl_repo, extension.unique_name);
+        let Some(line) = extension_repos
+            .lines()
+            .find(|l| l.split(' ').next() == Some(prefix.as_str()))
+        else {
+            continue;
+        };
+        let names: Vec<String> = line.split(' ').skip(1).map(str::to_owned).collect();
+        let rows = resolution.extension_repo_mapping(&extension, &names);
+        for name in &names {
+            all.push((extension.repo_name(name), rows.clone()));
+        }
+    }
     let by_repo: BTreeMap<&str, &Vec<(String, String)>> = all
         .iter()
         .map(|(repo, rows)| (repo.as_str(), rows))
@@ -218,8 +236,10 @@ fn repo_mappings_match_bazel() {
             .into_owned();
         let resolution = resolve_workspace(&workspace)
             .unwrap_or_else(|e| panic!("{name}: resolution failed: {e}"));
+        let extension_repos =
+            std::fs::read_to_string(workspace.join("extension_repos.txt")).unwrap_or_default();
         assert_eq!(
-            render_repo_mappings(&resolution),
+            render_repo_mappings(&resolution, &extension_repos),
             std::fs::read_to_string(&expected).unwrap(),
             "{name}: repo mappings differ from Bazel's"
         );

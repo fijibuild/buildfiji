@@ -1,0 +1,7 @@
+<root> extra ext@2.0
+<root> mid mid@1.0
+<root> p p@1.0
+<root> q q@1.0
+mid@1.0 ext ext@2.0
+p@1.0 ext ext@2.0
+q@1.0 ext ext@2.0

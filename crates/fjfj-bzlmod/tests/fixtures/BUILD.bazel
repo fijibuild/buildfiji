@@ -14,6 +14,10 @@ filegroup(
         "bcr/**",
     ]) + [
         # `workspaces/include` is a package of its own.
+        "//crates/fjfj-bzlmod/tests/fixtures/registry/modules/ext/1.0:files",
+        "//crates/fjfj-bzlmod/tests/fixtures/registry/modules/ext/2.0:files",
+        "//crates/fjfj-bzlmod/tests/fixtures/workspaces/extensions:files",
+        "//crates/fjfj-bzlmod/tests/fixtures/workspaces/extensions_versions:files",
         "//crates/fjfj-bzlmod/tests/fixtures/workspaces/include:files",
     ],
     # buildfiji-gwl.17: fjfj-cli's own bzlmod-flag test reuses the registry
@@ -37,6 +41,8 @@ py_binary(
 py_binary(
     name = "lock_hashes",
     srcs = ["lock_hashes.py"],
+    # What the script checks the Bazel Central Registry's hashes against.
+    data = ["lockfiles/9.2.0.lock"],
 )
 
 sh_binary(

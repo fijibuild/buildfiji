@@ -1,0 +1,8 @@
+	{"r1":"ext+2.0+gen+r1","":"","root":"","mid":"mid+","extra":"ext+2.0","bazel_tools":"bazel_tools"}
+ext+1.0	{"ext":"ext+1.0","bazel_tools":"bazel_tools"}
+ext+1.0+gen+r1	{"ext":"ext+1.0","bazel_tools":"bazel_tools","r1":"ext+1.0+gen+r1","r2":"ext+1.0+gen+r2"}
+ext+1.0+gen+r2	{"ext":"ext+1.0","bazel_tools":"bazel_tools","r1":"ext+1.0+gen+r1","r2":"ext+1.0+gen+r2"}
+ext+2.0	{"ext":"ext+2.0","bazel_tools":"bazel_tools"}
+ext+2.0+gen+r1	{"ext":"ext+2.0","bazel_tools":"bazel_tools","r1":"ext+2.0+gen+r1","r2":"ext+2.0+gen+r2"}
+ext+2.0+gen+r2	{"ext":"ext+2.0","bazel_tools":"bazel_tools","r1":"ext+2.0+gen+r1","r2":"ext+2.0+gen+r2"}
+mid+	{"r1":"ext+1.0+gen+r1","mine":"ext+1.0+gen+r2","mid":"mid+","ext":"ext+1.0","bazel_tools":"bazel_tools"}

@@ -15,6 +15,7 @@ use crate::error::{BzlmodError, Result};
 use crate::eval::{
     EvalOptions, IncludeSource, ModuleFile, eval_module_file, validate_include_label,
 };
+use crate::extension_repos::ExtensionInstance;
 use crate::module::{Module, ModuleKey};
 use crate::overrides::{ModuleOverride, NonRegistryOverride, RepoRule, RepoSpec};
 use crate::selection::{self, Overrides, Selection};
@@ -177,29 +178,71 @@ impl Resolution {
     /// What each apparent repo name means in each repo of the module graph
     /// (Bazel's repo mapping, what `bazel mod dump_repo_mapping` prints): for
     /// every selected module, in breadth-first order, its canonical repo
-    /// name and `(apparent name, canonical name)` rows. A module sees
-    /// itself under its `repo_name`, then each `bazel_dep` under the name
-    /// the dependency was given, built-in `bazel_tools` last; the root
-    /// module sees the main repo as `""` too. (What a module's
-    /// `use_repo` brings in waits for module extensions, buildfiji-mum.8.)
+    /// name and `(apparent name, canonical name)` rows. The repos its
+    /// `use_repo`s import come first, in the order they are written; then a
+    /// module sees itself under its `repo_name`, then each `bazel_dep`
+    /// under the name the dependency was given, built-in `bazel_tools` last;
+    /// the root module sees the main repo as `""` too. The root module's
+    /// `override_repo` calls change what an import means for every module.
     pub fn repo_mappings(&self) -> Vec<(String, Vec<(String, String)>)> {
+        let extensions = self.extensions();
+        let overrides = self.override_targets(&extensions);
         self.selection
             .resolved
             .iter()
             .map(|(key, module)| {
                 let own = self.canonical_name_of(key);
-                let mut rows: Vec<(String, String)> = Vec::new();
-                if key.is_root() {
-                    rows.push((String::new(), own.clone()));
-                }
-                rows.push((module.repo_name.clone(), own.clone()));
-                for dep in &module.deps {
-                    let target = self.canonical_name_of(&dep.spec.to_module_key());
-                    rows.push((dep.repo_name.clone(), target));
-                }
-                (own, rows)
+                (
+                    own,
+                    self.module_mapping(key, module, &extensions, Some(&overrides)),
+                )
             })
             .collect()
+    }
+
+    /// The rows of one module's mapping (see [`Resolution::repo_mappings`]),
+    /// with the root module's overrides applied when `overrides` is given.
+    pub(crate) fn module_mapping(
+        &self,
+        key: &ModuleKey,
+        module: &Module,
+        extensions: &[ExtensionInstance],
+        overrides: Option<&BTreeMap<(usize, String), String>>,
+    ) -> Vec<(String, String)> {
+        let mut rows: Vec<(String, String)> = Vec::new();
+        for (usage_index, usage) in module.extension_usages.iter().enumerate() {
+            let Some((at, extension)) = extensions
+                .iter()
+                .enumerate()
+                .find(|(_, e)| e.usages.iter().any(|(k, i)| k == key && *i == usage_index))
+            else {
+                continue;
+            };
+            for (local, exported) in &usage.imports {
+                let canonical = overrides
+                    .and_then(|o| o.get(&(at, exported.clone())))
+                    .cloned()
+                    .unwrap_or_else(|| extension.repo_name(exported));
+                rows.push((local.clone(), canonical));
+            }
+        }
+        rows.extend(self.base_rows(key, module));
+        rows
+    }
+
+    /// A module's own name and its `bazel_dep`s, what needs no extension.
+    pub(crate) fn base_rows(&self, key: &ModuleKey, module: &Module) -> Vec<(String, String)> {
+        let own = self.canonical_name_of(key);
+        let mut rows: Vec<(String, String)> = Vec::new();
+        if key.is_root() {
+            rows.push((String::new(), own.clone()));
+        }
+        rows.push((module.repo_name.clone(), own));
+        for dep in &module.deps {
+            let target = self.canonical_name_of(&dep.spec.to_module_key());
+            rows.push((dep.repo_name.clone(), target));
+        }
+        rows
     }
 }
 

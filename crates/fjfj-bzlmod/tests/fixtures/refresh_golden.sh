@@ -77,10 +77,14 @@ for workspace in "${fixtures}"/workspaces/*/; do
     --registry=https://bcr.bazel.build \
     --lockfile_mode=off \
     > "${workspace}/expected_repo_mapping.txt"
-  # What Bazel records in MODULE.bazel.lock for the registry's files.
-  "${lock_hashes}" "${workspace}" \
-    --registry=https://bcr.bazel.build \
-    > "${workspace}/expected_lock_hashes.txt"
+  # What Bazel records in MODULE.bazel.lock for the registry's files. A
+  # workspace that uses module extensions cannot be locked from the served
+  # registry, whose sources are not real, so it has no such golden.
+  if [[ ! -f "${workspace}/extension_repos.txt" ]]; then
+    "${lock_hashes}" "${workspace}" \
+      --registry=https://bcr.bazel.build \
+      > "${workspace}/expected_lock_hashes.txt"
+  fi
 done
 
 # Bazel refuses the `yanked` workspace, so it has no graph, but with

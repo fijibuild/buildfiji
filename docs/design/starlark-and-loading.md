@@ -1295,6 +1295,34 @@ second run of real Bazel. `bazel_tools`'s subtree is hidden the same way
 and `deps`/`show_repo`/`explain`'s text isn't matched against Bazel's at
 all — only the JSON graph shape is a conformance point today.
 
+### Extension repo names and `use_repo` in the repo mapping (implemented 2026-09-30, buildfiji-mum.8.5)
+
+`crates/fjfj-bzlmod/src/extension_repos.rs`, read off `bazel mod dump_repo_mapping`
+for the `extensions` and `extensions_versions` fixtures (the goldens dump every
+repo, extension repos too):
+
+- An extension's repo is `<canonical repo of its .bzl>+<unique extension
+  name>+<repo>`: `ext++gen+r1`, `+gen+a` (the `.bzl` is in the main repo),
+  `ext+2.0+gen+r1` (two versions of `ext` are selected).
+- The unique name is the extension's name, with `2`, `3` on later ones of the
+  same name in the same repo (two `.bzl` files both define `gen`). Later means
+  by first use: modules in breadth-first order (so the root's `ext.bzl` is
+  `gen` and `q`'s `a.bzl` is `gen2`), each module's usages in file order.
+- A `use_repo_rule` is an extension per rule: the `.bzl` repo is the calling
+  module (`p++rr+made`, `+rr+x`), named for the rule and numbered the same way
+  (`+rr2+y`), and every call is an import.
+- A module's mapping lists its `use_repo` imports first, in file order, then
+  its own name, its deps, and `bazel_tools`.
+- Only the root module's `override_repo` and `inject_repo` count (a
+  dependency's are silently dropped), and they apply to every module: `r1` is
+  `+gen+a` for `mid` too. `override_repo` targets are read in the root's mapping.
+- A generated repo's mapping is the mapping of the module that holds its
+  `.bzl`, then the extension's other repos, then the root's injected repos.
+  `Resolution::extension_repo_mapping` takes the generated names as input,
+  because running an extension is `fjfj-repo`'s job.
+- `isolate = True` names repos after the variable the usage is assigned to;
+  left out for now (buildfiji-mum.8.7).
+
 ### `MODULE.bazel.lock` (implemented 2026-09-30, buildfiji-mum.7)
 
 `fjfj_bzlmod::lockfile` reads and writes Bazel 9.2.0's lockfile, version

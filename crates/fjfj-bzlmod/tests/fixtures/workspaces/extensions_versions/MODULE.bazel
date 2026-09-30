@@ -1,0 +1,10 @@
+module(name = "root", version = "0")
+
+bazel_dep(name = "mid", version = "1.0")
+bazel_dep(name = "ext", version = "2.0", repo_name = "extra")
+
+# Two versions of ext: its repos are named with the version.
+multiple_version_override(module_name = "ext", versions = ["1.0", "2.0"])
+
+gen = use_extension("@extra//:ext.bzl", "gen")
+use_repo(gen, "r1")

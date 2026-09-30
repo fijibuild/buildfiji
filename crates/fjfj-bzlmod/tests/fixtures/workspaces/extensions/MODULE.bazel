@@ -1,0 +1,33 @@
+module(name = "root", version = "0")
+
+bazel_dep(name = "q", version = "1.0")
+bazel_dep(name = "p", version = "1.0")
+bazel_dep(name = "mid", version = "1.0")
+bazel_dep(name = "ext", version = "2.0", repo_name = "extra")
+
+gen = use_extension("@extra//:ext.bzl", "gen")
+use_repo(gen, "r1", other = "r2")
+
+# Three extensions called `gen` in one repo: gen, gen2, gen3.
+mine = use_extension("//:my.bzl", "gen")
+use_repo(mine, "a")
+
+mine2 = use_extension("//:my2.bzl", "gen")
+use_repo(mine2, "c")
+
+mine3 = use_extension("//:my3.bzl", "gen")
+use_repo(mine3, "e")
+
+# r1 of `gen` is now `a` for everyone, and `mine` gets a `foo`.
+override_repo(gen, r1 = "a")
+inject_repo(mine, "extra", foo = "mid")
+
+# use_repo_rule: one extension per rule, numbered when the names meet.
+first = use_repo_rule("//:rr1.bzl", "rr")
+first(name = "x")
+
+second = use_repo_rule("//:rr2.bzl", "rr")
+second(name = "y")
+
+third = use_repo_rule("@extra//:rr.bzl", "rr")
+third(name = "z")

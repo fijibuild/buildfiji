@@ -1,0 +1,4 @@
+module(name = "q", version = "1.0")
+bazel_dep(name = "ext", version = "2.0")
+gen = use_extension("@ext//:a.bzl", "gen")
+use_repo(gen, "r1")

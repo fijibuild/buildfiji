@@ -1,0 +1,10 @@
++gen a b
++gen2 c d
++gen3 e f
+ext++gen r1 r2
+ext++gen2 r1 r2
+ext++gen3 s1 s2
+p++rr made
++rr x
++rr2 y
++rr3 z
