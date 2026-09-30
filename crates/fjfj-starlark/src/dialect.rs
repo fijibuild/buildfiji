@@ -7,10 +7,12 @@
 use anyhow::anyhow;
 use starlark::codemap::{FileSpan, Span};
 use starlark::syntax::{AstModule, Dialect, DialectTypes};
+use starlark_syntax::codemap::Pos;
 use starlark_syntax::error::ErrorKind;
 use starlark_syntax::syntax::ast::{
-    AssignTargetP, AstLiteral, AstNoPayload, AstStmt, ExprP, StmtP,
+    AssignTargetP, AstExpr, AstLiteral, AstNoPayload, AstStmt, ExprP, StmtP,
 };
+use starlark_syntax::syntax::uniplate::Visit;
 use std::collections::HashMap;
 
 /// Which Bazel file dialect a source is parsed and checked under.
@@ -81,10 +83,94 @@ pub fn bzl_dialect() -> Dialect {
 pub fn parse(path: &str, src: &str, kind: FileKind) -> anyhow::Result<AstModule> {
     let ast =
         AstModule::parse(path, src.to_owned(), &kind.dialect()).map_err(|e| e.into_anyhow())?;
+    check_string_escapes(&ast).map_err(|e| e.into_anyhow())?;
     if kind == FileKind::Bzl {
         check_bzl_top_level(&ast).map_err(|e| e.into_anyhow())?;
     }
     Ok(ast)
+}
+
+/// Bazel's lexer accepts only `\\ \' \" \a \b \f \n \r \t \v`, an octal `\ooo` and
+/// a backslash before a line break in a string that is not raw; the crate's also
+/// takes `\x`, `\u` and `\U` (buildfiji-8q5). This looks at each string literal's text.
+fn check_string_escapes(ast: &AstModule) -> Result<(), starlark::Error> {
+    fn expr(ast: &AstModule, e: &AstExpr, found: &mut Option<starlark::Error>) {
+        if found.is_some() {
+            return;
+        }
+        if let ExprP::Literal(AstLiteral::String(_)) = &e.node {
+            let text = ast.file_span(e.span).source_span().to_owned();
+            if let Some((at, len, message)) = invalid_escape(&text) {
+                let begin = e.span.begin().get() + at as u32;
+                let span = Span::new(Pos::new(begin), Pos::new(begin + len as u32));
+                *found = Some(error_at(ast, span, message));
+            }
+        }
+        e.node.visit_expr(|child| expr(ast, child, found));
+    }
+    fn walk(ast: &AstModule, v: Visit<'_, AstNoPayload>, found: &mut Option<starlark::Error>) {
+        match v {
+            Visit::Expr(e) => expr(ast, e, found),
+            Visit::Stmt(s) => s.node.visit_children(|v| walk(ast, v, found)),
+        }
+    }
+    let mut found = None;
+    ast.statement()
+        .node
+        .visit_children(|v| walk(ast, v, &mut found));
+    found.map_or(Ok(()), Err)
+}
+
+/// The first escape in the source text of a string literal that Bazel does
+/// not accept: the byte offset it is reported at (the character after the
+/// backslash, or the last digit of an octal escape), that character's length and
+/// Bazel's message.
+fn invalid_escape(literal: &str) -> Option<(usize, usize, String)> {
+    if literal.starts_with(['r', 'R']) {
+        return None;
+    }
+    let bytes = literal.as_bytes();
+    let mut chars = literal.char_indices();
+    while let Some((at, c)) = chars.next() {
+        if c != '\\' {
+            continue;
+        }
+        let (next_at, next) = chars.next()?;
+        match next {
+            '\\' | '\'' | '"' | 'a' | 'b' | 'f' | 'n' | 'r' | 't' | 'v' | '\n' | '\r' => {}
+            '0'..='7' => {
+                // Up to three octal digits, no more than `\377`.
+                let mut value = next as u32 - '0' as u32;
+                let mut last = next_at;
+                for _ in 0..2 {
+                    match bytes.get(last + 1) {
+                        Some(d @ b'0'..=b'7') => {
+                            value = value * 8 + u32::from(d - b'0');
+                            last += 1;
+                            chars.next();
+                        }
+                        _ => break,
+                    }
+                }
+                if value > 0o377 {
+                    return Some((
+                        last,
+                        1,
+                        "octal escape sequence out of range (maximum is \\377)".to_owned(),
+                    ));
+                }
+            }
+            other => {
+                return Some((
+                    next_at,
+                    other.len_utf8(),
+                    format!("invalid escape sequence: \\{other}. Use '\\\\' to insert '\\'."),
+                ));
+            }
+        }
+        let _ = at;
+    }
+    None
 }
 
 /// The names a file assigns at its top level (not `def`s or `load`s), in
@@ -189,4 +275,57 @@ fn check_bzl_top_level(ast: &AstModule) -> Result<(), starlark::Error> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn refused(src: &str) -> Option<String> {
+        parse("t.bzl", src, FileKind::Bzl)
+            .err()
+            .map(|e| e.to_string())
+    }
+
+    #[test]
+    fn an_octal_escape_is_at_most_377_and_the_error_is_where_bazel_puts_it() {
+        let error = refused("X = \"a\\400 b\"\n").unwrap();
+        assert!(
+            error.contains("octal escape sequence out of range (maximum is \\377)"),
+            "{error}"
+        );
+        assert!(error.contains("1:10"), "{error}");
+        let error = refused("X = \"a\\q b\"\n").unwrap();
+        assert!(error.contains("1:8"), "{error}");
+        assert_eq!(refused("X = \"\\377\\0\\12\\7\""), None);
+    }
+
+    #[test]
+    fn bazel_takes_only_its_escapes() {
+        for ok in [
+            r#"x = "\n\t\\\"\'\a\b\f\v\r\101\0 \7""#,
+            "x = 'it\\'s'",
+            "x = r'\\q \\u \\x'",
+            "x = \"\"\"a\\\nb\"\"\"",
+            r#"x = ["a", {"b\n": "c"}]"#,
+        ] {
+            assert_eq!(refused(ok), None, "{ok}");
+        }
+        for (src, bad) in [
+            (r#"x = "\u0001""#, "\\u"),
+            (r#"x = "\U0001F600""#, "\\U"),
+            (r#"x = "\x7f""#, "\\x"),
+            (r#"x = "\q""#, "\\q"),
+            (r#"x = "ok" + "a\ eb""#, "\\ "),
+            (r#"def f(): return {"k": ["\8"]}"#, "\\8"),
+        ] {
+            let error = refused(src).unwrap_or_else(|| panic!("{src} is accepted"));
+            assert!(
+                error.contains(&format!(
+                    "invalid escape sequence: {bad}. Use '\\\\' to insert '\\'."
+                )),
+                "{src}: {error}"
+            );
+        }
+    }
 }

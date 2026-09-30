@@ -24,10 +24,8 @@ const RUNTIME_WORDING: &[&str] = &[
     "print(proto)",
     "proto.encode_text)",
     "hash(",
-    // Escapes Bazel's lexer rejects (buildfiji-8q5), a row whose output
-    // spans lines, and rows that `repr` a non-ASCII string (buildfiji-s9u).
-    "\\u0001",
-    "\\U0001F600",
+    // A row whose output spans lines, and rows that `repr` a non-ASCII string
+    // (buildfiji-s9u).
     "u00e9",
     "é",
     "\\177",
