@@ -1031,6 +1031,19 @@ Read off probes of `bazel build` against a local registry of local-path modules
 - What a lazily run extension prints is kept and handed to whoever asked for
   the repo that needed it, in order (`Repos::fetch`, `run_extensions`).
 
+`--override_repository=<name>=<path>` (`Options::repo_overrides`, 9 more rows):
+the name is one the main repository sees (a `bazel_dep`'s `repo_name`, a
+`use_repo` import, a `use_repo_rule` call), else `no repository visible as
+'@lib' from the main repository, but overridden with --override_repository.
+Use --inject_repository to add new repositories.` (exit 48). The repo is a link
+to the path (relative to the workspace), whatever it was: an extension still
+runs, and the repo it generated is replaced. The errors: `The repository's path
+is "lib+" (absolute: "<dir>") but it does not exist or is not a directory.` (the
+canonical name stands where local.bzl prints `path`) and `No MODULE.bazel,
+REPO.bazel, or WORKSPACE file found in <dir>`. An empty name is ignored.
+`--override_module` is resolution's (`ResolveOptions::command_overrides`); it
+loses to `--override_repository` for the same repo.
+
 Not covered: a module whose source is an archive or git repository
 (`Resolution::module_repo_spec` gives the attributes; the rules are the ones
 `http_archive_matrix` replays), `archive_override` and friends, and several

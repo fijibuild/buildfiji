@@ -22,6 +22,8 @@ pub(crate) struct MultiRow {
     pub(crate) registry: &'static [(&'static str, &'static str, Files)],
     pub(crate) root: Files,
     pub(crate) fetch: &'static [&'static str],
+    /// `--override_repository` values, `name=path`; `@WS@` is the workspace.
+    pub(crate) overrides: &'static [&'static str],
     pub(crate) error: Option<&'static str>,
     pub(crate) printed: &'static [&'static str],
     pub(crate) builds: &'static [(&'static str, &'static str)],
@@ -102,17 +104,32 @@ fn modules_share_their_extensions_as_bazel_does() {
             downloader: None,
             repository_cache: None,
             registries: vec![Registry::local(&reg)],
+            repo_overrides: row
+                .overrides
+                .iter()
+                .map(|o| {
+                    let (name, path) = o.split_once('=').unwrap();
+                    let path = path.replace("@WS@", &ws.display().to_string());
+                    (name.to_owned(), std::path::PathBuf::from(path))
+                })
+                .collect(),
         };
-        let repos = Repos::from_resolution(options, resolution).unwrap();
         let capture = Capture(RefCell::new(Vec::new()));
+        let clean = |message: &str| {
+            message
+                .replace(&format!("file://{}", reg.display()), "<reg>")
+                .replace(&ws.display().to_string(), "<ws>")
+        };
         let mut error = None;
-        for target in row.fetch {
-            if let Err(e) = repos.fetch(target, Some(&capture)) {
-                error = Some(
-                    e.message
-                        .replace(&format!("file://{}", reg.display()), "<reg>"),
-                );
-                break;
+        match Repos::from_resolution(options, resolution) {
+            Err(e) => error = Some(clean(&e.message)),
+            Ok(repos) => {
+                for target in row.fetch {
+                    if let Err(e) = repos.fetch(target, Some(&capture)) {
+                        error = Some(clean(&e.message));
+                        break;
+                    }
+                }
             }
         }
         assert_eq!(error.as_deref(), row.error, "{}: the error", row.name);

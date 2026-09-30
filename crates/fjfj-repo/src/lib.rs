@@ -91,6 +91,9 @@ pub struct Options {
     /// The registries the modules of the graph came from: how a module's
     /// repository is made is in its `source.json`.
     pub registries: Vec<Registry>,
+    /// `--override_repository`: the name the main repository sees a repo by,
+    /// and the directory that is the repo instead (relative to the workspace).
+    pub repo_overrides: Vec<(String, PathBuf)>,
 }
 
 /// A repository to make: a rule and what it is called with.
@@ -117,6 +120,8 @@ struct State {
     running: BTreeSet<usize>,
     /// Repositories being made now.
     making: BTreeSet<String>,
+    /// Repos replaced by a directory, by canonical name.
+    overridden: BTreeMap<String, PathBuf>,
 }
 
 struct Inner {
@@ -218,8 +223,23 @@ impl Repos {
             );
         }
         let extensions = resolution.extensions();
+        // The names are the main repository's, and an empty one names nothing.
+        let mut overridden = BTreeMap::new();
+        for (name, path) in &options.repo_overrides {
+            if name.is_empty() {
+                continue;
+            }
+            let Some(canonical) = mappings.find_apparent("", name) else {
+                return failed(format!(
+                    "no repository visible as '@{name}' from the main repository, but overridden \
+                     with --override_repository. Use --inject_repository to add new repositories."
+                ));
+            };
+            overridden.insert(canonical, options.workspace_root.join(path));
+        }
         let mut state = State {
             mappings: Arc::new(mappings),
+            overridden,
             ..State::default()
         };
         state.lookups.insert(String::new(), Arc::new(lookup));
@@ -444,6 +464,10 @@ impl Inner {
     }
 
     fn make_unguarded(self: &Arc<Self>, name: &str) -> Result<(), FetchError> {
+        let overridden = self.state.lock().unwrap().overridden.get(name).cloned();
+        if let Some(target) = overridden {
+            return self.link_override(name, &target);
+        }
         let known = self.state.lock().unwrap().generated.contains_key(name);
         if !known {
             // A module's own repository, made by the rule its source names.
@@ -562,6 +586,46 @@ impl Inner {
             }
             _ => location.to_owned(),
         }
+    }
+
+    /// Make the repository `name` a link to the directory `target`.
+    fn link_override(&self, name: &str, target: &Path) -> Result<(), FetchError> {
+        if !target.is_dir() {
+            return failed(format!(
+                "The repository's path is \"{name}\" (absolute: \"{}\") but it does not exist \
+                 or is not a directory.",
+                target.display()
+            ));
+        }
+        let output = self.options.output_base.join("external").join(name);
+        let _ = std::fs::remove_file(&output);
+        let _ = std::fs::remove_dir_all(&output);
+        if let Some(parent) = output.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| FetchError {
+                message: e.to_string(),
+            })?;
+        }
+        std::os::unix::fs::symlink(target, &output).map_err(|e| FetchError {
+            message: format!("cannot link {}: {e}", output.display()),
+        })?;
+        let has_boundary = ["MODULE.bazel", "REPO.bazel", "WORKSPACE", "WORKSPACE.bazel"]
+            .iter()
+            .any(|f| target.join(f).exists());
+        if !has_boundary {
+            return failed(format!(
+                "No MODULE.bazel, REPO.bazel, or WORKSPACE file found in {}",
+                target.display()
+            ));
+        }
+        let lookup = PackageLookup::new(&output).map_err(|e| FetchError {
+            message: e.to_string(),
+        })?;
+        self.state
+            .lock()
+            .unwrap()
+            .lookups
+            .insert(name.to_owned(), Arc::new(lookup));
+        Ok(())
     }
 
     /// A canonical label written `@@repo//pkg:name`.

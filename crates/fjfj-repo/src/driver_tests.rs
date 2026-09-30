@@ -31,6 +31,7 @@ fn repos(module: &str) -> (tempfile::TempDir, Repos) {
             downloader: None,
             repository_cache: None,
             registries: Vec::new(),
+            repo_overrides: Vec::new(),
         },
         file.module,
     )
@@ -138,6 +139,7 @@ mod http_archive {
                 downloader: Some(Arc::new(One(url.to_owned(), bytes, Mutex::new(Vec::new())))),
                 repository_cache: Some(dir.path().join("cache")),
                 registries: Vec::new(),
+                repo_overrides: Vec::new(),
             },
             file.module,
         )
@@ -196,6 +198,7 @@ fn a_local_repository_with_no_boundary_file_is_refused_as_bazel_does() {
             downloader: None,
             repository_cache: None,
             registries: Vec::new(),
+            repo_overrides: Vec::new(),
         },
         file.module,
     )

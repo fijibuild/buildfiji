@@ -89,6 +89,7 @@ use_repo(d, "dev_root")
             r#"lib++collect+from_root"#,
             r#"lib++collect+dev_root"#,
         ],
+        overrides: &[],
         error: None,
         printed: &[
             r##"root@0 root=True tags=["from_root", "dev_root"]; b@1.0 root=False tags=["from_b"]; a@1.0 root=False tags=["from_a"] nd=True"##,
@@ -173,6 +174,7 @@ bazel_dep(name = "a", version = "1.0")
 "##,
         )],
         fetch: &[r#"lib++collect+from_a"#],
+        overrides: &[],
         error: None,
         printed: &[r##"a@1.0 root=False tags=["from_a"] nd=False"##],
         builds: &[(
@@ -242,6 +244,7 @@ use_repo(e, "dev_root", "from_a")
 "##,
         )],
         fetch: &[r#"lib++collect+from_a"#, r#"lib++collect+dev_root"#],
+        overrides: &[],
         error: None,
         printed: &[
             r##"root@0 root=True tags=["dev_root"]; a@1.0 root=False tags=["from_a"] nd=False"##,
@@ -316,6 +319,7 @@ bazel_dep(name = "a", version = "1.0")
 "##,
         )],
         fetch: &[r#"lib++collect+from_a"#],
+        overrides: &[],
         error: Some(
             r##"module extension @@lib+//:ext.bzl%collect does not generate repository "nope", yet it is imported as "nope" in the usage at <reg>/modules/a/1.0/MODULE.bazel:3:18"##,
         ),
@@ -383,6 +387,7 @@ use_repo(e, "from_root", "zzz")
 "##,
         )],
         fetch: &[r#"lib++collect+from_a"#],
+        overrides: &[],
         error: Some(
             r##"module extension @@lib+//:ext.bzl%collect does not generate repository "zzz", yet it is imported as "zzz" in the usage at MODULE.bazel:4:18"##,
         ),
@@ -456,6 +461,7 @@ use_repo(e, "x")
 "##,
         )],
         fetch: &[r#"lib++collect+x"#],
+        overrides: &[],
         error: None,
         printed: &[r##"root@0 root=True tags=["x"] nd=True from_helper"##],
         builds: &[(
@@ -527,6 +533,7 @@ use_repo(e, "x")
 "##,
         )],
         fetch: &[r#"lib++collect+x"#],
+        overrides: &[],
         error: None,
         printed: &[
             r#"genx runs"#,
@@ -580,12 +587,564 @@ bazel_dep(name = "a", version = "1.0")
 "##,
         )],
         fetch: &[r#"a++made+mine"#],
+        overrides: &[],
         error: None,
         printed: &[],
         builds: &[(
             r#"a++made+mine"#,
             r#"# from a a++made+mine mine
 filegroup(name = 'f')"#,
+        )],
+    },
+    MultiRow {
+        name: r#"override_repository_replaces_a_module_repo"#,
+        registry: &[(
+            r#"lib"#,
+            r#"1.0"#,
+            &[
+                (
+                    r#"MODULE.bazel"#,
+                    r##"module(name = "lib", version = "1.0")
+"##,
+                ),
+                (
+                    r#"ext.bzl"#,
+                    r###"def _r(rctx):
+    rctx.file("BUILD.bazel", "# " + rctx.attr.info + "\nfilegroup(name = 'f')")
+
+made = repository_rule(implementation = _r, attrs = {"info": attr.string()})
+
+_add = tag_class(attrs = {"name": attr.string(mandatory = True)})
+
+def _impl(mctx):
+    lines = []
+    for m in mctx.modules:
+        lines.append("%s@%s root=%s tags=%s" % (m.name, m.version, m.is_root, [t.name for t in m.tags.add]))
+    info = "; ".join(lines) + " nd=" + str(mctx.root_module_has_non_dev_dependency)
+    print(info)
+    for m in mctx.modules:
+        for t in m.tags.add:
+            made(name = t.name, info = info)
+
+collect = module_extension(implementation = _impl, tag_classes = {"add": _add})
+"###,
+                ),
+            ],
+        )],
+        root: &[
+            (
+                r#"MODULE.bazel"#,
+                r##"module(name = "root", version = "0")
+bazel_dep(name = "lib", version = "1.0")
+"##,
+            ),
+            (
+                r#"ovr/alt/MODULE.bazel"#,
+                r##"module(name = "lib", version = "9.9")
+"##,
+            ),
+            (
+                r#"ovr/alt/BUILD.bazel"#,
+                r#"filegroup(name = 'f')
+# alt
+"#,
+            ),
+        ],
+        fetch: &[r#"lib+"#],
+        overrides: &[r#"lib=ovr/alt"#],
+        error: None,
+        printed: &[],
+        builds: &[(
+            r#"lib+"#,
+            r#"filegroup(name = 'f')
+# alt
+"#,
+        )],
+    },
+    MultiRow {
+        name: r#"override_repository_takes_an_absolute_path"#,
+        registry: &[(
+            r#"lib"#,
+            r#"1.0"#,
+            &[
+                (
+                    r#"MODULE.bazel"#,
+                    r##"module(name = "lib", version = "1.0")
+"##,
+                ),
+                (
+                    r#"ext.bzl"#,
+                    r###"def _r(rctx):
+    rctx.file("BUILD.bazel", "# " + rctx.attr.info + "\nfilegroup(name = 'f')")
+
+made = repository_rule(implementation = _r, attrs = {"info": attr.string()})
+
+_add = tag_class(attrs = {"name": attr.string(mandatory = True)})
+
+def _impl(mctx):
+    lines = []
+    for m in mctx.modules:
+        lines.append("%s@%s root=%s tags=%s" % (m.name, m.version, m.is_root, [t.name for t in m.tags.add]))
+    info = "; ".join(lines) + " nd=" + str(mctx.root_module_has_non_dev_dependency)
+    print(info)
+    for m in mctx.modules:
+        for t in m.tags.add:
+            made(name = t.name, info = info)
+
+collect = module_extension(implementation = _impl, tag_classes = {"add": _add})
+"###,
+                ),
+            ],
+        )],
+        root: &[
+            (
+                r#"MODULE.bazel"#,
+                r##"module(name = "root", version = "0")
+bazel_dep(name = "lib", version = "1.0")
+"##,
+            ),
+            (
+                r#"ovr/alt/MODULE.bazel"#,
+                r##"module(name = "lib", version = "9.9")
+"##,
+            ),
+            (
+                r#"ovr/alt/BUILD.bazel"#,
+                r#"filegroup(name = 'f')
+# alt
+"#,
+            ),
+        ],
+        fetch: &[r#"lib+"#],
+        overrides: &[r#"lib=@WS@/ovr/alt"#],
+        error: None,
+        printed: &[],
+        builds: &[(
+            r#"lib+"#,
+            r#"filegroup(name = 'f')
+# alt
+"#,
+        )],
+    },
+    MultiRow {
+        name: r#"override_repository_names_the_repo_the_main_repository_sees"#,
+        registry: &[(
+            r#"lib"#,
+            r#"1.0"#,
+            &[
+                (
+                    r#"MODULE.bazel"#,
+                    r##"module(name = "lib", version = "1.0")
+"##,
+                ),
+                (
+                    r#"ext.bzl"#,
+                    r###"def _r(rctx):
+    rctx.file("BUILD.bazel", "# " + rctx.attr.info + "\nfilegroup(name = 'f')")
+
+made = repository_rule(implementation = _r, attrs = {"info": attr.string()})
+
+_add = tag_class(attrs = {"name": attr.string(mandatory = True)})
+
+def _impl(mctx):
+    lines = []
+    for m in mctx.modules:
+        lines.append("%s@%s root=%s tags=%s" % (m.name, m.version, m.is_root, [t.name for t in m.tags.add]))
+    info = "; ".join(lines) + " nd=" + str(mctx.root_module_has_non_dev_dependency)
+    print(info)
+    for m in mctx.modules:
+        for t in m.tags.add:
+            made(name = t.name, info = info)
+
+collect = module_extension(implementation = _impl, tag_classes = {"add": _add})
+"###,
+                ),
+            ],
+        )],
+        root: &[
+            (
+                r#"MODULE.bazel"#,
+                r##"module(name = "root", version = "0")
+bazel_dep(name = "lib", version = "1.0", repo_name = "foo")
+"##,
+            ),
+            (
+                r#"ovr/alt/MODULE.bazel"#,
+                r##"module(name = "lib", version = "9.9")
+"##,
+            ),
+            (
+                r#"ovr/alt/BUILD.bazel"#,
+                r#"filegroup(name = 'f')
+# alt
+"#,
+            ),
+        ],
+        fetch: &[r#"lib+"#],
+        overrides: &[r#"foo=ovr/alt"#],
+        error: None,
+        printed: &[],
+        builds: &[(
+            r#"lib+"#,
+            r#"filegroup(name = 'f')
+# alt
+"#,
+        )],
+    },
+    MultiRow {
+        name: r#"override_repository_of_a_name_the_main_repository_does_not_see"#,
+        registry: &[(
+            r#"lib"#,
+            r#"1.0"#,
+            &[
+                (
+                    r#"MODULE.bazel"#,
+                    r##"module(name = "lib", version = "1.0")
+"##,
+                ),
+                (
+                    r#"ext.bzl"#,
+                    r###"def _r(rctx):
+    rctx.file("BUILD.bazel", "# " + rctx.attr.info + "\nfilegroup(name = 'f')")
+
+made = repository_rule(implementation = _r, attrs = {"info": attr.string()})
+
+_add = tag_class(attrs = {"name": attr.string(mandatory = True)})
+
+def _impl(mctx):
+    lines = []
+    for m in mctx.modules:
+        lines.append("%s@%s root=%s tags=%s" % (m.name, m.version, m.is_root, [t.name for t in m.tags.add]))
+    info = "; ".join(lines) + " nd=" + str(mctx.root_module_has_non_dev_dependency)
+    print(info)
+    for m in mctx.modules:
+        for t in m.tags.add:
+            made(name = t.name, info = info)
+
+collect = module_extension(implementation = _impl, tag_classes = {"add": _add})
+"###,
+                ),
+            ],
+        )],
+        root: &[
+            (
+                r#"MODULE.bazel"#,
+                r##"module(name = "root", version = "0")
+bazel_dep(name = "lib", version = "1.0", repo_name = "foo")
+"##,
+            ),
+            (
+                r#"ovr/alt/MODULE.bazel"#,
+                r##"module(name = "lib", version = "9.9")
+"##,
+            ),
+            (
+                r#"ovr/alt/BUILD.bazel"#,
+                r#"filegroup(name = 'f')
+# alt
+"#,
+            ),
+        ],
+        fetch: &[r#"lib+"#],
+        overrides: &[r#"lib=ovr/alt"#],
+        error: Some(
+            r#"no repository visible as '@lib' from the main repository, but overridden with --override_repository. Use --inject_repository to add new repositories."#,
+        ),
+        printed: &[],
+        builds: &[],
+    },
+    MultiRow {
+        name: r#"override_repository_to_a_directory_that_is_not_there"#,
+        registry: &[(
+            r#"lib"#,
+            r#"1.0"#,
+            &[
+                (
+                    r#"MODULE.bazel"#,
+                    r##"module(name = "lib", version = "1.0")
+"##,
+                ),
+                (
+                    r#"ext.bzl"#,
+                    r###"def _r(rctx):
+    rctx.file("BUILD.bazel", "# " + rctx.attr.info + "\nfilegroup(name = 'f')")
+
+made = repository_rule(implementation = _r, attrs = {"info": attr.string()})
+
+_add = tag_class(attrs = {"name": attr.string(mandatory = True)})
+
+def _impl(mctx):
+    lines = []
+    for m in mctx.modules:
+        lines.append("%s@%s root=%s tags=%s" % (m.name, m.version, m.is_root, [t.name for t in m.tags.add]))
+    info = "; ".join(lines) + " nd=" + str(mctx.root_module_has_non_dev_dependency)
+    print(info)
+    for m in mctx.modules:
+        for t in m.tags.add:
+            made(name = t.name, info = info)
+
+collect = module_extension(implementation = _impl, tag_classes = {"add": _add})
+"###,
+                ),
+            ],
+        )],
+        root: &[
+            (
+                r#"MODULE.bazel"#,
+                r##"module(name = "root", version = "0")
+bazel_dep(name = "lib", version = "1.0")
+"##,
+            ),
+            (
+                r#"ovr/alt/MODULE.bazel"#,
+                r##"module(name = "lib", version = "9.9")
+"##,
+            ),
+            (
+                r#"ovr/alt/BUILD.bazel"#,
+                r#"filegroup(name = 'f')
+# alt
+"#,
+            ),
+        ],
+        fetch: &[r#"lib+"#],
+        overrides: &[r#"lib=ovr/nope"#],
+        error: Some(
+            r##"The repository's path is "lib+" (absolute: "<ws>/ovr/nope") but it does not exist or is not a directory."##,
+        ),
+        printed: &[],
+        builds: &[],
+    },
+    MultiRow {
+        name: r#"override_repository_to_a_file"#,
+        registry: &[(
+            r#"lib"#,
+            r#"1.0"#,
+            &[
+                (
+                    r#"MODULE.bazel"#,
+                    r##"module(name = "lib", version = "1.0")
+"##,
+                ),
+                (
+                    r#"ext.bzl"#,
+                    r###"def _r(rctx):
+    rctx.file("BUILD.bazel", "# " + rctx.attr.info + "\nfilegroup(name = 'f')")
+
+made = repository_rule(implementation = _r, attrs = {"info": attr.string()})
+
+_add = tag_class(attrs = {"name": attr.string(mandatory = True)})
+
+def _impl(mctx):
+    lines = []
+    for m in mctx.modules:
+        lines.append("%s@%s root=%s tags=%s" % (m.name, m.version, m.is_root, [t.name for t in m.tags.add]))
+    info = "; ".join(lines) + " nd=" + str(mctx.root_module_has_non_dev_dependency)
+    print(info)
+    for m in mctx.modules:
+        for t in m.tags.add:
+            made(name = t.name, info = info)
+
+collect = module_extension(implementation = _impl, tag_classes = {"add": _add})
+"###,
+                ),
+            ],
+        )],
+        root: &[
+            (
+                r#"MODULE.bazel"#,
+                r##"module(name = "root", version = "0")
+bazel_dep(name = "lib", version = "1.0")
+"##,
+            ),
+            (
+                r#"ovr/alt/MODULE.bazel"#,
+                r##"module(name = "lib", version = "9.9")
+"##,
+            ),
+            (
+                r#"ovr/alt/BUILD.bazel"#,
+                r#"filegroup(name = 'f')
+# alt
+"#,
+            ),
+        ],
+        fetch: &[r#"lib+"#],
+        overrides: &[r#"lib=ovr/alt/BUILD.bazel"#],
+        error: Some(
+            r##"The repository's path is "lib+" (absolute: "<ws>/ovr/alt/BUILD.bazel") but it does not exist or is not a directory."##,
+        ),
+        printed: &[],
+        builds: &[],
+    },
+    MultiRow {
+        name: r#"override_repository_to_a_directory_with_no_boundary_file"#,
+        registry: &[(
+            r#"lib"#,
+            r#"1.0"#,
+            &[
+                (
+                    r#"MODULE.bazel"#,
+                    r##"module(name = "lib", version = "1.0")
+"##,
+                ),
+                (
+                    r#"ext.bzl"#,
+                    r###"def _r(rctx):
+    rctx.file("BUILD.bazel", "# " + rctx.attr.info + "\nfilegroup(name = 'f')")
+
+made = repository_rule(implementation = _r, attrs = {"info": attr.string()})
+
+_add = tag_class(attrs = {"name": attr.string(mandatory = True)})
+
+def _impl(mctx):
+    lines = []
+    for m in mctx.modules:
+        lines.append("%s@%s root=%s tags=%s" % (m.name, m.version, m.is_root, [t.name for t in m.tags.add]))
+    info = "; ".join(lines) + " nd=" + str(mctx.root_module_has_non_dev_dependency)
+    print(info)
+    for m in mctx.modules:
+        for t in m.tags.add:
+            made(name = t.name, info = info)
+
+collect = module_extension(implementation = _impl, tag_classes = {"add": _add})
+"###,
+                ),
+            ],
+        )],
+        root: &[
+            (
+                r#"MODULE.bazel"#,
+                r##"module(name = "root", version = "0")
+bazel_dep(name = "lib", version = "1.0")
+"##,
+            ),
+            (
+                r#"ovr/nob/BUILD.bazel"#,
+                r#"filegroup(name = 'f')
+# no boundary file
+"#,
+            ),
+        ],
+        fetch: &[r#"lib+"#],
+        overrides: &[r#"lib=ovr/nob"#],
+        error: Some(r#"No MODULE.bazel, REPO.bazel, or WORKSPACE file found in <ws>/ovr/nob"#),
+        printed: &[],
+        builds: &[(
+            r#"lib+"#,
+            r#"filegroup(name = 'f')
+# no boundary file
+"#,
+        )],
+    },
+    MultiRow {
+        name: r#"override_repository_replaces_what_an_extension_generates"#,
+        registry: &[(
+            r#"lib"#,
+            r#"1.0"#,
+            &[
+                (
+                    r#"MODULE.bazel"#,
+                    r##"module(name = "lib", version = "1.0")
+"##,
+                ),
+                (
+                    r#"ext.bzl"#,
+                    r###"def _r(rctx):
+    rctx.file("BUILD.bazel", "# " + rctx.attr.info + "\nfilegroup(name = 'f')")
+
+made = repository_rule(implementation = _r, attrs = {"info": attr.string()})
+
+_add = tag_class(attrs = {"name": attr.string(mandatory = True)})
+
+def _impl(mctx):
+    lines = []
+    for m in mctx.modules:
+        lines.append("%s@%s root=%s tags=%s" % (m.name, m.version, m.is_root, [t.name for t in m.tags.add]))
+    info = "; ".join(lines) + " nd=" + str(mctx.root_module_has_non_dev_dependency)
+    print('ext runs')
+    for m in mctx.modules:
+        for t in m.tags.add:
+            made(name = t.name, info = info)
+
+collect = module_extension(implementation = _impl, tag_classes = {"add": _add})
+"###,
+                ),
+            ],
+        )],
+        root: &[
+            (
+                r#"MODULE.bazel"#,
+                r##"module(name = "root", version = "0")
+bazel_dep(name = "lib", version = "1.0")
+e = use_extension("@lib//:ext.bzl", "collect")
+e.add(name = "gen")
+use_repo(e, "gen")
+"##,
+            ),
+            (
+                r#"ovr/alt/MODULE.bazel"#,
+                r##"module(name = "lib", version = "9.9")
+"##,
+            ),
+            (
+                r#"ovr/alt/BUILD.bazel"#,
+                r#"filegroup(name = 'f')
+# alt
+"#,
+            ),
+        ],
+        fetch: &[r#"lib++collect+gen"#],
+        overrides: &[r#"gen=ovr/alt"#],
+        error: None,
+        printed: &[r#"ext runs"#],
+        builds: &[(
+            r#"lib++collect+gen"#,
+            r#"filegroup(name = 'f')
+# alt
+"#,
+        )],
+    },
+    MultiRow {
+        name: r#"override_repository_replaces_a_use_repo_rule_repo"#,
+        registry: &[],
+        root: &[
+            (
+                r#"MODULE.bazel"#,
+                r##"module(name = "root", version = "0")
+made = use_repo_rule("//:r.bzl", "made")
+made(name = "x")
+"##,
+            ),
+            (
+                r#"r.bzl"#,
+                r##"def _r(rctx):
+    rctx.file("BUILD.bazel", "")
+
+made = repository_rule(implementation = _r)
+"##,
+            ),
+            (
+                r#"ovr/alt/MODULE.bazel"#,
+                r##"module(name = "lib", version = "9.9")
+"##,
+            ),
+            (
+                r#"ovr/alt/BUILD.bazel"#,
+                r#"filegroup(name = 'f')
+# alt
+"#,
+            ),
+        ],
+        fetch: &[r#"+made+x"#],
+        overrides: &[r#"x=ovr/alt"#],
+        error: None,
+        printed: &[],
+        builds: &[(
+            r#"+made+x"#,
+            r#"filegroup(name = 'f')
+# alt
+"#,
         )],
     },
 ];

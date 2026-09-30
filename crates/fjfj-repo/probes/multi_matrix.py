@@ -6,7 +6,7 @@ def raw(s):
     return 'r%s"%s"%s' % ("#" * (n + 1) if n else "#", s, "#" * (n + 1) if n else "#") if False else 'r%s"%s"%s' % ("#" * (n+1), s, "#" * (n+1))
 def norm(s, reg):
     s = s.replace("file://" + reg, "<reg>")
-    return re.sub(r"/tmp/lfe\w+/ws/", "", s)
+    return s.replace("<ws>/MODULE.bazel", "MODULE.bazel")
 rows = []
 for c in cases:
     o = outs[c["name"]]
@@ -23,6 +23,7 @@ for c in cases:
         registry: &[{registry}],
         root: &[{", ".join("(%s, %s)" % (raw(f), raw(t)) for f, t in c["root"].items())}],
         fetch: &[{", ".join(raw(f) for f in c["fetch"])}],
+        overrides: &[{", ".join(raw(f) for f in c.get("overrides", []))}],
         error: {"Some(" + raw(error) + ")" if error else "None"},
         printed: &[{", ".join(raw(p) for p in o["prints"])}],
         builds: &[{", ".join("(%s, %s)" % (raw(k), raw(v)) for k, v in sorted(o["builds"].items()))}],

@@ -27,13 +27,14 @@ def run(case):
         w(f"{ws}/{f}", t)
     if "BUILD.bazel" not in case["root"]:
         w(ws + "/BUILD.bazel", "")
+    extra = [f"--override_repository={o.replace('@WS@', ws)}" for o in case.get("overrides", [])]
     flags = [f"--output_base={ob}", "--registry=file://" + reg, "--registry=https://bcr.bazel.build",
-             "--lockfile_mode=off"]
+             "--lockfile_mode=off", *extra]
     targets = [f"@@{c}//:f" for c in case["fetch"]]
     p = subprocess.run(["bazel", *flags[:1], "build", *targets, *flags[1:]], cwd=ws,
                        capture_output=True, text=True)
     prints = re.findall(r"^DEBUG: \S+?:\d+:\d+: (.*)$", p.stderr, re.M)
-    errors = [l[7:] for l in p.stderr.splitlines() if l.startswith("ERROR: ")]
+    errors = [l[7:].replace(ws, "<ws>") for l in p.stderr.splitlines() if l.startswith("ERROR: ")]
     builds = {}
     ext = ob + "/external"
     if os.path.isdir(ext):

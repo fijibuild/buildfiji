@@ -63,4 +63,18 @@ cases.append({"name":"a_dependency_calls_a_repository_rule_of_another_module","r
     "a":m("a",'made = use_repo_rule("@lib//:rules.bzl", "made")\nmade(name = "mine", info = "from a")\n')},
   "root":{"MODULE.bazel":ROOT+dep("a")},
   "fetch":["a++made+mine"]})
+ALT={"ovr/alt/MODULE.bazel":'module(name = "lib", version = "9.9")\n',"ovr/alt/BUILD.bazel":"filegroup(name = 'f')\n# alt\n"}
+NOB={"ovr/nob/BUILD.bazel":"filegroup(name = 'f')\n# no boundary file\n"}
+OEXT=EXT.replace("print(info)","print('ext runs')")
+cases += [
+ {"name":"override_repository_replaces_a_module_repo","registry":{"lib":LIB},"root":{"MODULE.bazel":ROOT+dep("lib"),**ALT},"overrides":["lib=ovr/alt"],"fetch":["lib+"]},
+ {"name":"override_repository_takes_an_absolute_path","registry":{"lib":LIB},"root":{"MODULE.bazel":ROOT+dep("lib"),**ALT},"overrides":["lib=@WS@/ovr/alt"],"fetch":["lib+"]},
+ {"name":"override_repository_names_the_repo_the_main_repository_sees","registry":{"lib":LIB},"root":{"MODULE.bazel":ROOT+'bazel_dep(name = "lib", version = "1.0", repo_name = "foo")\n',**ALT},"overrides":["foo=ovr/alt"],"fetch":["lib+"]},
+ {"name":"override_repository_of_a_name_the_main_repository_does_not_see","registry":{"lib":LIB},"root":{"MODULE.bazel":ROOT+'bazel_dep(name = "lib", version = "1.0", repo_name = "foo")\n',**ALT},"overrides":["lib=ovr/alt"],"fetch":["lib+"]},
+ {"name":"override_repository_to_a_directory_that_is_not_there","registry":{"lib":LIB},"root":{"MODULE.bazel":ROOT+dep("lib"),**ALT},"overrides":["lib=ovr/nope"],"fetch":["lib+"]},
+ {"name":"override_repository_to_a_file","registry":{"lib":LIB},"root":{"MODULE.bazel":ROOT+dep("lib"),**ALT},"overrides":["lib=ovr/alt/BUILD.bazel"],"fetch":["lib+"]},
+ {"name":"override_repository_to_a_directory_with_no_boundary_file","registry":{"lib":LIB},"root":{"MODULE.bazel":ROOT+dep("lib"),**NOB},"overrides":["lib=ovr/nob"],"fetch":["lib+"]},
+ {"name":"override_repository_replaces_what_an_extension_generates","registry":{"lib":{"1.0":{"MODULE.bazel":'module(name = "lib", version = "1.0")\n',"ext.bzl":OEXT}}},"root":{"MODULE.bazel":ROOT+dep("lib")+use("r","gen",["gen"]),**ALT},"overrides":["gen=ovr/alt"],"fetch":["lib++collect+gen"]},
+ {"name":"override_repository_replaces_a_use_repo_rule_repo","registry":{},"root":{"MODULE.bazel":ROOT+'made = use_repo_rule("//:r.bzl", "made")\nmade(name = "x")\n',"r.bzl":'def _r(rctx):\n    rctx.file("BUILD.bazel", "")\n\nmade = repository_rule(implementation = _r)\n',**ALT},"overrides":["x=ovr/alt"],"fetch":["+made+x"]},
+]
 json.dump(cases,open("multi_cases.json","w"))

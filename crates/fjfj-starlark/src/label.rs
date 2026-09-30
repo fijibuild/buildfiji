@@ -94,6 +94,11 @@ impl RepoMappings {
         mappings
     }
 
+    /// The canonical repo `apparent` names in `from`, if it names one.
+    pub fn find_apparent(&self, from: &str, apparent: &str) -> Option<String> {
+        self.by_repo.get(from)?.get(apparent).cloned()
+    }
+
     /// The canonical repo `apparent` names in `from`, or the placeholder
     /// Bazel puts in a label whose repo `from` cannot name.
     pub fn resolve_apparent(&self, from: &str, apparent: &str) -> String {
