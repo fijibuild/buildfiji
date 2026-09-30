@@ -25,6 +25,11 @@ mod depset;
 mod depset_tests;
 mod dialect;
 mod exports;
+mod ext;
+#[cfg(test)]
+mod ext_matrix;
+#[cfg(test)]
+mod ext_tests;
 mod floats;
 mod instantiate;
 mod json;

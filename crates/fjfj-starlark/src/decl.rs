@@ -66,6 +66,17 @@ pub(crate) struct P {
     /// How the signature words the type it takes.
     pub(crate) want: &'static str,
     pub(crate) ok: fn(Value<'_>) -> bool,
+    /// The flag that turns an experimental parameter on; while it is off
+    /// the parameter is refused whatever it is given.
+    pub(crate) experimental: Option<&'static str>,
+}
+
+impl P {
+    /// This parameter is experimental, behind `flag`.
+    pub(crate) const fn experimental(mut self, flag: &'static str) -> P {
+        self.experimental = Some(flag);
+        self
+    }
 }
 
 pub(crate) const fn p(
@@ -81,6 +92,7 @@ pub(crate) const fn p(
         required,
         want,
         ok,
+        experimental: None,
     }
 }
 
@@ -129,25 +141,30 @@ pub(crate) fn bind_checked<'v>(
     // Bazel converts each argument to its parameter's type as it reads it,
     // before it finds that a parameter was given twice or too many were
     // given: the positional ones, then the named, in the order written.
-    let wrong = |p: &P, value: Value<'_>| {
-        fatal(format!(
+    let wrong = |p: &P, value: Value<'_>| match p.experimental {
+        Some(flag) => fatal(format!(
+            "in call to {function}(), parameter '{}' is experimental and thus unavailable with \
+             the current flags. It may be enabled by setting {flag}",
+            p.name
+        )),
+        None => fatal(format!(
             "in call to {function}(), parameter '{}' got value of type '{}', want '{}'",
             p.name,
             value.get_type(),
             p.want
-        ))
+        )),
     };
     let slots: Vec<usize> = (0..params.len())
         .filter(|&i| params[i].positional)
         .collect();
     for (value, &slot) in args.positions(eval.heap())?.zip(&slots) {
-        if !(params[slot].ok)(value) {
+        if params[slot].experimental.is_some() || !(params[slot].ok)(value) {
             return Err(wrong(&params[slot], value));
         }
     }
     for (key, value) in args.names_map()?.iter() {
         if let Some(p) = params.iter().find(|p| p.name == key.as_str())
-            && !(p.ok)(*value)
+            && (p.experimental.is_some() || !(p.ok)(*value))
         {
             return Err(wrong(p, *value));
         }

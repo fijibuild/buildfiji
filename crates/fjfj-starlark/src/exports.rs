@@ -82,6 +82,7 @@ pub(crate) enum Kind {
     Aspect,
     Subrule,
     Macro,
+    RepositoryRule,
 }
 
 impl Kind {
@@ -111,6 +112,7 @@ pub(crate) fn named<'v>(value: Value<'v>) -> Option<Named<'v>> {
         .or_else(|| rule::named(value))
         .or_else(|| crate::decl::named(value))
         .or_else(|| crate::macros::named(value))
+        .or_else(|| crate::ext::named(value))
 }
 
 /// The name of `value` if it is bound to one, looking for it in the module

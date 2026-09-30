@@ -769,6 +769,44 @@ visibility (buildfiji-ps4) are the importer's.
   finish; what a build *keeps* of 100,000 packages is the engine's to budget
   (buildfiji-23d.3), the loader keeps one frozen module per `.bzl`.
 
+## `repository_rule()`, `module_extension()` and `tag_class()` (implemented 2026-09-30, buildfiji-mum.8.1)
+
+`crates/fjfj-starlark/src/ext.rs` declares the three values a `.bzl` uses to
+define a repository rule and a module extension. They check their arguments
+with Bazel 9.2.0's words (about 200 probe rows replayed in `ext_matrix.rs`,
+plus hand tests) and keep the validated arguments by parameter name for the
+beads that run them (`repository_rule_arg`, `module_extension_arg`,
+`tag_class_arg`). Running is `repository_ctx` (buildfiji-mum.8.2) and
+`module_ctx` (buildfiji-mum.8.4).
+
+- **Where.** `.bzl` files only; BUILD files and `native` do not have them.
+- **Checks.** Parameter types first, positional then named in the order
+  written (only `implementation`, and `tag_class()`'s `attrs`, may be
+  positional); then contents: `repository_rule()` checks the elements of
+  `environ` (`at index 0 of repository_rule, got element of type int, want
+  string`), then the shape of `attrs`, then that `attrs` does not redeclare
+  `name`; `module_extension()` checks the shape of `tag_classes`, then the
+  elements of `environ` (worded `of environ`). Attribute names are not
+  validated (`"a b"` and `"1a"` are fine). `remotable=` is refused whatever
+  it is given, as experimental behind `--experimental_repo_remote_exec`.
+  `bind_checked`'s `P` gained `experimental` for that.
+- **Printing.** A repository rule prints `<starlark repository rule
+  @@//pkg:file.bzl%NAME>` (named, as a rule is, by the top-level name it is
+  assigned to, a private one too) or `<anonymous starlark repository rule>`;
+  a module extension and a tag class print as the unknown Java objects they
+  are in Bazel, `<unknown object
+  com.google.devtools.build.lib.bazel.bzlmod.ModuleExtension>` and `...TagClass>`.
+  Their types are `repository_rule`, `ModuleExtension` and `tag_class`.
+- **Equality and hashing.** A repository rule and a module extension are
+  equal to themselves only, and a tag class to any tag class with equal
+  `attrs` and `doc`. A repository rule hashes; a module extension and a tag
+  class do not (`unhashable type`).
+- **Calling.** A repository rule may only be called from a module
+  extension's implementation: elsewhere it says `repo rules can only be
+  called from within module extension impl functions` (`unexpected
+  positional arguments` if given any). A module extension and a tag class
+  are not callable.
+
 ## Bazel 9.2.0's builtin namespaces, and who owns each name (buildfiji-mum.3)
 
 Read off Bazel 9.2.0 by asking `type(name)` in a BUILD file and in a `.bzl`
@@ -792,7 +830,7 @@ buildfiji-mum.4.
 | `config` (`bool exec int none string string_list string_set target`) | Z only | buildfiji-mum.3.7, done |
 | `macro` | Z only | buildfiji-mum.3.8, done |
 | `visibility` | Z only | buildfiji-ps4, done |
-| `module_extension repository_rule tag_class` | Z only | buildfiji-mum.8 |
+| `module_extension repository_rule tag_class` | Z only | buildfiji-mum.8.1, done (declarations); what runs them is buildfiji-mum.8.2 and .8.4 |
 | `DefaultInfo OutputGroupInfo RunEnvironmentInfo InstrumentedFilesInfo PackageSpecificationInfo` | Z only | buildfiji-136.4 |
 | `platform_common` (`ConstraintSettingInfo ConstraintValueInfo PlatformInfo TemplateVariableInfo ToolchainInfo`), `config_common` (`FeatureFlagInfo config_feature_flag_transition toolchain_type`), `coverage_common` (`instrumented_files_info`), `testing` (`ExecutionInfo TestEnvironment analysis_test`), `cc_common java_common apple_common android_common` | Z only | Starlark or absent by decision (buildfiji-136.14): buildfiji-136.16, buildfiji-136.17, buildfiji-136.15 |
 | `native` | Z only | buildfiji-mum.4 (done), buildfiji-hrx |
