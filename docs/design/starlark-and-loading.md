@@ -295,6 +295,34 @@ model is not obvious:
   (buildfiji-136.15), and a memory benchmark against a real tree
   (buildfiji-mum.19).
 
+## Bazel 9.2.0's builtin namespaces, and who owns each name (buildfiji-mum.3)
+
+Read off Bazel 9.2.0 by asking `type(name)` in a BUILD file and in a `.bzl`
+loaded by one, and `dir()` of each namespace. `B` is visible in BUILD files,
+`Z` in `.bzl` files. fjfj has, so far, `depset` (B, Z), `print` and the
+standard Starlark library, and the natives of buildfiji-mum.4.
+
+| Names | Where | Owner |
+|---|---|---|
+| `abs all any bool dict dir enumerate fail float getattr hasattr hash int len list max min print range repr reversed sorted str tuple type zip` | B Z | the `starlark` crate; wording gaps in buildfiji-v32 |
+| `set` (with `add clear difference ... update`) | B Z | buildfiji-mum.3.1 |
+| `struct` | Z only | buildfiji-mum.3.1 |
+| `json` (`encode decode encode_indent indent`), `proto` (`encode_text`) | B Z | buildfiji-mum.3.1 |
+| `Label` (`name package relative repo_name same_package_label workspace_name workspace_root`) | Z only | buildfiji-mum.3.2 |
+| `attr` (`bool int int_list label label_keyed_string_dict label_list label_list_dict output output_list string string_dict string_keyed_label_dict string_list string_list_dict`) | Z only | buildfiji-mum.3.3 |
+| `provider` | Z only | buildfiji-mum.3.4 |
+| `rule` | Z only | buildfiji-mum.3.5 |
+| `select` | B Z | buildfiji-mum.3.6 |
+| `aspect transition exec_group configuration_field subrule analysis_test_transition` | Z only | buildfiji-mum.3.7 |
+| `macro` | Z only | buildfiji-mum.3.8 |
+| `visibility` | Z only | buildfiji-ps4 |
+| `module_extension repository_rule tag_class` | Z only | buildfiji-mum.8 |
+| `DefaultInfo OutputGroupInfo RunEnvironmentInfo InstrumentedFilesInfo PackageSpecificationInfo` | Z only | buildfiji-136.4 |
+| `platform_common` (`ConstraintSettingInfo ConstraintValueInfo PlatformInfo TemplateVariableInfo ToolchainInfo`), `config_common` (`FeatureFlagInfo config_feature_flag_transition toolchain_type`), `coverage_common` (`instrumented_files_info`), `testing` (`ExecutionInfo TestEnvironment analysis_test`), `cc_common java_common apple_common android_common` | Z only | Starlark or absent by decision (buildfiji-136.14): buildfiji-136.16, buildfiji-136.17, buildfiji-136.15 |
+| `native` | Z only | buildfiji-mum.4 (done), buildfiji-hrx |
+| `glob package package_group exports_files existing_rule existing_rules package_name repository_name subpackages package_relative_label licenses filegroup alias` | B only | buildfiji-mum.4 (done), buildfiji-hrx |
+| `genrule config_setting test_suite toolchain_type` and the language rules (`cc_library`, `java_library`, ...), still native in 9.2.0 | B only | buildfiji-136.10, buildfiji-136.11 |
+
 ## bzlmod: module resolution (implemented 2026-09-03, buildfiji-mum.6)
 
 `crates/fjfj-bzlmod` evaluates `MODULE.bazel`, walks out to the whole
