@@ -73,8 +73,15 @@ use `def f(*, x)`; `Dialect::Standard` rejects it, so `bzl_dialect()` now
 enables it), 100% of the Starlark in all three repos parses — 4,428 of 4,435
 files, the 7 exceptions being Bazel's Java-interpreter test data, which are
 `---`-separated chunk files rather than Starlark modules. `Dialect::Standard`
-still differs from Bazel on `enable_lambda` and `enable_load_reexport`, both
-of which Bazel forbids.
+still differed from Bazel on `enable_lambda` and `enable_load_reexport`.
+
+buildfiji-mum.2 settled both by running Bazel 9.2.0 rather than trusting the
+spike: `load_reexport` is off in both dialects, but `lambda` is **on** in
+`.bzl` (only BUILD files reject it, as a "function"). It also found that
+`.bzl` parses type annotations, requires `load()` before every other
+statement, and rejects a top-level name declared twice; BUILD files allow
+all of those. `fjfj_starlark::parse` enforces the file-level rules the
+starlark crate does not.
 
 ## Test strategy
 Run Bazel's own Starlark test corpus and the `starlark-spec` test files;

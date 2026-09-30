@@ -35,9 +35,14 @@ those must be complete enough to express the native modules in Starlark.
 - BUILD files: no `def`, no `lambda`.
 - `.bzl`: `enable_keyword_only_arguments` must be on — Bazel's own
   `@_builtins` and rule sets use `def f(*, x)`.
-- Still to settle in `buildfiji-mum.2`: `enable_lambda` (Bazel has none
-  anywhere) and `enable_load_reexport` (Bazel does not re-export a `.bzl`'s
-  loaded symbols).
+- `.bzl` accepts `lambda`, keyword-only parameters and type annotations
+  (parsed, ignored at runtime); BUILD files reject `def`, `lambda`,
+  annotations and top-level `if`/`for`. Neither accepts positional-only `/`
+  or f-strings. `load()` bindings are private (`enable_load_reexport` off),
+  a `_`-prefixed symbol cannot be loaded, and in a `.bzl` loads must come
+  before other statements and no top-level name is declared twice. Use
+  `fjfj_starlark::parse(path, src, FileKind)`, not `AstModule::parse`, so
+  those file-level checks run. Verified against Bazel 9.2.0 (`buildfiji-mum.2`).
 
 When a corpus file fails to parse, check the dialect before the parser.
 
