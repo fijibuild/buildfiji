@@ -85,6 +85,8 @@ pub struct ResolveOptions {
     /// `--allow_yanked_versions=all` makes the answer moot, and read each
     /// selected module's `source.json`, as Bazel does, so both are recorded.
     pub for_lockfile: bool,
+    /// `--experimental_isolated_extension_usages`.
+    pub experimental_isolated_extension_usages: bool,
 }
 
 /// Resolves `include()` labels against the workspace directory the root
@@ -293,6 +295,7 @@ pub fn resolve(
     options: &ResolveOptions,
 ) -> Result<Resolution> {
     let mut root_options = EvalOptions::root();
+    root_options.isolated_extension_usages = options.experimental_isolated_extension_usages;
     root_options.ignore_dev_deps = options.ignore_dev_dependency;
     if let Some(include_source) = &options.include_source {
         root_options = root_options.with_include_source(include_source.clone());

@@ -22,6 +22,12 @@ pub(crate) struct LockRow {
     pub(crate) fetch: &'static [&'static str],
     pub(crate) env: &'static [(&'static str, &'static str)],
     pub(crate) expected: &'static str,
+    /// The `facts` section, as compact JSON.
+    pub(crate) facts: &'static str,
+    /// The warnings, as worded after `WARNING: `.
+    pub(crate) warnings: &'static [&'static str],
+    /// What stopped it, a part of the message.
+    pub(crate) error: Option<&'static str>,
 }
 
 fn write(path: &std::path::Path, text: &str) {
@@ -90,20 +96,35 @@ fn what_extensions_leave_in_the_lockfile_is_what_bazel_writes() {
             downloader: None,
             repository_cache: None,
             registries: vec![Registry::local(&reg)],
+            facts: Vec::new(),
             repo_overrides: Vec::new(),
         };
         let repos = Repos::from_resolution(options, resolution).unwrap();
+        let mut error = None;
         for target in row.fetch {
-            repos
-                .fetch(target, None)
-                .unwrap_or_else(|e| panic!("{}: {}", row.name, e.message));
+            if let Err(e) = repos.fetch(target, None) {
+                error = Some(e.message);
+                break;
+            }
         }
+        let error_ok = match (&error, row.error) {
+            (None, None) => true,
+            (Some(got), Some(want)) => got.contains(want),
+            _ => false,
+        };
         let got =
             serde_json::to_string(&module_extensions_json(&repos.locked_extensions())).unwrap();
-        if got != row.expected {
+        let got_facts =
+            serde_json::to_string(&fjfj_bzlmod::lockfile::Json::Object(repos.locked_facts()))
+                .unwrap();
+        let warnings = repos.warnings();
+        // An extension that failed wrote nothing.
+        let ext_ok = row.error.is_some() || got == row.expected;
+        let facts_ok = row.error.is_some() || got_facts == row.facts;
+        if !error_ok || warnings != row.warnings || !ext_ok || !facts_ok {
             wrong.push(format!(
-                "{}\n  want {}\n  got  {}",
-                row.name, row.expected, got
+                "{}\n  want error {:?}, warnings {:?}, facts {}, extensions {}\n  got  error {:?}, warnings {:?}, facts {}, extensions {}",
+                row.name, row.error, row.warnings, row.facts, row.expected, error, warnings, got_facts, got
             ));
         }
     }

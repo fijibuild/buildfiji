@@ -30,8 +30,9 @@
 //! - A lockfile that is not version 28, or is not JSON, is not used:
 //!   `update` and `refresh` replace it, `error` refuses it.
 //!
-//! What is here and what is not: `facts` and `factsVersions` are carried
-//! through untouched, in their original order. `moduleExtensions` is what the
+//! What is here and what is not: `factsVersions` is carried through untouched
+//! and `facts` is what extensions kept ([`LockSession::set_facts`]), merged as
+//! `moduleExtensions` is. `moduleExtensions` is what the
 //! extensions a run evaluated give ([`LockSession::set_module_extensions`],
 //! from `fjfj-repo`'s `LockedExtension`s): the file's entries for extensions the
 //! graph still uses stay, the others go, and the ids and factors are sorted. One known difference:
@@ -368,6 +369,8 @@ pub struct LockSession {
     /// The module extensions this run evaluated, and those the module graph
     /// uses (what stays of the previous lockfile's).
     extensions: Mutex<Option<(Json, Vec<String>)>>,
+    /// The facts extensions kept this run.
+    facts: Mutex<Vec<(String, Json)>>,
 }
 
 impl LockSession {
@@ -393,6 +396,7 @@ impl LockSession {
             unusable,
             touched: Mutex::new(BTreeMap::new()),
             extensions: Mutex::new(None),
+            facts: Mutex::new(Vec::new()),
         }))
     }
 
@@ -401,6 +405,13 @@ impl LockSession {
     /// ran under), and the ids of all the extensions the module graph uses: an
     /// extension the graph no longer uses leaves the file, one it still uses
     /// but this run did not evaluate keeps what the file had.
+    /// The `facts` the extensions kept this run, each under its extension's id:
+    /// they replace what the file had for those extensions (the file's for the
+    /// extensions the graph no longer uses go, as `moduleExtensions`' do).
+    pub fn set_facts(&self, kept: Vec<(String, Json)>) {
+        *self.facts.lock().expect("lock") = kept;
+    }
+
     pub fn set_module_extensions(&self, evaluated: Json, used: Vec<String>) {
         *self.extensions.lock().expect("lock") = Some((evaluated, used));
     }
@@ -468,9 +479,33 @@ impl LockSession {
                 .map(|(key, reason)| (key.to_string(), reason.clone()))
                 .collect(),
             module_extensions: self.merged_module_extensions(&previous.module_extensions),
-            facts: previous.facts,
+            facts: self.merged_facts(&previous.facts),
             facts_versions: previous.facts_versions,
         }
+    }
+
+    /// `previous` with what this run kept put in, sorted by id.
+    fn merged_facts(&self, previous: &Json) -> Json {
+        let kept = self.facts.lock().expect("lock").clone();
+        let used = self
+            .extensions
+            .lock()
+            .expect("lock")
+            .as_ref()
+            .map(|(_, used)| used.clone());
+        if kept.is_empty() && used.is_none() {
+            return previous.clone();
+        }
+        let mut merged: BTreeMap<String, Json> = BTreeMap::new();
+        if let Json::Object(items) = previous {
+            for (id, facts) in items {
+                if used.as_ref().is_none_or(|used| used.contains(id)) {
+                    merged.insert(id.clone(), facts.clone());
+                }
+            }
+        }
+        merged.extend(kept);
+        Json::Object(merged.into_iter().collect())
     }
 
     /// `previous` with what this run evaluated put in, sorted by id and factors.

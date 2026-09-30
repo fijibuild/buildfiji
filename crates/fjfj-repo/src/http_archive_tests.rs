@@ -318,6 +318,7 @@ fn run(row: &HaRow) -> Outcome {
                 downloader: Some(served.clone()),
                 repository_cache: Some(dir.path().join("cache")),
                 registries: Vec::new(),
+                facts: Vec::new(),
                 repo_overrides: Vec::new(),
             },
             module,

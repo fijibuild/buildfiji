@@ -1424,10 +1424,51 @@ embedded JRE calls them, see the notes in `probes/README.md`). 36 probed rows re
 - A `Label` passed to a repository rule inside an extension is accepted, and a
   `None` attribute means not given.
 
-Not done (buildfiji-mum.8.8): reusing a locked result instead of running the
+### `extension_metadata`, `facts` and `isolate` (implemented 2026-09-30, buildfiji-6go)
+
+Read off Bazel 9.2.0 (62 rows of `lock_matrix.rs`, and the strings in
+`LockfileModuleExtensionMetadata`):
+
+- `extension_metadata(root_module_direct_deps, root_module_direct_dev_deps,
+  reproducible, facts)` checks, in this order: each is a list, `"all"` or `None`
+  (`want 'sequence, string, or NoneType'`, `at index 1 of root_module_direct_deps,
+  got element of type int, want string`); `"all"` needs the other to be an empty list;
+  the two are both given or both not; no duplicate (`in root_module_direct_deps:
+  duplicate entry 'x'`) and nothing in both lists (`in root_module_direct_dev_deps:
+  entry 'x' is also in root_module_direct_deps`); `facts` is a dict.
+- After the run: a list that names a repository the extension did not generate is an
+  error (`root_module_direct_deps contained the following repositories not generated
+  by the extension: b, a`, in the order given), and so is a non-empty list, or `"all"`,
+  for regular or dev deps when the root module has no usage of that kind (`must be empty
+  if the root module contains no usages with dev_dependency = False`).
+- Otherwise the root's `use_repo` imports are compared with the lists and a warning is
+  made (`Repos::warnings`), at the first root usage's `MODULE.bazel:2:18`: `The module
+  extension collect defined in @root//:ext.bzl reported incorrect imports of
+  repositories via use_repo():` and, each if there is one, `Not imported, but reported as
+  direct dependencies ...`, `Imported as a regular dependency, but reported as a dev
+  dependency ...`, `Imported as a dev dependency, but reported as a regular
+  dependency ...`, `Imported, but reported as indirect dependencies by the extension`,
+  then `Fix the use_repo calls by running 'bazel mod tidy'.` An extension that says
+  nothing about deps (both `None`) is never warned about.
+- `moduleExtensionMetadata` of the lockfile entry is there when deps or facts were
+  given: `explicitRootModuleDirectDeps` and `...DirectDevDeps` (only when neither is
+  `"all"`), `useAllRepos` (`NO`, `REGULAR`, `DEV`) and `reproducible`. The `facts`
+  section holds each extension's facts by id with keys sorted and `None` left out
+  (`LockSession::set_facts`).
+- `mctx.facts` is what a previous run kept (`Options::facts`): `facts.get(key,
+  default)`, `facts[key]` (`None` when missing), `key in facts`; `dir()` is
+  `["get"]`, there is no `len`, and `str()` is `Facts(<opaque, inspect with
+  print()>)`.
+- `use_extension(isolate = True)` is refused without
+  `--experimental_isolated_extension_usages` (`in call to use_extension(), parameter
+  'isolate' is experimental and thus unavailable with the current flags. It may be
+  enabled by setting --experimental_isolated_extension_usages`).
+  `EvalOptions::isolated_extension_usages`; the flag itself is for the CLI wiring.
+
+Not done (buildfiji-mum.8.8): reading `facts` from the lockfile in the CLI, reusing a locked result instead of running the
 extension (and the `error` mode's refusal when the digests differ), the
 `REPO_MAPPING:` recorded input a `Label("@dep//...")` read adds, what `use_repo_rule`
-and `isolate = True` extensions write, `facts`, and the file's whole pretty-printed text
+and `isolate = True` extensions write, and the file's whole pretty-printed text
 (the section is carried as ordered JSON, which the tests of the whole file already
 round-trip).
 

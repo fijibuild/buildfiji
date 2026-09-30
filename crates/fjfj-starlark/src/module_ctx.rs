@@ -40,7 +40,7 @@
 
 use crate::args::fatal;
 use crate::attr::view as attribute_view;
-use crate::decl::{P, bind_checked, is_bool, is_sequence, p};
+use crate::decl::{P, bind_checked, is_bool, is_dict, is_sequence, p};
 use crate::ext::{module_extension_arg, module_extension_def_location, tag_class_arg};
 use crate::label::{BzlEval, RepoMappings, caller, resolve as resolve_label};
 use crate::repo_ctx::{
@@ -55,7 +55,7 @@ use starlark::environment::{FrozenModule, Methods, MethodsBuilder, MethodsStatic
 use starlark::eval::{Arguments, Evaluator};
 use starlark::starlark_module;
 use starlark::starlark_simple_value;
-use starlark::values::dict::DictRef;
+use starlark::values::dict::{AllocDict, DictRef};
 use starlark::values::list::{AllocList, ListRef};
 use starlark::values::none::NoneType;
 use starlark::values::tuple::TupleRef;
@@ -188,6 +188,8 @@ pub struct ExtensionInput {
     pub modules: Vec<ModuleUse>,
     /// The root module uses it other than as a dev dependency.
     pub root_has_non_dev_dependency: bool,
+    /// What a previous run kept with `extension_metadata(facts = ...)`.
+    pub facts: Vec<(String, FactValue)>,
 }
 
 /// A repository an extension made.
@@ -208,6 +210,8 @@ pub struct ExtensionOutput {
     pub repos: Vec<GeneratedRepo>,
     /// What the implementation read from outside, in the order it first did.
     pub recorded: Vec<crate::repo_ctx::RecordedInput>,
+    /// What `extension_metadata()` said, if it was returned.
+    pub metadata: Option<MetadataOut>,
     /// `extension_metadata(reproducible = True)` was returned: the result is the
     /// same wherever it is run, and is not kept in the lockfile.
     pub reproducible: bool,
@@ -469,6 +473,7 @@ struct ExtData {
     /// Every tag class of the extension, in declaration order.
     classes: Vec<String>,
     root_has_non_dev: bool,
+    facts: Arc<Vec<(String, FactValue)>>,
 }
 
 /// `module_ctx`.
@@ -666,25 +671,163 @@ impl<'v> StarlarkValue<'v> for BazelModuleTag {
     }
 }
 
-/// `mctx.facts`.
+/// `mctx.facts`: what a previous run of the extension kept with
+/// `extension_metadata(facts = ...)`. Read with `get(key, default)`, `facts[key]`
+/// (`None` for a key that is not there) and `key in facts`; it has no length.
 #[derive(Debug, ProvidesStaticType, NoSerialize, Allocative)]
-struct Facts;
+struct Facts {
+    #[allocative(skip)]
+    data: Arc<Vec<(String, FactValue)>>,
+}
 
 starlark_simple_value!(Facts);
 
 impl fmt::Display for Facts {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Facts({{}})")
+        f.write_str("Facts(<opaque, inspect with print()>)")
+    }
+}
+
+fn alloc_fact<'v>(heap: Heap<'v>, fact: &FactValue) -> Value<'v> {
+    match fact {
+        FactValue::None => Value::new_none(),
+        FactValue::Bool(b) => Value::new_bool(*b),
+        FactValue::Int(i) => heap.alloc(*i),
+        FactValue::Float(f) => heap.alloc(starlark::values::float::StarlarkFloat(*f)),
+        FactValue::String(s) => heap.alloc(s.as_str()),
+        FactValue::List(items) => heap.alloc(AllocList(
+            items
+                .iter()
+                .map(|i| alloc_fact(heap, i))
+                .collect::<Vec<_>>(),
+        )),
+        FactValue::Dict(items) => heap.alloc(AllocDict(
+            items
+                .iter()
+                .map(|(k, v)| (heap.alloc(k.as_str()), alloc_fact(heap, v)))
+                .collect::<Vec<_>>(),
+        )),
+    }
+}
+
+impl Facts {
+    fn lookup<'v>(&self, heap: Heap<'v>, key: &str) -> Option<Value<'v>> {
+        self.data
+            .iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| alloc_fact(heap, v))
+    }
+}
+
+#[starlark_module]
+fn facts_methods(builder: &mut MethodsBuilder) {
+    /// `facts.get(key, default = None)`.
+    fn get<'v>(
+        this: Value<'v>,
+        #[starlark(require = pos)] key: &str,
+        #[starlark(require = pos)] default: Option<Value<'v>>,
+        heap: Heap<'v>,
+    ) -> starlark::Result<Value<'v>> {
+        let facts = this.downcast_ref::<Facts>().expect("a Facts method");
+        Ok(facts
+            .lookup(heap, key)
+            .or(default)
+            .unwrap_or_else(Value::new_none))
     }
 }
 
 #[starlark_value(type = "Facts")]
-impl<'v> StarlarkValue<'v> for Facts {}
+impl<'v> StarlarkValue<'v> for Facts {
+    fn get_methods() -> Option<&'static Methods> {
+        static RES: MethodsStatic = MethodsStatic::new("Facts", facts_methods);
+        Some(RES.methods())
+    }
+
+    fn at(&self, index: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
+        let key = index.unpack_str().unwrap_or_default();
+        Ok(self.lookup(heap, key).unwrap_or_else(Value::new_none))
+    }
+
+    fn is_in(&self, other: Value<'v>) -> starlark::Result<bool> {
+        Ok(other
+            .unpack_str()
+            .is_some_and(|key| self.data.iter().any(|(k, _)| k == key)))
+    }
+}
+
+/// Which repositories `extension_metadata()` says the root module should
+/// import with `use_repo`.
+#[derive(Debug, Clone, PartialEq, Eq, Allocative)]
+pub enum MetaDeps {
+    /// Not said.
+    Unset,
+    /// `"all"`: every repository the extension generates.
+    All,
+    List(Vec<String>),
+}
+
+/// A value of the `facts` an extension keeps in `MODULE.bazel.lock`.
+#[derive(Debug, Clone, PartialEq, Allocative)]
+pub enum FactValue {
+    None,
+    Bool(bool),
+    Int(i64),
+    Float(f64),
+    String(String),
+    List(Vec<FactValue>),
+    Dict(Vec<(String, FactValue)>),
+}
+
+/// What `extension_metadata()` said.
+#[derive(Debug, Clone, PartialEq, Allocative)]
+pub struct MetadataOut {
+    pub reproducible: bool,
+    pub direct: MetaDeps,
+    pub dev: MetaDeps,
+    pub facts: Vec<(String, FactValue)>,
+}
+
+fn fact_value(value: Value<'_>) -> Option<FactValue> {
+    if value.is_none() {
+        return Some(FactValue::None);
+    }
+    if let Some(b) = value.unpack_bool() {
+        return Some(FactValue::Bool(b));
+    }
+    if let Some(s) = value.unpack_str() {
+        return Some(FactValue::String(s.to_owned()));
+    }
+    if let Some(i) = value.unpack_i32() {
+        return Some(FactValue::Int(i.into()));
+    }
+    if let Some(f) = value.downcast_ref::<starlark::values::float::StarlarkFloat>() {
+        return Some(FactValue::Float(f.0));
+    }
+    if let Some(list) = ListRef::from_value(value) {
+        return list
+            .iter()
+            .map(fact_value)
+            .collect::<Option<Vec<_>>>()
+            .map(FactValue::List);
+    }
+    if let Some(tuple) = TupleRef::from_value(value) {
+        return tuple
+            .iter()
+            .map(fact_value)
+            .collect::<Option<Vec<_>>>()
+            .map(FactValue::List);
+    }
+    let dict = DictRef::from_value(value)?;
+    dict.iter()
+        .map(|(k, v)| Some((k.unpack_str()?.to_owned(), fact_value(v)?)))
+        .collect::<Option<Vec<_>>>()
+        .map(FactValue::Dict)
+}
 
 /// What `extension_metadata()` returns: nothing a module can look at.
 #[derive(Debug, ProvidesStaticType, NoSerialize, Allocative)]
 struct ExtensionMetadata {
-    reproducible: bool,
+    out: MetadataOut,
 }
 
 starlark_simple_value!(ExtensionMetadata);
@@ -727,8 +870,9 @@ fn mctx_members(builder: &mut MethodsBuilder) {
     /// The facts the extension recorded (none yet).
     #[starlark(attribute)]
     fn facts<'v>(this: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
-        let _ = this;
-        Ok(heap.alloc(Facts))
+        Ok(heap.alloc(Facts {
+            data: Arc::clone(&this_ctx(this).data.facts),
+        }))
     }
 
     /// The operating system.
@@ -774,22 +918,134 @@ fn mctx_members(builder: &mut MethodsBuilder) {
                 "root_module_direct_deps",
                 false,
                 false,
-                "sequence or string",
-                is_seq_or_str,
+                "sequence, string, or NoneType",
+                is_seq_str_or_none,
             ),
             p(
                 "root_module_direct_dev_deps",
                 false,
                 false,
-                "sequence or string",
-                is_seq_or_str,
+                "sequence, string, or NoneType",
+                is_seq_str_or_none,
             ),
             p("reproducible", false, false, "bool", is_bool),
+            p("facts", false, false, "dict", is_dict),
         ];
         let _ = this;
         let bound = bind_checked("extension_metadata", PARAMS, args, eval)?;
+        let deps = |value: Option<Value<'v>>, name: &str| -> starlark::Result<MetaDeps> {
+            let Some(value) = value.filter(|v| !v.is_none()) else {
+                return Ok(MetaDeps::Unset);
+            };
+            if let Some(s) = value.unpack_str() {
+                return if s == "all" {
+                    Ok(MetaDeps::All)
+                } else {
+                    Err(fatal(
+                        "root_module_direct_deps and root_module_direct_dev_deps must be None, \
+                         \"all\", or a list of strings",
+                    ))
+                };
+            }
+            let items: Vec<Value<'v>> = if let Some(list) = ListRef::from_value(value) {
+                list.iter().collect()
+            } else if let Some(tuple) = TupleRef::from_value(value) {
+                tuple.iter().collect()
+            } else {
+                return Err(fatal(
+                    "root_module_direct_deps and root_module_direct_dev_deps must be None, \
+                     \"all\", or a list of strings",
+                ));
+            };
+            let mut names = Vec::new();
+            for (i, item) in items.iter().enumerate() {
+                let Some(s) = item.unpack_str() else {
+                    return Err(fatal(format!(
+                        "at index {i} of {name}, got element of type {}, want string",
+                        item.get_type()
+                    )));
+                };
+                names.push(s.to_owned());
+            }
+            Ok(MetaDeps::List(names))
+        };
+        let direct = deps(bound[0], "root_module_direct_deps")?;
+        let dev = deps(bound[1], "root_module_direct_dev_deps")?;
+        let empty = |d: &MetaDeps| matches!(d, MetaDeps::List(l) if l.is_empty());
+        if (direct == MetaDeps::All && !empty(&dev)) || (dev == MetaDeps::All && !empty(&direct)) {
+            return Err(fatal(
+                "if one of root_module_direct_deps and root_module_direct_dev_deps is \"all\", \
+                 the other must be an empty list",
+            ));
+        }
+        if (direct == MetaDeps::Unset) != (dev == MetaDeps::Unset) {
+            return Err(fatal(
+                "root_module_direct_deps and root_module_direct_dev_deps must both be specified \
+                 or both be unspecified",
+            ));
+        }
+        let mut seen: Vec<&str> = Vec::new();
+        if let MetaDeps::List(names) = &direct {
+            for name in names {
+                if seen.contains(&name.as_str()) {
+                    return Err(fatal(format!(
+                        "in root_module_direct_deps: duplicate entry '{name}'"
+                    )));
+                }
+                seen.push(name);
+            }
+        }
+        if let MetaDeps::List(names) = &dev {
+            let mut own: Vec<&str> = Vec::new();
+            for name in names {
+                if seen.contains(&name.as_str()) {
+                    return Err(fatal(format!(
+                        "in root_module_direct_dev_deps: entry '{name}' is also in \
+                         root_module_direct_deps"
+                    )));
+                }
+                if own.contains(&name.as_str()) {
+                    return Err(fatal(format!(
+                        "in root_module_direct_dev_deps: duplicate entry '{name}'"
+                    )));
+                }
+                own.push(name);
+            }
+        }
+        let facts = match bound[3] {
+            Some(dict) => DictRef::from_value(dict)
+                .map(|d| {
+                    d.iter()
+                        .map(|(k, v)| {
+                            let key = k.unpack_str().map(str::to_owned).ok_or_else(|| {
+                                fatal(format!(
+                                    "facts: got {} for dict key, want string",
+                                    k.get_type()
+                                ))
+                            })?;
+                            let value = fact_value(v).ok_or_else(|| {
+                                fatal(format!(
+                                    "facts: cannot keep a value of type {}",
+                                    v.get_type()
+                                ))
+                            })?;
+                            Ok((key, value))
+                        })
+                        .collect::<starlark::Result<Vec<_>>>()
+                })
+                .transpose()?
+                .unwrap_or_default(),
+            None => Vec::new(),
+        };
         let reproducible = bound[2].and_then(|v| v.unpack_bool()).unwrap_or(false);
-        Ok(eval.heap().alloc(ExtensionMetadata { reproducible }))
+        Ok(eval.heap().alloc(ExtensionMetadata {
+            out: MetadataOut {
+                reproducible,
+                direct,
+                dev,
+                facts,
+            },
+        }))
     }
 
     fn path<'v>(
@@ -885,8 +1141,8 @@ fn is_module_tag(v: Value<'_>) -> bool {
     v.get_type() == "bazel_module_tag"
 }
 
-fn is_seq_or_str(v: Value<'_>) -> bool {
-    is_sequence(v) || v.unpack_str().is_some()
+fn is_seq_str_or_none(v: Value<'_>) -> bool {
+    is_sequence(v) || v.unpack_str().is_some() || v.is_none()
 }
 
 // ---- repository rules called by the implementation ------------------------------------
@@ -1146,6 +1402,7 @@ pub fn run_module_extension(
             modules,
             classes: classes.iter().map(|(n, _)| n.clone()).collect(),
             root_has_non_dev: input.root_has_non_dev_dependency,
+            facts: Arc::new(input.facts.clone()),
         });
         let mut running = BzlEval::running(mappings);
         running.extension = Some(RefCell::new(ExtensionState::default()));
@@ -1168,9 +1425,10 @@ pub fn run_module_extension(
                 returned.get_type()
             )));
         }
-        let reproducible = returned
+        let metadata = returned
             .downcast_ref::<ExtensionMetadata>()
-            .is_some_and(|m| m.reproducible);
+            .map(|m| m.out.clone());
+        let reproducible = metadata.as_ref().is_some_and(|m| m.reproducible);
         drop(eval);
         let repos = running
             .extension
@@ -1185,6 +1443,7 @@ pub fn run_module_extension(
         Ok(ExtensionOutput {
             repos,
             recorded: recorder.inputs(),
+            metadata,
             reproducible,
             os_dependent: flag("os_dependent"),
             arch_dependent: flag("arch_dependent"),

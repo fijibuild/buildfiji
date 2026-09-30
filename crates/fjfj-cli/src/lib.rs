@@ -146,6 +146,7 @@ fn bzlmod_resolve_options(
             workspace_root,
         ))),
         for_lockfile: false,
+        experimental_isolated_extension_usages: false,
     })
 }
 

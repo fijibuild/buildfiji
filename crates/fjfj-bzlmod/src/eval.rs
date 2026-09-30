@@ -124,6 +124,9 @@ pub struct EvalOptions {
     /// calls, but resolving one is then a "not configured" error rather
     /// than an unresolved-label refusal.
     pub include_source: Option<Rc<dyn IncludeSource>>,
+    /// `--experimental_isolated_extension_usages`: `use_extension(isolate =
+    /// True)` is refused without it.
+    pub isolated_extension_usages: bool,
 }
 
 impl EvalOptions {
@@ -136,6 +139,7 @@ impl EvalOptions {
             builtin_modules: vec!["bazel_tools".to_owned()],
             allow_include: true,
             include_source: None,
+            isolated_extension_usages: false,
         }
     }
 
@@ -149,6 +153,7 @@ impl EvalOptions {
             builtin_modules: vec!["bazel_tools".to_owned()],
             allow_include: false,
             include_source: None,
+            isolated_extension_usages: false,
         }
     }
 
@@ -901,6 +906,13 @@ fn module_file_globals(builder: &mut GlobalsBuilder) {
     ) -> starlark::Result<Value<'v>> {
         let ctx = ModuleContext::from_eval(eval).map_err(|e| err(e.to_string()))?;
         ctx.set_non_module_called();
+        if isolate && !ctx.options.isolated_extension_usages {
+            return Err(err(
+                "in call to use_extension(), parameter 'isolate' is experimental and thus \
+                 unavailable with the current flags. It may be enabled by setting \
+                 --experimental_isolated_extension_usages",
+            ));
+        }
         if !is_identifier(extension_name) {
             return Err(err(format!(
                 "extension name is not a valid identifier: {extension_name}"
@@ -1256,7 +1268,24 @@ mod tests {
     fn eval_root_no_builtins(source: &str) -> Result<ModuleFile> {
         let mut options = EvalOptions::root();
         options.builtin_modules = Vec::new();
+        options.isolated_extension_usages = true;
         eval_module_file("MODULE.bazel", source, &options)
+    }
+
+    #[test]
+    fn isolate_needs_its_flag() {
+        let source = "e = use_extension('//:ext.bzl', 'ext', isolate = True)\n";
+        let err = eval_module_file("MODULE.bazel", source, &EvalOptions::root())
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains(
+                "in call to use_extension(), parameter 'isolate' is experimental and thus \
+                 unavailable with the current flags. It may be enabled by setting \
+                 --experimental_isolated_extension_usages"
+            ),
+            "{err}"
+        );
     }
 
     #[test]

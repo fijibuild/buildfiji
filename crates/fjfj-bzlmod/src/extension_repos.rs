@@ -266,7 +266,7 @@ pub fn attr_json(value: &AttrValue) -> Json {
 /// The label of an extension's `.bzl` as the lockfile's digest sees it: one
 /// written `//pkg:x.bzl` or `:x.bzl` is `@<the module's repo name>//pkg:x.bzl`,
 /// any other as written.
-fn normalized_bzl(written: &str, repo_name: &str) -> String {
+pub fn normalized_bzl(written: &str, repo_name: &str) -> String {
     if let Some(rest) = written.strip_prefix("//") {
         format!("@{repo_name}//{rest}")
     } else if written.starts_with(':') {

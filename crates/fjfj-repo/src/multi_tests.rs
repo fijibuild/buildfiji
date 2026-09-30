@@ -104,6 +104,7 @@ fn modules_share_their_extensions_as_bazel_does() {
             downloader: None,
             repository_cache: None,
             registries: vec![Registry::local(&reg)],
+            facts: Vec::new(),
             repo_overrides: row
                 .overrides
                 .iter()

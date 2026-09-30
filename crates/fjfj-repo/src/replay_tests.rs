@@ -118,6 +118,7 @@ fn run(row: &ExtRow) -> Outcome {
                 downloader: None,
                 repository_cache: None,
                 registries: Vec::new(),
+                facts: Vec::new(),
                 repo_overrides: Vec::new(),
             };
             let mut made = Repos::new(options, file.module).unwrap();

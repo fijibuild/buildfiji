@@ -43,12 +43,15 @@ def run(case):
             if name in case["fetch"] and os.path.isfile(f):
                 builds[name] = open(f).read()
     lock_ext = None
+    lock_facts = None
     if case.get("lock") and os.path.isfile(ws + "/MODULE.bazel.lock"):
-        lock_ext = json.load(open(ws + "/MODULE.bazel.lock")).get("moduleExtensions")
+        whole = json.load(open(ws + "/MODULE.bazel.lock"))
+        lock_ext = whole.get("moduleExtensions")
+        lock_facts = {"facts": whole.get("facts"), "factsVersions": whole.get("factsVersions")}
     subprocess.run(["bazel", f"--output_base={ob}", "shutdown"], cwd=ws, capture_output=True)
     shutil.rmtree(tmp, ignore_errors=True)
     return {"name": case["name"], "prints": prints, "errors": errors, "builds": builds,
-            "exit": p.returncode, "reg": reg, "lock_ext": lock_ext, "log": p.stderr[-3000:]}
+            "exit": p.returncode, "reg": reg, "lock_ext": lock_ext, "lock_facts": lock_facts, "log": p.stderr[-6000:]}
 
 if __name__ == "__main__":
     cases = json.load(open(sys.argv[1]))

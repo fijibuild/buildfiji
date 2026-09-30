@@ -44,6 +44,12 @@ pub trait ModuleFileSource: Sync {
         Ok(BTreeMap::new())
     }
 
+    /// `--experimental_isolated_extension_usages`: a dependency's
+    /// `use_extension(isolate = True)` is refused without it.
+    fn isolated_extension_usages(&self) -> bool {
+        false
+    }
+
     /// Reads the `source.json` of a selected module, from the registry its
     /// module file came from. Nothing in resolution needs it; Bazel reads
     /// it for every selected module, and the lockfile records its hash.
@@ -62,6 +68,7 @@ pub struct RegistrySource {
     /// Module files supplied by fjfj rather than by a registry — today
     /// just `bazel_tools`, which Bazel ships inside the binary.
     builtin: BTreeMap<String, String>,
+    isolated_extension_usages: bool,
 }
 
 /// `bazel_tools`' own `MODULE.bazel`, the one Bazel 9.2.0 ships inside its
@@ -85,6 +92,7 @@ impl RegistrySource {
             registries,
             overridden: BTreeMap::new(),
             builtin: BTreeMap::from([("bazel_tools".to_owned(), BAZEL_TOOLS_MODULE.to_owned())]),
+            isolated_extension_usages: false,
         }
     }
 
@@ -100,6 +108,13 @@ impl RegistrySource {
         self
     }
 
+    /// Allows `use_extension(isolate = True)` in dependency modules
+    /// (`--experimental_isolated_extension_usages`).
+    pub fn with_isolated_extension_usages(mut self, allowed: bool) -> Self {
+        self.isolated_extension_usages = allowed;
+        self
+    }
+
     /// Adds registries named by `single_version_override` /
     /// `multiple_version_override` so they can be reached later.
     pub fn with_override_registries(mut self, registries: Vec<Registry>) -> Self {
@@ -111,6 +126,10 @@ impl RegistrySource {
 }
 
 impl ModuleFileSource for RegistrySource {
+    fn isolated_extension_usages(&self) -> bool {
+        self.isolated_extension_usages
+    }
+
     fn module_file(
         &self,
         key: &ModuleKey,
@@ -338,7 +357,8 @@ fn read_module(
 ) -> Result<Module> {
     let module_override = overrides.get(&key.name);
     let (text, registry) = source.module_file(key, module_override)?;
-    let options = dependency_eval_options(key, module_override);
+    let mut options = dependency_eval_options(key, module_override);
+    options.isolated_extension_usages = source.isolated_extension_usages();
     let file = eval_module_file("MODULE.bazel", &text, &options)?;
     let mut module = file.module.with_deps_transformed(apply);
     module.registry = registry;

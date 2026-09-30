@@ -51,7 +51,7 @@ pub use credentials::{CredentialHelper, CredentialHelpers, Headers};
 pub use http::HttpDownloader;
 pub use tools::{BAZEL_TOOLS_FILES, materialize_bazel_tools};
 
-use fjfj_bzlmod::extension_repos::ExtensionInstance;
+use fjfj_bzlmod::extension_repos::{ExtensionInstance, normalized_bzl};
 use fjfj_bzlmod::lockfile::Json;
 use fjfj_bzlmod::overrides::RepoRule;
 use fjfj_bzlmod::registry::Registry;
@@ -59,10 +59,10 @@ use fjfj_bzlmod::{Module, ModuleKey, Resolution};
 use fjfj_graph::Label;
 use fjfj_loading::PackageLookup;
 use fjfj_starlark::{
-    BzlLoader, Downloader, ExtensionInput, GeneratedRepo, ModuleUse, RecordedInput, RepoAttr,
-    RepoEnv, RepoMappings, RepoProvider, TagUse, TagValue, convert_repo_attrs,
-    has_module_extension, has_repository_rule, repository_rule_defaults, run_module_extension,
-    run_repository_rule,
+    BzlLoader, Downloader, ExtensionInput, FactValue, GeneratedRepo, MetaDeps, MetadataOut,
+    ModuleUse, RecordedInput, RepoAttr, RepoEnv, RepoMappings, RepoProvider, TagUse, TagValue,
+    convert_repo_attrs, has_module_extension, has_repository_rule, repository_rule_defaults,
+    run_module_extension, run_repository_rule,
 };
 use starlark::PrintHandler;
 use starlark::eval::FileLoader;
@@ -99,6 +99,9 @@ pub struct Options {
     /// The registries the modules of the graph came from: how a module's
     /// repository is made is in its `source.json`.
     pub registries: Vec<Registry>,
+    /// The `facts` a previous run kept, as the lockfile has them: an extension's
+    /// id (`//:ext.bzl%name`) and its facts as a JSON object.
+    pub facts: Vec<(String, Json)>,
     /// `--override_repository`: the name the main repository sees a repo by,
     /// and the directory that is the repo instead (relative to the workspace).
     pub repo_overrides: Vec<(String, PathBuf)>,
@@ -132,6 +135,10 @@ struct State {
     overridden: BTreeMap<String, PathBuf>,
     /// What each extension that ran gives `MODULE.bazel.lock`.
     locked: Vec<LockedExtension>,
+    /// The `facts` extensions kept, by extension id.
+    facts: Vec<(String, Json)>,
+    /// What was worth a warning, each as Bazel words it after `WARNING: `.
+    warnings: Vec<String>,
 }
 
 /// One extension's entry in `MODULE.bazel.lock`'s `moduleExtensions`.
@@ -324,6 +331,16 @@ impl Repos {
             }
         }
         found
+    }
+
+    /// The warnings there were so far, each as Bazel words it after `WARNING: `.
+    pub fn warnings(&self) -> Vec<String> {
+        self.inner.state.lock().unwrap().warnings.clone()
+    }
+
+    /// The `facts` the extensions that ran kept: an extension id and what it kept.
+    pub fn locked_facts(&self) -> Vec<(String, Json)> {
+        self.inner.state.lock().unwrap().facts.clone()
     }
 
     /// What the extensions that have run give `MODULE.bazel.lock`.
@@ -728,6 +745,178 @@ impl Inner {
         state.mappings = Arc::new(mappings);
     }
 
+    /// What a previous run kept for `extension`.
+    fn facts_of(&self, extension: &ExtensionInstance) -> Vec<(String, FactValue)> {
+        fn fact(json: &Json) -> FactValue {
+            match json {
+                Json::Null => FactValue::None,
+                Json::Bool(b) => FactValue::Bool(*b),
+                Json::Number(n) => n.as_i64().map_or_else(
+                    || FactValue::Float(n.as_f64().unwrap_or_default()),
+                    FactValue::Int,
+                ),
+                Json::String(s) => FactValue::String(s.clone()),
+                Json::Array(items) => FactValue::List(items.iter().map(fact).collect()),
+                Json::Object(items) => {
+                    FactValue::Dict(items.iter().map(|(k, v)| (k.clone(), fact(v))).collect())
+                }
+            }
+        }
+        let Some(id) = self.resolution.extension_lock_id(extension) else {
+            return Vec::new();
+        };
+        match self.options.facts.iter().find(|(i, _)| *i == id) {
+            Some((_, Json::Object(items))) => {
+                items.iter().map(|(k, v)| (k.clone(), fact(v))).collect()
+            }
+            _ => Vec::new(),
+        }
+    }
+
+    /// What `extension_metadata()` said against what the root module imports: an
+    /// error if it named a repository the extension does not generate, and the
+    /// warning (as it is worded after `WARNING: `) for imports that differ.
+    fn check_metadata(
+        &self,
+        extension: &ExtensionInstance,
+        made: &fjfj_starlark::ExtensionOutput,
+        name: &str,
+        location: &str,
+    ) -> Result<Option<String>, FetchError> {
+        let Some(meta) = &made.metadata else {
+            return Ok(None);
+        };
+        let resolved = &self.resolution.selection.resolved;
+        let root = resolved.iter().find(|(k, _)| k.is_root()).map(|(_, m)| m);
+        let (mut regular_imports, mut dev_imports): (Vec<&str>, Vec<&str>) =
+            (Vec::new(), Vec::new());
+        let (mut has_regular, mut has_dev) = (false, false);
+        let mut first = None;
+        if let Some(root) = root {
+            for (key, index) in &extension.usages {
+                if !key.is_root() {
+                    continue;
+                }
+                let usage = &root.extension_usages[*index];
+                first.get_or_insert((usage, root));
+                let into = if usage.dev_dependency {
+                    has_dev = true;
+                    &mut dev_imports
+                } else {
+                    has_regular = true;
+                    &mut regular_imports
+                };
+                into.extend(usage.imports.iter().map(|(_, exported)| exported.as_str()));
+            }
+        }
+        let generated: Vec<&str> = made.repos.iter().map(|r| r.name.as_str()).collect();
+        fn named<'a>(deps: &'a MetaDeps, generated: &[&'a str]) -> Vec<&'a str> {
+            match deps {
+                MetaDeps::List(list) => list.iter().map(String::as_str).collect(),
+                MetaDeps::All => generated.to_vec(),
+                MetaDeps::Unset => Vec::new(),
+            }
+        }
+        let (direct, dev) = (
+            named(&meta.direct, &generated),
+            named(&meta.dev, &generated),
+        );
+        if !direct.is_empty() && !has_regular {
+            return failed(
+                "root_module_direct_deps must be empty if the root module contains no usages with \
+                 dev_dependency = False",
+            );
+        }
+        if !dev.is_empty() && !has_dev {
+            return failed(
+                "root_module_direct_dev_deps must be empty if the root module contains no usages \
+                 with dev_dependency = True",
+            );
+        }
+        for (what, list, deps) in [
+            ("root_module_direct_deps", &direct, &meta.direct),
+            ("root_module_direct_dev_deps", &dev, &meta.dev),
+        ] {
+            if matches!(deps, MetaDeps::List(_)) {
+                let missing: Vec<&str> = list
+                    .iter()
+                    .copied()
+                    .filter(|n| !generated.contains(n))
+                    .collect();
+                if !missing.is_empty() {
+                    return failed(format!(
+                        "{what} contained the following repositories not generated by the \
+                         extension: {}",
+                        missing.join(", ")
+                    ));
+                }
+            }
+        }
+        if meta.direct == MetaDeps::Unset && meta.dev == MetaDeps::Unset {
+            return Ok(None);
+        }
+        let in_any = |n: &&str| direct.contains(n) || dev.contains(n);
+        let sorted = |mut v: Vec<&str>| {
+            v.sort_unstable();
+            v.dedup();
+            v.join(", ")
+        };
+        let mut sections = String::new();
+        let mut section = |title: &str, names: Vec<&str>| {
+            if !names.is_empty() {
+                sections.push_str(&format!("{title}:\n    {}\n\n", sorted(names)));
+            }
+        };
+        section(
+            "Not imported, but reported as direct dependencies by the extension (may cause the \
+             build to fail)",
+            direct
+                .iter()
+                .copied()
+                .filter(|n| !regular_imports.contains(n) && !dev_imports.contains(n))
+                .collect(),
+        );
+        section(
+            "Imported as a regular dependency, but reported as a dev dependency by the extension \
+             (may cause the build to fail when used by other modules)",
+            regular_imports
+                .iter()
+                .copied()
+                .filter(|n| dev.contains(n))
+                .collect(),
+        );
+        section(
+            "Imported as a dev dependency, but reported as a regular dependency by the extension \
+             (may cause the build to fail when used by other modules)",
+            dev_imports
+                .iter()
+                .copied()
+                .filter(|n| direct.contains(n))
+                .collect(),
+        );
+        section(
+            "Imported, but reported as indirect dependencies by the extension",
+            regular_imports
+                .iter()
+                .chain(dev_imports.iter())
+                .copied()
+                .filter(|n| !in_any(n))
+                .collect(),
+        );
+        if sections.is_empty() {
+            return Ok(None);
+        }
+        let Some((usage, root)) = first else {
+            return Ok(None);
+        };
+        Ok(Some(format!(
+            "{location}: The module extension {name} defined in {} reported incorrect imports of \
+             repositories via use_repo():\n\n{sections}Fix the use_repo calls by running 'bazel \
+             mod tidy'.",
+            normalized_bzl(&usage.bzl_file, &root.repo_name)
+        )))
+    }
+
     /// What the extension's run gives `MODULE.bazel.lock`; nothing for one
     /// that is reproducible.
     fn locked_entry(
@@ -785,15 +974,25 @@ impl Inner {
         Some(LockedExtension {
             id,
             factors,
-            entry: Json::Object(vec![
-                ("bzlTransitiveDigest".to_owned(), Json::String(bzl_digest)),
-                (
-                    "usagesDigest".to_owned(),
-                    Json::String(self.resolution.extension_usages_digest(extension)),
-                ),
-                ("recordedInputs".to_owned(), Json::Array(recorded)),
-                ("generatedRepoSpecs".to_owned(), Json::Object(specs)),
-            ]),
+            entry: Json::Object(
+                vec![
+                    ("bzlTransitiveDigest".to_owned(), Json::String(bzl_digest)),
+                    (
+                        "usagesDigest".to_owned(),
+                        Json::String(self.resolution.extension_usages_digest(extension)),
+                    ),
+                    ("recordedInputs".to_owned(), Json::Array(recorded)),
+                    ("generatedRepoSpecs".to_owned(), Json::Object(specs)),
+                ]
+                .into_iter()
+                .chain(
+                    made.metadata
+                        .as_ref()
+                        .and_then(metadata_json)
+                        .map(|m| ("moduleExtensionMetadata".to_owned(), m)),
+                )
+                .collect(),
+            ),
         })
     }
 
@@ -947,6 +1146,7 @@ impl Inner {
         let input = ExtensionInput {
             modules: uses.into_iter().map(|(m, _)| m).collect(),
             root_has_non_dev_dependency,
+            facts: self.facts_of(extension),
         };
         let prefix = extension.repo_name("");
         let prefix = prefix.trim_end_matches('+').to_owned();
@@ -992,8 +1192,17 @@ impl Inner {
         }
         let names: Vec<String> = made.repos.iter().map(|r| r.name.clone()).collect();
         let rows = self.resolution.extension_repo_mapping(extension, &names);
+        let warning = self.check_metadata(extension, &made, name, &location)?;
         let locked = self.locked_entry(extension, &file, &made);
         let mut state = self.state.lock().unwrap();
+        state.warnings.extend(warning);
+        if let (Some(entry), Some(meta)) = (&locked, &made.metadata)
+            && !meta.facts.is_empty()
+        {
+            state
+                .facts
+                .push((entry.id.clone(), facts_json(&meta.facts)));
+        }
         state.locked.extend(locked);
         let mut mappings = (*state.mappings).clone();
         for repo in made.repos {
@@ -1036,6 +1245,69 @@ pub fn module_extensions_json(entries: &[LockedExtension]) -> Json {
             })
             .collect(),
     )
+}
+
+/// The `moduleExtensionMetadata` of a lockfile entry: none when the extension
+/// said nothing worth keeping.
+fn metadata_json(meta: &MetadataOut) -> Option<Json> {
+    if meta.direct == MetaDeps::Unset && meta.dev == MetaDeps::Unset && meta.facts.is_empty() {
+        return None;
+    }
+    let names = |deps: &MetaDeps| match deps {
+        MetaDeps::List(list) => Some(Json::Array(
+            list.iter().cloned().map(Json::String).collect(),
+        )),
+        _ => None,
+    };
+    let mut fields = Vec::new();
+    let use_all = match (&meta.direct, &meta.dev) {
+        (MetaDeps::All, _) => "REGULAR",
+        (_, MetaDeps::All) => "DEV",
+        _ => "NO",
+    };
+    if use_all == "NO" {
+        if let Some(direct) = names(&meta.direct) {
+            fields.push(("explicitRootModuleDirectDeps".to_owned(), direct));
+        }
+        if let Some(dev) = names(&meta.dev) {
+            fields.push(("explicitRootModuleDirectDevDeps".to_owned(), dev));
+        }
+    }
+    fields.push(("useAllRepos".to_owned(), Json::String(use_all.to_owned())));
+    fields.push(("reproducible".to_owned(), Json::Bool(meta.reproducible)));
+    Some(Json::Object(fields))
+}
+
+/// An extension's `facts` as the lockfile keeps them: keys in sorted order,
+/// `None` left out of a dict.
+fn facts_json(facts: &[(String, FactValue)]) -> Json {
+    fn value(v: &FactValue) -> Json {
+        match v {
+            FactValue::None => Json::Null,
+            FactValue::Bool(b) => Json::Bool(*b),
+            FactValue::Int(i) => Json::Number((*i).into()),
+            FactValue::Float(f) => {
+                serde_json::Number::from_f64(*f).map_or(Json::Null, Json::Number)
+            }
+            FactValue::String(s) => Json::String(s.clone()),
+            FactValue::List(items) => Json::Array(items.iter().map(value).collect()),
+            FactValue::Dict(items) => dict(items),
+        }
+    }
+    fn dict(items: &[(String, FactValue)]) -> Json {
+        let sorted: BTreeMap<&str, &FactValue> = items
+            .iter()
+            .filter(|(_, v)| !matches!(v, FactValue::None))
+            .map(|(k, v)| (k.as_str(), v))
+            .collect();
+        Json::Object(
+            sorted
+                .into_iter()
+                .map(|(k, v)| (k.to_owned(), value(v)))
+                .collect(),
+        )
+    }
+    dict(facts)
 }
 
 fn os_factor() -> &'static str {

@@ -31,6 +31,7 @@ fn repos(module: &str) -> (tempfile::TempDir, Repos) {
             downloader: None,
             repository_cache: None,
             registries: Vec::new(),
+            facts: Vec::new(),
             repo_overrides: Vec::new(),
         },
         file.module,
@@ -139,6 +140,7 @@ mod http_archive {
                 downloader: Some(Arc::new(One(url.to_owned(), bytes, Mutex::new(Vec::new())))),
                 repository_cache: Some(dir.path().join("cache")),
                 registries: Vec::new(),
+                facts: Vec::new(),
                 repo_overrides: Vec::new(),
             },
             file.module,
@@ -198,6 +200,7 @@ fn a_local_repository_with_no_boundary_file_is_refused_as_bazel_does() {
             downloader: None,
             repository_cache: None,
             registries: Vec::new(),
+            facts: Vec::new(),
             repo_overrides: Vec::new(),
         },
         file.module,
@@ -217,4 +220,84 @@ fn a_local_repository_with_no_boundary_file_is_refused_as_bazel_does() {
     std::fs::remove_file(base.join("external/+local_repository+x")).ok();
     let dir = repos.fetch("+local_repository+x", None).unwrap();
     assert!(dir.join("BUILD.bazel").is_file());
+}
+
+#[test]
+fn an_extension_reads_the_facts_a_previous_run_kept() {
+    use fjfj_bzlmod::lockfile::Json;
+    let dir = tempfile::tempdir().unwrap();
+    let ws = dir.path().join("ws");
+    std::fs::create_dir_all(&ws).unwrap();
+    std::fs::write(ws.join("BUILD.bazel"), "").unwrap();
+    std::fs::write(
+        ws.join("ext.bzl"),
+        r#"
+def _r(rctx):
+    rctx.file("BUILD.bazel", "")
+
+r = repository_rule(implementation = _r)
+
+def _impl(mctx):
+    f = mctx.facts
+    print("type=%s get=%s dflt=%s index=%s missing=%s in=%s out=%s" % (
+        type(f), f.get("a"), f.get("zz", "d"), f["b"], f["nope"], "a" in f, "zz" in f))
+    print("nested=%s" % f["c"]["d"])
+    r(name = "x")
+    return mctx.extension_metadata(facts = {"k": [1, 2.5, None], "n": None})
+
+ext = module_extension(_impl)
+"#,
+    )
+    .unwrap();
+    let module =
+        "module(name = 'm')\next = use_extension('//:ext.bzl', 'ext')\nuse_repo(ext, 'x')\n";
+    let file = eval_module_file("MODULE.bazel", module, &EvalOptions::root()).unwrap();
+    let facts = Json::Object(vec![
+        ("a".to_owned(), Json::Number(1.into())),
+        (
+            "b".to_owned(),
+            Json::Array(vec![Json::String("x".to_owned())]),
+        ),
+        (
+            "c".to_owned(),
+            Json::Object(vec![("d".to_owned(), Json::Bool(true))]),
+        ),
+    ]);
+    let mut repos = Repos::new(
+        Options {
+            workspace_root: ws,
+            output_base: dir.path().join("ob"),
+            environ: BTreeMap::new(),
+            downloader: None,
+            repository_cache: None,
+            registries: Vec::new(),
+            facts: vec![("//:ext.bzl%ext".to_owned(), facts)],
+            repo_overrides: Vec::new(),
+        },
+        file.module,
+    )
+    .unwrap();
+    struct Capture(std::cell::RefCell<Vec<String>>);
+    impl starlark::PrintHandler for Capture {
+        fn println(&self, text: &str) -> starlark::Result<()> {
+            self.0.borrow_mut().push(text.to_owned());
+            Ok(())
+        }
+    }
+    let capture = Capture(std::cell::RefCell::new(Vec::new()));
+    repos.run_extensions(Some(&capture)).unwrap();
+    assert_eq!(
+        *capture.0.borrow(),
+        [
+            "type=Facts get=1 dflt=d index=[\"x\"] missing=None in=True out=False",
+            "nested=True"
+        ]
+    );
+    // What it keeps is what the lockfile will have: sorted keys, None left out.
+    let kept = repos.locked_facts();
+    assert_eq!(kept.len(), 1);
+    assert_eq!(
+        serde_json::to_string(&kept[0].1).unwrap(),
+        r#"{"k":[1,2.5,null]}"#
+    );
 }
