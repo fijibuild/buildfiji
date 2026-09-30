@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Regenerates the golden module graphs in workspaces/*/expected_graph.txt
+# and repo mappings in workspaces/*/expected_repo_mapping.txt
 # from real Bazel, which is the specification these fixtures test against
 # (docs/ARCHITECTURE.md: "Bazel 9.2.0 observable behaviour is the spec").
 #
@@ -37,6 +38,7 @@ fi
 fixtures="${BUILD_WORKSPACE_DIRECTORY}/crates/fjfj-bzlmod/tests/fixtures"
 registry="file://${fixtures}/registry"
 graph_to_golden="$(rlocation _main/crates/fjfj-bzlmod/tests/fixtures/graph_to_golden)"
+dump_mappings="$(rlocation _main/crates/fjfj-bzlmod/tests/fixtures/dump_mappings)"
 
 for workspace in "${fixtures}"/workspaces/*/; do
   name="$(basename "${workspace}")"
@@ -55,4 +57,11 @@ for workspace in "${fixtures}"/workspaces/*/; do
       --lockfile_mode=off \
       2>/dev/null
   ) | "${graph_to_golden}" > "${workspace}/expected_graph.txt"
+  # What each repo of the graph calls the others (`bazel mod
+  # dump_repo_mapping`), for the repo mappings fjfj builds from the graph.
+  "${dump_mappings}" "${workspace}" \
+    --registry="${registry}" \
+    --registry=https://bcr.bazel.build \
+    --lockfile_mode=off \
+    > "${workspace}/expected_repo_mapping.txt"
 done

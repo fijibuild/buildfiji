@@ -116,6 +116,54 @@ fn resolution_matches_bazel() {
     );
 }
 
+/// The repo mappings of a resolution as `expected_repo_mapping.txt` holds
+/// Bazel's (`dump_mappings.py`): a line per repo, sorted, of its canonical
+/// name, a tab, and the mapping as a JSON object in the order it was built.
+fn render_repo_mappings(resolution: &Resolution) -> String {
+    let mut lines: Vec<String> = resolution
+        .repo_mappings()
+        .into_iter()
+        // `@bazel_tools`' own dependencies come from the registry, not the workspace.
+        .filter(|(repo, _)| repo != "bazel_tools")
+        .map(|(repo, rows)| {
+            let body: Vec<String> = rows
+                .iter()
+                .map(|(apparent, canonical)| format!("\"{apparent}\":\"{canonical}\""))
+                .collect();
+            format!("{repo}\t{{{}}}\n", body.join(","))
+        })
+        .collect();
+    lines.sort();
+    lines.concat()
+}
+
+#[test]
+fn repo_mappings_match_bazel() {
+    let workspaces = fixtures_dir().join("workspaces");
+    let mut checked = 0;
+    for entry in std::fs::read_dir(&workspaces).expect("fixture workspaces") {
+        let workspace = entry.unwrap().path();
+        let expected = workspace.join("expected_repo_mapping.txt");
+        if !expected.is_file() {
+            continue;
+        }
+        let name = workspace
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        let resolution = resolve_workspace(&workspace)
+            .unwrap_or_else(|e| panic!("{name}: resolution failed: {e}"));
+        assert_eq!(
+            render_repo_mappings(&resolution),
+            std::fs::read_to_string(&expected).unwrap(),
+            "{name}: repo mappings differ from Bazel's"
+        );
+        checked += 1;
+    }
+    assert!(checked >= 6, "expected the fixture mappings to be present");
+}
+
 #[test]
 fn selection_prunes_modules_that_lose_their_only_dependent() {
     // c@1.0 depends on d@1.0, but b@1.0 pulls c up to c@2.0, which does

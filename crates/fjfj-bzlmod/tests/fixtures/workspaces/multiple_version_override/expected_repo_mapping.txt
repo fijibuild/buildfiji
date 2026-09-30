@@ -1,0 +1,4 @@
+	{"":"","root":"","a":"a+2.0","e":"e+","bazel_tools":"bazel_tools"}
+a+1.0	{"a":"a+1.0","bazel_tools":"bazel_tools"}
+a+2.0	{"a":"a+2.0","bazel_tools":"bazel_tools"}
+e+	{"e":"e+","a":"a+1.0","bazel_tools":"bazel_tools"}

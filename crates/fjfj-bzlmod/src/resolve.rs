@@ -150,6 +150,48 @@ impl Resolution {
             .map(|key| (key.canonical_repo_name(), key.clone()))
             .collect()
     }
+
+    /// The canonical repo name of a selected module: with its version when
+    /// more than one version of the module was selected (a
+    /// `multiple_version_override`), which is when the name alone would not
+    /// tell them apart.
+    pub fn canonical_name_of(&self, key: &ModuleKey) -> String {
+        let versions = self.selection.keys().filter(|k| k.name == key.name).count();
+        if versions > 1
+            && let Some(with_version) = key.canonical_repo_name_with_version()
+        {
+            return with_version;
+        }
+        key.canonical_repo_name()
+    }
+
+    /// What each apparent repo name means in each repo of the module graph
+    /// (Bazel's repo mapping, what `bazel mod dump_repo_mapping` prints): for
+    /// every selected module, in breadth-first order, its canonical repo
+    /// name and `(apparent name, canonical name)` rows. A module sees
+    /// itself under its `repo_name`, then each `bazel_dep` under the name
+    /// the dependency was given, built-in `bazel_tools` last; the root
+    /// module sees the main repo as `""` too. (What a module's
+    /// `use_repo` brings in waits for module extensions, buildfiji-mum.8.)
+    pub fn repo_mappings(&self) -> Vec<(String, Vec<(String, String)>)> {
+        self.selection
+            .resolved
+            .iter()
+            .map(|(key, module)| {
+                let own = self.canonical_name_of(key);
+                let mut rows: Vec<(String, String)> = Vec::new();
+                if key.is_root() {
+                    rows.push((String::new(), own.clone()));
+                }
+                rows.push((module.repo_name.clone(), own.clone()));
+                for dep in &module.deps {
+                    let target = self.canonical_name_of(&dep.spec.to_module_key());
+                    rows.push((dep.repo_name.clone(), target));
+                }
+                (own, rows)
+            })
+            .collect()
+    }
 }
 
 /// Resolves the module graph for a workspace.

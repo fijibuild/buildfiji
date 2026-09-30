@@ -784,3 +784,36 @@ print(str(x), str(y))"#,
         Ok(r#"@@dep+//a:b @@dep+//:dep+ Label("@@dep+//:dep+") @@dep+//a:dep+"#),
     ),
 ];
+
+#[test]
+fn mappings_of_a_module_graph_name_repos_as_its_modules_do() {
+    // What `fjfj_bzlmod::Resolution::repo_mappings` gives for the workspace
+    // `bazel mod dump_repo_mapping` was probed on (buildfiji-mum.15).
+    let rows = |rows: &[(&str, &str)]| {
+        rows.iter()
+            .map(|(a, c)| (a.to_string(), c.to_string()))
+            .collect::<Vec<_>>()
+    };
+    let mappings = crate::RepoMappings::from_repos([
+        (
+            String::new(),
+            rows(&[
+                ("", ""),
+                ("me", ""),
+                ("mydep", "dep+"),
+                ("bazel_tools", "bazel_tools"),
+            ]),
+        ),
+        (
+            "dep+".to_owned(),
+            rows(&[("dep_alias", "dep+"), ("bazel_tools", "bazel_tools")]),
+        ),
+    ]);
+    assert_eq!(mappings.resolve_apparent("", "me"), "");
+    assert_eq!(mappings.resolve_apparent("", "mydep"), "dep+");
+    assert_eq!(mappings.resolve_apparent("dep+", "dep_alias"), "dep+");
+    assert_eq!(
+        mappings.resolve_apparent("dep+", "mydep"),
+        "[unknown repo 'mydep' requested from @@dep+]"
+    );
+}

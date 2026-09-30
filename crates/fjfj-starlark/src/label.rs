@@ -83,6 +83,17 @@ impl RepoMappings {
             .insert(repo.into(), entries.into_iter().collect());
     }
 
+    /// The mappings of a module graph: `fjfj_bzlmod::Resolution::repo_mappings`
+    /// gives them as a canonical repo name and its `(apparent, canonical)`
+    /// rows.
+    pub fn from_repos(repos: impl IntoIterator<Item = (String, Vec<(String, String)>)>) -> Self {
+        let mut mappings = RepoMappings::new();
+        for (repo, rows) in repos {
+            mappings.insert(repo, rows);
+        }
+        mappings
+    }
+
     /// The canonical repo `apparent` names in `from`, or the placeholder
     /// Bazel puts in a label whose repo `from` cannot name.
     pub(crate) fn resolve_apparent(&self, from: &str, apparent: &str) -> String {

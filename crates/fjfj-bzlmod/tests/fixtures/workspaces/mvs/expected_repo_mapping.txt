@@ -1,0 +1,3 @@
+	{"":"","root":"","b":"b+","c":"c+","bazel_tools":"bazel_tools"}
+b+	{"b":"b+","c":"c+","bazel_tools":"bazel_tools"}
+c+	{"c":"c+","bazel_tools":"bazel_tools"}

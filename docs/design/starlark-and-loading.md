@@ -737,6 +737,22 @@ buildfiji-mum.4.
 | `glob package package_group exports_files existing_rule existing_rules package_name repository_name subpackages package_relative_label licenses filegroup alias` | B only | buildfiji-mum.4 and buildfiji-mum.3.2 (done), buildfiji-hrx |
 | `genrule config_setting test_suite toolchain_type` and the language rules (`cc_library`, `java_library`, ...), still native in 9.2.0 | B only | buildfiji-136.10, buildfiji-136.11 |
 
+### Repo mapping from the graph (implemented 2026-09-30, buildfiji-mum.15)
+
+`Resolution::repo_mappings()` gives, for each selected module (breadth first),
+its canonical repo name and what each apparent name means there: the main
+repo sees `""` and its `repo_name` as itself, every module sees itself under
+its `repo_name`, then its `bazel_dep`s under the names they were given, and
+the built-in `bazel_tools` last; with a `multiple_version_override` the
+canonical name carries the version (`a+1.0`). Each workspace fixture has an
+`expected_repo_mapping.txt` that `bazel run
+//crates/fjfj-bzlmod/tests/fixtures:refresh_golden` records from `bazel mod
+dump_repo_mapping`, and `repo_mappings_match_bazel` compares line for line.
+`fjfj_starlark::RepoMappings::from_repos` takes those rows. What `use_repo`
+brings in (`module+ext+repo` names) waits for module extensions
+(buildfiji-mum.8), and the `_repo_mapping` runfiles manifest is
+buildfiji-136.9's.
+
 ## bzlmod: module resolution (implemented 2026-09-03, buildfiji-mum.6)
 
 `crates/fjfj-bzlmod` evaluates `MODULE.bazel`, walks out to the whole
