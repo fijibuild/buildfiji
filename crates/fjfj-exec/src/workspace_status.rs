@@ -113,6 +113,11 @@ fn format_date(dt: OffsetDateTime) -> String {
 mod tests {
     use super::*;
 
+    /// The tests that start a process (`compute` runs `hostname`) take turns: a child forked while another
+    /// test has the script it will run open for writing holds it until it
+    /// execs, and then the exec of the script fails with "Text file busy".
+    static SPAWN: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
     #[test]
     fn known_epoch_dates() {
         // 1970-01-01 00:00:00 UTC was a Thursday.
@@ -129,6 +134,7 @@ mod tests {
 
     #[tokio::test]
     async fn no_command_still_produces_builtins() {
+        let _turn = SPAWN.lock().await;
         let status = compute(&WorkspaceStatusFlags::default()).await.unwrap();
         assert!(status.stable.contains_key("BUILD_HOST"));
         assert!(status.stable.contains_key("BUILD_USER"));
@@ -137,6 +143,7 @@ mod tests {
 
     #[tokio::test]
     async fn nonzero_exit_fails_the_build() {
+        let _turn = SPAWN.lock().await;
         let flags = WorkspaceStatusFlags {
             workspace_status_command: Some(std::path::PathBuf::from("/usr/bin/false")),
             ..Default::default()
@@ -147,6 +154,7 @@ mod tests {
 
     #[tokio::test]
     async fn command_output_is_parsed() {
+        let _turn = SPAWN.lock().await;
         let script = std::env::temp_dir().join(format!(
             "fjfj-workspace-status-test-{}.sh",
             std::process::id()
