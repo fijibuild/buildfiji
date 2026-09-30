@@ -33,6 +33,10 @@ pub enum BzlmodError {
     #[error("error accessing registry {registry}: {message}")]
     Registry { registry: String, message: String },
 
+    /// `--lockfile_mode=error` refusing what the lockfile cannot vouch for.
+    #[error("{0}")]
+    Lockfile(String),
+
     /// Bazel's `Code.VERSION_RESOLUTION_ERROR`.
     #[error("{0}")]
     VersionResolution(String),

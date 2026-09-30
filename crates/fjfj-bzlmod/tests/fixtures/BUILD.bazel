@@ -10,6 +10,7 @@ filegroup(
     srcs = glob([
         "registry/**",
         "workspaces/**",
+        "lockfiles/**",
     ]),
     # buildfiji-gwl.17: fjfj-cli's own bzlmod-flag test reuses the registry
     # fixture rather than duplicating it.
@@ -29,12 +30,18 @@ py_binary(
     srcs = ["dump_mappings.py"],
 )
 
+py_binary(
+    name = "lock_hashes",
+    srcs = ["lock_hashes.py"],
+)
+
 sh_binary(
     name = "refresh_golden",
     srcs = ["refresh_golden.sh"],
     data = [
         ":dump_mappings",
         ":graph_to_golden",
+        ":lock_hashes",
         "@bazel_tools//tools/bash/runfiles",
     ],
 )

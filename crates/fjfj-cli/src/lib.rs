@@ -20,6 +20,7 @@ use fjfj_bazel_compat::{
 };
 use fjfj_bzlmod::attrs::AttrValue;
 use fjfj_bzlmod::discovery::RegistrySource;
+use fjfj_bzlmod::lockfile::{LockSession, LockfileMode};
 use fjfj_bzlmod::overrides::{ModuleOverride, NonRegistryOverride, RepoRule, RepoSpec};
 use fjfj_bzlmod::{
     BAZEL_CENTRAL_REGISTRY, Registry, Resolution, ResolveOptions, WorkspaceIncludeSource,
@@ -89,7 +90,10 @@ impl CliError {
 /// The registries `--registry` names, or Bazel's own default list (just
 /// `https://bcr.bazel.build`) when it wasn't given at all — repeatable
 /// `--registry` *replaces* the default rather than adding to it.
-fn bzlmod_registries(flags: &BzlmodFlags) -> Result<Vec<Registry>, CliError> {
+fn bzlmod_registries(
+    flags: &BzlmodFlags,
+    lock: Option<&std::sync::Arc<LockSession>>,
+) -> Result<Vec<Registry>, CliError> {
     let urls: Vec<&str> = if flags.registry.is_empty() {
         vec![BAZEL_CENTRAL_REGISTRY]
     } else {
@@ -98,6 +102,10 @@ fn bzlmod_registries(flags: &BzlmodFlags) -> Result<Vec<Registry>, CliError> {
     urls.into_iter()
         .map(|url| {
             Registry::remote(url)
+                .map(|registry| match lock {
+                    Some(session) => registry.locked(session),
+                    None => registry,
+                })
                 .map_err(|e| CliError::Internal(anyhow::anyhow!("--registry {url}: {e}")))
         })
         .collect()
@@ -137,6 +145,7 @@ fn bzlmod_resolve_options(
         include_source: Some(std::rc::Rc::new(WorkspaceIncludeSource::new(
             workspace_root,
         ))),
+        track_yanked: false,
     })
 }
 
@@ -148,11 +157,44 @@ fn resolve_bzlmod(
     workspace_root: &std::path::Path,
     flags: &BzlmodFlags,
 ) -> Result<Resolution, CliError> {
-    let registries = bzlmod_registries(flags)?;
+    let mode = match &flags.lockfile_mode {
+        Some(value) => LockfileMode::parse(value)
+            .map_err(|e| CliError::CommandLine(anyhow::anyhow!("--lockfile_mode: {e}")))?,
+        None => LockfileMode::default(),
+    };
+    let lock_path = workspace_root.join("MODULE.bazel.lock");
+    let existing = if mode == LockfileMode::Off {
+        None
+    } else {
+        std::fs::read_to_string(&lock_path).ok()
+    };
+    let session = match mode {
+        LockfileMode::Off => None,
+        _ => Some(
+            // Until fjfj resolves `bazel_tools`' real module file
+            // (buildfiji-mum.23) it reads fewer registry files than Bazel,
+            // and must not drop the hashes of the ones it did not read from
+            // a lockfile Bazel maintains.
+            LockSession::keeping_unread(mode, existing.as_deref())
+                .map_err(|e| CliError::Build(anyhow::anyhow!(e)))?,
+        ),
+    };
+    let registries = bzlmod_registries(flags, session.as_ref())?;
     let source = RegistrySource::new(registries);
-    let options = bzlmod_resolve_options(flags, workspace_root)?;
-    fjfj_bzlmod::resolve(module_bazel_text, &source, &options)
-        .map_err(|e| CliError::Build(anyhow::anyhow!(e)))
+    let mut options = bzlmod_resolve_options(flags, workspace_root)?;
+    options.track_yanked = session.is_some();
+    let resolution = fjfj_bzlmod::resolve(module_bazel_text, &source, &options)
+        .map_err(|e| CliError::Build(anyhow::anyhow!(e)))?;
+    // The lockfile is written when resolution succeeded, and only if it
+    // changed (Bazel leaves an unchanged file's timestamp alone).
+    if let Some(session) = &session
+        && let Some(text) = session.to_write(&resolution.selected_yanked, existing.as_deref())
+    {
+        std::fs::write(&lock_path, text).map_err(|e| {
+            CliError::Build(anyhow::anyhow!("cannot write {}: {e}", lock_path.display()))
+        })?;
+    }
+    Ok(resolution)
 }
 
 /// Reads `MODULE.bazel` from the current directory and resolves it —
@@ -472,10 +514,12 @@ mod tests {
 
     #[test]
     fn registry_flag_resolves_a_fixture_workspace() {
-        let args = vec![format!(
-            "--registry=file://{}",
-            fixture_registry_dir().display()
-        )];
+        let args = vec![
+            format!("--registry=file://{}", fixture_registry_dir().display()),
+            // The workspace root here is the current directory, which is
+            // not the place for a MODULE.bazel.lock.
+            "--lockfile_mode=off".to_owned(),
+        ];
         let (bzlmod, rest) = bzlmod_flags::extract(&args, "build");
         assert!(rest.is_empty());
         assert_eq!(bzlmod.registry.len(), 1);
@@ -525,5 +569,85 @@ mod tests {
         let err = CliError::Internal(anyhow::anyhow!("unreachable state"));
         assert_eq!(err.exit_code(), ExitCode::InternalError);
         assert_eq!(err.stderr_line(), "FATAL: unreachable state");
+    }
+
+    /// A scratch workspace directory, removed when dropped.
+    struct Scratch(std::path::PathBuf);
+
+    impl Scratch {
+        fn new(name: &str) -> Scratch {
+            let dir = std::env::temp_dir().join(format!("fjfj-cli-{name}-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            Scratch(dir)
+        }
+    }
+
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn resolve_in(workspace: &std::path::Path, extra: &[&str]) -> Result<Resolution, CliError> {
+        let mut args = vec![format!(
+            "--registry=file://{}",
+            fixture_registry_dir().display()
+        )];
+        args.extend(extra.iter().map(|a| (*a).to_owned()));
+        let (bzlmod, rest) = bzlmod_flags::extract(&args, "build");
+        assert!(rest.is_empty(), "{rest:?}");
+        let module_bazel =
+            "module(name = 'root', version = '0')\nbazel_dep(name = 'a', version = '1.0')\n";
+        resolve_bzlmod(module_bazel, workspace, &bzlmod)
+    }
+
+    #[test]
+    fn resolving_writes_module_bazel_lock_unless_the_mode_is_off() {
+        let dir = Scratch::new("writes");
+        let lock = dir.0.join("MODULE.bazel.lock");
+        resolve_in(&dir.0, &["--lockfile_mode=off"]).unwrap();
+        assert!(!lock.exists());
+        // `file://` registries are not locked, so what is written is an
+        // empty lockfile, in Bazel's format.
+        resolve_in(&dir.0, &[]).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&lock).unwrap(),
+            fjfj_bzlmod::lockfile::Lockfile::default().to_text()
+        );
+    }
+
+    #[test]
+    fn error_mode_does_not_write_and_refuses_a_lockfile_it_cannot_read() {
+        let dir = Scratch::new("error");
+        let lock = dir.0.join("MODULE.bazel.lock");
+        resolve_in(&dir.0, &["--lockfile_mode=error"]).unwrap();
+        assert!(!lock.exists());
+        std::fs::write(&lock, "{\"lockFileVersion\": 27}").unwrap();
+        let Err(e) = resolve_in(&dir.0, &["--lockfile_mode=error"]) else {
+            panic!("accepted");
+        };
+        assert!(
+            e.to_string()
+                .contains("is not supported by this version of Bazel"),
+            "{e}"
+        );
+        // `update` replaces it.
+        resolve_in(&dir.0, &["--lockfile_mode=update"]).unwrap();
+        assert!(
+            std::fs::read_to_string(&lock)
+                .unwrap()
+                .contains("\"lockFileVersion\": 28")
+        );
+    }
+
+    #[test]
+    fn a_bad_lockfile_mode_is_a_command_line_error() {
+        let dir = Scratch::new("bad-mode");
+        let Err(CliError::CommandLine(e)) = resolve_in(&dir.0, &["--lockfile_mode=sometimes"])
+        else {
+            panic!("accepted");
+        };
+        assert!(e.to_string().contains("lockfile_mode"), "{e}");
     }
 }

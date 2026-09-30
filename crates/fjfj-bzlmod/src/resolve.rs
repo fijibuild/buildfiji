@@ -78,6 +78,10 @@ pub struct ResolveOptions {
     /// `None` makes an `include()` in the root file an error — same as
     /// having no include source at all (buildfiji-mum.22).
     pub include_source: Option<Rc<dyn IncludeSource>>,
+    /// Look up every selected version's yanked status even when
+    /// `--allow_yanked_versions=all` makes the answer moot, because the
+    /// lockfile records them (`--lockfile_mode` other than `off`).
+    pub track_yanked: bool,
 }
 
 /// Resolves `include()` labels against the workspace directory the root
@@ -138,6 +142,10 @@ pub struct Resolution {
     pub overrides: Overrides,
     pub selection: Selection,
     pub warnings: Vec<String>,
+    /// Each selected version the registry has yanked, and why, in selection
+    /// order. Only filled when [`ResolveOptions::track_yanked`] is set or
+    /// yanked versions are not all allowed.
+    pub selected_yanked: Vec<(ModuleKey, String)>,
 }
 
 impl Resolution {
@@ -214,13 +222,14 @@ pub fn resolve(
     let overrides = build_overrides(&root, options)?;
     let dep_graph = discover(&root, &overrides, source)?;
     let selection = selection::run(&dep_graph, &overrides)?;
-    check_yanked(&selection, source, options)?;
+    let selected_yanked = check_yanked(&selection, source, options)?;
 
     Ok(Resolution {
         root: root.module,
         overrides,
         selection,
         warnings: root.warnings,
+        selected_yanked,
     })
 }
 
@@ -281,25 +290,34 @@ fn build_overrides(root: &ModuleFile, options: &ResolveOptions) -> Result<Overri
     Ok(overrides)
 }
 
-/// Rejects selected versions the registry has yanked.
+/// Rejects selected versions the registry has yanked, and returns the ones
+/// it has that were allowed anyway.
 fn check_yanked(
     selection: &Selection,
     source: &dyn ModuleFileSource,
     options: &ResolveOptions,
-) -> Result<()> {
-    if options.yanked == YankedPolicy::AllowAll {
-        return Ok(());
+) -> Result<Vec<(ModuleKey, String)>> {
+    let mut yanked = Vec::new();
+    if options.yanked == YankedPolicy::AllowAll && !options.track_yanked {
+        return Ok(yanked);
     }
     for key in selection.keys() {
         if key.version.is_empty() {
             continue;
         }
-        if let YankedPolicy::Allow(allowed) = &options.yanked
-            && allowed.contains(key)
-        {
+        let Some(reason) = source
+            .yanked_versions(&key.name)?
+            .get(&key.version)
+            .cloned()
+        else {
             continue;
-        }
-        if let Some(reason) = source.yanked_versions(&key.name)?.get(&key.version) {
+        };
+        let allowed = match &options.yanked {
+            YankedPolicy::AllowAll => true,
+            YankedPolicy::Allow(allowed) => allowed.contains(key),
+            YankedPolicy::Deny => false,
+        };
+        if !allowed {
             return Err(BzlmodError::resolution(format!(
                 "Yanked version detected in your resolved dependency graph: {key}, for the \
                  reason: {reason}.\nYanked versions may contain serious vulnerabilities and \
@@ -308,8 +326,9 @@ fn check_yanked(
                  --allow_yanked_versions flag or the BZLMOD_ALLOW_YANKED_VERSIONS env variable."
             )));
         }
+        yanked.push((key.clone(), reason));
     }
-    Ok(())
+    Ok(yanked)
 }
 
 /// A yanked version, and why.

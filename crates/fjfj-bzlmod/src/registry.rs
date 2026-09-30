@@ -20,11 +20,13 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, OnceLock};
 
 use base64::Engine as _;
 use sha2::Digest as _;
 
 use crate::error::{BzlmodError, Result};
+use crate::lockfile::LockSession;
 use crate::module::ModuleKey;
 use crate::overrides::{RepoRule, RepoSpec};
 use crate::version::Version;
@@ -140,6 +142,11 @@ impl Fetcher for HttpFetcher {
 pub struct Registry {
     url: String,
     fetcher: Box<dyn Fetcher>,
+    /// The lockfile run this registry's files are checked against and
+    /// recorded in, if any.
+    lock: Option<Arc<LockSession>>,
+    /// `bazel_registry.json` has been read (and so recorded) already.
+    registry_json_read: OnceLock<()>,
 }
 
 impl std::fmt::Debug for Registry {
@@ -156,7 +163,43 @@ impl Registry {
         Registry {
             url: url.into(),
             fetcher,
+            lock: None,
+            registry_json_read: OnceLock::new(),
         }
+    }
+
+    /// This registry, with its files checked against and recorded in
+    /// `session`'s lockfile (`file://` registries are not: Bazel does not
+    /// lock them).
+    pub fn locked(mut self, session: &Arc<LockSession>) -> Registry {
+        let inner = std::mem::replace(&mut self.fetcher, Box::new(FileFetcher));
+        self.fetcher = session.fetcher(&self.url, inner);
+        self.lock = Some(Arc::clone(session));
+        self
+    }
+
+    /// The line `module not found in registries` gives for this registry:
+    /// where the module file would have been, and whether the lockfile is
+    /// why it was not asked for.
+    pub fn not_found_note(&self, key: &ModuleKey) -> String {
+        let url = self.module_file_url(key);
+        match &self.lock {
+            Some(lock) if lock.recorded_missing(&url) => format!(
+                "{url}: previously not found (as recorded in MODULE.bazel.lock, refresh with \
+                 --lockfile_mode=refresh)"
+            ),
+            _ => format!("{url}: not found"),
+        }
+    }
+
+    /// The yanked versions of `module` a lockfile already holds, standing
+    /// in for `metadata.json`.
+    pub fn locked_yanked(&self, module: &str) -> Option<BTreeMap<Version, String>> {
+        let found = self.lock.as_ref()?.locked_yanked(module)?;
+        found
+            .into_iter()
+            .map(|(version, reason)| Version::parse(&version).ok().map(|v| (v, reason)))
+            .collect()
     }
 
     /// A registry served out of a local directory.
@@ -180,6 +223,13 @@ impl Registry {
     /// The module file for one version, or `None` if this registry does
     /// not carry it.
     pub fn module_file(&self, key: &ModuleKey) -> Result<Option<String>> {
+        // Bazel reads a registry's `bazel_registry.json` before its first
+        // module file, which is what puts it in the lockfile.
+        if self.lock.is_some() {
+            self.registry_json_read.get_or_init(|| {
+                let _ = self.bazel_registry_json();
+            });
+        }
         let url = self.module_file_url(key);
         let Some(bytes) = self.fetcher.fetch(&url)? else {
             return Ok(None);

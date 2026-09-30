@@ -224,7 +224,8 @@ root in this repo today) and logs the selected module count. There is no
 `fjfj build` yet for it to feed into; this is forward progress on a real
 prerequisite, not a finished pipeline.
 
-`--check_direct_dependencies` and the lockfile modes are out of scope
-here — the former needs the direct-dependency comparison Bazel's `mod`
-output would show (buildfiji-9s8.4), the latter needs
-`MODULE.bazel.lock` (buildfiji-mum.7).
+`--check_direct_dependencies` is out of scope here — it needs the
+direct-dependency comparison Bazel's `mod` output would show
+(buildfiji-9s8.4). `--lockfile_mode` is implemented (buildfiji-mum.7; see
+`docs/design/starlark-and-loading.md`): the resolving commands read and
+write `MODULE.bazel.lock` in the workspace root.

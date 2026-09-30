@@ -145,7 +145,7 @@ impl ModuleFileSource for RegistrySource {
                 for registry in registries {
                     match registry.module_file(key)? {
                         Some(source) => return Ok((source, Some(registry.url().to_owned()))),
-                        None => tried.push(format!("{}: not found", registry.module_file_url(key))),
+                        None => tried.push(registry.not_found_note(key)),
                     }
                 }
                 Err(BzlmodError::ModuleNotFound {
@@ -166,6 +166,9 @@ impl RegistrySource {
     /// module.
     fn metadata_yanked(&self, module_name: &str) -> Result<BTreeMap<Version, String>> {
         for registry in self.registries.iter().chain(self.overridden.values()) {
+            if let Some(locked) = registry.locked_yanked(module_name) {
+                return Ok(locked);
+            }
             if let Some(metadata) = registry.metadata(module_name)? {
                 return Ok(metadata.yanked_versions);
             }

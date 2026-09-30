@@ -13,10 +13,12 @@
 //! `bazel mod graph` hides the `bazel_tools` subtree, so the renderer here
 //! hides it too; everything else in the graph is compared edge for edge.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use fjfj_bzlmod::discovery::RegistrySource;
+use fjfj_bzlmod::lockfile::{FileHash, LockSession, LockfileMode};
+use fjfj_bzlmod::registry::Fetcher;
 use fjfj_bzlmod::{Registry, Resolution, ResolveOptions, WorkspaceIncludeSource, resolve};
 
 fn fixtures_dir() -> PathBuf {
@@ -328,4 +330,138 @@ fn resolves_this_repository_against_the_real_registry() {
         "expected a transitive graph, got {} modules",
         resolution.selection.resolved.len()
     );
+}
+
+/// Serves `tests/fixtures/registry` under a made-up `http://` URL, so the
+/// lockfile treats it as the remote registry it locks (`file://` registries
+/// are not locked), without a network.
+struct ServedRegistry {
+    base: String,
+    dir: PathBuf,
+}
+
+impl Fetcher for ServedRegistry {
+    fn fetch(&self, url: &str) -> fjfj_bzlmod::Result<Option<Vec<u8>>> {
+        let Some(path) = url.strip_prefix(&self.base) else {
+            panic!("asked for {url}, outside {}", self.base);
+        };
+        Ok(std::fs::read(self.dir.join(path)).ok())
+    }
+}
+
+/// What a locked resolution of `workspace` recorded: the registry file hashes
+/// (with the registry's URL taken off) and the yanked versions it selected.
+fn lock_of(
+    workspace: &Path,
+    options: ResolveOptions,
+) -> (BTreeMap<String, FileHash>, Vec<(String, String)>) {
+    let base = "http://127.0.0.1:1/".to_owned();
+    let session = LockSession::new(LockfileMode::Update, None).unwrap();
+    let registry = Registry::new(
+        base.trim_end_matches('/'),
+        Box::new(ServedRegistry {
+            base: base.clone(),
+            dir: fixtures_dir().join("registry"),
+        }),
+    )
+    .locked(&session);
+    let source = RegistrySource::new(vec![registry]);
+    let source_text = std::fs::read_to_string(workspace.join("MODULE.bazel")).unwrap();
+    let options = ResolveOptions {
+        track_yanked: true,
+        include_source: Some(std::rc::Rc::new(WorkspaceIncludeSource::new(workspace))),
+        ..options
+    };
+    let resolution = resolve(&source_text, &source, &options).unwrap();
+    let lock = session.finish(&resolution.selected_yanked);
+    let hashes = lock
+        .registry_file_hashes
+        .into_iter()
+        .map(|(url, hash)| (url.strip_prefix(&base).unwrap().to_owned(), hash))
+        .collect();
+    (hashes, lock.selected_yanked_versions)
+}
+
+/// `expected_lock_hashes.txt`: Bazel's `MODULE.bazel.lock` for the same
+/// workspace, captured by `lock_hashes.py`.
+fn golden_lock(workspace: &Path) -> (BTreeMap<String, FileHash>, Vec<(String, String)>) {
+    let text = std::fs::read_to_string(workspace.join("expected_lock_hashes.txt")).unwrap();
+    let mut hashes = BTreeMap::new();
+    let mut yanked = Vec::new();
+    for line in text.lines() {
+        let fields: Vec<&str> = line.split('\t').collect();
+        match fields[..] {
+            ["yanked", key, reason] => yanked.push((key.to_owned(), reason.to_owned())),
+            [path, "not found"] => {
+                hashes.insert(path.to_owned(), FileHash::NotFound);
+            }
+            [path, hash] => {
+                hashes.insert(path.to_owned(), FileHash::Sha256(hash.to_owned()));
+            }
+            _ => panic!("bad golden line {line:?}"),
+        }
+    }
+    (hashes, yanked)
+}
+
+/// The lockfile fjfj writes records the registry files Bazel's does, with
+/// the same hashes, and the same yanked versions.
+///
+/// Two things Bazel records that fjfj does not yet, and so are left out of
+/// the comparison: `source.json` (fjfj reads it when it fetches a module,
+/// and resolution does not fetch), and the probes of `bazel_tools`' own
+/// dependency graph, which are all `not found` here because the test
+/// registry has none of those modules (buildfiji-mum.23 makes fjfj resolve
+/// `bazel_tools`' real module file, which brings them).
+#[test]
+fn lockfile_registry_hashes_match_bazel() {
+    let workspaces = fixtures_dir().join("workspaces");
+    let mut checked = 0;
+    for entry in std::fs::read_dir(&workspaces).unwrap() {
+        let workspace = entry.unwrap().path();
+        let name = workspace
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        if !workspace.join("expected_lock_hashes.txt").exists() {
+            continue;
+        }
+        let options = if name == "yanked" {
+            ResolveOptions {
+                yanked: fjfj_bzlmod::YankedPolicy::AllowAll,
+                ..ResolveOptions::default()
+            }
+        } else {
+            ResolveOptions::default()
+        };
+        let (ours, our_yanked) = lock_of(&workspace, options);
+        let (theirs, their_yanked) = golden_lock(&workspace);
+        let comparable = |hashes: &BTreeMap<String, FileHash>| -> BTreeMap<String, FileHash> {
+            hashes
+                .iter()
+                .filter(|(path, hash)| {
+                    !path.ends_with("/source.json") && **hash != FileHash::NotFound
+                })
+                .map(|(path, hash)| (path.clone(), hash.clone()))
+                .collect()
+        };
+        assert_eq!(comparable(&ours), comparable(&theirs), "{name}");
+        assert_eq!(our_yanked, their_yanked, "{name}");
+        checked += 1;
+    }
+    assert!(checked >= 7, "only {checked} workspaces had a golden");
+}
+
+/// A `MODULE.bazel.lock` exactly as Bazel 9.2.0 wrote it (for a workspace
+/// with no extensions of its own, so what is in it is `bazel_tools`' graph:
+/// 184 registry hashes and four module extensions' results) reads and writes
+/// back byte for byte.
+#[test]
+fn a_lockfile_bazel_wrote_round_trips_byte_for_byte() {
+    let text = std::fs::read_to_string(fixtures_dir().join("lockfiles/9.2.0.lock")).unwrap();
+    let lock = fjfj_bzlmod::lockfile::Lockfile::parse(&text).unwrap();
+    assert_eq!(lock.registry_file_hashes.len(), 184);
+    assert!(lock.selected_yanked_versions.is_empty());
+    assert_eq!(lock.to_text(), text);
 }

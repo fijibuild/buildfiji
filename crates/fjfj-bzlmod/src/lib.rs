@@ -16,18 +16,18 @@
 //! | Pick one version per module | [`selection`] | `Selection` |
 //! | Ask a registry for files | [`registry`] | `IndexRegistry` |
 //! | All of the above, in order | [`resolve`] | `BazelDepGraphFunction` |
+//! | Check and record registry files | [`lockfile`] | `BazelLockFileModule` |
 //!
-//! What is deliberately *not* here, because it needs repositories fetched
-//! or a lockfile format: running module extensions and repository rules
-//! (buildfiji-mum.8), reading and writing `MODULE.bazel.lock`
-//! (buildfiji-mum.7), and the apparent-name side of repo mapping
-//! (buildfiji-mum.15). `WORKSPACE` is out of scope permanently — Bazel 9
-//! removed it.
+//! What is deliberately *not* here, because it needs repositories fetched:
+//! running module extensions and repository rules (buildfiji-mum.8), which
+//! is also what fills `MODULE.bazel.lock`'s `moduleExtensions`.
+//! `WORKSPACE` is out of scope permanently — Bazel 9 removed it.
 
 pub mod attrs;
 pub mod discovery;
 pub mod error;
 pub mod eval;
+pub mod lockfile;
 pub mod module;
 pub mod overrides;
 pub mod registry;

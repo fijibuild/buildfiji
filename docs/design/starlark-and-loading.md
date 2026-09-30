@@ -825,9 +825,10 @@ documentation: a resolution that differs from Bazel's by one version is a
 different build.
 
 Spec: `spec/Fjfj/Bzlmod.lean`. Out of scope here and tracked separately:
-running module extensions and repository rules (buildfiji-mum.8),
-`MODULE.bazel.lock` (buildfiji-mum.7), and the apparent-name half of repo
-mapping (buildfiji-mum.15).
+running module extensions and repository rules (buildfiji-mum.8). The
+lockfile (buildfiji-mum.7, the last subsection here) and the
+apparent-name half of repo mapping (buildfiji-mum.15, in "`Label` and
+repository mapping") have landed.
 
 ### Compatibility levels are gone, and selection is simpler for it
 
@@ -1018,3 +1019,64 @@ second run of real Bazel. `bazel_tools`'s subtree is hidden the same way
 `--output=text` is not byte-matched against Bazel's own box-drawing tree,
 and `deps`/`show_repo`/`explain`'s text isn't matched against Bazel's at
 all — only the JSON graph shape is a conformance point today.
+
+### `MODULE.bazel.lock` (implemented 2026-09-30, buildfiji-mum.7)
+
+`fjfj_bzlmod::lockfile` reads and writes Bazel 9.2.0's lockfile, version
+28. Everything below was read off probes of real Bazel (a local HTTP
+server standing in for a registry, a fresh server per run so Skyframe's
+memory does not pose as the lockfile), not its documentation.
+
+- **Shape.** `lockFileVersion`, `registryFileHashes`,
+  `selectedYankedVersions`, `moduleExtensions`, `facts`, `factsVersions`,
+  two-space JSON, `{}` and `[]` inline, a trailing newline, no HTML
+  escaping. There is no module graph in it: version 28 re-resolves on
+  every run. A real lockfile (the 184 hashes and four extension results
+  of `bazel_tools`' own graph) round-trips byte for byte, which is a
+  conformance test. `moduleExtensions`, `facts` and `factsVersions` are
+  kept as an order-preserving `Json` (their keys are neither sorted nor a
+  map's own order) until buildfiji-mum.8 owns them.
+- **What is recorded.** The SHA-256 of every `bazel_registry.json`,
+  `MODULE.bazel` and (for selected modules) `source.json` read from a
+  registry that is not `file://`, `"not found"` for one the registry did
+  not have, sorted by URL. `metadata.json` is not recorded. Only what the
+  run read is written back; the rest is dropped. `Registry::locked(&session)`
+  wraps a registry's fetcher in a `LockedFetcher` that does this, and reads
+  `bazel_registry.json` before a registry's first module file, as Bazel does.
+- **What is checked.** A recorded hash is verified after fetching:
+  `Error accessing registry R: Failed to fetch registry file U: Checksum
+  was X but wanted Y`. A file recorded `not found` is not asked for again,
+  and "module not found in registries" says `previously not found (as
+  recorded in MODULE.bazel.lock, refresh with --lockfile_mode=refresh)`.
+- **Yanked versions.** Each selected yanked version, allowed or not, is
+  recorded as `name@version: reason`; a module with an entry there does not
+  have its `metadata.json` read. `ResolveOptions::track_yanked` makes
+  `--allow_yanked_versions=all` still look them up.
+- **Modes.** `off` neither reads nor writes; `update` and `refresh` write
+  (only when the text changed); `refresh` also asks again for `not found`
+  files and `metadata.json`; `error` never writes and refuses a file with
+  no recorded hash (`Missing checksum for registry file U not permitted with
+  --lockfile_mode=error. Please run `bazel mod deps --lockfile_mode=update`
+  to update your lockfile.`). A lockfile that is not JSON or not version 28
+  is unusable: `error` refuses it, the others replace it.
+- **The CLI** (`fjfj-cli`) reads `MODULE.bazel.lock` from the workspace
+  root, resolves through a `LockSession`, and writes the file when
+  resolution succeeded.
+
+Conformance (`tests/conformance.rs`): `expected_lock_hashes.txt` per
+workspace is what Bazel recorded for the fixture registry, captured by
+`lock_hashes.py` (which serves the registry with every `source.json`
+rewritten to an archive source, because Bazel refuses `local_path` from a
+remote registry). The comparison leaves out what fjfj does not read yet:
+`source.json`, which it reads when it fetches, and the `not found` probes
+of `bazel_tools`' dependencies, which wait for buildfiji-mum.23.
+
+Known differences, each with a bead: `selectedYankedVersions` is written
+in selection order where Bazel uses a Java `HashMap`'s (buildfiji-avh);
+registry files are always fetched rather than served from the repository
+cache by their recorded hash (buildfiji-g1z); until `bazel_tools`' real
+module file is resolved, the CLI keeps the hashes of files it did not read
+instead of dropping them, so it does not shrink a lockfile Bazel wrote
+(`LockSession::keeping_unread`, removed by buildfiji-mum.23); and what
+`--lockfile_mode=error` does about stale extension or yanked entries is not
+probed yet (buildfiji-cob).

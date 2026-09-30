@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Regenerates the golden module graphs in workspaces/*/expected_graph.txt
-# and repo mappings in workspaces/*/expected_repo_mapping.txt
+# Regenerates the golden module graphs in workspaces/*/expected_graph.txt,
+# repo mappings in workspaces/*/expected_repo_mapping.txt and lockfile
+# registry file hashes in workspaces/*/expected_lock_hashes.txt
 # from real Bazel, which is the specification these fixtures test against
 # (docs/ARCHITECTURE.md: "Bazel 9.2.0 observable behaviour is the spec").
 #
@@ -39,6 +40,7 @@ fixtures="${BUILD_WORKSPACE_DIRECTORY}/crates/fjfj-bzlmod/tests/fixtures"
 registry="file://${fixtures}/registry"
 graph_to_golden="$(rlocation _main/crates/fjfj-bzlmod/tests/fixtures/graph_to_golden)"
 dump_mappings="$(rlocation _main/crates/fjfj-bzlmod/tests/fixtures/dump_mappings)"
+lock_hashes="$(rlocation _main/crates/fjfj-bzlmod/tests/fixtures/lock_hashes)"
 
 for workspace in "${fixtures}"/workspaces/*/; do
   name="$(basename "${workspace}")"
@@ -64,4 +66,16 @@ for workspace in "${fixtures}"/workspaces/*/; do
     --registry=https://bcr.bazel.build \
     --lockfile_mode=off \
     > "${workspace}/expected_repo_mapping.txt"
+  # What Bazel records in MODULE.bazel.lock for the registry's files.
+  "${lock_hashes}" "${workspace}" \
+    --registry=https://bcr.bazel.build \
+    > "${workspace}/expected_lock_hashes.txt"
 done
+
+# Bazel refuses the `yanked` workspace, so it has no graph, but with
+# --allow_yanked_versions=all it resolves, and its lockfile records the yanked
+# version it selected.
+"${lock_hashes}" "${fixtures}/workspaces/yanked" \
+  --registry=https://bcr.bazel.build \
+  --allow_yanked_versions=all \
+  > "${fixtures}/workspaces/yanked/expected_lock_hashes.txt"

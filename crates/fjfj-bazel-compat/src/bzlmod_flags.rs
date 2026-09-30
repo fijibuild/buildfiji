@@ -18,6 +18,7 @@ pub const IMPLEMENTED: &[&str] = &[
     "allow_yanked_versions",
     "ignore_dev_dependency",
     "override_module",
+    "lockfile_mode",
 ];
 
 /// Raw bzlmod flag values, defaulting to Bazel's own.
@@ -37,6 +38,9 @@ pub struct BzlmodFlags {
     /// A malformed value (no `=`) is left in the returned `rest` rather
     /// than silently dropped.
     pub override_module: Vec<(String, String)>,
+    /// `--lockfile_mode`'s raw value (`off`, `update`, `refresh`, `error`);
+    /// `None` is Bazel's default, `update`. Parsed by `fjfj-bzlmod`.
+    pub lockfile_mode: Option<String>,
 }
 
 /// Pull [`BzlmodFlags`] for `command` out of `args`, returning the flags
@@ -69,6 +73,10 @@ pub fn extract(args: &[String], command: &str) -> (BzlmodFlags, Vec<String>) {
                 }
             }
             "ignore_dev_dependency" => flags.ignore_dev_dependency = !m.negated,
+            "lockfile_mode" => match m.value.map(str::to_string).or_else(|| iter.next().cloned()) {
+                Some(value) => flags.lockfile_mode = Some(value),
+                None => rest.push(arg.clone()),
+            },
             "override_module" => {
                 match m.value.map(str::to_string).or_else(|| iter.next().cloned()) {
                     Some(value) => match value.split_once('=') {
@@ -117,6 +125,16 @@ mod tests {
         let (flags, rest) = extract(&args(&["--allow_yanked_versions=all"]), "build");
         assert_eq!(flags.allow_yanked_versions.as_deref(), Some("all"));
         assert!(rest.is_empty());
+    }
+
+    #[test]
+    fn lockfile_mode_attached_and_separate_value() {
+        let (flags, rest) = extract(&args(&["--lockfile_mode=error"]), "build");
+        assert_eq!(flags.lockfile_mode.as_deref(), Some("error"));
+        assert!(rest.is_empty());
+        let (flags, _) = extract(&args(&["--lockfile_mode", "off"]), "mod");
+        assert_eq!(flags.lockfile_mode.as_deref(), Some("off"));
+        assert_eq!(extract(&args(&[]), "build").0.lockfile_mode, None);
     }
 
     #[test]
