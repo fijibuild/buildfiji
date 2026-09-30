@@ -13,6 +13,8 @@ mod attr_matrix;
 mod attr_tests;
 #[cfg(test)]
 mod builtins_tests;
+#[cfg(test)]
+mod conformance;
 mod decl;
 #[cfg(test)]
 mod decl_matrix;

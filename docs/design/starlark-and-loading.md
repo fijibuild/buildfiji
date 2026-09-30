@@ -88,6 +88,19 @@ Run Bazel's own Starlark test corpus and the `starlark-spec` test files;
 run `rules_rust`, `rules_go`, `rules_python`, `aspect_bazel_lib` loading
 phase as integration tests and diff `fjfj query` against `bazel query`.
 
+**Done (buildfiji-mum.10):** Bazel's Starlark script tests (38 files,
+`crates/fjfj-starlark/testdata/bazel-starlark`, copied from the 9.2.0 tag)
+run in `conformance.rs` the way its `ScriptTest.java` runs them (chunks
+separated by `---`, `### regexp` for an expected error, `assert_`,
+`assert_eq`, `assert_fails`). 67 of about 600 chunks fail, all listed in
+`testdata/conformance_known.txt` with the bead that owns the difference;
+the test fails if a chunk not listed starts to fail and if a listed one
+starts to pass, so the list only shrinks. Most are the crate's wording of an
+error (buildfiji-v32); the real differences are recursion (buildfiji-2r5),
+a huge repeat that panics (buildfiji-gpj, run by nothing: it takes minutes),
+`split(sep=...)` (buildfiji-wtt), `elems()` (buildfiji-9zq) and cyclic reprs
+(buildfiji-sib). The `starlark-spec` test suite is not run yet.
+
 ## No native modules (decision 2026-09-03)
 
 fjfj implements no native Starlark modules. `cc_common`, `java_common`,

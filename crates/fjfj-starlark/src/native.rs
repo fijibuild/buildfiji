@@ -90,7 +90,7 @@ pub struct BuildFile<'a> {
 }
 
 /// `json` and `proto`, which BUILD and `.bzl` files both see.
-fn module_globals(builder: &mut GlobalsBuilder) {
+pub(crate) fn module_globals(builder: &mut GlobalsBuilder) {
     builder.set("json", JsonModule);
     builder.set("proto", ProtoModule);
 }
