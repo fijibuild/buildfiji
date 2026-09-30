@@ -1558,9 +1558,16 @@ graph). What Bazel recorded for the Bazel Central Registry is the same for
 every fixture and is `lockfiles/9.2.0.lock`'s. The comparison is exact in
 both directions: same files, same hashes.
 
-Known differences, each with a bead: `selectedYankedVersions` is written
-in selection order where Bazel uses a Java `HashMap`'s (buildfiji-avh);
-registry files are always fetched rather than served from the repository
+`selectedYankedVersions` is in the order of a Java `HashMap<ModuleKey, _>` of
+every selected module (`java_map.rs`, buildfiji-avh): `ModuleKey` hashes as
+`31 * name.hashCode() + version.hashCode()` (and `Version` as `Arrays.hashCode` of
+`"version"` and its normalized text's hash), the map doubles from 16 buckets when
+three quarters full, iteration is by `(h ^ h>>>16) & (capacity - 1)`, and keys
+in one bucket go by unsigned hash. The same order decides which yanked version
+Bazel names first when it refuses one. Checked by `yanked_many` (12 yanked
+modules) and by unit tests of the collisions found by probes.
+
+Known differences, each with a bead: registry files are always fetched rather than served from the repository
 cache by their recorded hash (buildfiji-g1z); the `moduleExtensions` of a
 lockfile are kept as they were, not pruned or refreshed (buildfiji-mum.8);
 and what

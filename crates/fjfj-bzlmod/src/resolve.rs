@@ -395,7 +395,9 @@ fn check_yanked(
     if options.yanked == YankedPolicy::AllowAll && !options.for_lockfile {
         return Ok(yanked);
     }
-    for key in selection.keys() {
+    // The order Bazel's map of every selected module iterates in: which one it
+    // complains about first, and the order they are written in.
+    for key in crate::java_map::hash_map_order(selection.keys(), selection.resolved.len()) {
         if key.version.is_empty() {
             continue;
         }

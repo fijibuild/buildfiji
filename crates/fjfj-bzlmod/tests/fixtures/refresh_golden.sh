@@ -87,10 +87,13 @@ for workspace in "${fixtures}"/workspaces/*/; do
   fi
 done
 
-# Bazel refuses the `yanked` workspace, so it has no graph, but with
-# --allow_yanked_versions=all it resolves, and its lockfile records the yanked
-# version it selected.
-"${lock_hashes}" "${fixtures}/workspaces/yanked" \
-  --registry=https://bcr.bazel.build \
-  --allow_yanked_versions=all \
-  > "${fixtures}/workspaces/yanked/expected_lock_hashes.txt"
+# Bazel refuses the `yanked` workspaces, so they have no graph, but with
+# --allow_yanked_versions=all they resolve, and their lockfiles record the yanked
+# versions they selected (`yanked_many` has enough of them that the order Bazel
+# writes them in, a Java HashMap's, is worth checking).
+for yanked in yanked yanked_many; do
+  "${lock_hashes}" "${fixtures}/workspaces/${yanked}" \
+    --registry=https://bcr.bazel.build \
+    --allow_yanked_versions=all \
+    > "${fixtures}/workspaces/${yanked}/expected_lock_hashes.txt"
+done

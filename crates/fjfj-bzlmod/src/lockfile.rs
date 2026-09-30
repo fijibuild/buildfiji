@@ -35,10 +35,8 @@
 //! `moduleExtensions` is. `moduleExtensions` is what the
 //! extensions a run evaluated give ([`LockSession::set_module_extensions`],
 //! from `fjfj-repo`'s `LockedExtension`s): the file's entries for extensions the
-//! graph still uses stay, the others go, and the ids and factors are sorted. One known difference:
-//! Bazel writes `selectedYankedVersions` in a Java `HashMap` iteration
-//! order, fjfj in selection order, so the two agree only when at most one
-//! version is yanked (buildfiji-avh).
+//! graph still uses stay, the others go, and the ids and factors are sorted. `selectedYankedVersions` is in the order Bazel's Java `HashMap`
+//! iterates in (`java_map.rs`), which `resolve` puts the list in.
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};

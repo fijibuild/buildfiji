@@ -28,6 +28,7 @@ pub mod discovery;
 pub mod error;
 pub mod eval;
 pub mod extension_repos;
+mod java_map;
 pub mod lockfile;
 pub mod module;
 pub mod overrides;

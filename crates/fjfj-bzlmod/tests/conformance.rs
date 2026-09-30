@@ -512,7 +512,7 @@ fn lockfile_registry_hashes_match_bazel() {
         if !workspace.join("expected_lock_hashes.txt").exists() {
             continue;
         }
-        let options = if name == "yanked" {
+        let options = if name.starts_with("yanked") {
             ResolveOptions {
                 yanked: fjfj_bzlmod::YankedPolicy::AllowAll,
                 ..ResolveOptions::default()
