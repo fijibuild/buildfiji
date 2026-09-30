@@ -36,6 +36,9 @@ mod load_visibility;
 mod load_visibility_matrix;
 #[cfg(test)]
 mod load_visibility_tests;
+mod loader;
+#[cfg(test)]
+mod loader_tests;
 mod macros;
 #[cfg(test)]
 mod macros_matrix;
@@ -63,6 +66,7 @@ pub use depset::{Depset, DepsetGen, FrozenDepset, Order, depset_to_list, is_deps
 pub use dialect::{FileKind, build_dialect, bzl_dialect, parse};
 pub use label::{BzlFile, RepoMappings, bzl_name, evaluate_bzl};
 pub use load_visibility::{LoadVisibility, check_load_visibility, load_visibility};
+pub use loader::{BzlLoader, Importing};
 pub use native::{
     BuildFile, BuildFileError, BuildFileOutput, build_globals, bzl_globals, evaluate_build_file,
 };

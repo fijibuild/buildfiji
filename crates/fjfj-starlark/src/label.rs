@@ -140,8 +140,11 @@ struct BzlEval<'a> {
 /// Evaluate a `.bzl` file and freeze what it defines.
 pub fn evaluate_bzl(input: &BzlFile<'_>) -> starlark::Result<FrozenModule> {
     let _span = tracing::debug_span!("evaluate_bzl", file = %bzl_name(input.file)).entered();
-    let ast = parse(&bzl_name(input.file), input.source, FileKind::Bzl)
-        .map_err(starlark::Error::new_other)?;
+    let ast = {
+        let _span = tracing::debug_span!("parse", file = %bzl_name(input.file)).entered();
+        parse(&bzl_name(input.file), input.source, FileKind::Bzl)
+            .map_err(starlark::Error::new_other)?
+    };
     let env = BzlEval {
         mappings: input.mappings,
         assigned: assigned_names(&ast),

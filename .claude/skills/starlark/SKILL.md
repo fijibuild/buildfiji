@@ -183,3 +183,13 @@ not the BUILD file's): `fjfj-starlark` does no loading itself, so a loader that
 skips the call enforces nothing. Specs share `PackageSpec::parse` with
 `package_group`.
 
+## The loader
+
+`BzlLoader` (`loader.rs`) is the only thing that reads a `.bzl` for a build:
+each file is evaluated once behind a slot and shared as a `FrozenModule`, from
+any number of threads, with cycle detection that cannot hang. A new check on a
+load (visibility, a label rule) goes in `BzlLoader::parse` or `load`; hold no
+lock while evaluating, and keep nothing but frozen modules (no `AstModule`, no
+source). Measure with `cargo test -p fjfj-starlark --release loader_scale --
+--ignored --nocapture`.
+

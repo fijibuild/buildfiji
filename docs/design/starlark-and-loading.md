@@ -732,6 +732,43 @@ the call; `load_visibility_tests.rs` has a loader that does, and replays the
 probes. The error is reported at the load statement's string, and every
 refused load of a file is reported; here a loader fails at the first.
 
+## The loader (implemented 2026-09-30, buildfiji-mum.19, mum.20, mum.21)
+
+`loader.rs`. One `BzlLoader` serves a build and is `Sync`: any number of
+threads call `load_package(repo, package)` (which reads the BUILD file and
+evaluates it) and each `load()` is served by the loader for the file that
+makes it (`importing(label)`), so a relative label, a repo name and load
+visibility (buildfiji-ps4) are the importer's.
+
+- **Once, shared.** Each `.bzl` has a slot (`Empty`, `Running(thread)`,
+  `Done(frozen module or error)`); the first to ask evaluates it and the
+  others wait on the slot's condvar and take the same `FrozenModule`. Errors
+  are shared too. A file asked for by the thread already evaluating it is a
+  cycle; a file whose evaluating thread is, through others, waiting for one
+  this thread is evaluating is a cycle as well (checked and registered in one
+  step under a lock, so two threads cannot both wait), so a cycle is an
+  error naming its files (`cycle detected in extension files: \n.-> //a:x.bzl
+  ...`) and never a hang. `evaluations()` counts files evaluated.
+- **What stays.** Only the `FrozenModule`s: `evaluate_bzl` parses the source,
+  `eval_module` consumes the syntax tree, and the source is dropped when
+  the file is evaluated, so no `AstModule` and no source text is held.
+  Spans `read`, `parse` and `evaluate_bzl` break a load down.
+- **Messages** as Bazel words them (probed): `in load statement: ...` for a
+  label that is wrong or not a `.bzl`/`.scl`, `Every .bzl file must have a
+  corresponding package, but '//a:x.bzl' does not have one. ...`, `cannot
+  load '//a:x.bzl': no such file` or `is a directory`, the subpackage
+  message, `Unable to find package for @@[unknown repo 'nope' requested from
+  @@]//a:x.bzl: The repository ... No repository visible as '@nope' from main
+  repository.`, and the refused load of ps4. Bazel reports each load that is
+  refused and a file that does not evaluate as `initialization of module
+  ... failed`; here a load stops at the first error, with the evaluation
+  error's own text.
+- **Numbers** (`loader_scale`, `--release`, one `.bzl` and 4,000 packages of
+  eight targets on this machine): 340 ms on one thread, 182 ms on two, 96 ms on
+  four and 72 ms on eight, peak RSS 16 MB with the packages dropped as they
+  finish; what a build *keeps* of 100,000 packages is the engine's to budget
+  (buildfiji-23d.3), the loader keeps one frozen module per `.bzl`.
+
 ## Bazel 9.2.0's builtin namespaces, and who owns each name (buildfiji-mum.3)
 
 Read off Bazel 9.2.0 by asking `type(name)` in a BUILD file and in a `.bzl`

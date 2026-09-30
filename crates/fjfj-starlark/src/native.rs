@@ -132,7 +132,10 @@ pub fn bzl_globals() -> Globals {
 /// Evaluate a BUILD file into the package it declares.
 pub fn evaluate_build_file(input: &BuildFile<'_>) -> Result<BuildFileOutput, BuildFileError> {
     let _span = tracing::debug_span!("evaluate_build_file", package = input.package).entered();
-    let ast = parse(input.path, input.source, FileKind::Build).map_err(BuildFileError::Eval)?;
+    let ast = {
+        let _span = tracing::debug_span!("parse", file = input.path).entered();
+        parse(input.path, input.source, FileKind::Build).map_err(BuildFileError::Eval)?
+    };
     let is_package = |p: &str| input.lookup.is_package(p);
     let ctx = BuildContext {
         repo: input.repo,
