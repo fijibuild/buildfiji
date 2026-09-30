@@ -11,6 +11,7 @@ repository = "https://github.com/fijibuild/buildfiji"
 
 [workspace.dependencies]
 # Internal crates
+fjfj-archive = { path = "crates/fjfj-archive" }
 fjfj-bazel-compat = { path = "crates/fjfj-bazel-compat" }
 fjfj-bzlmod = { path = "crates/fjfj-bzlmod" }
 fjfj-cli = { path = "crates/fjfj-cli" }
@@ -27,12 +28,15 @@ fjfj-telemetry = { path = "crates/fjfj-telemetry" }
 
 # Reused ecosystem libraries (see docs/ARCHITECTURE.md "Reuse over rebuild")
 allocative = "0.3"
+ar = "0.9"
 anyhow = "1"
 ariadne = "0.6"
 base64 = "0.23"
+bzip2 = "0.5"
 bazel-remote-apis = "0.28"
 chumsky = "0.13"
 clap = { version = "4", features = ["derive", "env"] }
+flate2 = "1"
 hex = "0.4"
 opentelemetry = "0.32"
 opentelemetry-otlp = { version = "0.32", features = ["grpc-tonic"] }
@@ -51,14 +55,17 @@ num-bigint = "0.4"
 starlark_derive = "0.14"
 starlark_syntax = "0.14"
 stateright = "0.31"
+tar = "0.4"
 tempfile = "3"
 thiserror = "2"
 tokio = { version = "1", features = ["full"] }
 tonic = "0.14"
 tonic-prost = "0.14"
 tonic-prost-build = "0.14"
+xz2 = "0.1"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+zstd = "0.13"
 tracing = "0.1"
 tracing-opentelemetry = "0.33"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 time = "0.3"
-zstd = "0.13"

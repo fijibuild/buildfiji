@@ -115,6 +115,8 @@ fn run(row: &ExtRow) -> Outcome {
                         std::env::var("PATH").unwrap_or_else(|_| "/usr/bin:/bin".to_owned()),
                     ),
                 ]),
+                downloader: None,
+                repository_cache: None,
             };
             let mut made = Repos::new(options, file.module).unwrap();
             let result = made.run_extensions(Some(&capture)).and_then(|()| {

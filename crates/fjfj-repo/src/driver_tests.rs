@@ -28,6 +28,8 @@ fn repos(module: &str) -> (tempfile::TempDir, Repos) {
             workspace_root: ws,
             output_base: dir.path().join("ob"),
             environ: BTreeMap::new(),
+            downloader: None,
+            repository_cache: None,
         },
         file.module,
     )

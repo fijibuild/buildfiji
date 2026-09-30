@@ -79,6 +79,8 @@ fn run_repo(bzl: &str, files: &[(&str, &str)]) -> Outcome {
                 .then(|| workspace.join(&label.package).join(&label.name))
         }),
         attrs: repository_rule_defaults(&module, "r"),
+        downloader: None,
+        repository_cache: None,
     };
     let capture = Capture(RefCell::new(Vec::new()));
     let result = run_repository_rule(&module, "r", env, &probe_mappings(), Some(&capture));
@@ -180,6 +182,8 @@ fn run_with(bzl: &str, given: Vec<(&str, RepoAttr)>) -> (Result<(), String>, Vec
         environ: BTreeMap::new(),
         labels: Box::new(|_| None),
         attrs,
+        downloader: None,
+        repository_cache: None,
     };
     let capture = Capture(RefCell::new(Vec::new()));
     let result = run_repository_rule(&module, "r", env, &probe_mappings(), Some(&capture))
@@ -273,6 +277,8 @@ fn a_name_that_is_not_a_repository_rule_is_reported() {
         environ: BTreeMap::new(),
         labels: Box::new(|_| None),
         attrs: vec![],
+        downloader: None,
+        repository_cache: None,
     };
     let error = run_repository_rule(&module, "x", env, &probe_mappings(), None).unwrap_err();
     assert!(error.message.contains("not a repository rule"), "{error}");

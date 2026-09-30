@@ -27,23 +27,27 @@
 
 #[cfg(test)]
 mod driver_tests;
+mod http;
 #[cfg(test)]
 mod replay_matrix;
 #[cfg(test)]
 mod replay_tests;
 
+pub use http::HttpDownloader;
+
 use fjfj_bzlmod::Module;
 use fjfj_graph::{Label, LabelContext};
 use fjfj_loading::PackageLookup;
 use fjfj_starlark::{
-    BzlLoader, ExtensionInput, GeneratedRepo, ModuleUse, RepoAttr, RepoEnv, RepoMappings, TagUse,
-    TagValue, convert_repo_attrs, has_module_extension, has_repository_rule,
+    BzlLoader, Downloader, ExtensionInput, GeneratedRepo, ModuleUse, RepoAttr, RepoEnv,
+    RepoMappings, TagUse, TagValue, convert_repo_attrs, has_module_extension, has_repository_rule,
     repository_rule_defaults, run_module_extension, run_repository_rule,
 };
 use starlark::PrintHandler;
 use starlark::eval::FileLoader;
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 /// Why a repository could not be made: Bazel's message for it.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -67,6 +71,10 @@ pub struct Options {
     pub output_base: PathBuf,
     /// The client's environment.
     pub environ: BTreeMap<String, String>,
+    /// How `http` and `https` URLs are fetched; none means they cannot be.
+    pub downloader: Option<Arc<dyn Downloader>>,
+    /// The repository cache directory, which holds `content_addressable/`.
+    pub repository_cache: Option<PathBuf>,
 }
 
 /// A repository an extension generated, by the name it is fetched under.
@@ -175,6 +183,8 @@ impl Repos {
                     .then(|| workspace.join(&label.package).join(&label.name))
             }),
             attrs,
+            downloader: self.options.downloader.clone(),
+            repository_cache: self.options.repository_cache.clone(),
         }
     }
 

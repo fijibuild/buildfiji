@@ -1,0 +1,19 @@
+[package]
+name = "fjfj-archive"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+ar.workspace = true
+bzip2.workspace = true
+flate2.workspace = true
+tar.workspace = true
+thiserror.workspace = true
+xz2.workspace = true
+zip.workspace = true
+zstd.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

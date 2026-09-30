@@ -10,6 +10,7 @@ fjfj-bzlmod.workspace = true
 fjfj-graph.workspace = true
 fjfj-loading.workspace = true
 fjfj-starlark.workspace = true
+reqwest.workspace = true
 starlark.workspace = true
 thiserror.workspace = true
 tracing.workspace = true

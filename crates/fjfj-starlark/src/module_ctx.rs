@@ -796,6 +796,30 @@ fn mctx_members(builder: &mut MethodsBuilder) {
     ) -> starlark::Result<NoneType> {
         op_watch(this, args, eval)
     }
+
+    fn download<'v>(
+        this: Value<'v>,
+        args: &Arguments<'v, '_>,
+        eval: &mut Evaluator<'v, '_, '_>,
+    ) -> starlark::Result<Value<'v>> {
+        crate::repo_download::op_download(this, args, eval)
+    }
+
+    fn download_and_extract<'v>(
+        this: Value<'v>,
+        args: &Arguments<'v, '_>,
+        eval: &mut Evaluator<'v, '_, '_>,
+    ) -> starlark::Result<Value<'v>> {
+        crate::repo_download::op_download_and_extract(this, args, eval)
+    }
+
+    fn extract<'v>(
+        this: Value<'v>,
+        args: &Arguments<'v, '_>,
+        eval: &mut Evaluator<'v, '_, '_>,
+    ) -> starlark::Result<NoneType> {
+        crate::repo_download::op_extract(this, args, eval)
+    }
 }
 
 fn is_module_tag(v: Value<'_>) -> bool {

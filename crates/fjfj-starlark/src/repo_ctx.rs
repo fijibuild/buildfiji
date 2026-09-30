@@ -98,6 +98,10 @@ pub struct RepoEnv {
     pub labels: Box<LabelPaths>,
     /// The attributes the rule was called with, with defaults filled in.
     pub attrs: Vec<(String, RepoAttr)>,
+    /// How `download` fetches an `http` or `https` URL.
+    pub downloader: Option<Arc<dyn crate::repo_download::Downloader>>,
+    /// The repository cache: a directory with `content_addressable/sha256/`.
+    pub repository_cache: Option<PathBuf>,
 }
 
 /// Why a repository rule failed: Bazel's message for it.
@@ -551,7 +555,7 @@ impl<'v> StarlarkValue<'v> for RepositoryCtx {
     }
 }
 
-fn env_of<'v>(this: Value<'v>) -> &'v Arc<RepoEnv> {
+pub(crate) fn env_of<'v>(this: Value<'v>) -> &'v Arc<RepoEnv> {
     if let Some(ctx) = this.downcast_ref::<RepositoryCtx>() {
         return &ctx.env;
     }
@@ -569,11 +573,11 @@ pub(crate) fn os_members_for(env: &RepoEnv) -> RepoOs {
 }
 
 /// A path a rule named, and how it was named if by label.
-struct Resolved {
-    path: PathBuf,
+pub(crate) struct Resolved {
+    pub(crate) path: PathBuf,
     /// The label's file as a path in its repository, which is how an error
     /// names a file that came from a label.
-    label_path: Option<String>,
+    pub(crate) label_path: Option<String>,
 }
 
 impl Resolved {
@@ -587,11 +591,11 @@ impl Resolved {
 
 /// A parameter that names a file (as a string, `Label` or `path`) and can
 /// only be given by position.
-const fn path_arg(name: &'static str) -> P {
+pub(crate) const fn path_arg(name: &'static str) -> P {
     p(name, true, true, "string, Label, or path", is_path_like).positional_only()
 }
 
-fn is_path_like(v: Value<'_>) -> bool {
+pub(crate) fn is_path_like(v: Value<'_>) -> bool {
     is_str(v) || v.get_type() == "Label" || v.get_type() == "path"
 }
 
@@ -607,7 +611,7 @@ fn label_relative(label: &Label) -> String {
     }
 }
 
-fn resolve(env: &RepoEnv, value: Value<'_>) -> starlark::Result<Resolved> {
+pub(crate) fn resolve(env: &RepoEnv, value: Value<'_>) -> starlark::Result<Resolved> {
     if let Some(text) = value.unpack_str() {
         let joined = if Path::new(text).is_absolute() {
             PathBuf::from(text)
@@ -640,11 +644,11 @@ fn resolve(env: &RepoEnv, value: Value<'_>) -> starlark::Result<Resolved> {
     Err(fatal("expected a string, Label or path"))
 }
 
-fn inside(env: &RepoEnv, path: &Path) -> bool {
+pub(crate) fn inside(env: &RepoEnv, path: &Path) -> bool {
     path.starts_with(&env.output)
 }
 
-fn writable(env: &RepoEnv, resolved: &Resolved) -> starlark::Result<()> {
+pub(crate) fn writable(env: &RepoEnv, resolved: &Resolved) -> starlark::Result<()> {
     if inside(env, &resolved.path) {
         Ok(())
     } else {
@@ -655,7 +659,7 @@ fn writable(env: &RepoEnv, resolved: &Resolved) -> starlark::Result<()> {
     }
 }
 
-fn io_error(e: &std::io::Error) -> starlark::Error {
+pub(crate) fn io_error(e: &std::io::Error) -> starlark::Error {
     fatal(format!("java.io.IOException: {e}"))
 }
 
@@ -721,7 +725,7 @@ fn write_file(
     Ok(())
 }
 
-fn read_text(resolved: &Resolved) -> starlark::Result<String> {
+pub(crate) fn read_text(resolved: &Resolved) -> starlark::Result<String> {
     if resolved.path.is_dir() {
         return Err(fatal(format!(
             "attempting to read() a directory: {}",
@@ -736,15 +740,19 @@ fn read_text(resolved: &Resolved) -> starlark::Result<String> {
 }
 
 /// A file being watched: one under the repository directory is refused.
-fn check_watch(
+pub(crate) fn check_watch(
     env: &RepoEnv,
     resolved: &Resolved,
     watch: Option<Value<'_>>,
 ) -> starlark::Result<()> {
     let watching = match watch.and_then(|w| w.unpack_str()) {
         Some("yes") => true,
-        Some("no") => false,
-        _ => false,
+        Some("no") | Some("auto") | None => false,
+        Some(other) => {
+            return Err(fatal(format!(
+                "bad value for 'watch' parameter; want 'yes', 'no', or 'auto', got {other}"
+            )));
+        }
     };
     if watching && inside(env, &resolved.path) {
         return Err(fatal("attempted to watch path under working directory"));
@@ -771,7 +779,7 @@ fn arg<'v>(params: &[P], bound: &[Option<Value<'v>>], name: &str) -> Option<Valu
     bound[params.iter().position(|p| p.name == name).expect("known")]
 }
 
-fn flag(value: Option<Value<'_>>, default: bool) -> bool {
+pub(crate) fn flag(value: Option<Value<'_>>, default: bool) -> bool {
     value.and_then(|v| v.unpack_bool()).unwrap_or(default)
 }
 
@@ -1090,42 +1098,6 @@ pub(crate) fn op_repo_metadata<'v>(
     Ok(eval.heap().alloc(RepoMetadata))
 }
 
-pub(crate) fn op_download<'v>(
-    this: Value<'v>,
-    args: &Arguments<'v, '_>,
-    eval: &mut Evaluator<'v, '_, '_>,
-) -> starlark::Result<Value<'v>> {
-    let _ = (this, args, eval);
-    Err(not_yet("download"))
-}
-
-pub(crate) fn op_download_and_extract<'v>(
-    this: Value<'v>,
-    args: &Arguments<'v, '_>,
-    eval: &mut Evaluator<'v, '_, '_>,
-) -> starlark::Result<Value<'v>> {
-    let _ = (this, args, eval);
-    Err(not_yet("download_and_extract"))
-}
-
-pub(crate) fn op_extract<'v>(
-    this: Value<'v>,
-    args: &Arguments<'v, '_>,
-    eval: &mut Evaluator<'v, '_, '_>,
-) -> starlark::Result<Value<'v>> {
-    let _ = (this, args, eval);
-    Err(not_yet("extract"))
-}
-
-pub(crate) fn op_patch<'v>(
-    this: Value<'v>,
-    args: &Arguments<'v, '_>,
-    eval: &mut Evaluator<'v, '_, '_>,
-) -> starlark::Result<Value<'v>> {
-    let _ = (this, args, eval);
-    Err(not_yet("patch"))
-}
-
 #[starlark_module]
 fn ctx_members(builder: &mut MethodsBuilder) {
     /// The canonical name of the repository.
@@ -1301,7 +1273,7 @@ fn ctx_members(builder: &mut MethodsBuilder) {
         args: &Arguments<'v, '_>,
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> starlark::Result<Value<'v>> {
-        op_download(this, args, eval)
+        crate::repo_download::op_download(this, args, eval)
     }
 
     /// `ctx.download_and_extract(...)`: buildfiji-mum.8.3.
@@ -1310,7 +1282,7 @@ fn ctx_members(builder: &mut MethodsBuilder) {
         args: &Arguments<'v, '_>,
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> starlark::Result<Value<'v>> {
-        op_download_and_extract(this, args, eval)
+        crate::repo_download::op_download_and_extract(this, args, eval)
     }
 
     /// `ctx.extract(...)`: buildfiji-mum.8.3.
@@ -1318,8 +1290,8 @@ fn ctx_members(builder: &mut MethodsBuilder) {
         this: Value<'v>,
         args: &Arguments<'v, '_>,
         eval: &mut Evaluator<'v, '_, '_>,
-    ) -> starlark::Result<Value<'v>> {
-        op_extract(this, args, eval)
+    ) -> starlark::Result<NoneType> {
+        crate::repo_download::op_extract(this, args, eval)
     }
 
     /// `ctx.patch(...)`: buildfiji-mum.8.3.
@@ -1327,15 +1299,9 @@ fn ctx_members(builder: &mut MethodsBuilder) {
         this: Value<'v>,
         args: &Arguments<'v, '_>,
         eval: &mut Evaluator<'v, '_, '_>,
-    ) -> starlark::Result<Value<'v>> {
-        op_patch(this, args, eval)
+    ) -> starlark::Result<NoneType> {
+        crate::repo_download::op_patch(this, args, eval)
     }
-}
-
-fn not_yet(method: &str) -> starlark::Error {
-    fatal(format!(
-        "repository_ctx.{method}() is not implemented yet (buildfiji-mum.8.3)"
-    ))
 }
 
 fn is_int(v: Value<'_>) -> bool {

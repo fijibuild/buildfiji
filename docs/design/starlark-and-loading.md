@@ -951,6 +951,56 @@ Not here, each filed: `mctx.download`, `download_and_extract` and `extract`
 (buildfiji-mum.8.5), and `mctx.path` of a label in the main repository, which
 Bazel prints relative.
 
+## `download`, `extract` and `patch` (implemented 2026-09-30, buildfiji-mum.8.3)
+
+`repository_ctx` (and `module_ctx`, for `download`, `download_and_extract` and
+`extract`) can fetch, unpack and patch. The work is in three places:
+`fjfj-archive` (pure: `extract`, `apply_patch`), `repo_download.rs` in
+`fjfj-starlark` (the methods, the checksums and the repository cache), and
+`fjfj-repo::HttpDownloader` (a `reqwest` implementation of the
+`Downloader` trait `RepoEnv` is given; none is given in tests, which serve from
+a table). About 150 rows of real `bazel fetch` runs against a local HTTP server
+replay against it (`repo_download_matrix.rs`; the harness is under
+`crates/fjfj-starlark/probes/download`).
+
+What Bazel does, read off those probes (the doc comments of `repo_download.rs`
+and `fjfj-archive` list it in full):
+
+- **URLs.** Tried in order; `http`, `https` and `file` only; a plain `http` URL
+  with no checksum is refused (so every probe names one). A `5xx` is tried
+  again (eight attempts in all; the downloader does that), a `4xx` is final.
+- **Checksums.** `sha256` or `integrity`, not both, checked after the download,
+  with the checksum in the form it was given in the error; one that is not a
+  checksum is only found out after.
+- **The repository cache** keeps a download at
+  `content_addressable/sha256/<hex>/file` and serves one that names its SHA-256
+  (as `sha256` or a `sha256-` SRI) without asking the network. Everything
+  downloaded is put there, `file://` included.
+- **Results.** `struct(integrity, sha256, success)`; `allow_fail` turns a failed
+  download into `struct(success = False)`; `block = False` returns a
+  `PendingDownload` whose `wait()` gives the result or the error.
+- **download_and_extract** downloads into `<output>/temp<digits>/<name>`, where
+  `<name>` is the URL's last segment plus `.<type>` if `type` was given, extracts,
+  and removes the directory (which stays behind after an `allow_fail` failure).
+- **Archives.** `.zip .jar .war .aar .nupkg .whl .tar .tar.gz .tgz .tar.xz .txz
+  .tar.zst .tzst .tar.bz2 .tbz`, the single-file `.gz .xz .zst .bz2`, and `.ar`
+  and `.deb` (extracted as the `ar` archive they are). `rename_files` is applied
+  to a member's path in the archive, then `strip_prefix` keeps what starts with it.
+  Nothing stops a member from leaving the output (`../x` lands beside it, `/x` is
+  `x`); a hard link needs its target extracted first.
+- **Patches** are unified diffs, plain or from `git diff`, applied where the
+  hunk's lines are found, with `strip` leading components removed from the names;
+  files are made, removed and renamed. **A plain patch of several files applies
+  only the last**: Bazel 9.2.0 drops the others without a word, and this does too;
+  with `diff --git` lines every file applies.
+
+Differences and gaps, filed: `.7z` is refused as Bazel does (with `null`); an
+`integrity` of `sha1-` is not computed; a timed-out process is killed but not its
+process group; downloads run one at a time where Bazel's `block = False` ones
+overlap; the `--distdir`, `--repository_cache` flag and the cache's `canonical_id`
+behaviour are buildfiji-mum.9's, and credentials (`.netrc`, `--credential_helper`)
+buildfiji-mum.12's.
+
 ## Bazel 9.2.0's builtin namespaces, and who owns each name (buildfiji-mum.3)
 
 Read off Bazel 9.2.0 by asking `type(name)` in a BUILD file and in a `.bzl`

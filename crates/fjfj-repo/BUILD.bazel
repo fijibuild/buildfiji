@@ -13,6 +13,7 @@ rust_library(
         "//crates/fjfj-graph",
         "//crates/fjfj-loading",
         "//crates/fjfj-starlark",
+        "@crates//:reqwest",
         "@crates//:starlark",
         "@crates//:thiserror",
         "@crates//:tracing",
