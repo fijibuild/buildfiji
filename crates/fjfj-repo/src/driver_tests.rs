@@ -174,3 +174,44 @@ mod http_archive {
         assert!(read("BUILD.bazel").contains("filegroup(name = \"all\")"));
     }
 }
+
+#[test]
+fn a_local_repository_with_no_boundary_file_is_refused_as_bazel_does() {
+    let dir = tempfile::tempdir().unwrap();
+    let ws = dir.path().join("ws");
+    std::fs::create_dir_all(ws.join("sub")).unwrap();
+    std::fs::write(ws.join("BUILD.bazel"), "").unwrap();
+    std::fs::write(ws.join("sub/BUILD.bazel"), "").unwrap();
+    let module = "module(name = 'm')\n\
+        local_repository = use_repo_rule('@bazel_tools//tools/build_defs/repo:local.bzl', \
+        'local_repository')\n\
+        local_repository(name = 'x', path = 'sub')\n";
+    let file = eval_module_file("MODULE.bazel", module, &EvalOptions::root()).unwrap();
+    let base = dir.path().join("ob");
+    let repos = Repos::new(
+        Options {
+            workspace_root: ws.clone(),
+            output_base: base.clone(),
+            environ: BTreeMap::new(),
+            downloader: None,
+            repository_cache: None,
+            registries: Vec::new(),
+        },
+        file.module,
+    )
+    .unwrap();
+    let err = repos.fetch("+local_repository+x", None).unwrap_err();
+    assert_eq!(
+        err.message,
+        format!(
+            "No MODULE.bazel, REPO.bazel, or WORKSPACE file found in {}/external/+local_repository+x",
+            base.display()
+        )
+    );
+    // With a MODULE.bazel in it the directory is what the repository is.
+    std::fs::write(ws.join("sub/MODULE.bazel"), "module(name = 'x')\n").unwrap();
+    std::fs::remove_dir_all(base.join("external/+local_repository+x")).ok();
+    std::fs::remove_file(base.join("external/+local_repository+x")).ok();
+    let dir = repos.fetch("+local_repository+x", None).unwrap();
+    assert!(dir.join("BUILD.bazel").is_file());
+}

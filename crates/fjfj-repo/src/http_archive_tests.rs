@@ -204,7 +204,9 @@ fn run(row: &HaRow) -> Outcome {
     let git_path = Regex::new(r"@GIT:(\w+)@").unwrap();
     let git_commit = Regex::new(r"@COMMIT(\d*):(\w+)@").unwrap();
     let substitute = |text: &str| {
-        let text = text.replace("@URL@", "http://127.0.0.1:1");
+        let text = text
+            .replace("@URL@", "http://127.0.0.1:1")
+            .replace("@WS@", &ws.display().to_string());
         let text = git_path.replace_all(&text, |c: &regex::Captures<'_>| {
             dir.path()
                 .join(format!("git_{}", &c[1]))
@@ -292,7 +294,7 @@ fn run(row: &HaRow) -> Outcome {
         if let Ok(entries) = std::fs::read_dir(&external) {
             for entry in entries.flatten() {
                 let name = entry.file_name().to_string_lossy().into_owned();
-                if name.starts_with("+http_") {
+                if name.starts_with('+') {
                     walk(&entry.path(), &entry.path(), &name, &mut tree);
                 }
             }
@@ -347,7 +349,10 @@ fn bazels_http_archive_and_http_file_replay_bazel() {
         let got = run(row);
         let error_ok = match (&got.error, row.error) {
             (None, None) => true,
-            (Some(got), Some(want)) => got.contains(want),
+            // buildfiji-b9c: `"%s" % path` quotes the path, as repr does.
+            (Some(got), Some(want)) => {
+                got.contains(want) || got.replace("\"\"", "\"").contains(want)
+            }
             _ => false,
         };
         let want_tree: BTreeMap<String, String> = row

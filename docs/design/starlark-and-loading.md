@@ -1050,7 +1050,13 @@ local HTTP server and local git repositories, and replayed by
 `http_archive_tests.rs`: the resulting tree, the prints, or the error. The
 harness makes each row's git repositories with a fixed author, date and
 `GIT_CONFIG_NOSYSTEM`, so commit hashes are stable, and the rows compare them as
-`<commit>`. Rows for `netrc` and `auth_patterns` and `verbose = True` output are
+`<commit>`. `local_repository` and `new_local_repository` are in the table too (47 rows in
+all): `local_repository` makes the repository directory a link to the user's
+directory (`rctx.symlink(path, ".")`), so a directory with no `MODULE.bazel`,
+`REPO.bazel` or `WORKSPACE` in it is refused (`No MODULE.bazel, REPO.bazel, or
+WORKSPACE file found in <output base>/external/+local_repository+x`) where a
+generated directory gets an empty `REPO.bazel`. Rows for `netrc` and
+`auth_patterns` and `verbose = True` output are
 not replayed: they depend on the machine's files and environment.
 
 Bazel quirks these rows pin: a plain multi-file patch applies only its last file

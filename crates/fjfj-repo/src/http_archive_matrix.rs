@@ -1214,4 +1214,331 @@ git_repository(name="x", remote="@GIT:r@", tag="nope")
         tree: &[],
         requests: &[],
     },
+    HaRow {
+        module: r#"module(name="probe")
+local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "local_repository")
+new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "new_local_repository")
+local_repository(name="x", path="sub")
+"#,
+        git: &[],
+        files: &[
+            (
+                r#"sub/BUILD.bazel"#,
+                r#"filegroup(name='all', srcs=glob(['**']))"#,
+            ),
+            (r#"sub/a.txt"#, r#"A"#),
+            (r#"sub/d/b.txt"#, r#"B"#),
+            (
+                r#"sub/MODULE.bazel"#,
+                r#"module(name='x')
+"#,
+            ),
+        ],
+        serve: &[],
+        fetch: &[r#"@x"#],
+        error: None,
+        printed: &[],
+        tree: &[
+            (
+                r#"+local_repository+x/BUILD.bazel"#,
+                r#"filegroup(name='all', srcs=glob(['**']))"#,
+            ),
+            (
+                r#"+local_repository+x/MODULE.bazel"#,
+                r#"module(name='x')
+"#,
+            ),
+            (r#"+local_repository+x/a.txt"#, r#"A"#),
+            (r#"+local_repository+x/d"#, r#"<dir>"#),
+            (r#"+local_repository+x/d/b.txt"#, r#"B"#),
+        ],
+        requests: &[],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "local_repository")
+new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "new_local_repository")
+local_repository(name="x", path="@WS@/sub")
+"#,
+        git: &[],
+        files: &[
+            (
+                r#"sub/BUILD.bazel"#,
+                r#"filegroup(name='all', srcs=glob(['**']))"#,
+            ),
+            (r#"sub/a.txt"#, r#"A"#),
+            (r#"sub/d/b.txt"#, r#"B"#),
+            (
+                r#"sub/MODULE.bazel"#,
+                r#"module(name='x')
+"#,
+            ),
+        ],
+        serve: &[],
+        fetch: &[r#"@x"#],
+        error: None,
+        printed: &[],
+        tree: &[
+            (
+                r#"+local_repository+x/BUILD.bazel"#,
+                r#"filegroup(name='all', srcs=glob(['**']))"#,
+            ),
+            (
+                r#"+local_repository+x/MODULE.bazel"#,
+                r#"module(name='x')
+"#,
+            ),
+            (r#"+local_repository+x/a.txt"#, r#"A"#),
+            (r#"+local_repository+x/d"#, r#"<dir>"#),
+            (r#"+local_repository+x/d/b.txt"#, r#"B"#),
+        ],
+        requests: &[],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "local_repository")
+new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "new_local_repository")
+local_repository(name="x", path="nope")
+"#,
+        git: &[],
+        files: &[
+            (
+                r#"sub/BUILD.bazel"#,
+                r#"filegroup(name='all', srcs=glob(['**']))"#,
+            ),
+            (r#"sub/a.txt"#, r#"A"#),
+            (r#"sub/d/b.txt"#, r#"B"#),
+            (
+                r#"sub/MODULE.bazel"#,
+                r#"module(name='x')
+"#,
+            ),
+        ],
+        serve: &[],
+        fetch: &[r#"@x"#],
+        error: Some(
+            r#"The repository's path is "nope" (absolute: "<ws>/nope") but it does not exist or is not a directory."#,
+        ),
+        printed: &[],
+        tree: &[],
+        requests: &[],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "local_repository")
+new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "new_local_repository")
+local_repository(name="x", path="sub/a.txt")
+"#,
+        git: &[],
+        files: &[
+            (
+                r#"sub/BUILD.bazel"#,
+                r#"filegroup(name='all', srcs=glob(['**']))"#,
+            ),
+            (r#"sub/a.txt"#, r#"A"#),
+            (r#"sub/d/b.txt"#, r#"B"#),
+            (
+                r#"sub/MODULE.bazel"#,
+                r#"module(name='x')
+"#,
+            ),
+        ],
+        serve: &[],
+        fetch: &[r#"@x"#],
+        error: Some(
+            r#"The repository's path is "sub/a.txt" (absolute: "<ws>/sub/a.txt") but it does not exist or is not a directory."#,
+        ),
+        printed: &[],
+        tree: &[],
+        requests: &[],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "local_repository")
+new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "new_local_repository")
+new_local_repository(name="x", path="sub", build_file_content="filegroup(name='f')")
+"#,
+        git: &[],
+        files: &[
+            (
+                r#"sub/BUILD.bazel"#,
+                r#"filegroup(name='all', srcs=glob(['**']))"#,
+            ),
+            (r#"sub/a.txt"#, r#"A"#),
+            (r#"sub/d/b.txt"#, r#"B"#),
+            (
+                r#"sub/MODULE.bazel"#,
+                r#"module(name='x')
+"#,
+            ),
+        ],
+        serve: &[],
+        fetch: &[r#"@x"#],
+        error: None,
+        printed: &[],
+        tree: &[
+            (
+                r#"+new_local_repository+x/BUILD.bazel"#,
+                r#"x filegroup(name='f')"#,
+            ),
+            (
+                r#"+new_local_repository+x/MODULE.bazel"#,
+                r#"-> <ws>/sub/MODULE.bazel"#,
+            ),
+            (r#"+new_local_repository+x/a.txt"#, r#"-> <ws>/sub/a.txt"#),
+            (r#"+new_local_repository+x/d"#, r#"-> <ws>/sub/d"#),
+        ],
+        requests: &[],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "local_repository")
+new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "new_local_repository")
+new_local_repository(name="x", path="sub", build_file="//:b.BUILD")
+"#,
+        git: &[],
+        files: &[
+            (
+                r#"sub/BUILD.bazel"#,
+                r#"filegroup(name='all', srcs=glob(['**']))"#,
+            ),
+            (r#"sub/a.txt"#, r#"A"#),
+            (r#"sub/d/b.txt"#, r#"B"#),
+            (
+                r#"sub/MODULE.bazel"#,
+                r#"module(name='x')
+"#,
+            ),
+            (r#"b.BUILD"#, r#"filegroup(name='fromfile')"#),
+        ],
+        serve: &[],
+        fetch: &[r#"@x"#],
+        error: None,
+        printed: &[],
+        tree: &[
+            (
+                r#"+new_local_repository+x/BUILD.bazel"#,
+                r#"-> <ws>/b.BUILD"#,
+            ),
+            (
+                r#"+new_local_repository+x/MODULE.bazel"#,
+                r#"-> <ws>/sub/MODULE.bazel"#,
+            ),
+            (r#"+new_local_repository+x/a.txt"#, r#"-> <ws>/sub/a.txt"#),
+            (r#"+new_local_repository+x/d"#, r#"-> <ws>/sub/d"#),
+        ],
+        requests: &[],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "local_repository")
+new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "new_local_repository")
+new_local_repository(name="x", path="sub")
+"#,
+        git: &[],
+        files: &[
+            (
+                r#"sub/BUILD.bazel"#,
+                r#"filegroup(name='all', srcs=glob(['**']))"#,
+            ),
+            (r#"sub/a.txt"#, r#"A"#),
+            (r#"sub/d/b.txt"#, r#"B"#),
+            (
+                r#"sub/MODULE.bazel"#,
+                r#"module(name='x')
+"#,
+            ),
+        ],
+        serve: &[],
+        fetch: &[r#"@x"#],
+        error: Some(r#"exactly one of `build_file` and `build_file_content` must be specified"#),
+        printed: &[],
+        tree: &[],
+        requests: &[],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "local_repository")
+new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "new_local_repository")
+new_local_repository(name="x", path="sub", build_file="//:b.BUILD", build_file_content="x")
+"#,
+        git: &[],
+        files: &[
+            (
+                r#"sub/BUILD.bazel"#,
+                r#"filegroup(name='all', srcs=glob(['**']))"#,
+            ),
+            (r#"sub/a.txt"#, r#"A"#),
+            (r#"sub/d/b.txt"#, r#"B"#),
+            (
+                r#"sub/MODULE.bazel"#,
+                r#"module(name='x')
+"#,
+            ),
+            (r#"b.BUILD"#, r#"y"#),
+        ],
+        serve: &[],
+        fetch: &[r#"@x"#],
+        error: Some(r#"exactly one of `build_file` and `build_file_content` must be specified"#),
+        printed: &[],
+        tree: &[],
+        requests: &[],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "local_repository")
+new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "new_local_repository")
+new_local_repository(name="x", path="nope", build_file_content="x")
+"#,
+        git: &[],
+        files: &[
+            (
+                r#"sub/BUILD.bazel"#,
+                r#"filegroup(name='all', srcs=glob(['**']))"#,
+            ),
+            (r#"sub/a.txt"#, r#"A"#),
+            (r#"sub/d/b.txt"#, r#"B"#),
+            (
+                r#"sub/MODULE.bazel"#,
+                r#"module(name='x')
+"#,
+            ),
+        ],
+        serve: &[],
+        fetch: &[r#"@x"#],
+        error: Some(
+            r#"The repository's path is "nope" (absolute: "<ws>/nope") but it does not exist or is not a directory."#,
+        ),
+        printed: &[],
+        tree: &[],
+        requests: &[],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "local_repository")
+new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "new_local_repository")
+new_local_repository(name="x", path="sub", build_file_content="x", build_file="//:b.BUILD")
+"#,
+        git: &[],
+        files: &[
+            (
+                r#"sub/BUILD.bazel"#,
+                r#"filegroup(name='all', srcs=glob(['**']))"#,
+            ),
+            (r#"sub/a.txt"#, r#"A"#),
+            (r#"sub/d/b.txt"#, r#"B"#),
+            (
+                r#"sub/MODULE.bazel"#,
+                r#"module(name='x')
+"#,
+            ),
+            (r#"b.BUILD"#, r#"y"#),
+        ],
+        serve: &[],
+        fetch: &[r#"@x"#],
+        error: Some(r#"exactly one of `build_file` and `build_file_content` must be specified"#),
+        printed: &[],
+        tree: &[],
+        requests: &[],
+    },
 ];

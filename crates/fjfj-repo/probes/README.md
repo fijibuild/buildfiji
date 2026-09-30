@@ -22,3 +22,16 @@ How `src/multi_matrix.rs` was made: `multi_cases.py` writes `multi_cases.json`
 build), `python3 multi_runcase.py multi_cases.json multi_out.json` runs each in
 real Bazel 9.2.0 with `bazel build @@<repo>//:f` (the prints, the errors, the
 `BUILD.bazel` of each repo made), and `multi_matrix.py` writes the table.
+
+## Bazel's own repository rules (buildfiji-mum.12)
+
+How `src/http_archive_matrix.rs` was made: `ha_cases*.json` are the workspaces
+(`module`: a `MODULE.bazel` that calls `http_archive`, `http_file`,
+`git_repository`, `local_repository` and so on; `files`: what sits beside it;
+`serve`: what a local HTTP server has, archives built on the fly; `git`: local
+git repositories with fixed authors and dates). `python3 harepro.py
+ha_cases1.json OUT.json` runs each in real Bazel 9.2.0 with `bazel fetch
+--repo=@x` and records the prints, the log, the tree of every repository made
+and the requests the server got; `python3 mkha.py OUT1.json OUT2.json ...`
+writes the table. Placeholders in a case: `@URL@`, `@SHA:name@`, `@INT:name@`,
+`@GIT:repo@`, `@COMMIT:repo@` and `@WS@` (the workspace directory).

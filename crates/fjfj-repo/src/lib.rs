@@ -520,9 +520,20 @@ impl Inner {
         let mappings = self.mappings();
         run_repository_rule(&module, &rule, env, &mappings, Some(&self.prints))
             .map_err(|e| FetchError { message: e.message })?;
-        let repo_file = output.join("REPO.bazel");
-        if !repo_file.exists() {
-            let _ = std::fs::write(&repo_file, "");
+        // A repository has a boundary file. One that is a link to a directory of
+        // the user's (`local_repository`) is not ours to write one into.
+        let has_boundary = ["MODULE.bazel", "REPO.bazel", "WORKSPACE", "WORKSPACE.bazel"]
+            .iter()
+            .any(|f| output.join(f).exists());
+        if !has_boundary {
+            let is_link = std::fs::symlink_metadata(&output).is_ok_and(|m| m.is_symlink());
+            if is_link {
+                return failed(format!(
+                    "No MODULE.bazel, REPO.bazel, or WORKSPACE file found in {}",
+                    output.display()
+                ));
+            }
+            let _ = std::fs::write(output.join("REPO.bazel"), "");
         }
         let lookup = PackageLookup::new(&output).map_err(|e| FetchError {
             message: e.to_string(),
