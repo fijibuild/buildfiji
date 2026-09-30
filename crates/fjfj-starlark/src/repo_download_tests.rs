@@ -7,7 +7,7 @@
 use crate::repo_download_matrix::DL_ROWS;
 use crate::test_support::{Capture, module_in, probe_mappings};
 use crate::{Downloader, HttpRequest, RepoEnv, repository_rule_defaults, run_repository_rule};
-use fjfj_archive::testing::{Member, build, compress};
+use fjfj_archive::testing::build_spec;
 use regex::Regex;
 use sha2::Digest as _;
 use std::cell::RefCell;
@@ -51,43 +51,12 @@ const GENERIC: &[&str] = &[
     "in call to hash()",
 ];
 
-fn members(files: &[(&'static str, &'static str, &'static str)]) -> Vec<(&'static str, Member)> {
-    files
-        .iter()
-        .map(|(path, kind, text)| {
-            let member = match *kind {
-                "x" => Member::executable(text),
-                "d" => Member::Dir,
-                "l" => Member::Symlink((*text).to_owned()),
-                "h" => Member::Hardlink((*text).to_owned()),
-                _ => Member::file(text),
-            };
-            (*path, member)
-        })
-        .collect()
-}
-
 fn bytes_of(serve: &Serve) -> (Vec<u8>, u16) {
     match serve {
         Serve::Text(text) => (text.as_bytes().to_vec(), 200),
         Serve::Hex(hex_text) => (hex::decode(hex_text).unwrap(), 200),
         Serve::Status(status) => (b"not here".to_vec(), *status),
-        Serve::Archive(kind, files) => {
-            let all = members(files);
-            match kind.strip_prefix("deb:") {
-                Some(comp) => {
-                    let data = build(comp, &all);
-                    let control = build("tar.gz", &[("control", Member::file("x"))]);
-                    let deb = [
-                        ("debian-binary", Member::file("2.0\n")),
-                        ("control.tar.gz", Member::Bytes(control)),
-                        (&*format!("data.{comp}").leak(), Member::Bytes(data)),
-                    ];
-                    (build("ar", &deb), 200)
-                }
-                None => (build(kind, &all), 200),
-            }
-        }
+        Serve::Archive(kind, files) => (build_spec(kind, files), 200),
     }
 }
 
@@ -311,7 +280,6 @@ fn downloads_replay_bazel() {
         wrong.len(),
         wrong.join("\n")
     );
-    let _ = compress;
 }
 
 /// Run `bzl`'s rule `r` with `downloader` and the repository cache `cache`,

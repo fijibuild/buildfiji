@@ -151,3 +151,39 @@ pub fn compress(kind: &str, bytes: Vec<u8>) -> Vec<u8> {
         other => panic!("no such compression: {other}"),
     }
 }
+
+/// [`build`] for members written as (path, kind, text): kind `f` is a file, `x`
+/// an executable file, `d` a directory, `l` a symlink and `h` a hard link (the
+/// text is the target). `deb:<comp>` is an `ar` archive like a Debian package,
+/// with its `data.tar.<comp>` holding the members.
+pub fn build_spec(kind: &str, files: &[(&str, &str, &str)]) -> Vec<u8> {
+    let members: Vec<(&str, Member)> = files
+        .iter()
+        .map(|(path, kind, text)| {
+            let member = match *kind {
+                "x" => Member::executable(text),
+                "d" => Member::Dir,
+                "l" => Member::Symlink((*text).to_owned()),
+                "h" => Member::Hardlink((*text).to_owned()),
+                _ => Member::file(text),
+            };
+            (*path, member)
+        })
+        .collect();
+    match kind.strip_prefix("deb:") {
+        Some(comp) => {
+            let data = build(comp, &members);
+            let control = build("tar.gz", &[("control", Member::file("x"))]);
+            let data_name = format!("data.{comp}");
+            build(
+                "ar",
+                &[
+                    ("debian-binary", Member::file("2.0\n")),
+                    ("control.tar.gz", Member::Bytes(control)),
+                    (&data_name, Member::Bytes(data)),
+                ],
+            )
+        }
+        None => build(kind, &members),
+    }
+}

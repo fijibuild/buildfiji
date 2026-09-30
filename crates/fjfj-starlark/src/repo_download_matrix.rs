@@ -3596,4 +3596,679 @@ r = repository_rule(_impl)
         tree: &[],
         requests: &[],
     },
+    DlRow {
+        bzl: r#"def _impl(ctx):
+    ctx.download_and_extract("@URL@/a.zip", "out", sha256="@SHA:a.zip@", strip_components=1)
+    print(sorted([str(p) for p in ctx.path("out").readdir()]))
+    ctx.file('z.marker', '')
+r = repository_rule(_impl)
+"#,
+        serve: &[
+            (
+                r#"a.zip"#,
+                Serve::Archive(
+                    r#"zip"#,
+                    &[
+                        (r#"top/a.txt"#, "f", r#"A"#),
+                        (r#"top/sub/b.txt"#, "x", r#"B"#),
+                        (r#"top/sub/"#, "d", ""),
+                        (r#"top/link"#, "l", r#"a.txt"#),
+                        (r#"top/empty/"#, "d", ""),
+                        (r#"root.txt"#, "f", r#"R"#),
+                    ],
+                ),
+            ),
+            (
+                r#"a.tar.gz"#,
+                Serve::Archive(
+                    r#"tar.gz"#,
+                    &[
+                        (r#"top/a.txt"#, "f", r#"A"#),
+                        (r#"top/sub/b.txt"#, "x", r#"B"#),
+                        (r#"top/sub/"#, "d", ""),
+                        (r#"top/link"#, "l", r#"a.txt"#),
+                        (r#"top/empty/"#, "d", ""),
+                        (r#"root.txt"#, "f", r#"R"#),
+                    ],
+                ),
+            ),
+        ],
+        twice: false,
+        error: None,
+        printed: &[
+            r#"["<repo>/out/a.txt", "<repo>/out/empty", "<repo>/out/link", "<repo>/out/sub"]"#,
+        ],
+        tree: &[
+            (r#"out"#, r#"<dir>"#),
+            (r#"out/a.txt"#, r#"A"#),
+            (r#"out/empty"#, r#"<dir>"#),
+            (r#"out/link"#, r#"-> a.txt"#),
+            (r#"out/sub"#, r#"<dir>"#),
+            (r#"out/sub/b.txt"#, r#"x B"#),
+            (r#"z.marker"#, r#"x "#),
+        ],
+        requests: &[r#"/a.zip"#],
+    },
+    DlRow {
+        bzl: r#"def _impl(ctx):
+    ctx.download_and_extract("@URL@/a.tar.gz", "out", sha256="@SHA:a.tar.gz@", strip_components=1)
+    print(sorted([str(p) for p in ctx.path("out").readdir()]))
+    ctx.file('z.marker', '')
+r = repository_rule(_impl)
+"#,
+        serve: &[
+            (
+                r#"a.zip"#,
+                Serve::Archive(
+                    r#"zip"#,
+                    &[
+                        (r#"top/a.txt"#, "f", r#"A"#),
+                        (r#"top/sub/b.txt"#, "x", r#"B"#),
+                        (r#"top/sub/"#, "d", ""),
+                        (r#"top/link"#, "l", r#"a.txt"#),
+                        (r#"top/empty/"#, "d", ""),
+                        (r#"root.txt"#, "f", r#"R"#),
+                    ],
+                ),
+            ),
+            (
+                r#"a.tar.gz"#,
+                Serve::Archive(
+                    r#"tar.gz"#,
+                    &[
+                        (r#"top/a.txt"#, "f", r#"A"#),
+                        (r#"top/sub/b.txt"#, "x", r#"B"#),
+                        (r#"top/sub/"#, "d", ""),
+                        (r#"top/link"#, "l", r#"a.txt"#),
+                        (r#"top/empty/"#, "d", ""),
+                        (r#"root.txt"#, "f", r#"R"#),
+                    ],
+                ),
+            ),
+        ],
+        twice: false,
+        error: None,
+        printed: &[
+            r#"["<repo>/out/a.txt", "<repo>/out/empty", "<repo>/out/link", "<repo>/out/sub"]"#,
+        ],
+        tree: &[
+            (r#"out"#, r#"<dir>"#),
+            (r#"out/a.txt"#, r#"A"#),
+            (r#"out/empty"#, r#"<dir>"#),
+            (r#"out/link"#, r#"-> a.txt"#),
+            (r#"out/sub"#, r#"<dir>"#),
+            (r#"out/sub/b.txt"#, r#"x B"#),
+            (r#"z.marker"#, r#"x "#),
+        ],
+        requests: &[r#"/a.tar.gz"#],
+    },
+    DlRow {
+        bzl: r#"def _impl(ctx):
+    ctx.download_and_extract("@URL@/a.zip", "out", sha256="@SHA:a.zip@", strip_components=0)
+    print(sorted([str(p) for p in ctx.path("out").readdir()]))
+    ctx.file('z.marker', '')
+r = repository_rule(_impl)
+"#,
+        serve: &[
+            (
+                r#"a.zip"#,
+                Serve::Archive(
+                    r#"zip"#,
+                    &[
+                        (r#"top/a.txt"#, "f", r#"A"#),
+                        (r#"top/sub/b.txt"#, "x", r#"B"#),
+                        (r#"top/sub/"#, "d", ""),
+                        (r#"top/link"#, "l", r#"a.txt"#),
+                        (r#"top/empty/"#, "d", ""),
+                        (r#"root.txt"#, "f", r#"R"#),
+                    ],
+                ),
+            ),
+            (
+                r#"a.tar.gz"#,
+                Serve::Archive(
+                    r#"tar.gz"#,
+                    &[
+                        (r#"top/a.txt"#, "f", r#"A"#),
+                        (r#"top/sub/b.txt"#, "x", r#"B"#),
+                        (r#"top/sub/"#, "d", ""),
+                        (r#"top/link"#, "l", r#"a.txt"#),
+                        (r#"top/empty/"#, "d", ""),
+                        (r#"root.txt"#, "f", r#"R"#),
+                    ],
+                ),
+            ),
+        ],
+        twice: false,
+        error: None,
+        printed: &[r#"["<repo>/out/root.txt", "<repo>/out/top"]"#],
+        tree: &[
+            (r#"out"#, r#"<dir>"#),
+            (r#"out/root.txt"#, r#"R"#),
+            (r#"out/top"#, r#"<dir>"#),
+            (r#"out/top/a.txt"#, r#"A"#),
+            (r#"out/top/empty"#, r#"<dir>"#),
+            (r#"out/top/link"#, r#"-> a.txt"#),
+            (r#"out/top/sub"#, r#"<dir>"#),
+            (r#"out/top/sub/b.txt"#, r#"x B"#),
+            (r#"z.marker"#, r#"x "#),
+        ],
+        requests: &[r#"/a.zip"#],
+    },
+    DlRow {
+        bzl: r#"def _impl(ctx):
+    ctx.download_and_extract("@URL@/a.zip", "out", sha256="@SHA:a.zip@", strip_components=-1)
+    print(sorted([str(p) for p in ctx.path("out").readdir()]))
+    ctx.file('z.marker', '')
+r = repository_rule(_impl)
+"#,
+        serve: &[
+            (
+                r#"a.zip"#,
+                Serve::Archive(
+                    r#"zip"#,
+                    &[
+                        (r#"top/a.txt"#, "f", r#"A"#),
+                        (r#"top/sub/b.txt"#, "x", r#"B"#),
+                        (r#"top/sub/"#, "d", ""),
+                        (r#"top/link"#, "l", r#"a.txt"#),
+                        (r#"top/empty/"#, "d", ""),
+                        (r#"root.txt"#, "f", r#"R"#),
+                    ],
+                ),
+            ),
+            (
+                r#"a.tar.gz"#,
+                Serve::Archive(
+                    r#"tar.gz"#,
+                    &[
+                        (r#"top/a.txt"#, "f", r#"A"#),
+                        (r#"top/sub/b.txt"#, "x", r#"B"#),
+                        (r#"top/sub/"#, "d", ""),
+                        (r#"top/link"#, "l", r#"a.txt"#),
+                        (r#"top/empty/"#, "d", ""),
+                        (r#"root.txt"#, "f", r#"R"#),
+                    ],
+                ),
+            ),
+        ],
+        twice: false,
+        error: Some(
+            r#"download_and_extract() has an invalid argument for 'strip_components': -1. Must be non-negative."#,
+        ),
+        printed: &[],
+        tree: &[],
+        requests: &[],
+    },
+    DlRow {
+        bzl: r#"def _impl(ctx):
+    ctx.download_and_extract("@URL@/a.zip", "out", sha256="@SHA:a.zip@", strip_components="1")
+    print(sorted([str(p) for p in ctx.path("out").readdir()]))
+    ctx.file('z.marker', '')
+r = repository_rule(_impl)
+"#,
+        serve: &[
+            (
+                r#"a.zip"#,
+                Serve::Archive(
+                    r#"zip"#,
+                    &[
+                        (r#"top/a.txt"#, "f", r#"A"#),
+                        (r#"top/sub/b.txt"#, "x", r#"B"#),
+                        (r#"top/sub/"#, "d", ""),
+                        (r#"top/link"#, "l", r#"a.txt"#),
+                        (r#"top/empty/"#, "d", ""),
+                        (r#"root.txt"#, "f", r#"R"#),
+                    ],
+                ),
+            ),
+            (
+                r#"a.tar.gz"#,
+                Serve::Archive(
+                    r#"tar.gz"#,
+                    &[
+                        (r#"top/a.txt"#, "f", r#"A"#),
+                        (r#"top/sub/b.txt"#, "x", r#"B"#),
+                        (r#"top/sub/"#, "d", ""),
+                        (r#"top/link"#, "l", r#"a.txt"#),
+                        (r#"top/empty/"#, "d", ""),
+                        (r#"root.txt"#, "f", r#"R"#),
+                    ],
+                ),
+            ),
+        ],
+        twice: false,
+        error: Some(
+            r#"in call to download_and_extract(), parameter 'strip_components' got value of type 'string', want 'int'"#,
+        ),
+        printed: &[],
+        tree: &[],
+        requests: &[],
+    },
+    DlRow {
+        bzl: r#"def _impl(ctx):
+    ctx.download_and_extract("@URL@/a.zip", "out", sha256="@SHA:a.zip@", strip_components=1, strip_prefix="top")
+    print(sorted([str(p) for p in ctx.path("out").readdir()]))
+    ctx.file('z.marker', '')
+r = repository_rule(_impl)
+"#,
+        serve: &[
+            (
+                r#"a.zip"#,
+                Serve::Archive(
+                    r#"zip"#,
+                    &[
+                        (r#"top/a.txt"#, "f", r#"A"#),
+                        (r#"top/sub/b.txt"#, "x", r#"B"#),
+                        (r#"top/sub/"#, "d", ""),
+                        (r#"top/link"#, "l", r#"a.txt"#),
+                        (r#"top/empty/"#, "d", ""),
+                        (r#"root.txt"#, "f", r#"R"#),
+                    ],
+                ),
+            ),
+            (
+                r#"a.tar.gz"#,
+                Serve::Archive(
+                    r#"tar.gz"#,
+                    &[
+                        (r#"top/a.txt"#, "f", r#"A"#),
+                        (r#"top/sub/b.txt"#, "x", r#"B"#),
+                        (r#"top/sub/"#, "d", ""),
+                        (r#"top/link"#, "l", r#"a.txt"#),
+                        (r#"top/empty/"#, "d", ""),
+                        (r#"root.txt"#, "f", r#"R"#),
+                    ],
+                ),
+            ),
+        ],
+        twice: false,
+        error: Some(
+            r#"download_and_extract() got multiple strip values. Only one of 'strip_prefix' or 'strip_components' can be set"#,
+        ),
+        printed: &[],
+        tree: &[],
+        requests: &[],
+    },
+    DlRow {
+        bzl: r#"def _impl(ctx):
+    ctx.download_and_extract("@URL@/a.zip", "out", sha256="@SHA:a.zip@", strip_components=1, strip_prefix="nothere")
+    print(sorted([str(p) for p in ctx.path("out").readdir()]))
+    ctx.file('z.marker', '')
+r = repository_rule(_impl)
+"#,
+        serve: &[
+            (
+                r#"a.zip"#,
+                Serve::Archive(
+                    r#"zip"#,
+                    &[
+                        (r#"top/a.txt"#, "f", r#"A"#),
+                        (r#"top/sub/b.txt"#, "x", r#"B"#),
+                        (r#"top/sub/"#, "d", ""),
+                        (r#"top/link"#, "l", r#"a.txt"#),
+                        (r#"top/empty/"#, "d", ""),
+                        (r#"root.txt"#, "f", r#"R"#),
+                    ],
+                ),
+            ),
+            (
+                r#"a.tar.gz"#,
+                Serve::Archive(
+                    r#"tar.gz"#,
+                    &[
+                        (r#"top/a.txt"#, "f", r#"A"#),
+                        (r#"top/sub/b.txt"#, "x", r#"B"#),
+                        (r#"top/sub/"#, "d", ""),
+                        (r#"top/link"#, "l", r#"a.txt"#),
+                        (r#"top/empty/"#, "d", ""),
+                        (r#"root.txt"#, "f", r#"R"#),
+                    ],
+                ),
+            ),
+        ],
+        twice: false,
+        error: Some(
+            r#"download_and_extract() got multiple strip values. Only one of 'strip_prefix' or 'strip_components' can be set"#,
+        ),
+        printed: &[],
+        tree: &[],
+        requests: &[],
+    },
+    DlRow {
+        bzl: r#"def _impl(ctx):
+    ctx.download_and_extract("@URL@/a.zip", "out", sha256="@SHA:a.zip@", strip_components=3)
+    print(sorted([str(p) for p in ctx.path("out").readdir()]))
+    ctx.file('z.marker', '')
+r = repository_rule(_impl)
+"#,
+        serve: &[
+            (
+                r#"a.zip"#,
+                Serve::Archive(
+                    r#"zip"#,
+                    &[
+                        (r#"top/a.txt"#, "f", r#"A"#),
+                        (r#"top/sub/b.txt"#, "x", r#"B"#),
+                        (r#"top/sub/"#, "d", ""),
+                        (r#"top/link"#, "l", r#"a.txt"#),
+                        (r#"top/empty/"#, "d", ""),
+                        (r#"root.txt"#, "f", r#"R"#),
+                    ],
+                ),
+            ),
+            (
+                r#"a.tar.gz"#,
+                Serve::Archive(
+                    r#"tar.gz"#,
+                    &[
+                        (r#"top/a.txt"#, "f", r#"A"#),
+                        (r#"top/sub/b.txt"#, "x", r#"B"#),
+                        (r#"top/sub/"#, "d", ""),
+                        (r#"top/link"#, "l", r#"a.txt"#),
+                        (r#"top/empty/"#, "d", ""),
+                        (r#"root.txt"#, "f", r#"R"#),
+                    ],
+                ),
+            ),
+        ],
+        twice: false,
+        error: None,
+        printed: &[r#"[]"#],
+        tree: &[(r#"out"#, r#"<dir>"#), (r#"z.marker"#, r#"x "#)],
+        requests: &[r#"/a.zip"#],
+    },
+    DlRow {
+        bzl: r#"def _impl(ctx):
+    ctx.download_and_extract("@URL@/a.zip", "out", sha256="@SHA:a.zip@", rename_files={"top/a.txt": "x/y/renamed.txt"}, strip_components=1)
+    print(sorted([str(p) for p in ctx.path("out").readdir()]))
+    ctx.file('z.marker', '')
+r = repository_rule(_impl)
+"#,
+        serve: &[
+            (
+                r#"a.zip"#,
+                Serve::Archive(
+                    r#"zip"#,
+                    &[
+                        (r#"top/a.txt"#, "f", r#"A"#),
+                        (r#"top/sub/b.txt"#, "x", r#"B"#),
+                        (r#"top/sub/"#, "d", ""),
+                        (r#"top/link"#, "l", r#"a.txt"#),
+                        (r#"top/empty/"#, "d", ""),
+                        (r#"root.txt"#, "f", r#"R"#),
+                    ],
+                ),
+            ),
+            (
+                r#"a.tar.gz"#,
+                Serve::Archive(
+                    r#"tar.gz"#,
+                    &[
+                        (r#"top/a.txt"#, "f", r#"A"#),
+                        (r#"top/sub/b.txt"#, "x", r#"B"#),
+                        (r#"top/sub/"#, "d", ""),
+                        (r#"top/link"#, "l", r#"a.txt"#),
+                        (r#"top/empty/"#, "d", ""),
+                        (r#"root.txt"#, "f", r#"R"#),
+                    ],
+                ),
+            ),
+        ],
+        twice: false,
+        error: None,
+        printed: &[r#"["<repo>/out/empty", "<repo>/out/link", "<repo>/out/sub", "<repo>/out/y"]"#],
+        tree: &[
+            (r#"out"#, r#"<dir>"#),
+            (r#"out/empty"#, r#"<dir>"#),
+            (r#"out/link"#, r#"-> a.txt"#),
+            (r#"out/sub"#, r#"<dir>"#),
+            (r#"out/sub/b.txt"#, r#"x B"#),
+            (r#"out/y"#, r#"<dir>"#),
+            (r#"out/y/renamed.txt"#, r#"A"#),
+            (r#"z.marker"#, r#"x "#),
+        ],
+        requests: &[r#"/a.zip"#],
+    },
+    DlRow {
+        bzl: r#"def _impl(ctx):
+    ctx.download("@URL@/a.zip", "a.zip", sha256="@SHA:a.zip@")
+    ctx.extract("a.zip", "out", strip_components=1)
+    print(sorted([str(p) for p in ctx.path("out").readdir()]))
+    ctx.file('z.marker', '')
+r = repository_rule(_impl)
+"#,
+        serve: &[
+            (
+                r#"a.zip"#,
+                Serve::Archive(
+                    r#"zip"#,
+                    &[
+                        (r#"top/a.txt"#, "f", r#"A"#),
+                        (r#"top/sub/b.txt"#, "x", r#"B"#),
+                        (r#"top/sub/"#, "d", ""),
+                        (r#"top/link"#, "l", r#"a.txt"#),
+                        (r#"top/empty/"#, "d", ""),
+                        (r#"root.txt"#, "f", r#"R"#),
+                    ],
+                ),
+            ),
+            (
+                r#"a.tar.gz"#,
+                Serve::Archive(
+                    r#"tar.gz"#,
+                    &[
+                        (r#"top/a.txt"#, "f", r#"A"#),
+                        (r#"top/sub/b.txt"#, "x", r#"B"#),
+                        (r#"top/sub/"#, "d", ""),
+                        (r#"top/link"#, "l", r#"a.txt"#),
+                        (r#"top/empty/"#, "d", ""),
+                        (r#"root.txt"#, "f", r#"R"#),
+                    ],
+                ),
+            ),
+        ],
+        twice: false,
+        error: None,
+        printed: &[
+            r#"["<repo>/out/a.txt", "<repo>/out/empty", "<repo>/out/link", "<repo>/out/sub"]"#,
+        ],
+        tree: &[
+            (r#"a.zip"#, r#"<binary>"#),
+            (r#"out"#, r#"<dir>"#),
+            (r#"out/a.txt"#, r#"A"#),
+            (r#"out/empty"#, r#"<dir>"#),
+            (r#"out/link"#, r#"-> a.txt"#),
+            (r#"out/sub"#, r#"<dir>"#),
+            (r#"out/sub/b.txt"#, r#"x B"#),
+            (r#"z.marker"#, r#"x "#),
+        ],
+        requests: &[r#"/a.zip"#],
+    },
+    DlRow {
+        bzl: r#"def _impl(ctx):
+    ctx.download("@URL@/a.zip", "a.zip", sha256="@SHA:a.zip@")
+    ctx.extract("a.zip", "out", "", {}, strip_components=1)
+    print(sorted([str(p) for p in ctx.path("out").readdir()]))
+    ctx.file('z.marker', '')
+r = repository_rule(_impl)
+"#,
+        serve: &[
+            (
+                r#"a.zip"#,
+                Serve::Archive(
+                    r#"zip"#,
+                    &[
+                        (r#"top/a.txt"#, "f", r#"A"#),
+                        (r#"top/sub/b.txt"#, "x", r#"B"#),
+                        (r#"top/sub/"#, "d", ""),
+                        (r#"top/link"#, "l", r#"a.txt"#),
+                        (r#"top/empty/"#, "d", ""),
+                        (r#"root.txt"#, "f", r#"R"#),
+                    ],
+                ),
+            ),
+            (
+                r#"a.tar.gz"#,
+                Serve::Archive(
+                    r#"tar.gz"#,
+                    &[
+                        (r#"top/a.txt"#, "f", r#"A"#),
+                        (r#"top/sub/b.txt"#, "x", r#"B"#),
+                        (r#"top/sub/"#, "d", ""),
+                        (r#"top/link"#, "l", r#"a.txt"#),
+                        (r#"top/empty/"#, "d", ""),
+                        (r#"root.txt"#, "f", r#"R"#),
+                    ],
+                ),
+            ),
+        ],
+        twice: false,
+        error: Some(r#"extract() accepts no more than 3 positional arguments but got 4"#),
+        printed: &[],
+        tree: &[],
+        requests: &[r#"/a.zip"#],
+    },
+    DlRow {
+        bzl: r#"def _impl(ctx):
+    ctx.download("@URL@/a.zip", "a.zip", sha256="@SHA:a.zip@")
+    ctx.extract("a.zip", "out", "", {}, "auto", 1)
+    print(sorted([str(p) for p in ctx.path("out").readdir()]))
+    ctx.file('z.marker', '')
+r = repository_rule(_impl)
+"#,
+        serve: &[
+            (
+                r#"a.zip"#,
+                Serve::Archive(
+                    r#"zip"#,
+                    &[
+                        (r#"top/a.txt"#, "f", r#"A"#),
+                        (r#"top/sub/b.txt"#, "x", r#"B"#),
+                        (r#"top/sub/"#, "d", ""),
+                        (r#"top/link"#, "l", r#"a.txt"#),
+                        (r#"top/empty/"#, "d", ""),
+                        (r#"root.txt"#, "f", r#"R"#),
+                    ],
+                ),
+            ),
+            (
+                r#"a.tar.gz"#,
+                Serve::Archive(
+                    r#"tar.gz"#,
+                    &[
+                        (r#"top/a.txt"#, "f", r#"A"#),
+                        (r#"top/sub/b.txt"#, "x", r#"B"#),
+                        (r#"top/sub/"#, "d", ""),
+                        (r#"top/link"#, "l", r#"a.txt"#),
+                        (r#"top/empty/"#, "d", ""),
+                        (r#"root.txt"#, "f", r#"R"#),
+                    ],
+                ),
+            ),
+        ],
+        twice: false,
+        error: Some(r#"extract() accepts no more than 3 positional arguments but got 6"#),
+        printed: &[],
+        tree: &[],
+        requests: &[r#"/a.zip"#],
+    },
+    DlRow {
+        bzl: r#"def _impl(ctx):
+    ctx.download_and_extract("@URL@/a.zip", "out", "@SHA:a.zip@", "", "", False, "", {}, {}, 1)
+    print(sorted([str(p) for p in ctx.path("out").readdir()]))
+    ctx.file('z.marker', '')
+r = repository_rule(_impl)
+"#,
+        serve: &[
+            (
+                r#"a.zip"#,
+                Serve::Archive(
+                    r#"zip"#,
+                    &[
+                        (r#"top/a.txt"#, "f", r#"A"#),
+                        (r#"top/sub/b.txt"#, "x", r#"B"#),
+                        (r#"top/sub/"#, "d", ""),
+                        (r#"top/link"#, "l", r#"a.txt"#),
+                        (r#"top/empty/"#, "d", ""),
+                        (r#"root.txt"#, "f", r#"R"#),
+                    ],
+                ),
+            ),
+            (
+                r#"a.tar.gz"#,
+                Serve::Archive(
+                    r#"tar.gz"#,
+                    &[
+                        (r#"top/a.txt"#, "f", r#"A"#),
+                        (r#"top/sub/b.txt"#, "x", r#"B"#),
+                        (r#"top/sub/"#, "d", ""),
+                        (r#"top/link"#, "l", r#"a.txt"#),
+                        (r#"top/empty/"#, "d", ""),
+                        (r#"root.txt"#, "f", r#"R"#),
+                    ],
+                ),
+            ),
+        ],
+        twice: false,
+        error: Some(
+            r#"download_and_extract() accepts no more than 9 positional arguments but got 10"#,
+        ),
+        printed: &[],
+        tree: &[],
+        requests: &[],
+    },
+    DlRow {
+        bzl: r#"def _impl(ctx):
+    ctx.download_and_extract("@URL@/a.zip", "out", sha256="@SHA:a.zip@", strip_components=1, strip_prefix="")
+    print(sorted([str(p) for p in ctx.path("out").readdir()]))
+    ctx.file('z.marker', '')
+r = repository_rule(_impl)
+"#,
+        serve: &[
+            (
+                r#"a.zip"#,
+                Serve::Archive(
+                    r#"zip"#,
+                    &[
+                        (r#"top/a.txt"#, "f", r#"A"#),
+                        (r#"top/sub/b.txt"#, "x", r#"B"#),
+                        (r#"top/sub/"#, "d", ""),
+                        (r#"top/link"#, "l", r#"a.txt"#),
+                        (r#"top/empty/"#, "d", ""),
+                        (r#"root.txt"#, "f", r#"R"#),
+                    ],
+                ),
+            ),
+            (
+                r#"a.tar.gz"#,
+                Serve::Archive(
+                    r#"tar.gz"#,
+                    &[
+                        (r#"top/a.txt"#, "f", r#"A"#),
+                        (r#"top/sub/b.txt"#, "x", r#"B"#),
+                        (r#"top/sub/"#, "d", ""),
+                        (r#"top/link"#, "l", r#"a.txt"#),
+                        (r#"top/empty/"#, "d", ""),
+                        (r#"root.txt"#, "f", r#"R"#),
+                    ],
+                ),
+            ),
+        ],
+        twice: false,
+        error: None,
+        printed: &[
+            r#"["<repo>/out/a.txt", "<repo>/out/empty", "<repo>/out/link", "<repo>/out/sub"]"#,
+        ],
+        tree: &[
+            (r#"out"#, r#"<dir>"#),
+            (r#"out/a.txt"#, r#"A"#),
+            (r#"out/empty"#, r#"<dir>"#),
+            (r#"out/link"#, r#"-> a.txt"#),
+            (r#"out/sub"#, r#"<dir>"#),
+            (r#"out/sub/b.txt"#, r#"x B"#),
+            (r#"z.marker"#, r#"x "#),
+        ],
+        requests: &[r#"/a.zip"#],
+    },
 ];

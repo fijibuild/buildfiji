@@ -68,6 +68,9 @@ pub struct ExtractRequest<'a> {
     pub format: Format,
     pub output: &'a Path,
     pub strip_prefix: &'a str,
+    /// Leading path components to drop from each member (those with no more
+    /// are dropped themselves); used instead of a prefix.
+    pub strip_components: usize,
     /// Member paths in the archive, and the paths (relative to `output`) they
     /// are given instead.
     pub rename: &'a [(String, String)],
@@ -310,7 +313,11 @@ pub fn extract(request: &ExtractRequest<'_>) -> Result<(), String> {
             return Ok(());
         }
         matched += 1;
-        let rest = &components[prefix.len()..];
+        let skip = prefix.len() + request.strip_components;
+        if components.len() <= skip && request.strip_components > 0 {
+            return Ok(());
+        }
+        let rest = &components[skip.min(components.len())..];
         if rest.is_empty() {
             return Ok(());
         }

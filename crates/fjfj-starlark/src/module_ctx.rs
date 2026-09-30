@@ -285,6 +285,47 @@ pub(crate) fn plain_to_attr(
                 None => return fail(),
             }
         }
+        (AttrType::StringKeyedLabelDict, TagValue::Dict(items)) => {
+            let mut pairs = Vec::new();
+            for (k, v) in items {
+                match (k, v) {
+                    (TagValue::String(k), TagValue::String(v)) => {
+                        pairs.push((k.clone(), label(v)?));
+                    }
+                    _ => return fail(),
+                }
+            }
+            RepoAttr::StringKeyedLabelDict(pairs)
+        }
+        (AttrType::LabelKeyedStringDict, TagValue::Dict(items)) => {
+            let mut pairs = Vec::new();
+            for (k, v) in items {
+                match (k, v) {
+                    (TagValue::String(k), TagValue::String(v)) => {
+                        pairs.push((label(k)?, v.clone()));
+                    }
+                    _ => return fail(),
+                }
+            }
+            RepoAttr::LabelKeyedStringDict(pairs)
+        }
+        (AttrType::LabelListDict, TagValue::Dict(items)) => {
+            let mut pairs = Vec::new();
+            for (k, v) in items {
+                match (k, v) {
+                    (TagValue::String(k), TagValue::List(v)) => {
+                        let labels = strings(v)
+                            .ok_or_else(mismatch)?
+                            .iter()
+                            .map(|s| label(s))
+                            .collect::<Result<Vec<_>, _>>()?;
+                        pairs.push((k.clone(), labels));
+                    }
+                    _ => return fail(),
+                }
+            }
+            RepoAttr::LabelListDict(pairs)
+        }
         (AttrType::StringListDict, TagValue::Dict(items)) => {
             let pairs: Option<Vec<(String, Vec<String>)>> = items
                 .iter()
@@ -342,6 +383,9 @@ fn default_attr(spec: &AttrSpec) -> Option<RepoAttr> {
         AttrValue::LabelList(labels) => RepoAttr::LabelList(labels),
         AttrValue::StringDict(items) => RepoAttr::StringDict(items),
         AttrValue::StringListDict(items) => RepoAttr::StringListDict(items),
+        AttrValue::StringKeyedLabelDict(items) => RepoAttr::StringKeyedLabelDict(items),
+        AttrValue::LabelKeyedStringDict(items) => RepoAttr::LabelKeyedStringDict(items),
+        AttrValue::LabelListDict(items) => RepoAttr::LabelListDict(items),
         _ => return None,
     })
 }

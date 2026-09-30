@@ -1001,6 +1001,30 @@ overlap; the `--distdir`, `--repository_cache` flag and the cache's `canonical_i
 behaviour are buildfiji-mum.9's, and credentials (`.netrc`, `--credential_helper`)
 buildfiji-mum.12's.
 
+## Bazel's own `http_archive` and `git_repository` (implemented 2026-09-30, buildfiji-mum.12)
+
+`@bazel_tools`' repository rules are Starlark, and they run as Bazel ships
+them: `crates/fjfj-repo/embedded_tools/` holds `utils.bzl`, `cache.bzl`,
+`http.bzl`, `git.bzl` and `git_worker.bzl` from 9.2.0, and `tools.rs`
+(`BAZEL_TOOLS_FILES`, `materialize_bazel_tools`) writes them into the
+`bazel_tools` repository. Nothing about these rules is reimplemented in Rust;
+what they need from the runtime is `repository_ctx` (see above).
+
+Conformance is 37 rows in `http_archive_matrix.rs`, read off Bazel 9.2.0 against a
+local HTTP server and local git repositories, and replayed by
+`http_archive_tests.rs`: the resulting tree, the prints, or the error. The
+harness makes each row's git repositories with a fixed author, date and
+`GIT_CONFIG_NOSYSTEM`, so commit hashes are stable, and the rows compare them as
+`<commit>`. Rows for `netrc` and `auth_patterns` and `verbose = True` output are
+not replayed: they depend on the machine's files and environment.
+
+Bazel quirks these rows pin: a plain multi-file patch applies only its last file
+(`fjfj-archive`), and `strip_components` is applied after `rename_files`.
+
+Still open: `--override_repository`/`--override_module`, netrc and
+`--credential_helper`, and `--registry`/`--lockfile_mode` in `fjfj build` (see
+the follow-up beads of mum.12).
+
 ## Bazel 9.2.0's builtin namespaces, and who owns each name (buildfiji-mum.3)
 
 Read off Bazel 9.2.0 by asking `type(name)` in a BUILD file and in a `.bzl`

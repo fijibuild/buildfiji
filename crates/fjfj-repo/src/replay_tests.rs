@@ -144,6 +144,11 @@ fn run(row: &ExtRow) -> Outcome {
             let external = base.join("external");
             if let Ok(entries) = std::fs::read_dir(&external) {
                 for entry in entries.flatten() {
+                    // `@bazel_tools` is there, as in Bazel, and not something
+                    // the workspace made.
+                    if entry.file_name() == "bazel_tools" {
+                        continue;
+                    }
                     let mut tree = BTreeMap::new();
                     walk(&entry.path(), &entry.path(), &mut tree);
                     tree.remove("REPO.bazel");

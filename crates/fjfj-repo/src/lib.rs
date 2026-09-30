@@ -29,11 +29,17 @@
 mod driver_tests;
 mod http;
 #[cfg(test)]
+mod http_archive_matrix;
+#[cfg(test)]
+mod http_archive_tests;
+#[cfg(test)]
 mod replay_matrix;
 #[cfg(test)]
 mod replay_tests;
+mod tools;
 
 pub use http::HttpDownloader;
+pub use tools::{BAZEL_TOOLS_FILES, materialize_bazel_tools};
 
 use fjfj_bzlmod::Module;
 use fjfj_graph::{Label, LabelContext};
@@ -109,6 +115,14 @@ impl Repos {
         let lookup = PackageLookup::new(&options.workspace_root).map_err(|e| FetchError {
             message: e.to_string(),
         })?;
+        // `@bazel_tools` is served from the output base, where its files are put.
+        let tools_dir = options.output_base.join("external").join("bazel_tools");
+        materialize_bazel_tools(&tools_dir).map_err(|e| FetchError {
+            message: format!("cannot write @bazel_tools to {}: {e}", tools_dir.display()),
+        })?;
+        let tools_lookup = PackageLookup::new(&tools_dir).map_err(|e| FetchError {
+            message: e.to_string(),
+        })?;
         let mut rows = vec![
             (String::new(), String::new()),
             (root.repo_name.clone(), String::new()),
@@ -117,9 +131,18 @@ impl Repos {
             rows.push((dep.repo_name.clone(), dep.spec.name.clone()));
         }
         rows.push(("bazel_tools".to_owned(), "bazel_tools".to_owned()));
-        let mappings = RepoMappings::from_repos([(String::new(), rows)]);
+        let mappings = RepoMappings::from_repos([
+            (String::new(), rows),
+            (
+                "bazel_tools".to_owned(),
+                vec![("bazel_tools".to_owned(), "bazel_tools".to_owned())],
+            ),
+        ]);
         let loader = BzlLoader::new(
-            HashMap::from([(String::new(), lookup)]),
+            HashMap::from([
+                (String::new(), lookup),
+                ("bazel_tools".to_owned(), tools_lookup),
+            ]),
             mappings.clone(),
             true,
         );

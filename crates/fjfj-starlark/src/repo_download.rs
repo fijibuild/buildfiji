@@ -511,6 +511,7 @@ const EXTRACT_AND_DOWNLOAD_PARAMS: &[P] = &[
     p("headers", true, false, "dict", is_dict),
     p("integrity", false, false, "string", is_str),
     p("rename_files", false, false, "dict", is_dict),
+    p("strip_components", false, false, "int", is_int),
 ];
 
 const EXTRACT_PARAMS: &[P] = &[
@@ -531,6 +532,7 @@ const EXTRACT_PARAMS: &[P] = &[
     p("strip_prefix", true, false, "string", is_str),
     p("rename_files", false, false, "dict", is_dict),
     p("watch_archive", false, false, "string", is_str),
+    p("strip_components", false, false, "int", is_int),
 ];
 
 const PATCH_PARAMS: &[P] = &[
@@ -673,11 +675,34 @@ fn unknown_suffix(path: &Path) -> starlark::Error {
     ))
 }
 
+/// `strip_components`, checked against `strip_prefix` the way Bazel does.
+fn strip_components_of(
+    function: &str,
+    strip_prefix: &str,
+    value: Option<Value<'_>>,
+) -> starlark::Result<usize> {
+    let components = value.and_then(|v| v.unpack_i32()).unwrap_or(0);
+    if components < 0 {
+        return Err(fatal(format!(
+            "{function}() has an invalid argument for 'strip_components': {components}. Must be \
+             non-negative."
+        )));
+    }
+    if components > 0 && !strip_prefix.is_empty() {
+        return Err(fatal(format!(
+            "{function}() got multiple strip values. Only one of 'strip_prefix' or \
+             'strip_components' can be set"
+        )));
+    }
+    Ok(components as usize)
+}
+
 fn unpack(
     archive: &Path,
     output: &Path,
     shown_to: &Path,
     strip_prefix: &str,
+    strip_components: usize,
     rename: &[(String, String)],
 ) -> starlark::Result<()> {
     let name = archive
@@ -692,6 +717,7 @@ fn unpack(
         format,
         output,
         strip_prefix,
+        strip_components,
         rename,
     })
     .map_err(|why| fatal(extraction_message(archive, shown_to, &why)))
@@ -713,6 +739,11 @@ pub(crate) fn op_download_and_extract<'v>(
     };
     writable(env, &output)?;
     let rename = renames_of(arg(params, &bound, "rename_files"))?;
+    let components = strip_components_of(
+        "download_and_extract",
+        string_arg(params, &bound, "strip_prefix"),
+        arg(params, &bound, "strip_components"),
+    )?;
     let allow_fail = flag(arg(params, &bound, "allow_fail"), false);
     let kind = string_arg(params, &bound, "type");
     let temp = output.path.join(format!("temp{}", temp_number()));
@@ -748,6 +779,7 @@ pub(crate) fn op_download_and_extract<'v>(
         &output.path,
         &temp,
         string_arg(params, &bound, "strip_prefix"),
+        components,
         &rename,
     )?;
     let _ = std::fs::remove_dir_all(&temp);
@@ -783,6 +815,11 @@ pub(crate) fn op_extract<'v>(
     writable(env, &output)?;
     check_watch(env, &archive, arg(params, &bound, "watch_archive"))?;
     let rename = renames_of(arg(params, &bound, "rename_files"))?;
+    let components = strip_components_of(
+        "extract",
+        string_arg(params, &bound, "strip_prefix"),
+        arg(params, &bound, "strip_components"),
+    )?;
     if !archive.path.exists() {
         return Err(fatal(format!(
             "Archive path '{}' does not exist.",
@@ -794,6 +831,7 @@ pub(crate) fn op_extract<'v>(
         &output.path,
         &output.path,
         string_arg(params, &bound, "strip_prefix"),
+        components,
         &rename,
     )?;
     Ok(NoneType)

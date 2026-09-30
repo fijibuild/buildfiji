@@ -5,6 +5,7 @@ package(default_visibility = ["//visibility:public"])
 rust_library(
     name = "fjfj-repo",
     srcs = glob(["src/**/*.rs"]),
+    compile_data = glob(["embedded_tools/**"]),
     crate_name = "fjfj_repo",
     edition = "2024",
     version = "0.0.1",
@@ -23,5 +24,12 @@ rust_library(
 rust_test(
     name = "fjfj-repo_test",
     crate = ":fjfj-repo",
-    deps = ["@crates//:tempfile"],
+    deps = [
+        "//crates/fjfj-archive",
+        "@crates//:base64",
+        "@crates//:hex",
+        "@crates//:regex",
+        "@crates//:sha2",
+        "@crates//:tempfile",
+    ],
 )

@@ -1164,11 +1164,16 @@ dependencies = [
 name = "fjfj-repo"
 version = "0.0.1"
 dependencies = [
+ "base64 0.23.1",
+ "fjfj-archive",
  "fjfj-bzlmod",
  "fjfj-graph",
  "fjfj-loading",
  "fjfj-starlark",
+ "hex",
+ "regex",
  "reqwest",
+ "sha2",
  "starlark",
  "tempfile",
  "thiserror",

@@ -16,4 +16,9 @@ thiserror.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+base64.workspace = true
+fjfj-archive.workspace = true
+hex.workspace = true
+regex.workspace = true
+sha2.workspace = true
 tempfile.workspace = true

@@ -94,3 +94,78 @@ fn a_name_that_is_not_a_generated_repository_cannot_be_fetched() {
     let error = repos.fetch("+ext+nothing", None).unwrap_err();
     assert_eq!(error.message, "no repository named '@@+ext+nothing'");
 }
+
+mod http_archive {
+    use super::*;
+    use fjfj_archive::testing::{Member, build};
+    use fjfj_starlark::{Downloader, HttpRequest};
+    use sha2::Digest as _;
+    use std::sync::{Arc, Mutex};
+
+    /// A server with one file.
+    struct One(String, Vec<u8>, Mutex<Vec<String>>);
+
+    impl Downloader for One {
+        fn get(&self, request: &HttpRequest) -> Result<Vec<u8>, String> {
+            self.2.lock().unwrap().push(request.url.clone());
+            if request.url == self.0 {
+                Ok(self.1.clone())
+            } else {
+                Err("GET returned 404 Not Found".to_owned())
+            }
+        }
+    }
+
+    pub(super) fn repos_serving(
+        module: &str,
+        url: &str,
+        bytes: Vec<u8>,
+    ) -> (tempfile::TempDir, Repos) {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = dir.path().join("ws");
+        std::fs::create_dir_all(&ws).unwrap();
+        std::fs::write(ws.join("BUILD.bazel"), "").unwrap();
+        let file = eval_module_file("MODULE.bazel", module, &EvalOptions::root()).unwrap();
+        let repos = Repos::new(
+            Options {
+                workspace_root: ws,
+                output_base: dir.path().join("ob"),
+                environ: BTreeMap::new(),
+                downloader: Some(Arc::new(One(url.to_owned(), bytes, Mutex::new(Vec::new())))),
+                repository_cache: Some(dir.path().join("cache")),
+            },
+            file.module,
+        )
+        .unwrap();
+        (dir, repos)
+    }
+
+    #[test]
+    fn bazels_own_http_archive_fetches_unpacks_and_writes_a_build_file() {
+        let zip = build(
+            "zip",
+            &[
+                ("top/a.txt", Member::file("A")),
+                ("top/sub/b.txt", Member::file("B")),
+            ],
+        );
+        let sha = hex::encode(sha2::Sha256::digest(&zip));
+        let module = format!(
+            "module(name = 'm')\n\
+             http_archive = use_repo_rule('@bazel_tools//tools/build_defs/repo:http.bzl', 'http_archive')\n\
+             http_archive(name = 'dep', urls = ['http://h/dep.zip'], sha256 = '{sha}', \
+             strip_prefix = 'top', build_file_content = 'filegroup(name = \"all\")')\n"
+        );
+        let (_dir, mut repos) = repos_serving(&module, "http://h/dep.zip", zip);
+        repos.run_extensions(None).unwrap();
+        assert_eq!(
+            repos.imports(),
+            [("dep".to_owned(), "+http_archive+dep".to_owned())]
+        );
+        let made = repos.fetch("+http_archive+dep", None).unwrap();
+        let read = |p: &str| std::fs::read_to_string(made.join(p)).unwrap();
+        assert_eq!(read("a.txt"), "A");
+        assert_eq!(read("sub/b.txt"), "B");
+        assert!(read("BUILD.bazel").contains("filegroup(name = \"all\")"));
+    }
+}

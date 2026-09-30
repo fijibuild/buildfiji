@@ -30,6 +30,7 @@ fn unpack(
         format: format_for(name).expect("a known suffix"),
         output: &out,
         strip_prefix: strip,
+        strip_components: 0,
         rename: &rename,
     });
     (dir, result)
@@ -222,6 +223,7 @@ fn a_directory_in_the_way_of_a_file_is_an_error() {
         format: Format::Tar,
         output: &dir.path().join("out"),
         strip_prefix: "",
+        strip_components: 0,
         rename: &[],
     })
     .unwrap_err();

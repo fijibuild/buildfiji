@@ -76,6 +76,9 @@ pub enum RepoAttr {
     IntList(Vec<i64>),
     Label(Label),
     LabelList(Vec<Label>),
+    StringKeyedLabelDict(Vec<(String, Label)>),
+    LabelKeyedStringDict(Vec<(Label, String)>),
+    LabelListDict(Vec<(String, Vec<Label>)>),
 }
 
 /// Where the file a label names is, if the caller can say.
@@ -489,6 +492,31 @@ impl RepoAttr {
                 items
                     .iter()
                     .map(|i| heap.alloc(*i as i32))
+                    .collect::<Vec<_>>(),
+            )),
+            RepoAttr::StringKeyedLabelDict(items) => heap.alloc(AllocDict(
+                items
+                    .iter()
+                    .map(|(k, l)| (string_value(heap, k), label_value(heap, l)))
+                    .collect::<Vec<_>>(),
+            )),
+            RepoAttr::LabelKeyedStringDict(items) => heap.alloc(AllocDict(
+                items
+                    .iter()
+                    .map(|(l, v)| (label_value(heap, l), string_value(heap, v)))
+                    .collect::<Vec<_>>(),
+            )),
+            RepoAttr::LabelListDict(items) => heap.alloc(AllocDict(
+                items
+                    .iter()
+                    .map(|(k, ls)| {
+                        (
+                            string_value(heap, k),
+                            heap.alloc(AllocList(
+                                ls.iter().map(|l| label_value(heap, l)).collect::<Vec<_>>(),
+                            )),
+                        )
+                    })
                     .collect::<Vec<_>>(),
             )),
             RepoAttr::Label(label) => label_value(heap, label),
@@ -1563,6 +1591,9 @@ pub fn repository_rule_defaults(module: &FrozenModule, rule_name: &str) -> Vec<(
             Some(AttrValue::LabelList(labels)) => RepoAttr::LabelList(labels),
             Some(AttrValue::StringDict(items)) => RepoAttr::StringDict(items),
             Some(AttrValue::StringListDict(items)) => RepoAttr::StringListDict(items),
+            Some(AttrValue::StringKeyedLabelDict(items)) => RepoAttr::StringKeyedLabelDict(items),
+            Some(AttrValue::LabelKeyedStringDict(items)) => RepoAttr::LabelKeyedStringDict(items),
+            Some(AttrValue::LabelListDict(items)) => RepoAttr::LabelListDict(items),
             _ => continue,
         };
         out.push((name.to_owned(), converted));
