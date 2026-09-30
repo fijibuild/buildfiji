@@ -34,9 +34,12 @@ use starlark::values::tuple::AllocTuple;
 use starlark::values::{ProvidesStaticType, StringValue, Value};
 use std::cell::RefCell;
 
-use crate::args::{Wording, bind, describe, fatal, param, sequence, want_sequence};
+use crate::args::{
+    Wording, bind, describe, fatal, param, positional_only, sequence, want_sequence,
+};
 use crate::depset::depset_globals;
 use crate::json::JsonModule;
+use crate::label::{RepoMappings, label_globals, relative_to_package};
 use crate::proto::ProtoModule;
 use crate::set::set_globals;
 use crate::structs::struct_globals;
@@ -66,6 +69,8 @@ pub struct BuildFile<'a> {
     pub repo: &'a str,
     pub package: &'a str,
     pub lookup: &'a PackageLookup,
+    /// What `@r` means in labels written in each repo, this one included.
+    pub mappings: &'a RepoMappings,
     /// How locations and the parser name this file.
     pub path: &'a str,
     pub source: &'a str,
@@ -98,6 +103,7 @@ pub fn bzl_globals() -> Globals {
     builder.namespace("native", native_functions);
     builder
         .with(depset_globals)
+        .with(label_globals)
         .with(struct_globals)
         .with(module_globals)
         .with(set_globals)
@@ -113,6 +119,7 @@ pub fn evaluate_build_file(input: &BuildFile<'_>) -> Result<BuildFileOutput, Bui
         repo: input.repo,
         package: input.package,
         lookup: input.lookup,
+        mappings: input.mappings,
         state: RefCell::new(BuildState {
             builder: PackageBuilder::new(input.repo, input.package, &is_package),
             errors: Vec::new(),
@@ -144,10 +151,11 @@ pub fn evaluate_build_file(input: &BuildFile<'_>) -> Result<BuildFileOutput, Bui
 /// hands them a shared reference, hence the `RefCell`; nothing escapes it
 /// but the finished [`Package`].
 #[derive(ProvidesStaticType)]
-struct BuildContext<'a> {
+pub(crate) struct BuildContext<'a> {
     repo: &'a str,
     package: &'a str,
     lookup: &'a PackageLookup,
+    pub(crate) mappings: &'a RepoMappings,
     state: RefCell<BuildState<'a>>,
     printed: RefCell<Vec<String>>,
 }
@@ -188,11 +196,21 @@ fn context<'a, 'e>(
     eval: &Evaluator<'_, 'a, 'e>,
     function: &str,
 ) -> starlark::Result<&'a BuildContext<'e>> {
+    context_in(eval, function, "a legacy macro")
+}
+
+/// [`context`], for a function whose error names the macros it may be
+/// called from in its own words.
+fn context_in<'a, 'e>(
+    eval: &Evaluator<'_, 'a, 'e>,
+    function: &str,
+    macros: &str,
+) -> starlark::Result<&'a BuildContext<'e>> {
     eval.extra
         .and_then(|extra| extra.downcast_ref::<BuildContext>())
         .ok_or_else(|| {
             fatal(format!(
-                "{function}() can only be used while evaluating a BUILD file or a legacy macro"
+                "{function}() can only be used while evaluating a BUILD file or {macros}"
             ))
         })
 }
@@ -587,6 +605,26 @@ fn native_functions(builder: &mut GlobalsBuilder) {
         bind("repo_name", Wording::Signature, &[], args, eval)?;
         Ok(ctx.repo.to_owned())
     }
+
+    fn package_relative_label<'v>(
+        args: &Arguments<'v, '_>,
+        eval: &mut Evaluator<'v, '_, '_>,
+    ) -> starlark::Result<Value<'v>> {
+        let ctx = context_in(eval, "package_relative_label", "a legacy or symbolic macro")?;
+        let bound = bind(
+            "package_relative_label",
+            Wording::Signature,
+            &[positional_only("input", true)],
+            args,
+            eval,
+        )?;
+        relative_to_package(
+            bound[0].expect("required"),
+            ctx.label_context(),
+            ctx.mappings,
+            eval.heap(),
+        )
+    }
 }
 
 /// A `package()` list argument: a sequence, or the type error.
@@ -854,6 +892,7 @@ fn attr_to_value<'v>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::label::{BzlFile, evaluate_bzl};
     use std::collections::HashMap;
     use std::fs;
     use std::path::Path;
@@ -879,26 +918,80 @@ mod tests {
         dir
     }
 
-    /// Resolves `load()` paths to in-memory `.bzl` sources evaluated with
-    /// the `.bzl` globals, which is what a real loader would do.
-    struct MapLoader(HashMap<&'static str, &'static str>);
+    /// Resolves `load()` paths, relative to the BUILD file's package, to
+    /// in-memory `.bzl` sources evaluated with the `.bzl` globals, which is
+    /// what a real loader would do.
+    struct MapLoader<'a> {
+        files: HashMap<&'static str, &'static str>,
+        repo: &'a str,
+        package: &'a str,
+        mappings: &'a RepoMappings,
+        globals: Globals,
+    }
 
-    impl FileLoader for MapLoader {
+    impl<'a> MapLoader<'a> {
+        fn new(
+            files: HashMap<&'static str, &'static str>,
+            repo: &'a str,
+            package: &'a str,
+            mappings: &'a RepoMappings,
+        ) -> Self {
+            MapLoader {
+                files,
+                repo,
+                package,
+                mappings,
+                globals: bzl_globals(),
+            }
+        }
+    }
+
+    impl FileLoader for MapLoader<'_> {
         fn load(&self, path: &str) -> starlark::Result<starlark::environment::FrozenModule> {
-            let src = self
-                .0
+            let source = self
+                .files
                 .get(path)
                 .ok_or_else(|| fatal(format!("no such file {path}")))?;
-            let ast = parse(path, src, FileKind::Bzl).map_err(starlark::Error::new_other)?;
-            Module::with_temp_heap(|module| {
-                {
-                    let mut eval = Evaluator::new(&module);
-                    eval.set_loader(self);
-                    eval.eval_module(ast, &bzl_globals())?;
-                }
-                Ok(module.freeze()?)
+            let file = Label::parse(
+                path,
+                LabelContext {
+                    repo: self.repo,
+                    package: self.package,
+                },
+            )
+            .map_err(|e| fatal(e.to_string()))?;
+            evaluate_bzl(&BzlFile {
+                file: &file,
+                source,
+                globals: &self.globals,
+                mappings: self.mappings,
+                loader: self,
+                print: None,
             })
         }
+    }
+
+    /// What the probe workspace's repos call each other: the main repo is
+    /// `probe`, with `mydep` and `other` as its dependencies, and `dep+`
+    /// sees `other+` as `oth`.
+    fn mappings() -> RepoMappings {
+        let pairs = |rows: &[(&str, &str)]| {
+            rows.iter()
+                .map(|(a, c)| (a.to_string(), c.to_string()))
+                .collect::<Vec<_>>()
+        };
+        let mut m = RepoMappings::new();
+        m.insert(
+            "",
+            pairs(&[
+                ("", ""),
+                ("probe", ""),
+                ("mydep", "dep+"),
+                ("other", "other+"),
+            ]),
+        );
+        m.insert("dep+", pairs(&[("dep", "dep+"), ("oth", "other+")]));
+        m
     }
 
     fn load_in(
@@ -908,11 +1001,13 @@ mod tests {
         build: &str,
     ) -> Result<BuildFileOutput, BuildFileError> {
         let lookup = PackageLookup::new(root).unwrap();
-        let loader = MapLoader(bzl.iter().copied().collect());
+        let mappings = mappings();
+        let loader = MapLoader::new(bzl.iter().copied().collect(), "", package, &mappings);
         evaluate_build_file(&BuildFile {
             repo: "",
             package,
             lookup: &lookup,
+            mappings: &mappings,
             path: "BUILD.bazel",
             source: build,
             loader: &loader,
@@ -1593,11 +1688,13 @@ mod tests {
     fn labels_in_a_rule_read_in_the_repo_they_are_written_in() {
         let dir = repo(FILES);
         let lookup = PackageLookup::new(dir.path()).unwrap();
-        let loader = MapLoader(HashMap::new());
+        let mappings = mappings();
+        let loader = MapLoader::new(HashMap::new(), "dep+", "p", &mappings);
         let out = evaluate_build_file(&BuildFile {
             repo: "dep+",
             package: "p",
             lookup: &lookup,
+            mappings: &mappings,
             path: "BUILD.bazel",
             source: "filegroup(name = \"a\", srcs = [\":x\", \"//q:y\", \"@//m:z\", \"@r//s:t\"])\nprint(existing_rule(\"a\")[\"srcs\"], repr(repository_name()), repr(repo_name()))",
             loader: &loader,
@@ -1606,6 +1703,154 @@ mod tests {
         assert_eq!(
             out.printed,
             [r#"(":x", "//q:y", "@@//m:z", "@@r//s:t") "@dep+" "dep+""#]
+        );
+    }
+
+    /// The output of `mac()`, a macro whose body is `body`, called from a
+    /// BUILD file in `sub/pkg` of the main repo. Every expectation below is
+    /// what Bazel 9.2.0 printed or reported for the same macro.
+    fn macro_prints(body: &str) -> Result<Vec<String>, String> {
+        let source: &'static str = Box::leak(format!("def mac():\n    {body}\n").into_boxed_str());
+        let dir = repo(FILES);
+        load_in(
+            dir.path(),
+            "sub/pkg",
+            &[(":m.bzl", source)],
+            "load(\":m.bzl\", \"mac\")\nmac()",
+        )
+        .map(|out| out.printed)
+        .map_err(|e| e.to_string())
+    }
+
+    #[test]
+    fn package_relative_label_reads_in_the_package_being_loaded() {
+        for (body, want) in [
+            (
+                r#"print(str(native.package_relative_label("//a:b")), str(native.package_relative_label(":c")), str(native.package_relative_label("d")), str(native.package_relative_label("@//a:b")))"#,
+                "@@//a:b @@//sub/pkg:c @@//sub/pkg:d @@//a:b",
+            ),
+            (
+                r#"print(repr(native.package_relative_label("d")), type(native.package_relative_label("//a:b")))"#,
+                r#"Label("//sub/pkg:d") Label"#,
+            ),
+            (
+                r#"l = Label("//p:q"); print(native.package_relative_label(l) == l)"#,
+                "True",
+            ),
+            (
+                r#"print(str(native.package_relative_label("@oth//a:b")), str(native.package_relative_label("@mydep//a:b")), str(native.package_relative_label("@other//a:b")))"#,
+                "@@[unknown repo 'oth' requested from @@]//a:b @@dep+//a:b @@other+//a:b",
+            ),
+            (
+                r#"print(str(native.package_relative_label(":c")), native.package_relative_label(":c").package, native.package_relative_label("//a:b").repo_name == "")"#,
+                "@@//sub/pkg:c sub/pkg True",
+            ),
+            (
+                r#"print(native.package_relative_label("//a b:c ").name == "c ")"#,
+                "True",
+            ),
+            (
+                r#"print(native.package_relative_label("//a:b") == Label("//a:b"))"#,
+                "True",
+            ),
+        ] {
+            assert_eq!(macro_prints(body).unwrap(), [want], "{body}");
+        }
+    }
+
+    #[test]
+    fn package_relative_label_errors_are_bazels() {
+        for (body, want) in [
+            (
+                r#"native.package_relative_label("a:b")"#,
+                "invalid label in native.package_relative_label: invalid label 'a:b': absolute label must begin with '@' or '//'",
+            ),
+            (
+                r#"native.package_relative_label("")"#,
+                "invalid label in native.package_relative_label: invalid target name '': empty target name",
+            ),
+            (
+                r#"native.package_relative_label("//...")"#,
+                "invalid label in native.package_relative_label: invalid label '//...': package name cannot contain '...'",
+            ),
+            (
+                r#"native.package_relative_label(1)"#,
+                "in call to package_relative_label(), parameter 'input' got value of type 'int', want 'string or Label'",
+            ),
+            (
+                r#"native.package_relative_label(None)"#,
+                "in call to package_relative_label(), parameter 'input' got value of type 'NoneType', want 'string or Label'",
+            ),
+            (
+                r#"native.package_relative_label()"#,
+                "package_relative_label() missing 1 required positional argument: input",
+            ),
+            (
+                r#"native.package_relative_label("a", "b")"#,
+                "package_relative_label() accepts no more than 1 positional argument but got 2",
+            ),
+            (
+                r#"native.package_relative_label(input = "a")"#,
+                "package_relative_label() got named argument for positional-only parameter 'input'",
+            ),
+            (
+                r#"print(native.package_relative_label("@x//a:b").repo_name)"#,
+                "'repo_name' is not allowed on invalid Label @@[unknown repo 'x' requested from @@]//a:b",
+            ),
+        ] {
+            let got = macro_prints(body).unwrap_err();
+            assert!(got.contains(want), "{body}\n  want: {want}\n  got:  {got}");
+        }
+        // Loading a `.bzl` is not evaluating a BUILD file.
+        let bzl = [(":n.bzl", "Y = native.package_relative_label(\"//a:b\")\n")];
+        let shown = load_with(&bzl, "load(\":n.bzl\", \"Y\")")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            shown.contains(
+                "package_relative_label() can only be used while evaluating a BUILD file or a legacy or symbolic macro"
+            ),
+            "{shown}"
+        );
+    }
+
+    #[test]
+    fn package_relative_label_is_a_global_of_a_build_file_and_label_is_not() {
+        assert_eq!(
+            printed("print(str(package_relative_label(\"//a:b\")))"),
+            ["@@//a:b"]
+        );
+        assert!(failure("print(Label(\"//a:b\"))").contains("Label"));
+    }
+
+    #[test]
+    fn a_label_is_read_where_the_call_is_written_not_where_the_build_file_is() {
+        // `f` is in a file of `dep+`, and is called from a BUILD file of the
+        // main repo, and the label it makes is `dep+`'s.
+        let bzl = [
+            (
+                "@@dep+//sub:m.bzl",
+                "L = Label(':x')\ndef f(s):\n    return Label(s)\ndef g():\n    return L.relative('y')\n",
+            ),
+            (
+                ":n.bzl",
+                "load('@@dep+//sub:m.bzl', 'f', 'L', 'g')\nM = L\ndef h(s):\n    return f(s)\n",
+            ),
+        ];
+        let out = load_with(
+            &bzl,
+            r#"load("@@dep+//sub:m.bzl", "f", "L", "g")
+load(":n.bzl", "M", "h")
+print(str(f(":a")), str(f("@dep//b:c")), str(f("@mydep//b:c")), str(L), str(g()))
+print(L == M, h(":a") == f(":a"), repr(h("//q")))"#,
+        )
+        .unwrap();
+        assert_eq!(
+            out.printed,
+            [
+                "@@dep+//sub:a @@dep+//b:c @@[unknown repo 'mydep' requested from @@dep+ (did you mean 'dep'?)]//b:c @@dep+//sub:x @@dep+//sub:y",
+                r#"True True Label("@@dep+//q:q")"#,
+            ]
         );
     }
 

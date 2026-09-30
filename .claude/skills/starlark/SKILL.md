@@ -84,3 +84,15 @@ repository rules). Legacy `WORKSPACE` is out of scope — Bazel 9 removes it.
 against Bazel 9.2.0 in `builtins_tests.rs`. `json` and `proto` are values with
 methods, so `type(json)` is `json`. Float text for them comes from
 `floats::format_float`. Known crate-level gaps are in the design doc.
+
+## Label and evaluating a .bzl
+
+`Label` (`label.rs`) reads its argument in the `.bzl` file that makes the
+call, so a `.bzl` is evaluated with `evaluate_bzl`, which parses it under its
+canonical label (`@@repo//pkg:file.bzl`) and hands the evaluation the
+`RepoMappings`. A loader that builds its own `Evaluator` will find `Label()`
+refusing to say where it was called from. `str(label)` is `@@repo//pkg:name`
+and `repr` is `Label("//pkg:name")`, so do not let `Display` and `collect_str`
+drift apart: the crate's `Display` *is* `repr`, and it is what lists, tuples
+and structs use for their elements. Design and known gaps:
+`docs/design/starlark-and-loading.md`.

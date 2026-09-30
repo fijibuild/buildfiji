@@ -153,8 +153,14 @@ names the behaviour it copies.
   in a package context: `:x`, `x`, `//p`, `//p:q`, `@r`, `@r//p:q`, `@@r//p`,
   `@//p`. `//p` is `//p:p`, `@r` is `@r//:r`, whitespace is kept, and a
   relative `p:q` is an error. Error text is Bazel's, minus the "in element 0
-  of attribute" context the caller adds. `@r` is taken as a canonical name
-  until repository mapping lands (buildfiji-mum.15).
+  of attribute" context the caller adds. `Label::parse` takes `@r` as a
+  canonical name; `Label::parse_mapped` takes a repo mapping function and
+  treats `@r` as apparent (`@@r` never is), which is what `Label()` uses
+  (buildfiji-mum.3.2). Bazel finds what else is wrong with a label before it
+  says the label is not absolute (`a:b:c` is a bad target name), drops a
+  trailing `/.` from a target name, refuses a bare `...` or `a/...` as if it
+  were a package, and quotes control characters in a name as `<?>` (a carriage
+  return as `\r`).
 - **Visibility.** A target is visible to its own package always, to others
   through its `visibility` else the package's `default_visibility`, else not
   at all. Entries are `//visibility:public`, `//visibility:private` (grants
@@ -236,10 +242,10 @@ Every rule below was read off Bazel 9.2.0, and each test names what it copies.
   fjfj returns a snapshot dict (buildfiji-ie2).
 - **Locations.** `file:line:col` where the column is the call's `(`, which is
   what Bazel prints, and conflict messages quote it.
-- **Not here.** `select` and `Label` (buildfiji-mum.3), the native rules other
+- **Not here.** `select` (buildfiji-mum.3.6), the native rules other
   than `filegroup` and `alias` (buildfiji-136.10), and `subpackages`,
-  `package_default_visibility`, `module_name`, `module_version` and
-  `package_relative_label` (buildfiji-hrx).
+  `package_default_visibility`, `module_name` and `module_version`
+  (buildfiji-hrx). `package_relative_label` is in `label.rs` (below).
 
 ## `depset` (implemented 2026-09-30, buildfiji-mum.14)
 
@@ -323,12 +329,52 @@ operators, iteration, attribute lookup and `hash()` on these types
 (buildfiji-v32); `\u`, `\U` and `\x` string escapes are accepted where
 Bazel rejects them (buildfiji-8q5).
 
+## `Label` and repository mapping (implemented 2026-09-30, buildfiji-mum.3.2)
+
+`Label` is a value type in `label.rs`, replayed against Bazel 9.2.0 (about
+140 probes in `label_tests.rs`, and the dependency-module cases in the
+tests beside them and in `native.rs`).
+
+- **What a label is.** `str` is `@@repo//pkg:name` (`@@//pkg:name` in the main
+  repo), `repr` is `Label("//pkg:name")` in the main repo and
+  `Label("@@repo//pkg:name")` elsewhere, and labels are equal, hashable
+  and ordered by (repo, package, name). `Label(label)` is the label. The
+  members are `name package repo_name workspace_name workspace_root` and the
+  methods `relative(s)` and `same_package_label(name)`. All three parameters
+  are positional-only.
+- **A name the mapping lacks is not an error.** `Label("@r//a:b")` is a label
+  in the repo `[unknown repo 'r' requested from @@]`, with a `(did you mean
+  'x'?)` when a mapped name is close. It fails only when `repo_name`,
+  `workspace_name` or `workspace_root` is read (`'repo_name' is not allowed on
+  invalid Label ...`), and `hasattr` still says it has them.
+- **The caller's file decides.** `Label(s)` and `label.relative(s)` read `s`
+  in the `.bzl` whose code makes the call, not the BUILD file being loaded:
+  `:x` is in that file's package, and `@r` goes through that file's repo's
+  mapping. A native function cannot ask which module defined its caller, so a
+  `.bzl` is *evaluated under its canonical label as its file name*
+  (`@@dep+//sub:m.bzl`) and the call's frame says where it is. Use
+  `evaluate_bzl` to evaluate one; it also puts the mappings where `Label` can
+  find them. `native.package_relative_label` reads in the BUILD package being
+  loaded, through its repo's mapping.
+- **Repository mapping is a table.** `RepoMappings` is `repo -> (apparent ->
+  canonical)`. buildfiji-mum.15 fills it from the module graph, and nothing
+  in `Label` changes when it does: the main repo's table has `""` and its own
+  module name mapping to itself (`@//a:b`, `@probe//a:b`), a dependency's has
+  its own name and its `bazel_dep` names, and `@` alone is unknown in a
+  dependency. The BUILD-side entry point, `BuildFile`, takes the same table.
+- **Known differences.** `print(label)` writes `str`, where Bazel writes the
+  main repo's display form (`//a:b`, `@dep//a:b`; buildfiji-xq5). The crate's
+  `%s` and unnumbered `{}` use `repr` for non-strings, so `"%s" % label` is
+  `Label("//a:b")` where Bazel gives `@@//a:b` (buildfiji-b9c). A label passed
+  around and called as `L("...")` reads in the file that *calls* it, as
+  Bazel does.
+
 ## Bazel 9.2.0's builtin namespaces, and who owns each name (buildfiji-mum.3)
 
 Read off Bazel 9.2.0 by asking `type(name)` in a BUILD file and in a `.bzl`
 loaded by one, and `dir()` of each namespace. `B` is visible in BUILD files,
 `Z` in `.bzl` files. fjfj has, so far, `depset` (B, Z), `set`, `json`, `proto` (B, Z),
-`struct` (Z), `print` and the standard Starlark library, and the natives of
+`struct` and `Label` (Z), `print` and the standard Starlark library, and the natives of
 buildfiji-mum.4.
 
 | Names | Where | Owner |
@@ -337,7 +383,7 @@ buildfiji-mum.4.
 | `set` (with `add clear difference ... update`) | B Z | buildfiji-mum.3.1, done |
 | `struct` | Z only | buildfiji-mum.3.1, done |
 | `json` (`encode decode encode_indent indent`), `proto` (`encode_text`) | B Z | buildfiji-mum.3.1, done |
-| `Label` (`name package relative repo_name same_package_label workspace_name workspace_root`) | Z only | buildfiji-mum.3.2 |
+| `Label` (`name package relative repo_name same_package_label workspace_name workspace_root`) | Z only | buildfiji-mum.3.2, done |
 | `attr` (`bool int int_list label label_keyed_string_dict label_list label_list_dict output output_list string string_dict string_keyed_label_dict string_list string_list_dict`) | Z only | buildfiji-mum.3.3 |
 | `provider` | Z only | buildfiji-mum.3.4 |
 | `rule` | Z only | buildfiji-mum.3.5 |
@@ -349,7 +395,7 @@ buildfiji-mum.4.
 | `DefaultInfo OutputGroupInfo RunEnvironmentInfo InstrumentedFilesInfo PackageSpecificationInfo` | Z only | buildfiji-136.4 |
 | `platform_common` (`ConstraintSettingInfo ConstraintValueInfo PlatformInfo TemplateVariableInfo ToolchainInfo`), `config_common` (`FeatureFlagInfo config_feature_flag_transition toolchain_type`), `coverage_common` (`instrumented_files_info`), `testing` (`ExecutionInfo TestEnvironment analysis_test`), `cc_common java_common apple_common android_common` | Z only | Starlark or absent by decision (buildfiji-136.14): buildfiji-136.16, buildfiji-136.17, buildfiji-136.15 |
 | `native` | Z only | buildfiji-mum.4 (done), buildfiji-hrx |
-| `glob package package_group exports_files existing_rule existing_rules package_name repository_name subpackages package_relative_label licenses filegroup alias` | B only | buildfiji-mum.4 (done), buildfiji-hrx |
+| `glob package package_group exports_files existing_rule existing_rules package_name repository_name subpackages package_relative_label licenses filegroup alias` | B only | buildfiji-mum.4 and buildfiji-mum.3.2 (done), buildfiji-hrx |
 | `genrule config_setting test_suite toolchain_type` and the language rules (`cc_library`, `java_library`, ...), still native in 9.2.0 | B only | buildfiji-136.10, buildfiji-136.11 |
 
 ## bzlmod: module resolution (implemented 2026-09-03, buildfiji-mum.6)

@@ -43,11 +43,14 @@ pub enum LabelError {
     TargetDotSegment,
     #[error("target names may not contain '//' path separators")]
     TargetDoubleSlash,
-    #[error("target names may not end with carriage returns")]
+    #[error(
+        "target names may not end with carriage returns (perhaps the input source is \
+         CRLF-terminated)"
+    )]
     TargetTrailingCr,
-    #[error("target names may not contain non-printable character {0:#04x}")]
+    #[error("target names may not contain non-printable characters: '\\x{0:02X}'")]
     TargetNonPrintable(u8),
-    #[error("target names may not contain {0:?}")]
+    #[error("target names may not contain '{0}'")]
     TargetInvalidChar(char),
     /// Bazel's wording. The name is not in the message: a caller that has the
     /// label in hand says "invalid repository name 'x': " itself.
@@ -124,20 +127,20 @@ pub fn validate_target_name(target: &str) -> Result<(), LabelError> {
         return Err(LabelError::TargetTrailingCr);
     }
 
+    // Left to right, so the first thing wrong is the one reported: in
+    // `@r//a:d` the `//` comes before the `:`.
+    let mut previous = None;
     for c in target.chars() {
         match c {
-            '.' | '/' => continue, // segment structure checked separately below
-            c if is_always_allowed_target_char(c) => continue,
+            '/' if previous == Some('/') => return Err(LabelError::TargetDoubleSlash),
+            '.' | '/' => {} // segment structure checked separately below
+            c if is_always_allowed_target_char(c) => {}
             c if (c as u32) <= 0x1f || c == '\u{7f}' => {
                 return Err(LabelError::TargetNonPrintable(c as u8));
             }
             c => return Err(LabelError::TargetInvalidChar(c)),
         }
-    }
-    for window in target.as_bytes().windows(2) {
-        if window == b"//" {
-            return Err(LabelError::TargetDoubleSlash);
-        }
+        previous = Some(c);
     }
     if target.contains("/../") || target.ends_with("/..") {
         return Err(LabelError::TargetUpLevelReference);
@@ -366,6 +369,19 @@ mod tests {
         assert_eq!(
             validate_target_name("foo//bar"),
             Err(LabelError::TargetDoubleSlash)
+        );
+    }
+
+    #[test]
+    fn the_first_fault_from_the_left_is_the_one_reported() {
+        // `//` comes before `:`, and `:` before `//`.
+        assert_eq!(
+            validate_target_name("@r//a:d"),
+            Err(LabelError::TargetDoubleSlash)
+        );
+        assert_eq!(
+            validate_target_name("a:b//c"),
+            Err(LabelError::TargetInvalidChar(':'))
         );
     }
 

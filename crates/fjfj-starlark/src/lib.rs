@@ -14,6 +14,9 @@ mod depset_tests;
 mod dialect;
 mod floats;
 mod json;
+mod label;
+#[cfg(test)]
+mod label_tests;
 mod native;
 mod proto;
 mod set;
@@ -23,6 +26,7 @@ mod test_support;
 
 pub use depset::{Depset, DepsetGen, FrozenDepset, Order, depset_to_list, is_depset, new_depset};
 pub use dialect::{FileKind, build_dialect, bzl_dialect, parse};
+pub use label::{BzlFile, RepoMappings, bzl_name, evaluate_bzl};
 pub use native::{
     BuildFile, BuildFileError, BuildFileOutput, build_globals, bzl_globals, evaluate_build_file,
 };

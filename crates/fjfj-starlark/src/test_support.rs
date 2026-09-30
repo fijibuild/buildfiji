@@ -1,8 +1,8 @@
 //! Shared by the tests that replay Bazel 9.2.0 probes.
 
-use crate::{FileKind, bzl_globals, parse};
-use starlark::environment::Module;
-use starlark::eval::Evaluator;
+use crate::{BzlFile, RepoMappings, bzl_globals, evaluate_bzl};
+use fjfj_graph::Label;
+use starlark::eval::FileLoader;
 use std::cell::RefCell;
 
 pub(crate) struct Capture(pub(crate) RefCell<Vec<String>>);
@@ -14,18 +14,64 @@ impl starlark::PrintHandler for Capture {
     }
 }
 
-/// Run `src` as a `.bzl` body, returning what it printed or its error.
+/// The repos of the probe workspace the Label tables were taken in: the
+/// main repo is `probe` and depends on `dep` (as `mydep`) and `other`, and
+/// `dep+` depends on `other` (as `oth`).
+pub(crate) fn probe_mappings() -> RepoMappings {
+    let rows = |rows: &[(&str, &str)]| {
+        rows.iter()
+            .map(|(a, c)| (a.to_string(), c.to_string()))
+            .collect::<Vec<_>>()
+    };
+    let mut mappings = RepoMappings::new();
+    mappings.insert(
+        "",
+        rows(&[
+            ("", ""),
+            ("probe", ""),
+            ("mydep", "dep+"),
+            ("other", "other+"),
+        ]),
+    );
+    mappings.insert("dep+", rows(&[("dep", "dep+"), ("oth", "other+")]));
+    mappings
+}
+
+/// Run `src` as the body of `//:t.bzl` in the main repo of the probe
+/// workspace, returning what it printed or its error.
 pub(crate) fn run(src: &str) -> Result<Vec<String>, String> {
-    let ast = parse("t.bzl", src, FileKind::Bzl).map_err(|e| format!("{e:#}"))?;
+    run_in("", "", src)
+}
+
+/// [`run`] for the file `t.bzl` in `package` of `repo`.
+pub(crate) fn run_in(repo: &str, package: &str, src: &str) -> Result<Vec<String>, String> {
     let capture = Capture(RefCell::new(Vec::new()));
-    let result = Module::with_temp_heap(|module| {
-        let mut eval = Evaluator::new(&module);
-        eval.set_print_handler(&capture);
-        eval.eval_module(ast, &bzl_globals())
-            .map(|_| ())
-            .map_err(|e| format!("{:#}", e.into_anyhow()))
-    });
-    result.map(|()| capture.0.into_inner())
+    let file = Label {
+        repo: repo.to_owned(),
+        package: package.to_owned(),
+        name: "t.bzl".to_owned(),
+    };
+    evaluate_bzl(&BzlFile {
+        file: &file,
+        source: src,
+        globals: &bzl_globals(),
+        mappings: &probe_mappings(),
+        loader: &NoLoads,
+        print: Some(&capture),
+    })
+    .map_err(|e| format!("{:#}", e.into_anyhow()))?;
+    Ok(capture.0.into_inner())
+}
+
+/// A loader for a file that loads nothing.
+struct NoLoads;
+
+impl FileLoader for NoLoads {
+    fn load(&self, path: &str) -> starlark::Result<starlark::environment::FrozenModule> {
+        Err(starlark::Error::new_other(anyhow::anyhow!(
+            "cannot load '{path}': no loader"
+        )))
+    }
 }
 
 /// Replay `(source, outcome)` rows: `Ok` is every line `print` gave, `Err`
@@ -38,6 +84,18 @@ pub(crate) fn replay(
     skip: &[&str],
     relaxed: &[&str],
 ) -> Vec<String> {
+    replay_in("", "", rows, skip, relaxed)
+}
+
+/// [`replay`] for a file in `package` of `repo`.
+pub(crate) fn replay_in(
+    repo: &str,
+    package: &str,
+    rows: &[(&str, Result<&str, &str>)],
+    skip: &[&str],
+    relaxed: &[&str],
+) -> Vec<String> {
+    let run = |src: &str| run_in(repo, package, src);
     let mut wrong = Vec::new();
     for (src, want) in rows {
         if skip.iter().any(|marker| src.contains(marker)) {
