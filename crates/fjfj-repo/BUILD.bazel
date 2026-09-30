@@ -15,6 +15,7 @@ rust_library(
         "//crates/fjfj-loading",
         "//crates/fjfj-starlark",
         "@crates//:reqwest",
+        "@crates//:serde_json",
         "@crates//:starlark",
         "@crates//:thiserror",
         "@crates//:tracing",

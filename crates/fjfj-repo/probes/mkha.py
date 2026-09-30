@@ -35,19 +35,24 @@ def message(log):
         m = re.match(r"^Error in [\w_]+: (.*)$", l)
         if m: return m.group(1)
     return None
-SKIP = ["verbose=True", "netrc=", "auth_patterns", "bogus=1", 'urls="@URL@'] 
+SKIP = ["verbose=True", "bogus=1", 'urls="@URL@'] 
 rows, seen = [], set()
 for f in sys.argv[1:]:
     for r in json.load(open(f)):
         c = r["case"]
-        key = json.dumps([c["module"], c.get("serve"), c.get("files")], sort_keys=True)
+        key = json.dumps([c["module"], c.get("serve"), c.get("files"), c.get("flags")], sort_keys=True)
         if key in seen: continue
         seen.add(key)
-        if any(s in c["module"] for s in SKIP) or c.get("flags"): continue
-        if r["rc"] not in (0, 8): continue
+        if any(s in c["module"] for s in SKIP): continue
+        if any(not f.startswith("--credential_helper=") for f in c.get("flags", [])): continue
+        if r["rc"] not in (0, 2, 8): continue
         if any("lockFileVersion" in str(v) for v in r["tree"].values()): continue
         archive_served = any("archive" in s for s in c.get("serve", {}).values())
         err = None
+        if r["rc"] == 2:
+            first = next((l for l in r["log"] if l.startswith("ERROR: ")), None)
+            if first is None or "on PATH" in first: continue
+            err = first[7:]
         if r["rc"] == 8:
             err = message(r["log"])
             if err is None: continue
@@ -55,15 +60,16 @@ for f in sys.argv[1:]:
             if archive_served and "Checksum was" in err: continue
         tree = {tempn(k): plain(commits(tempn(v))) for k, v in r["tree"].items() if not k.endswith("REPO.bazel")} if r["rc"] == 0 else {}
         if r["rc"] == 0 and not tree: continue
+        helper_log = [l for l in r.get("helper_log", "").strip().split("\n") if l]
         reqs = []
         for q in r["requests"]:
             if not reqs or reqs[-1] != q: reqs.append(q)
-        rows.append("    HaRow {\n        module: %s,\n        git: &[%s],\n        files: &[%s],\n        serve: &[%s],\n        fetch: &[%s],\n        error: %s,\n        printed: &[%s],\n        tree: &[%s],\n        requests: &[%s],\n    }," % (
-            raw(c["module"]), git_lit(c.get("git", {})), ", ".join("(%s, %s)" % (raw(k), raw(v)) for k, v in c.get("files", {}).items()),
+        rows.append("    HaRow {\n        module: %s,\n        flags: &[%s],\n        helper_log: &[%s],\n        git: &[%s],\n        files: &[%s],\n        serve: &[%s],\n        fetch: &[%s],\n        error: %s,\n        printed: &[%s],\n        tree: &[%s],\n        requests: &[%s],\n    }," % (
+            raw(c["module"]), ", ".join(raw(f) for f in c.get("flags", [])), ", ".join(raw(l) for l in helper_log), git_lit(c.get("git", {})), ", ".join("(%s, %s)" % (raw(k), raw(v["text"] if isinstance(v, dict) else v)) for k, v in c.get("files", {}).items()),
             ", ".join(serve_lit(n, s) for n, s in c.get("serve", {}).items()),
             ", ".join(raw(x) for x in c.get("fetch", ["@x"])),
             ("Some(%s)" % raw(err)) if err is not None else "None",
-            ", ".join(raw(commits(tempn(p))) for p in r["prints"] if not p.startswith("Repo ")),
+            ", ".join(raw(commits(tempn(p))) for p in (re.sub(r"^\S*\.bzl:\d+:\d+: ", "", q) for q in r["prints"]) if not p.startswith("Repo ")),
             ", ".join("(%s, %s)" % (raw(k), raw(v)) for k, v in sorted(tree.items())),
             ", ".join(raw(q) for q in reqs)))
 out = "//! Generated from Bazel 9.2.0 probes: what Bazel's own `http_archive` and `http_file` do.\n\nuse crate::http_archive_tests::{HaRow, Serve};\n\n"

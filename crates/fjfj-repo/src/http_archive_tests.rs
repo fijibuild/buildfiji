@@ -4,7 +4,7 @@
 //! (which this test stands in for).
 
 use crate::http_archive_matrix::HA_ROWS;
-use crate::{Options, Repos};
+use crate::{CredentialHelper, CredentialHelpers, Options, Repos};
 use fjfj_archive::testing::build_spec;
 use fjfj_bzlmod::eval::{EvalOptions, eval_module_file};
 use fjfj_starlark::{Downloader, HttpRequest};
@@ -13,6 +13,7 @@ use sha2::Digest as _;
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 /// What the server serves under a name.
 #[allow(dead_code)]
@@ -30,6 +31,10 @@ pub(crate) enum Serve {
 /// the repositories it made, and the paths the server was asked for.
 pub(crate) struct HaRow {
     pub(crate) module: &'static str,
+    /// `--credential_helper` flags, the only ones the rows use.
+    pub(crate) flags: &'static [&'static str],
+    /// What the helper scripts of the row logged: a line per call.
+    pub(crate) helper_log: &'static [&'static str],
     /// Git repositories to make: a name, the files of each commit, and the
     /// commits (by index) that are tagged.
     pub(crate) git: &'static [Git],
@@ -99,6 +104,7 @@ fn make_git(dir: &Path, spec: &Git) -> Vec<String> {
 struct Served {
     files: HashMap<String, (Vec<u8>, u16)>,
     requests: Mutex<Vec<String>>,
+    helpers: Option<CredentialHelpers>,
 }
 
 impl Downloader for Served {
@@ -108,7 +114,22 @@ impl Downloader for Served {
             .strip_prefix("http://127.0.0.1:1")
             .unwrap_or(&request.url)
             .to_owned();
-        self.requests.lock().unwrap().push(path.clone());
+        // What `HttpDownloader` sends: a helper's `Authorization` wins.
+        let helped = self
+            .helpers
+            .as_ref()
+            .and_then(|h| h.headers_for(&request.url).ok().flatten())
+            .and_then(|headers| {
+                headers
+                    .into_iter()
+                    .find(|(name, _)| name.eq_ignore_ascii_case("authorization"))
+                    .and_then(|(_, values)| values.into_iter().next())
+            });
+        let shown = match helped.or_else(|| crate::http::authorization(&request.auth)) {
+            Some(value) => format!("{path} auth={value}"),
+            None => path.clone(),
+        };
+        self.requests.lock().unwrap().push(shown);
         match self.files.get(path.trim_start_matches('/')) {
             Some((bytes, 200)) => Ok(bytes.clone()),
             Some((_, status)) => Err(format!("GET returned {status} Error")),
@@ -173,6 +194,7 @@ struct Outcome {
     printed: Vec<String>,
     tree: BTreeMap<String, String>,
     requests: Vec<String>,
+    helper_log: Vec<String>,
 }
 
 fn run(row: &HaRow) -> Outcome {
@@ -231,14 +253,45 @@ fn run(row: &HaRow) -> Outcome {
     for (path, text) in row.files {
         let path = ws.join(path);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        std::fs::write(path, substitute(text)).unwrap();
+        std::fs::write(&path, substitute(text)).unwrap();
+        if path.extension().is_some_and(|e| e == "sh") {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
     }
+    // The flags, as Bazel parses them and then starts the helpers.
+    let mut error = None;
+    let mut parsed = Vec::new();
+    for flag in row.flags {
+        let value = substitute(flag.strip_prefix("--credential_helper=").unwrap());
+        match CredentialHelper::parse(&value) {
+            Ok(helper) => parsed.push(helper),
+            Err(e) => {
+                error = Some(format!(
+                    "While parsing option --credential_helper={value}: {e}"
+                ));
+                break;
+            }
+        }
+    }
+    let helpers = if error.is_some() || parsed.is_empty() {
+        None
+    } else {
+        let path_env = std::env::var("PATH").unwrap_or_default();
+        match CredentialHelpers::new(&parsed, ws.clone(), &path_env, Duration::from_secs(10)) {
+            Ok(h) => Some(h),
+            Err(e) => {
+                error = Some(e);
+                None
+            }
+        }
+    };
     let served = Arc::new(Served {
         files: files.clone(),
         requests: Mutex::new(Vec::new()),
+        helpers,
     });
     let capture = Capture(std::cell::RefCell::new(Vec::new()));
-    let mut error = None;
     let module = match eval_module_file(
         "MODULE.bazel",
         &substitute(row.module),
@@ -250,7 +303,7 @@ fn run(row: &HaRow) -> Outcome {
             None
         }
     };
-    if let Some(module) = module {
+    if let Some(module) = module.filter(|_| error.is_none()) {
         let mut repos = Repos::new(
             Options {
                 workspace_root: ws.clone(),
@@ -320,7 +373,13 @@ fn run(row: &HaRow) -> Outcome {
             requests.push(request.clone());
         }
     }
+    let helper_log = std::fs::read_to_string(ws.join("helper.log"))
+        .unwrap_or_default()
+        .lines()
+        .map(&clean)
+        .collect();
     Outcome {
+        helper_log,
         error: error.map(|e| clean(&e)),
         printed: capture
             .0
@@ -367,6 +426,7 @@ fn bazels_http_archive_and_http_file_replay_bazel() {
             || got.printed != row.printed
             || got.tree != want_tree
             || got_requests != want_requests
+            || got.helper_log != row.helper_log
         {
             wrong.push(format!(
                 "{}\n  want: error {:?}, printed {:?}, tree {:?}, requests {:?}\n  got:  error {:?}, printed {:?}, tree {:?}, requests {:?}",

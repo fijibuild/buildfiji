@@ -998,8 +998,8 @@ Differences and gaps, filed: `.7z` is refused as Bazel does (with `null`); an
 `integrity` of `sha1-` is not computed; a timed-out process is killed but not its
 process group; downloads run one at a time where Bazel's `block = False` ones
 overlap; the `--distdir`, `--repository_cache` flag and the cache's `canonical_id`
-behaviour are buildfiji-mum.9's, and credentials (`.netrc`, `--credential_helper`)
-buildfiji-mum.12's.
+behaviour are buildfiji-mum.9's; `--credential_helper_timeout` and the helper's
+result cache (`--credential_helper_cache_duration`) are not probed.
 
 ## Extensions of every module, and repositories made on demand (implemented 2026-09-30, buildfiji-lfe)
 
@@ -1063,21 +1063,26 @@ local HTTP server and local git repositories, and replayed by
 `http_archive_tests.rs`: the resulting tree, the prints, or the error. The
 harness makes each row's git repositories with a fixed author, date and
 `GIT_CONFIG_NOSYSTEM`, so commit hashes are stable, and the rows compare them as
-`<commit>`. `local_repository` and `new_local_repository` are in the table too (47 rows in
-all): `local_repository` makes the repository directory a link to the user's
+`<commit>`. `local_repository` and `new_local_repository` are in the table too (the table has 92 rows): `local_repository` makes the repository directory a link to the user's
 directory (`rctx.symlink(path, ".")`), so a directory with no `MODULE.bazel`,
 `REPO.bazel` or `WORKSPACE` in it is refused (`No MODULE.bazel, REPO.bazel, or
 WORKSPACE file found in <output base>/external/+local_repository+x`) where a
-generated directory gets an empty `REPO.bazel`. Rows for `netrc` and
-`auth_patterns` and `verbose = True` output are
-not replayed: they depend on the machine's files and environment.
+generated directory gets an empty `REPO.bazel`. `netrc`, `auth_patterns` and
+`--credential_helper` are in the table too (92 rows in all; the test double records
+the `Authorization` header it would have sent and what each helper script
+logged). Bazel's Starlark (`utils.bzl`) reads `netrc`, and `crates/fjfj-repo/src/credentials.rs`
+is the helpers: `<program> get` with `{"uri":...}` on stdin and
+`{"headers":{...}}` back, a host scope or `*.<domain>` (which includes the domain itself),
+the host's own scope before a wildcard (the longest) before the default, the last flag
+of a scope winning, and a helper's `Authorization` beating `netrc`. A helper that
+fails is a warning and the download goes on without. `verbose = True` output is
+not replayed: it depends on the machine's files and environment.
 
 Bazel quirks these rows pin: a plain multi-file patch applies only its last file
 (`fjfj-archive`), and `strip_components` is applied after `rename_files`.
 
-Still open: `--override_repository`/`--override_module`, netrc and
-`--credential_helper`, and `--registry`/`--lockfile_mode` in `fjfj build` (see
-the follow-up beads of mum.12).
+Still open: the flags `--override_repository`, `--credential_helper` and the rest
+in `fjfj build`, with `--registry` and `--lockfile_mode` (buildfiji-mum.12.2).
 
 ## Bazel 9.2.0's builtin namespaces, and who owns each name (buildfiji-mum.3)
 

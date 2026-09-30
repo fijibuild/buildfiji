@@ -75,7 +75,7 @@ class Server:
         outer = self
         class H(http.server.BaseHTTPRequestHandler):
             def do_GET(self):
-                outer.requests.append(self.path)
+                outer.requests.append(self.path + ((" auth=" + self.headers["Authorization"]) if self.headers.get("Authorization") else "") + ((" cookie=" + self.headers["Cookie"]) if self.headers.get("Cookie") else ""))
                 name = self.path.lstrip("/").split("?")[0]
                 if name in outer.files:
                     data, status = outer.files[name]
@@ -133,14 +133,18 @@ def run_cases(cases, worker):
             s = re.sub(r"@COMMIT(\d*):(\w+)@", lambda m: gits[m.group(2)][1][int(m.group(1) or len(gits[m.group(2)][1])) - 1], s)
             s = re.sub(r"@INT:([\w./-]+)@", lambda m: "sha256-" + base64.b64encode(hashlib.sha256(srv.files[m.group(1)][0]).digest()).decode(), s)
             return s
+        if c.get("fresh"):
+            subprocess.run([BAZEL, f"--output_base={OB}", "shutdown"], cwd=D, env=env, capture_output=True)
         name = f"x{worker}_{i}"
         open(f"{D}/.bazelversion", "w").write("9.2.0\n")
         open(f"{D}/BUILD.bazel", "w").write("")
         open(f"{D}/MODULE.bazel", "w").write(sub(c["module"]))
         for path, text in c.get("files", {}).items():
             os.makedirs(os.path.dirname(f"{D}/{path}") or D, exist_ok=True)
-            open(f"{D}/{path}", "w").write(sub(text))
-        cmd = [BAZEL, f"--output_base={OB}", "fetch", *[f"--repo={x}" for x in c.get("fetch", ["@x"])], f"--repository_cache={RC}", *c.get("flags", [])]
+            body = text["text"] if isinstance(text, dict) else text
+            open(f"{D}/{path}", "w").write(sub(body))
+            if isinstance(text, dict) and text.get("exec"): os.chmod(f"{D}/{path}", 0o755)
+        cmd = [BAZEL, f"--output_base={OB}", "fetch", *[f"--repo={x}" for x in c.get("fetch", ["@x"])], f"--repository_cache={RC}", *[sub(f) for f in c.get("flags", [])]]
         p = subprocess.run(cmd, cwd=D, env=env, capture_output=True, text=True, errors="replace")
         if c.get("twice"):
             srv.requests.append("--second--")
@@ -149,7 +153,7 @@ def run_cases(cases, worker):
             p2 = subprocess.run(cmd, cwd=D, env=env, capture_output=True, text=True, errors="replace")
         text = p.stdout + p.stderr
         scrub = lambda s: s.replace(url, "@URL@").replace(f"{OB}", "<ob>").replace(RC, "<cache>").replace(D, "<ws>").replace(name, "NAME")
-        prints = [scrub(re.sub(r"^\S*/r\.bzl:\d+:\d+: ", "", l[7:])) for l in text.split("\n") if l.startswith("DEBUG: ")]
+        prints = [scrub(re.sub(r"^\S*\.bzl:\d+:\d+: ", "", l[7:])) for l in text.split("\n") if l.startswith("DEBUG: ")]
         log = [scrub(l) for l in text.split("\n") if l.strip() and not l.startswith(("DEBUG: ", "INFO: ", "Computing main repo", "Starting local", "Loading:", "\r", "Fetching")) and "Computing main repo mapping" not in l and "Starting local" not in l]
         tree = {}
         ext = f"{OB}/external"
@@ -168,7 +172,8 @@ def run_cases(cases, worker):
                             except Exception: body = "<unreadable>"
                             tree[rel] = ("x " if st.st_mode & 0o111 else "") + body
         cache = sorted(os.path.relpath(os.path.join(d, f), RC) for d, _, fs in os.walk(RC) for f in fs) if os.path.isdir(RC) else []
-        rec = {"case": c, "rc": p.returncode, "prints": prints, "log": log, "tree": tree, "requests": [scrub(r) for r in srv.requests], "cache": [scrub(x) for x in cache]}
+        helper_log = open(f"{D}/helper.log").read() if os.path.exists(f"{D}/helper.log") else ""
+        rec = {"helper_log": scrub(helper_log), "case": c, "rc": p.returncode, "prints": prints, "log": log, "tree": tree, "requests": [scrub(r) for r in srv.requests], "cache": [scrub(x) for x in cache]}
         out.append(rec)
         print(p.returncode, prints[:2], log[:1], list(tree)[:4], rec["requests"], flush=True)
     srv.stop()

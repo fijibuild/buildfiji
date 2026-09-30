@@ -9,6 +9,8 @@ http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "ht
 http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 http_archive(name="x", urls=["@URL@/d.zip"], sha256 = "@SHA:d.zip@", strip_prefix="top", build_file_content="filegroup(name='all')")
 "#,
+        flags: &[],
+        helper_log: &[],
         git: &[],
         files: &[],
         serve: &[(
@@ -43,6 +45,8 @@ http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "ht
 http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 http_archive(name="x", urls=["@URL@/d.zip"], integrity="@INT:d.zip@", strip_prefix="top", build_file_content="x")
 "#,
+        flags: &[],
+        helper_log: &[],
         git: &[],
         files: &[],
         serve: &[(
@@ -74,6 +78,8 @@ http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "ht
 http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 http_archive(name="x", url="@URL@/d.zip", sha256 = "@SHA:d.zip@", strip_prefix="top", build_file_content="x")
 "#,
+        flags: &[],
+        helper_log: &[],
         git: &[],
         files: &[],
         serve: &[(
@@ -105,6 +111,8 @@ http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "ht
 http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 http_archive(name="x", urls=["@URL@/gone.zip", "@URL@/d.zip"], sha256 = "@SHA:d.zip@", strip_prefix="top", build_file_content="x")
 "#,
+        flags: &[],
+        helper_log: &[],
         git: &[],
         files: &[],
         serve: &[(
@@ -136,6 +144,8 @@ http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "ht
 http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 http_archive(name="x", urls=["@URL@/d.zip"], sha256 = "@SHA:d.zip@", build_file_content="x")
 "#,
+        flags: &[],
+        helper_log: &[],
         git: &[],
         files: &[],
         serve: &[(
@@ -168,6 +178,8 @@ http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "ht
 http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 http_archive(name="x", urls=["@URL@/d.zip"], sha256 = "@SHA:d.zip@", strip_prefix="nothere", build_file_content="x")
 "#,
+        flags: &[],
+        helper_log: &[],
         git: &[],
         files: &[],
         serve: &[(
@@ -195,6 +207,8 @@ http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "ht
 http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 http_archive(name="x", urls=["@URL@/d.zip"], sha256 = "@SHA:d.zip@", strip_prefix="top", add_prefix="pre/fix", build_file_content="x")
 "#,
+        flags: &[],
+        helper_log: &[],
         git: &[],
         files: &[],
         serve: &[(
@@ -228,6 +242,8 @@ http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "ht
 http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 http_archive(name="x", urls=["@URL@/d.zip"], build_file_content="x")
 "#,
+        flags: &[],
+        helper_log: &[],
         git: &[],
         files: &[],
         serve: &[(
@@ -255,6 +271,8 @@ http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "ht
 http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 http_archive(name="x", build_file_content="x")
 "#,
+        flags: &[],
+        helper_log: &[],
         git: &[],
         files: &[],
         serve: &[(
@@ -280,6 +298,8 @@ http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "ht
 http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 http_archive(name="x", urls=["@URL@/d.zip"], url="@URL@/d.zip", sha256 = "@SHA:d.zip@", build_file_content="x")
 "#,
+        flags: &[],
+        helper_log: &[],
         git: &[],
         files: &[],
         serve: &[(
@@ -312,6 +332,8 @@ http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "ht
 http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 http_archive(name="x", urls=["@URL@/d.zip"], sha256 = "@SHA:d.zip@", strip_prefix="top", build_file="//:BUILD.dep")
 "#,
+        flags: &[],
+        helper_log: &[],
         git: &[],
         files: &[
             (
@@ -354,6 +376,8 @@ http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "ht
 http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 http_archive(name="x", urls=["@URL@/d.zip"], sha256 = "@SHA:d.zip@", strip_prefix="top", build_file="//:BUILD.dep", build_file_content="x")
 "#,
+        flags: &[],
+        helper_log: &[],
         git: &[],
         files: &[(r#"BUILD.dep"#, r#"x"#)],
         serve: &[(
@@ -379,6 +403,8 @@ http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "ht
 http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 http_archive(name="x", urls=["@URL@/d.zip"], sha256 = "@SHA:d.zip@", strip_prefix="top")
 "#,
+        flags: &[],
+        helper_log: &[],
         git: &[],
         files: &[],
         serve: &[(
@@ -409,6 +435,8 @@ http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "ht
 http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 http_archive(name="x", urls=["@URL@/d.zip"], sha256 = "@SHA:d.zip@", strip_prefix="top", build_file_content="x", type="zip")
 "#,
+        flags: &[],
+        helper_log: &[],
         git: &[],
         files: &[],
         serve: &[(
@@ -440,6 +468,8 @@ http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "ht
 http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 http_archive(name="x", urls=["@URL@/blob"], sha256="@SHA:blob@", strip_prefix="top", build_file_content="x", type="tar.gz")
 "#,
+        flags: &[],
+        helper_log: &[],
         git: &[],
         files: &[],
         serve: &[(
@@ -471,6 +501,8 @@ http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "ht
 http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 http_archive(name="x", urls=["@URL@/blob"], sha256="@SHA:blob@", strip_prefix="top", build_file_content="x")
 "#,
+        flags: &[],
+        helper_log: &[],
         git: &[],
         files: &[],
         serve: &[(
@@ -498,6 +530,8 @@ http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "ht
 http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 http_archive(name="x", urls=["@URL@/d.tar.gz"], sha256="@SHA:d.tar.gz@", strip_prefix="top", build_file_content="x")
 "#,
+        flags: &[],
+        helper_log: &[],
         git: &[],
         files: &[],
         serve: &[(
@@ -529,6 +563,8 @@ http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "ht
 http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 http_archive(name="x", urls=["@URL@/d.zip"], sha256 = "@SHA:d.zip@", strip_prefix="top", build_file_content="x", patches=["//:fix.patch"], patch_args=["-p1"])
 "#,
+        flags: &[],
+        helper_log: &[],
         git: &[],
         files: &[
             (
@@ -575,6 +611,8 @@ http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "ht
 http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 http_archive(name="x", urls=["@URL@/d.zip"], sha256 = "@SHA:d.zip@", strip_prefix="top", build_file_content="x", patches=["//:fix.patch"])
 "#,
+        flags: &[],
+        helper_log: &[],
         git: &[],
         files: &[
             (
@@ -613,6 +651,8 @@ http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "ht
 http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 http_archive(name="x", urls=["@URL@/d.zip"], sha256 = "@SHA:d.zip@", strip_prefix="top", build_file_content="x", patch_cmds=["echo hi > made.txt", "echo again >> made.txt"])
 "#,
+        flags: &[],
+        helper_log: &[],
         git: &[],
         files: &[],
         serve: &[(
@@ -650,6 +690,8 @@ http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "ht
 http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 http_archive(name="x", urls=["@URL@/d.zip"], sha256 = "@SHA:d.zip@", strip_prefix="top", build_file_content="x", patch_cmds=["exit 3"])
 "#,
+        flags: &[],
+        helper_log: &[],
         git: &[],
         files: &[],
         serve: &[(
@@ -675,6 +717,8 @@ http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "ht
 http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 http_archive(name="x", urls=["@URL@/d.zip"], sha256 = "@SHA:d.zip@", strip_prefix="top", build_file_content="x", remote_file_urls={"extra.txt": ["@URL@/f.txt"]}, remote_file_integrity={"extra.txt": "@INT:f.txt@"})
 "#,
+        flags: &[],
+        helper_log: &[],
         git: &[],
         files: &[],
         serve: &[
@@ -710,6 +754,8 @@ http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "ht
 http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 http_archive(name="x", urls=["@URL@/d.zip"], sha256 = "@SHA:d.zip@", strip_prefix="top", build_file_content="x", files={"copied.txt": "//:src.txt"})
 "#,
+        flags: &[],
+        helper_log: &[],
         git: &[],
         files: &[
             (
@@ -749,6 +795,8 @@ http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "ht
 http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 http_archive(name="x", urls=["@URL@/d.zip"], sha256 = "@SHA:d.zip@", strip_prefix="top", build_file_content="x", remote_patches={"@URL@/p.patch": "@INT:p.patch@"}, remote_patch_strip=1)
 "#,
+        flags: &[],
+        helper_log: &[],
         git: &[],
         files: &[],
         serve: &[
@@ -797,6 +845,8 @@ http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "ht
 http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 http_archive(name="x", urls=["@URL@/d.zip"], sha256 = "@SHA:d.zip@", strip_prefix="top", build_file_content="x", canonical_id="cid")
 "#,
+        flags: &[],
+        helper_log: &[],
         git: &[],
         files: &[],
         serve: &[(
@@ -828,6 +878,8 @@ http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "ht
 http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 http_archive(name="x", urls=["@URL@/d.zip"], sha256 = "@SHA:d.zip@", strip_prefix="top", build_file_content="x", workspace_file_content="workspace(name='x')")
 "#,
+        flags: &[],
+        helper_log: &[],
         git: &[],
         files: &[],
         serve: &[(
@@ -859,6 +911,8 @@ http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "ht
 http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 http_archive(name="x", urls=[], sha256 = "@SHA:d.zip@", build_file_content="x")
 "#,
+        flags: &[],
+        helper_log: &[],
         git: &[],
         files: &[],
         serve: &[(
@@ -884,6 +938,8 @@ http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "ht
 http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 http_archive(name="x", urls=["@URL@/d.zip"], sha256="ABC", build_file_content="x")
 "#,
+        flags: &[],
+        helper_log: &[],
         git: &[],
         files: &[],
         serve: &[(
@@ -909,8 +965,70 @@ http_archive(name="x", urls=["@URL@/d.zip"], sha256="ABC", build_file_content="x
         module: r#"module(name="probe")
 http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256 = "@SHA:d.zip@", strip_prefix="top", build_file_content="x", netrc="/nonexistent")
+"#,
+        flags: &[],
+        helper_log: &[],
+        git: &[],
+        files: &[],
+        serve: &[(
+            r#"d.zip"#,
+            Serve::Archive(
+                r#"zip"#,
+                &[
+                    (r#"top/a.txt"#, "f", r#"A"#),
+                    (r#"top/sub/b.txt"#, "x", r#"B"#),
+                    (r#"top/link"#, "l", r#"a.txt"#),
+                ],
+            ),
+        )],
+        fetch: &[r#"@x"#],
+        error: Some(r#"java.io.FileNotFoundException: /nonexistent (No such file or directory)"#),
+        printed: &[],
+        tree: &[],
+        requests: &[],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256 = "@SHA:d.zip@", strip_prefix="top", build_file_content="x", auth_patterns={"@URL@/*": "Bearer <password>"})
+"#,
+        flags: &[],
+        helper_log: &[],
+        git: &[],
+        files: &[],
+        serve: &[(
+            r#"d.zip"#,
+            Serve::Archive(
+                r#"zip"#,
+                &[
+                    (r#"top/a.txt"#, "f", r#"A"#),
+                    (r#"top/sub/b.txt"#, "x", r#"B"#),
+                    (r#"top/link"#, "l", r#"a.txt"#),
+                ],
+            ),
+        )],
+        fetch: &[r#"@x"#],
+        error: None,
+        printed: &[],
+        tree: &[
+            (r#"+http_archive+x/BUILD.bazel"#, r#"x x"#),
+            (r#"+http_archive+x/a.txt"#, r#"A"#),
+            (r#"+http_archive+x/link"#, r#"-> a.txt"#),
+            (r#"+http_archive+x/sub"#, r#"<dir>"#),
+            (r#"+http_archive+x/sub/b.txt"#, r#"x B"#),
+        ],
+        requests: &[r#"/d.zip"#],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 http_file(name="x", urls=["@URL@/f.txt"], sha256="@SHA:f.txt@")
 "#,
+        flags: &[],
+        helper_log: &[],
         git: &[],
         files: &[],
         serve: &[(r#"f.txt"#, Serve::Text(r#"hello"#))],
@@ -945,6 +1063,8 @@ http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "ht
 http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 http_file(name="x", urls=["@URL@/f.txt"], sha256="@SHA:f.txt@", downloaded_file_path="renamed.dat", executable=True)
 "#,
+        flags: &[],
+        helper_log: &[],
         git: &[],
         files: &[],
         serve: &[(r#"f.txt"#, Serve::Text(r#"hello"#))],
@@ -979,6 +1099,8 @@ http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "ht
 http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 http_file(name="x", urls=["@URL@/f.txt"], integrity="@INT:f.txt@")
 "#,
+        flags: &[],
+        helper_log: &[],
         git: &[],
         files: &[],
         serve: &[(r#"f.txt"#, Serve::Text(r#"hello"#))],
@@ -1013,6 +1135,8 @@ http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "ht
 http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 http_file(name="x", urls=["@URL@/f.txt"])
 "#,
+        flags: &[],
+        helper_log: &[],
         git: &[],
         files: &[],
         serve: &[(r#"f.txt"#, Serve::Text(r#"hello"#))],
@@ -1030,6 +1154,8 @@ http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "ht
 http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 http_file(name="x", urls=["@URL@/f.txt"], sha256="@SHA:f.txt@", downloaded_file_path="a/b/c.txt")
 "#,
+        flags: &[],
+        helper_log: &[],
         git: &[],
         files: &[],
         serve: &[(r#"f.txt"#, Serve::Text(r#"hello"#))],
@@ -1068,6 +1194,8 @@ git_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:git.bzl", "g
 new_git_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:git.bzl", "new_git_repository")
 git_repository(name="x", remote="@GIT:r@", commit="@COMMIT:r@", tag="v1")
 "#,
+        flags: &[],
+        helper_log: &[],
         git: &[(
             r#"r"#,
             &[
@@ -1105,6 +1233,8 @@ git_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:git.bzl", "g
 new_git_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:git.bzl", "new_git_repository")
 git_repository(name="x", remote="@GIT:r@", commit="0000000000000000000000000000000000000001")
 "#,
+        flags: &[],
+        helper_log: &[],
         git: &[(
             r#"r"#,
             &[
@@ -1144,6 +1274,8 @@ git_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:git.bzl", "g
 new_git_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:git.bzl", "new_git_repository")
 git_repository(name="x", remote="file:///nonexistent/repo", commit="@COMMIT:r@")
 "#,
+        flags: &[],
+        helper_log: &[],
         git: &[(
             r#"r"#,
             &[
@@ -1183,6 +1315,8 @@ git_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:git.bzl", "g
 new_git_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:git.bzl", "new_git_repository")
 git_repository(name="x", remote="@GIT:r@", tag="nope")
 "#,
+        flags: &[],
+        helper_log: &[],
         git: &[(
             r#"r"#,
             &[
@@ -1220,6 +1354,8 @@ local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl"
 new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "new_local_repository")
 local_repository(name="x", path="sub")
 "#,
+        flags: &[],
+        helper_log: &[],
         git: &[],
         files: &[
             (
@@ -1260,6 +1396,8 @@ local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl"
 new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "new_local_repository")
 local_repository(name="x", path="@WS@/sub")
 "#,
+        flags: &[],
+        helper_log: &[],
         git: &[],
         files: &[
             (
@@ -1300,6 +1438,8 @@ local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl"
 new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "new_local_repository")
 local_repository(name="x", path="nope")
 "#,
+        flags: &[],
+        helper_log: &[],
         git: &[],
         files: &[
             (
@@ -1329,6 +1469,8 @@ local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl"
 new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "new_local_repository")
 local_repository(name="x", path="sub/a.txt")
 "#,
+        flags: &[],
+        helper_log: &[],
         git: &[],
         files: &[
             (
@@ -1358,6 +1500,8 @@ local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl"
 new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "new_local_repository")
 new_local_repository(name="x", path="sub", build_file_content="filegroup(name='f')")
 "#,
+        flags: &[],
+        helper_log: &[],
         git: &[],
         files: &[
             (
@@ -1396,6 +1540,8 @@ local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl"
 new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "new_local_repository")
 new_local_repository(name="x", path="sub", build_file="//:b.BUILD")
 "#,
+        flags: &[],
+        helper_log: &[],
         git: &[],
         files: &[
             (
@@ -1435,6 +1581,8 @@ local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl"
 new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "new_local_repository")
 new_local_repository(name="x", path="sub")
 "#,
+        flags: &[],
+        helper_log: &[],
         git: &[],
         files: &[
             (
@@ -1462,6 +1610,8 @@ local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl"
 new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "new_local_repository")
 new_local_repository(name="x", path="sub", build_file="//:b.BUILD", build_file_content="x")
 "#,
+        flags: &[],
+        helper_log: &[],
         git: &[],
         files: &[
             (
@@ -1490,6 +1640,8 @@ local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl"
 new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "new_local_repository")
 new_local_repository(name="x", path="nope", build_file_content="x")
 "#,
+        flags: &[],
+        helper_log: &[],
         git: &[],
         files: &[
             (
@@ -1519,6 +1671,8 @@ local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl"
 new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "new_local_repository")
 new_local_repository(name="x", path="sub", build_file_content="x", build_file="//:b.BUILD")
 "#,
+        flags: &[],
+        helper_log: &[],
         git: &[],
         files: &[
             (
@@ -1540,5 +1694,1861 @@ new_local_repository(name="x", path="sub", build_file_content="x", build_file="/
         printed: &[],
         tree: &[],
         requests: &[],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
+"#,
+        flags: &[],
+        helper_log: &[],
+        git: &[],
+        files: &[],
+        serve: &[
+            (
+                r#"d.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+            ),
+            (r#"f.txt"#, Serve::Text(r#"F"#)),
+        ],
+        fetch: &[r#"@x"#],
+        error: None,
+        printed: &[],
+        tree: &[
+            (r#"+http_archive+x/BUILD.bazel"#, r#"x x"#),
+            (r#"+http_archive+x/a.txt"#, r#"A"#),
+        ],
+        requests: &[r#"/d.zip"#],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x", netrc="@WS@/netrc")
+"#,
+        flags: &[],
+        helper_log: &[],
+        git: &[],
+        files: &[(
+            r#"netrc"#,
+            r#"machine 127.0.0.1 login u password p
+"#,
+        )],
+        serve: &[
+            (
+                r#"d.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+            ),
+            (r#"f.txt"#, Serve::Text(r#"F"#)),
+        ],
+        fetch: &[r#"@x"#],
+        error: None,
+        printed: &[],
+        tree: &[
+            (r#"+http_archive+x/BUILD.bazel"#, r#"x x"#),
+            (r#"+http_archive+x/a.txt"#, r#"A"#),
+        ],
+        requests: &[r#"/d.zip auth=Basic dTpw"#],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x", netrc="@WS@/netrc")
+"#,
+        flags: &[],
+        helper_log: &[],
+        git: &[],
+        files: &[(
+            r#"netrc"#,
+            r#"machine other login u password p
+"#,
+        )],
+        serve: &[
+            (
+                r#"d.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+            ),
+            (r#"f.txt"#, Serve::Text(r#"F"#)),
+        ],
+        fetch: &[r#"@x"#],
+        error: None,
+        printed: &[],
+        tree: &[
+            (r#"+http_archive+x/BUILD.bazel"#, r#"x x"#),
+            (r#"+http_archive+x/a.txt"#, r#"A"#),
+        ],
+        requests: &[r#"/d.zip"#],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x", netrc="@WS@/netrc")
+"#,
+        flags: &[],
+        helper_log: &[],
+        git: &[],
+        files: &[(
+            r#"netrc"#,
+            r#"default login dl password dp
+"#,
+        )],
+        serve: &[
+            (
+                r#"d.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+            ),
+            (r#"f.txt"#, Serve::Text(r#"F"#)),
+        ],
+        fetch: &[r#"@x"#],
+        error: None,
+        printed: &[],
+        tree: &[
+            (r#"+http_archive+x/BUILD.bazel"#, r#"x x"#),
+            (r#"+http_archive+x/a.txt"#, r#"A"#),
+        ],
+        requests: &[r#"/d.zip auth=Basic ZGw6ZHA="#],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x", netrc="@WS@/netrc")
+"#,
+        flags: &[],
+        helper_log: &[],
+        git: &[],
+        files: &[(
+            r#"netrc"#,
+            r#"machine 127.0.0.1
+  login u2
+  password p2
+machine x login a password b
+"#,
+        )],
+        serve: &[
+            (
+                r#"d.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+            ),
+            (r#"f.txt"#, Serve::Text(r#"F"#)),
+        ],
+        fetch: &[r#"@x"#],
+        error: None,
+        printed: &[],
+        tree: &[
+            (r#"+http_archive+x/BUILD.bazel"#, r#"x x"#),
+            (r#"+http_archive+x/a.txt"#, r#"A"#),
+        ],
+        requests: &[r#"/d.zip auth=Basic dTI6cDI="#],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x", netrc="@WS@/netrc")
+"#,
+        flags: &[],
+        helper_log: &[],
+        git: &[],
+        files: &[(
+            r#"netrc"#,
+            r#"machine 127.0.0.1 login u
+"#,
+        )],
+        serve: &[
+            (
+                r#"d.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+            ),
+            (r#"f.txt"#, Serve::Text(r#"F"#)),
+        ],
+        fetch: &[r#"@x"#],
+        error: None,
+        printed: &[r#"WARNING: Found machine in .netrc for URL @URL@/d.zip, but no password."#],
+        tree: &[
+            (r#"+http_archive+x/BUILD.bazel"#, r#"x x"#),
+            (r#"+http_archive+x/a.txt"#, r#"A"#),
+        ],
+        requests: &[r#"/d.zip"#],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x", netrc="@WS@/nonexistent")
+"#,
+        flags: &[],
+        helper_log: &[],
+        git: &[],
+        files: &[],
+        serve: &[
+            (
+                r#"d.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+            ),
+            (r#"f.txt"#, Serve::Text(r#"F"#)),
+        ],
+        fetch: &[r#"@x"#],
+        error: Some(
+            r#"java.io.FileNotFoundException: <ws>/nonexistent (No such file or directory)"#,
+        ),
+        printed: &[],
+        tree: &[],
+        requests: &[],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x", netrc="@WS@/netrc", auth_patterns={"127.0.0.1":"Bearer <password>"})
+"#,
+        flags: &[],
+        helper_log: &[],
+        git: &[],
+        files: &[(
+            r#"netrc"#,
+            r#"machine 127.0.0.1 login u password tok
+"#,
+        )],
+        serve: &[
+            (
+                r#"d.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+            ),
+            (r#"f.txt"#, Serve::Text(r#"F"#)),
+        ],
+        fetch: &[r#"@x"#],
+        error: None,
+        printed: &[],
+        tree: &[
+            (r#"+http_archive+x/BUILD.bazel"#, r#"x x"#),
+            (r#"+http_archive+x/a.txt"#, r#"A"#),
+        ],
+        requests: &[r#"/d.zip auth=Bearer tok"#],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x", netrc="@WS@/netrc", auth_patterns={"127.0.0.1":"Token <login>:<password>"})
+"#,
+        flags: &[],
+        helper_log: &[],
+        git: &[],
+        files: &[(
+            r#"netrc"#,
+            r#"machine 127.0.0.1 login u password tok
+"#,
+        )],
+        serve: &[
+            (
+                r#"d.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+            ),
+            (r#"f.txt"#, Serve::Text(r#"F"#)),
+        ],
+        fetch: &[r#"@x"#],
+        error: None,
+        printed: &[],
+        tree: &[
+            (r#"+http_archive+x/BUILD.bazel"#, r#"x x"#),
+            (r#"+http_archive+x/a.txt"#, r#"A"#),
+        ],
+        requests: &[r#"/d.zip auth=Token u:tok"#],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x", netrc="@WS@/netrc", auth_patterns={"127.0.0.1":"Bearer <password>"})
+"#,
+        flags: &[],
+        helper_log: &[],
+        git: &[],
+        files: &[(
+            r#"netrc"#,
+            r#"machine other login u password tok
+"#,
+        )],
+        serve: &[
+            (
+                r#"d.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+            ),
+            (r#"f.txt"#, Serve::Text(r#"F"#)),
+        ],
+        fetch: &[r#"@x"#],
+        error: None,
+        printed: &[],
+        tree: &[
+            (r#"+http_archive+x/BUILD.bazel"#, r#"x x"#),
+            (r#"+http_archive+x/a.txt"#, r#"A"#),
+        ],
+        requests: &[r#"/d.zip"#],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x", auth_patterns={"127.0.0.1":"Bearer <password>"})
+"#,
+        flags: &[],
+        helper_log: &[],
+        git: &[],
+        files: &[],
+        serve: &[
+            (
+                r#"d.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+            ),
+            (r#"f.txt"#, Serve::Text(r#"F"#)),
+        ],
+        fetch: &[r#"@x"#],
+        error: None,
+        printed: &[],
+        tree: &[
+            (r#"+http_archive+x/BUILD.bazel"#, r#"x x"#),
+            (r#"+http_archive+x/a.txt"#, r#"A"#),
+        ],
+        requests: &[r#"/d.zip"#],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
+http_file(name="x", urls=["@URL@/f.txt"], sha256="@SHA:f.txt@", netrc="@WS@/netrc")
+"#,
+        flags: &[],
+        helper_log: &[],
+        git: &[],
+        files: &[(
+            r#"netrc"#,
+            r#"machine 127.0.0.1 login u password p
+"#,
+        )],
+        serve: &[
+            (
+                r#"d.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+            ),
+            (r#"f.txt"#, Serve::Text(r#"F"#)),
+        ],
+        fetch: &[r#"@x"#],
+        error: None,
+        printed: &[],
+        tree: &[
+            (
+                r#"+http_file+x/WORKSPACE"#,
+                r#"x workspace(name = "+http_file+x")"#,
+            ),
+            (r#"+http_file+x/file"#, r#"<dir>"#),
+            (
+                r#"+http_file+x/file/BUILD"#,
+                r#"x package(default_visibility = ["//visibility:public"])
+
+exports_files(["downloaded"])
+
+filegroup(
+    name = "file",
+    srcs = ["downloaded"],
+)
+"#,
+            ),
+            (r#"+http_file+x/file/downloaded"#, r#"F"#),
+        ],
+        requests: &[r#"/f.txt auth=Basic dTpw"#],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x", netrc="@WS@/netrc")
+"#,
+        flags: &[],
+        helper_log: &[],
+        git: &[],
+        files: &[(
+            r#"netrc"#,
+            r#"# comment
+macdef init
+  echo hi
+
+machine 127.0.0.1 login u password p
+"#,
+        )],
+        serve: &[
+            (
+                r#"d.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+            ),
+            (r#"f.txt"#, Serve::Text(r#"F"#)),
+        ],
+        fetch: &[r#"@x"#],
+        error: None,
+        printed: &[],
+        tree: &[
+            (r#"+http_archive+x/BUILD.bazel"#, r#"x x"#),
+            (r#"+http_archive+x/a.txt"#, r#"A"#),
+        ],
+        requests: &[r#"/d.zip auth=Basic dTpw"#],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x", netrc="@WS@/netrc")
+"#,
+        flags: &[],
+        helper_log: &[],
+        git: &[],
+        files: &[(
+            r#"netrc"#,
+            r#"machine 127.0.0.1 login "quoted user" password "p w"
+"#,
+        )],
+        serve: &[
+            (
+                r#"d.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+            ),
+            (r#"f.txt"#, Serve::Text(r#"F"#)),
+        ],
+        fetch: &[r#"@x"#],
+        error: Some(r#"Unexpected token 'user"' while reading <ws>/netrc"#),
+        printed: &[],
+        tree: &[],
+        requests: &[],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x", netrc="@WS@/netrc")
+"#,
+        flags: &[],
+        helper_log: &[],
+        git: &[],
+        files: &[(
+            r#"netrc"#,
+            r#"machine 127.0.0.1:1 login u password p
+"#,
+        )],
+        serve: &[
+            (
+                r#"d.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+            ),
+            (r#"f.txt"#, Serve::Text(r#"F"#)),
+        ],
+        fetch: &[r#"@x"#],
+        error: None,
+        printed: &[],
+        tree: &[
+            (r#"+http_archive+x/BUILD.bazel"#, r#"x x"#),
+            (r#"+http_archive+x/a.txt"#, r#"A"#),
+        ],
+        requests: &[r#"/d.zip"#],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
+"#,
+        flags: &[r#"--credential_helper=@WS@/h.sh"#],
+        helper_log: &[r#"get {"uri":"@URL@/d.zip"}"#],
+        git: &[],
+        files: &[(
+            r#"h.sh"#,
+            r#"#!/bin/sh
+read in
+case "$in" in
+  *127.0.0.1*)
+    echo "$1 $in" >> @WS@/helper.log
+    echo '{"headers":{"Authorization":["Bearer helpertok"]}}'
+    exit 0
+    ;;
+  *) echo '{}' ;;
+esac
+"#,
+        )],
+        serve: &[
+            (
+                r#"d.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+            ),
+            (
+                r#"e.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/b.txt"#, "f", r#"B"#)]),
+            ),
+            (r#"f.txt"#, Serve::Text(r#"F"#)),
+        ],
+        fetch: &[r#"@x"#],
+        error: None,
+        printed: &[],
+        tree: &[
+            (r#"+http_archive+x/BUILD.bazel"#, r#"x x"#),
+            (r#"+http_archive+x/a.txt"#, r#"A"#),
+        ],
+        requests: &[r#"/d.zip auth=Bearer helpertok"#],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
+"#,
+        flags: &[r#"--credential_helper=127.0.0.1=@WS@/h.sh"#],
+        helper_log: &[r#"get {"uri":"@URL@/d.zip"}"#],
+        git: &[],
+        files: &[(
+            r#"h.sh"#,
+            r#"#!/bin/sh
+read in
+case "$in" in
+  *127.0.0.1*)
+    echo "$1 $in" >> @WS@/helper.log
+    echo '{"headers":{"Authorization":["Bearer helpertok"]}}'
+    exit 0
+    ;;
+  *) echo '{}' ;;
+esac
+"#,
+        )],
+        serve: &[
+            (
+                r#"d.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+            ),
+            (
+                r#"e.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/b.txt"#, "f", r#"B"#)]),
+            ),
+            (r#"f.txt"#, Serve::Text(r#"F"#)),
+        ],
+        fetch: &[r#"@x"#],
+        error: None,
+        printed: &[],
+        tree: &[
+            (r#"+http_archive+x/BUILD.bazel"#, r#"x x"#),
+            (r#"+http_archive+x/a.txt"#, r#"A"#),
+        ],
+        requests: &[r#"/d.zip auth=Bearer helpertok"#],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
+"#,
+        flags: &[r#"--credential_helper=example.com=@WS@/h.sh"#],
+        helper_log: &[],
+        git: &[],
+        files: &[(
+            r#"h.sh"#,
+            r#"#!/bin/sh
+read in
+case "$in" in
+  *127.0.0.1*)
+    echo "$1 $in" >> @WS@/helper.log
+    echo '{"headers":{"Authorization":["Bearer helpertok"]}}'
+    exit 0
+    ;;
+  *) echo '{}' ;;
+esac
+"#,
+        )],
+        serve: &[
+            (
+                r#"d.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+            ),
+            (
+                r#"e.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/b.txt"#, "f", r#"B"#)]),
+            ),
+            (r#"f.txt"#, Serve::Text(r#"F"#)),
+        ],
+        fetch: &[r#"@x"#],
+        error: None,
+        printed: &[],
+        tree: &[
+            (r#"+http_archive+x/BUILD.bazel"#, r#"x x"#),
+            (r#"+http_archive+x/a.txt"#, r#"A"#),
+        ],
+        requests: &[r#"/d.zip"#],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
+"#,
+        flags: &[r#"--credential_helper=*.0.0.1=@WS@/h.sh"#],
+        helper_log: &[r#"get {"uri":"@URL@/d.zip"}"#],
+        git: &[],
+        files: &[(
+            r#"h.sh"#,
+            r#"#!/bin/sh
+read in
+case "$in" in
+  *127.0.0.1*)
+    echo "$1 $in" >> @WS@/helper.log
+    echo '{"headers":{"Authorization":["Bearer helpertok"]}}'
+    exit 0
+    ;;
+  *) echo '{}' ;;
+esac
+"#,
+        )],
+        serve: &[
+            (
+                r#"d.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+            ),
+            (
+                r#"e.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/b.txt"#, "f", r#"B"#)]),
+            ),
+            (r#"f.txt"#, Serve::Text(r#"F"#)),
+        ],
+        fetch: &[r#"@x"#],
+        error: None,
+        printed: &[],
+        tree: &[
+            (r#"+http_archive+x/BUILD.bazel"#, r#"x x"#),
+            (r#"+http_archive+x/a.txt"#, r#"A"#),
+        ],
+        requests: &[r#"/d.zip auth=Bearer helpertok"#],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
+"#,
+        flags: &[r#"--credential_helper=*.0.1=@WS@/h.sh"#],
+        helper_log: &[r#"get {"uri":"@URL@/d.zip"}"#],
+        git: &[],
+        files: &[(
+            r#"h.sh"#,
+            r#"#!/bin/sh
+read in
+case "$in" in
+  *127.0.0.1*)
+    echo "$1 $in" >> @WS@/helper.log
+    echo '{"headers":{"Authorization":["Bearer helpertok"]}}'
+    exit 0
+    ;;
+  *) echo '{}' ;;
+esac
+"#,
+        )],
+        serve: &[
+            (
+                r#"d.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+            ),
+            (
+                r#"e.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/b.txt"#, "f", r#"B"#)]),
+            ),
+            (r#"f.txt"#, Serve::Text(r#"F"#)),
+        ],
+        fetch: &[r#"@x"#],
+        error: None,
+        printed: &[],
+        tree: &[
+            (r#"+http_archive+x/BUILD.bazel"#, r#"x x"#),
+            (r#"+http_archive+x/a.txt"#, r#"A"#),
+        ],
+        requests: &[r#"/d.zip auth=Bearer helpertok"#],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
+"#,
+        flags: &[r#"--credential_helper=*.1=@WS@/h.sh"#],
+        helper_log: &[r#"get {"uri":"@URL@/d.zip"}"#],
+        git: &[],
+        files: &[(
+            r#"h.sh"#,
+            r#"#!/bin/sh
+read in
+case "$in" in
+  *127.0.0.1*)
+    echo "$1 $in" >> @WS@/helper.log
+    echo '{"headers":{"Authorization":["Bearer helpertok"]}}'
+    exit 0
+    ;;
+  *) echo '{}' ;;
+esac
+"#,
+        )],
+        serve: &[
+            (
+                r#"d.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+            ),
+            (
+                r#"e.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/b.txt"#, "f", r#"B"#)]),
+            ),
+            (r#"f.txt"#, Serve::Text(r#"F"#)),
+        ],
+        fetch: &[r#"@x"#],
+        error: None,
+        printed: &[],
+        tree: &[
+            (r#"+http_archive+x/BUILD.bazel"#, r#"x x"#),
+            (r#"+http_archive+x/a.txt"#, r#"A"#),
+        ],
+        requests: &[r#"/d.zip auth=Bearer helpertok"#],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x", netrc="@WS@/netrc")
+"#,
+        flags: &[r#"--credential_helper=127.0.0.1=@WS@/h.sh"#],
+        helper_log: &[r#"get {"uri":"@URL@/d.zip"}"#],
+        git: &[],
+        files: &[
+            (
+                r#"h.sh"#,
+                r#"#!/bin/sh
+read in
+case "$in" in
+  *127.0.0.1*)
+    echo "$1 $in" >> @WS@/helper.log
+    echo '{"headers":{"Authorization":["Bearer helpertok"]}}'
+    exit 0
+    ;;
+  *) echo '{}' ;;
+esac
+"#,
+            ),
+            (
+                r#"netrc"#,
+                r#"machine 127.0.0.1 login u password p
+"#,
+            ),
+        ],
+        serve: &[
+            (
+                r#"d.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+            ),
+            (
+                r#"e.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/b.txt"#, "f", r#"B"#)]),
+            ),
+            (r#"f.txt"#, Serve::Text(r#"F"#)),
+        ],
+        fetch: &[r#"@x"#],
+        error: None,
+        printed: &[],
+        tree: &[
+            (r#"+http_archive+x/BUILD.bazel"#, r#"x x"#),
+            (r#"+http_archive+x/a.txt"#, r#"A"#),
+        ],
+        requests: &[r#"/d.zip auth=Bearer helpertok"#],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
+"#,
+        flags: &[r#"--credential_helper=127.0.0.1=@WS@/h.sh"#],
+        helper_log: &[r#"get {"uri":"@URL@/d.zip"}"#],
+        git: &[],
+        files: &[(
+            r#"h.sh"#,
+            r#"#!/bin/sh
+read in
+case "$in" in
+  *127.0.0.1*)
+    echo "$1 $in" >> @WS@/helper.log
+    echo ''
+    exit 1
+    ;;
+  *) echo '{}' ;;
+esac
+"#,
+        )],
+        serve: &[
+            (
+                r#"d.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+            ),
+            (
+                r#"e.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/b.txt"#, "f", r#"B"#)]),
+            ),
+            (r#"f.txt"#, Serve::Text(r#"F"#)),
+        ],
+        fetch: &[r#"@x"#],
+        error: None,
+        printed: &[],
+        tree: &[
+            (r#"+http_archive+x/BUILD.bazel"#, r#"x x"#),
+            (r#"+http_archive+x/a.txt"#, r#"A"#),
+        ],
+        requests: &[r#"/d.zip"#],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
+"#,
+        flags: &[r#"--credential_helper=127.0.0.1=@WS@/h.sh"#],
+        helper_log: &[r#"get {"uri":"@URL@/d.zip"}"#],
+        git: &[],
+        files: &[(
+            r#"h.sh"#,
+            r#"#!/bin/sh
+read in
+case "$in" in
+  *127.0.0.1*)
+    echo "$1 $in" >> @WS@/helper.log
+    echo 'not json'
+    exit 0
+    ;;
+  *) echo '{}' ;;
+esac
+"#,
+        )],
+        serve: &[
+            (
+                r#"d.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+            ),
+            (
+                r#"e.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/b.txt"#, "f", r#"B"#)]),
+            ),
+            (r#"f.txt"#, Serve::Text(r#"F"#)),
+        ],
+        fetch: &[r#"@x"#],
+        error: None,
+        printed: &[],
+        tree: &[
+            (r#"+http_archive+x/BUILD.bazel"#, r#"x x"#),
+            (r#"+http_archive+x/a.txt"#, r#"A"#),
+        ],
+        requests: &[r#"/d.zip"#],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
+"#,
+        flags: &[r#"--credential_helper=127.0.0.1=@WS@/h.sh"#],
+        helper_log: &[r#"get {"uri":"@URL@/d.zip"}"#],
+        git: &[],
+        files: &[(
+            r#"h.sh"#,
+            r#"#!/bin/sh
+read in
+case "$in" in
+  *127.0.0.1*)
+    echo "$1 $in" >> @WS@/helper.log
+    echo '{"headers":{"X-Token":["a","b"],"Authorization":["Bearer t1"]}}'
+    exit 0
+    ;;
+  *) echo '{}' ;;
+esac
+"#,
+        )],
+        serve: &[
+            (
+                r#"d.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+            ),
+            (
+                r#"e.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/b.txt"#, "f", r#"B"#)]),
+            ),
+            (r#"f.txt"#, Serve::Text(r#"F"#)),
+        ],
+        fetch: &[r#"@x"#],
+        error: None,
+        printed: &[],
+        tree: &[
+            (r#"+http_archive+x/BUILD.bazel"#, r#"x x"#),
+            (r#"+http_archive+x/a.txt"#, r#"A"#),
+        ],
+        requests: &[r#"/d.zip auth=Bearer t1"#],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
+"#,
+        flags: &[r#"--credential_helper=127.0.0.1=@WS@/h.sh"#],
+        helper_log: &[r#"get {"uri":"@URL@/d.zip"}"#],
+        git: &[],
+        files: &[(
+            r#"h.sh"#,
+            r#"#!/bin/sh
+read in
+case "$in" in
+  *127.0.0.1*)
+    echo "$1 $in" >> @WS@/helper.log
+    echo '{}'
+    exit 0
+    ;;
+  *) echo '{}' ;;
+esac
+"#,
+        )],
+        serve: &[
+            (
+                r#"d.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+            ),
+            (
+                r#"e.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/b.txt"#, "f", r#"B"#)]),
+            ),
+            (r#"f.txt"#, Serve::Text(r#"F"#)),
+        ],
+        fetch: &[r#"@x"#],
+        error: None,
+        printed: &[],
+        tree: &[
+            (r#"+http_archive+x/BUILD.bazel"#, r#"x x"#),
+            (r#"+http_archive+x/a.txt"#, r#"A"#),
+        ],
+        requests: &[r#"/d.zip"#],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
+"#,
+        flags: &[r#"--credential_helper=127.0.0.1=@WS@/missing.sh"#],
+        helper_log: &[],
+        git: &[],
+        files: &[],
+        serve: &[
+            (
+                r#"d.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+            ),
+            (
+                r#"e.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/b.txt"#, "f", r#"B"#)]),
+            ),
+            (r#"f.txt"#, Serve::Text(r#"F"#)),
+        ],
+        fetch: &[r#"@x"#],
+        error: None,
+        printed: &[],
+        tree: &[
+            (r#"+http_archive+x/BUILD.bazel"#, r#"x x"#),
+            (r#"+http_archive+x/a.txt"#, r#"A"#),
+        ],
+        requests: &[r#"/d.zip"#],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
+"#,
+        flags: &[
+            r#"--credential_helper=@WS@/h.sh"#,
+            r#"--credential_helper=127.0.0.1=@WS@/g.sh"#,
+        ],
+        helper_log: &[r#"get {"uri":"@URL@/d.zip"}"#],
+        git: &[],
+        files: &[
+            (
+                r#"h.sh"#,
+                r#"#!/bin/sh
+read in
+case "$in" in
+  *127.0.0.1*)
+    echo "$1 $in" >> @WS@/helper.log
+    echo '{"headers":{"Authorization":["Bearer helpertok"]}}'
+    exit 0
+    ;;
+  *) echo '{}' ;;
+esac
+"#,
+            ),
+            (
+                r#"g.sh"#,
+                r#"#!/bin/sh
+read in
+case "$in" in
+  *127.0.0.1*)
+    echo "$1 $in" >> @WS@/helper.log
+    echo '{"headers":{"Authorization":["Bearer second"]}}'
+    exit 0
+    ;;
+  *) echo '{}' ;;
+esac
+"#,
+            ),
+        ],
+        serve: &[
+            (
+                r#"d.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+            ),
+            (
+                r#"e.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/b.txt"#, "f", r#"B"#)]),
+            ),
+            (r#"f.txt"#, Serve::Text(r#"F"#)),
+        ],
+        fetch: &[r#"@x"#],
+        error: None,
+        printed: &[],
+        tree: &[
+            (r#"+http_archive+x/BUILD.bazel"#, r#"x x"#),
+            (r#"+http_archive+x/a.txt"#, r#"A"#),
+        ],
+        requests: &[r#"/d.zip auth=Bearer second"#],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
+"#,
+        flags: &[
+            r#"--credential_helper=127.0.0.1=@WS@/h.sh"#,
+            r#"--credential_helper=127.0.0.1=@WS@/g.sh"#,
+        ],
+        helper_log: &[r#"get {"uri":"@URL@/d.zip"}"#],
+        git: &[],
+        files: &[
+            (
+                r#"h.sh"#,
+                r#"#!/bin/sh
+read in
+case "$in" in
+  *127.0.0.1*)
+    echo "$1 $in" >> @WS@/helper.log
+    echo '{"headers":{"Authorization":["Bearer helpertok"]}}'
+    exit 0
+    ;;
+  *) echo '{}' ;;
+esac
+"#,
+            ),
+            (
+                r#"g.sh"#,
+                r#"#!/bin/sh
+read in
+case "$in" in
+  *127.0.0.1*)
+    echo "$1 $in" >> @WS@/helper.log
+    echo '{"headers":{"Authorization":["Bearer second"]}}'
+    exit 0
+    ;;
+  *) echo '{}' ;;
+esac
+"#,
+            ),
+        ],
+        serve: &[
+            (
+                r#"d.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+            ),
+            (
+                r#"e.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/b.txt"#, "f", r#"B"#)]),
+            ),
+            (r#"f.txt"#, Serve::Text(r#"F"#)),
+        ],
+        fetch: &[r#"@x"#],
+        error: None,
+        printed: &[],
+        tree: &[
+            (r#"+http_archive+x/BUILD.bazel"#, r#"x x"#),
+            (r#"+http_archive+x/a.txt"#, r#"A"#),
+        ],
+        requests: &[r#"/d.zip auth=Bearer second"#],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
+"#,
+        flags: &[r#"--credential_helper=http://127.0.0.1=@WS@/h.sh"#],
+        helper_log: &[],
+        git: &[],
+        files: &[(
+            r#"h.sh"#,
+            r#"#!/bin/sh
+read in
+case "$in" in
+  *127.0.0.1*)
+    echo "$1 $in" >> @WS@/helper.log
+    echo '{"headers":{"Authorization":["Bearer helpertok"]}}'
+    exit 0
+    ;;
+  *) echo '{}' ;;
+esac
+"#,
+        )],
+        serve: &[
+            (
+                r#"d.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+            ),
+            (
+                r#"e.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/b.txt"#, "f", r#"B"#)]),
+            ),
+            (r#"f.txt"#, Serve::Text(r#"F"#)),
+        ],
+        fetch: &[r#"@x"#],
+        error: Some(
+            r#"While parsing option --credential_helper=http://127.0.0.1=<ws>/h.sh: Credential helper scope 'http://127.0.0.1' must be a valid domain name with an optional leading '*.' wildcard"#,
+        ),
+        printed: &[],
+        tree: &[],
+        requests: &[],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
+"#,
+        flags: &[r#"--credential_helper=127.0.0.1:1234=@WS@/h.sh"#],
+        helper_log: &[],
+        git: &[],
+        files: &[(
+            r#"h.sh"#,
+            r#"#!/bin/sh
+read in
+case "$in" in
+  *127.0.0.1*)
+    echo "$1 $in" >> @WS@/helper.log
+    echo '{"headers":{"Authorization":["Bearer helpertok"]}}'
+    exit 0
+    ;;
+  *) echo '{}' ;;
+esac
+"#,
+        )],
+        serve: &[
+            (
+                r#"d.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+            ),
+            (
+                r#"e.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/b.txt"#, "f", r#"B"#)]),
+            ),
+            (r#"f.txt"#, Serve::Text(r#"F"#)),
+        ],
+        fetch: &[r#"@x"#],
+        error: Some(
+            r#"While parsing option --credential_helper=127.0.0.1:1234=<ws>/h.sh: Credential helper scope '127.0.0.1:1234' must be a valid domain name with an optional leading '*.' wildcard"#,
+        ),
+        printed: &[],
+        tree: &[],
+        requests: &[],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
+"#,
+        flags: &[
+            r#"--credential_helper=@WS@/h.sh"#,
+            r#"--credential_helper=no_such_host_x=@WS@/missing.sh"#,
+        ],
+        helper_log: &[],
+        git: &[],
+        files: &[(
+            r#"h.sh"#,
+            r#"#!/bin/sh
+read in
+case "$in" in
+  *127.0.0.1*)
+    echo "$1 $in" >> @WS@/helper.log
+    echo '{"headers":{"Authorization":["Bearer helpertok"]}}'
+    exit 0
+    ;;
+  *) echo '{}' ;;
+esac
+"#,
+        )],
+        serve: &[
+            (
+                r#"d.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+            ),
+            (
+                r#"e.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/b.txt"#, "f", r#"B"#)]),
+            ),
+            (r#"f.txt"#, Serve::Text(r#"F"#)),
+        ],
+        fetch: &[r#"@x"#],
+        error: Some(
+            r#"While parsing option --credential_helper=no_such_host_x=<ws>/missing.sh: Credential helper scope 'no_such_host_x' must be a valid domain name with an optional leading '*.' wildcard"#,
+        ),
+        printed: &[],
+        tree: &[],
+        requests: &[],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
+"#,
+        flags: &[r#"--credential_helper=127.0.0.1=rel/h.sh"#],
+        helper_log: &[],
+        git: &[],
+        files: &[(
+            r#"h.sh"#,
+            r#"#!/bin/sh
+read in
+case "$in" in
+  *127.0.0.1*)
+    echo "$1 $in" >> @WS@/helper.log
+    echo '{"headers":{"Authorization":["Bearer helpertok"]}}'
+    exit 0
+    ;;
+  *) echo '{}' ;;
+esac
+"#,
+        )],
+        serve: &[
+            (
+                r#"d.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+            ),
+            (
+                r#"e.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/b.txt"#, "f", r#"B"#)]),
+            ),
+            (r#"f.txt"#, Serve::Text(r#"F"#)),
+        ],
+        fetch: &[r#"@x"#],
+        error: Some(
+            r#"Path 'rel/h.sh' must either be absolute or not contain any path separators"#,
+        ),
+        printed: &[],
+        tree: &[],
+        requests: &[],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
+"#,
+        flags: &[r#"--credential_helper="#],
+        helper_log: &[],
+        git: &[],
+        files: &[(
+            r#"h.sh"#,
+            r#"#!/bin/sh
+read in
+case "$in" in
+  *127.0.0.1*)
+    echo "$1 $in" >> @WS@/helper.log
+    echo '{"headers":{"Authorization":["Bearer helpertok"]}}'
+    exit 0
+    ;;
+  *) echo '{}' ;;
+esac
+"#,
+        )],
+        serve: &[
+            (
+                r#"d.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+            ),
+            (
+                r#"e.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/b.txt"#, "f", r#"B"#)]),
+            ),
+            (r#"f.txt"#, Serve::Text(r#"F"#)),
+        ],
+        fetch: &[r#"@x"#],
+        error: Some(
+            r#"While parsing option --credential_helper=: Credential helper path must not be empty"#,
+        ),
+        printed: &[],
+        tree: &[],
+        requests: &[],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
+"#,
+        flags: &[r#"--credential_helper==@WS@/h.sh"#],
+        helper_log: &[],
+        git: &[],
+        files: &[(
+            r#"h.sh"#,
+            r#"#!/bin/sh
+read in
+case "$in" in
+  *127.0.0.1*)
+    echo "$1 $in" >> @WS@/helper.log
+    echo '{"headers":{"Authorization":["Bearer helpertok"]}}'
+    exit 0
+    ;;
+  *) echo '{}' ;;
+esac
+"#,
+        )],
+        serve: &[
+            (
+                r#"d.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+            ),
+            (
+                r#"e.zip"#,
+                Serve::Archive(r#"zip"#, &[(r#"top/b.txt"#, "f", r#"B"#)]),
+            ),
+            (r#"f.txt"#, Serve::Text(r#"F"#)),
+        ],
+        fetch: &[r#"@x"#],
+        error: Some(
+            r#"While parsing option --credential_helper==<ws>/h.sh: Credential helper scope must not be empty"#,
+        ),
+        printed: &[],
+        tree: &[],
+        requests: &[],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
+"#,
+        flags: &[r#"--credential_helper=*.127.0.0.1=@WS@/a.sh"#],
+        helper_log: &[r#"get a {"uri":"@URL@/d.zip"}"#],
+        git: &[],
+        files: &[
+            (
+                r#"a.sh"#,
+                r#"#!/bin/sh
+read in
+case "$in" in
+  *127.0.0.1*)
+    echo "$1 a $in" >> @WS@/helper.log
+    echo '{"headers":{"Authorization":["Bearer a"]}}'
+    ;;
+  *) echo '{}' ;;
+esac
+"#,
+            ),
+            (
+                r#"b.sh"#,
+                r#"#!/bin/sh
+read in
+case "$in" in
+  *127.0.0.1*)
+    echo "$1 b $in" >> @WS@/helper.log
+    echo '{"headers":{"Authorization":["Bearer b"]}}'
+    ;;
+  *) echo '{}' ;;
+esac
+"#,
+            ),
+            (
+                r#"c.sh"#,
+                r#"#!/bin/sh
+read in
+case "$in" in
+  *127.0.0.1*)
+    echo "$1 c $in" >> @WS@/helper.log
+    echo '{"headers":{"Authorization":["Bearer c"]}}'
+    ;;
+  *) echo '{}' ;;
+esac
+"#,
+            ),
+        ],
+        serve: &[(
+            r#"d.zip"#,
+            Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+        )],
+        fetch: &[r#"@x"#],
+        error: None,
+        printed: &[],
+        tree: &[
+            (r#"+http_archive+x/BUILD.bazel"#, r#"x x"#),
+            (r#"+http_archive+x/a.txt"#, r#"A"#),
+        ],
+        requests: &[r#"/d.zip auth=Bearer a"#],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
+"#,
+        flags: &[
+            r#"--credential_helper=127.0.0.1=@WS@/a.sh"#,
+            r#"--credential_helper=*.0.1=@WS@/b.sh"#,
+            r#"--credential_helper=@WS@/c.sh"#,
+        ],
+        helper_log: &[r#"get a {"uri":"@URL@/d.zip"}"#],
+        git: &[],
+        files: &[
+            (
+                r#"a.sh"#,
+                r#"#!/bin/sh
+read in
+case "$in" in
+  *127.0.0.1*)
+    echo "$1 a $in" >> @WS@/helper.log
+    echo '{"headers":{"Authorization":["Bearer a"]}}'
+    ;;
+  *) echo '{}' ;;
+esac
+"#,
+            ),
+            (
+                r#"b.sh"#,
+                r#"#!/bin/sh
+read in
+case "$in" in
+  *127.0.0.1*)
+    echo "$1 b $in" >> @WS@/helper.log
+    echo '{"headers":{"Authorization":["Bearer b"]}}'
+    ;;
+  *) echo '{}' ;;
+esac
+"#,
+            ),
+            (
+                r#"c.sh"#,
+                r#"#!/bin/sh
+read in
+case "$in" in
+  *127.0.0.1*)
+    echo "$1 c $in" >> @WS@/helper.log
+    echo '{"headers":{"Authorization":["Bearer c"]}}'
+    ;;
+  *) echo '{}' ;;
+esac
+"#,
+            ),
+        ],
+        serve: &[(
+            r#"d.zip"#,
+            Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+        )],
+        fetch: &[r#"@x"#],
+        error: None,
+        printed: &[],
+        tree: &[
+            (r#"+http_archive+x/BUILD.bazel"#, r#"x x"#),
+            (r#"+http_archive+x/a.txt"#, r#"A"#),
+        ],
+        requests: &[r#"/d.zip auth=Bearer a"#],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
+"#,
+        flags: &[
+            r#"--credential_helper=*.0.1=@WS@/b.sh"#,
+            r#"--credential_helper=*.1=@WS@/c.sh"#,
+        ],
+        helper_log: &[r#"get b {"uri":"@URL@/d.zip"}"#],
+        git: &[],
+        files: &[
+            (
+                r#"a.sh"#,
+                r#"#!/bin/sh
+read in
+case "$in" in
+  *127.0.0.1*)
+    echo "$1 a $in" >> @WS@/helper.log
+    echo '{"headers":{"Authorization":["Bearer a"]}}'
+    ;;
+  *) echo '{}' ;;
+esac
+"#,
+            ),
+            (
+                r#"b.sh"#,
+                r#"#!/bin/sh
+read in
+case "$in" in
+  *127.0.0.1*)
+    echo "$1 b $in" >> @WS@/helper.log
+    echo '{"headers":{"Authorization":["Bearer b"]}}'
+    ;;
+  *) echo '{}' ;;
+esac
+"#,
+            ),
+            (
+                r#"c.sh"#,
+                r#"#!/bin/sh
+read in
+case "$in" in
+  *127.0.0.1*)
+    echo "$1 c $in" >> @WS@/helper.log
+    echo '{"headers":{"Authorization":["Bearer c"]}}'
+    ;;
+  *) echo '{}' ;;
+esac
+"#,
+            ),
+        ],
+        serve: &[(
+            r#"d.zip"#,
+            Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+        )],
+        fetch: &[r#"@x"#],
+        error: None,
+        printed: &[],
+        tree: &[
+            (r#"+http_archive+x/BUILD.bazel"#, r#"x x"#),
+            (r#"+http_archive+x/a.txt"#, r#"A"#),
+        ],
+        requests: &[r#"/d.zip auth=Bearer b"#],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
+"#,
+        flags: &[
+            r#"--credential_helper=*.1=@WS@/c.sh"#,
+            r#"--credential_helper=*.0.1=@WS@/b.sh"#,
+        ],
+        helper_log: &[r#"get b {"uri":"@URL@/d.zip"}"#],
+        git: &[],
+        files: &[
+            (
+                r#"a.sh"#,
+                r#"#!/bin/sh
+read in
+case "$in" in
+  *127.0.0.1*)
+    echo "$1 a $in" >> @WS@/helper.log
+    echo '{"headers":{"Authorization":["Bearer a"]}}'
+    ;;
+  *) echo '{}' ;;
+esac
+"#,
+            ),
+            (
+                r#"b.sh"#,
+                r#"#!/bin/sh
+read in
+case "$in" in
+  *127.0.0.1*)
+    echo "$1 b $in" >> @WS@/helper.log
+    echo '{"headers":{"Authorization":["Bearer b"]}}'
+    ;;
+  *) echo '{}' ;;
+esac
+"#,
+            ),
+            (
+                r#"c.sh"#,
+                r#"#!/bin/sh
+read in
+case "$in" in
+  *127.0.0.1*)
+    echo "$1 c $in" >> @WS@/helper.log
+    echo '{"headers":{"Authorization":["Bearer c"]}}'
+    ;;
+  *) echo '{}' ;;
+esac
+"#,
+            ),
+        ],
+        serve: &[(
+            r#"d.zip"#,
+            Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+        )],
+        fetch: &[r#"@x"#],
+        error: None,
+        printed: &[],
+        tree: &[
+            (r#"+http_archive+x/BUILD.bazel"#, r#"x x"#),
+            (r#"+http_archive+x/a.txt"#, r#"A"#),
+        ],
+        requests: &[r#"/d.zip auth=Bearer b"#],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
+"#,
+        flags: &[
+            r#"--credential_helper=*.1=@WS@/c.sh"#,
+            r#"--credential_helper=@WS@/a.sh"#,
+        ],
+        helper_log: &[r#"get c {"uri":"@URL@/d.zip"}"#],
+        git: &[],
+        files: &[
+            (
+                r#"a.sh"#,
+                r#"#!/bin/sh
+read in
+case "$in" in
+  *127.0.0.1*)
+    echo "$1 a $in" >> @WS@/helper.log
+    echo '{"headers":{"Authorization":["Bearer a"]}}'
+    ;;
+  *) echo '{}' ;;
+esac
+"#,
+            ),
+            (
+                r#"b.sh"#,
+                r#"#!/bin/sh
+read in
+case "$in" in
+  *127.0.0.1*)
+    echo "$1 b $in" >> @WS@/helper.log
+    echo '{"headers":{"Authorization":["Bearer b"]}}'
+    ;;
+  *) echo '{}' ;;
+esac
+"#,
+            ),
+            (
+                r#"c.sh"#,
+                r#"#!/bin/sh
+read in
+case "$in" in
+  *127.0.0.1*)
+    echo "$1 c $in" >> @WS@/helper.log
+    echo '{"headers":{"Authorization":["Bearer c"]}}'
+    ;;
+  *) echo '{}' ;;
+esac
+"#,
+            ),
+        ],
+        serve: &[(
+            r#"d.zip"#,
+            Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+        )],
+        fetch: &[r#"@x"#],
+        error: None,
+        printed: &[],
+        tree: &[
+            (r#"+http_archive+x/BUILD.bazel"#, r#"x x"#),
+            (r#"+http_archive+x/a.txt"#, r#"A"#),
+        ],
+        requests: &[r#"/d.zip auth=Bearer c"#],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
+"#,
+        flags: &[r#"--credential_helper=*=@WS@/a.sh"#],
+        helper_log: &[],
+        git: &[],
+        files: &[
+            (
+                r#"a.sh"#,
+                r#"#!/bin/sh
+read in
+case "$in" in
+  *127.0.0.1*)
+    echo "$1 a $in" >> @WS@/helper.log
+    echo '{"headers":{"Authorization":["Bearer a"]}}'
+    ;;
+  *) echo '{}' ;;
+esac
+"#,
+            ),
+            (
+                r#"b.sh"#,
+                r#"#!/bin/sh
+read in
+case "$in" in
+  *127.0.0.1*)
+    echo "$1 b $in" >> @WS@/helper.log
+    echo '{"headers":{"Authorization":["Bearer b"]}}'
+    ;;
+  *) echo '{}' ;;
+esac
+"#,
+            ),
+            (
+                r#"c.sh"#,
+                r#"#!/bin/sh
+read in
+case "$in" in
+  *127.0.0.1*)
+    echo "$1 c $in" >> @WS@/helper.log
+    echo '{"headers":{"Authorization":["Bearer c"]}}'
+    ;;
+  *) echo '{}' ;;
+esac
+"#,
+            ),
+        ],
+        serve: &[(
+            r#"d.zip"#,
+            Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+        )],
+        fetch: &[r#"@x"#],
+        error: Some(
+            r#"While parsing option --credential_helper=*=<ws>/a.sh: Credential helper scope '*' must be a valid domain name with an optional leading '*.' wildcard"#,
+        ),
+        printed: &[],
+        tree: &[],
+        requests: &[],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
+"#,
+        flags: &[r#"--credential_helper=*.=@WS@/a.sh"#],
+        helper_log: &[],
+        git: &[],
+        files: &[
+            (
+                r#"a.sh"#,
+                r#"#!/bin/sh
+read in
+case "$in" in
+  *127.0.0.1*)
+    echo "$1 a $in" >> @WS@/helper.log
+    echo '{"headers":{"Authorization":["Bearer a"]}}'
+    ;;
+  *) echo '{}' ;;
+esac
+"#,
+            ),
+            (
+                r#"b.sh"#,
+                r#"#!/bin/sh
+read in
+case "$in" in
+  *127.0.0.1*)
+    echo "$1 b $in" >> @WS@/helper.log
+    echo '{"headers":{"Authorization":["Bearer b"]}}'
+    ;;
+  *) echo '{}' ;;
+esac
+"#,
+            ),
+            (
+                r#"c.sh"#,
+                r#"#!/bin/sh
+read in
+case "$in" in
+  *127.0.0.1*)
+    echo "$1 c $in" >> @WS@/helper.log
+    echo '{"headers":{"Authorization":["Bearer c"]}}'
+    ;;
+  *) echo '{}' ;;
+esac
+"#,
+            ),
+        ],
+        serve: &[(
+            r#"d.zip"#,
+            Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+        )],
+        fetch: &[r#"@x"#],
+        error: Some(
+            r#"While parsing option --credential_helper=*.=<ws>/a.sh: Credential helper scope '*.' must be a valid domain name with an optional leading '*.' wildcard"#,
+        ),
+        printed: &[],
+        tree: &[],
+        requests: &[],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
+"#,
+        flags: &[
+            r#"--credential_helper=@WS@/a.sh"#,
+            r#"--credential_helper=@WS@/b.sh"#,
+        ],
+        helper_log: &[r#"get b {"uri":"@URL@/d.zip"}"#],
+        git: &[],
+        files: &[
+            (
+                r#"a.sh"#,
+                r#"#!/bin/sh
+read in
+case "$in" in
+  *127.0.0.1*)
+    echo "$1 a $in" >> @WS@/helper.log
+    echo '{"headers":{"Authorization":["Bearer a"]}}'
+    ;;
+  *) echo '{}' ;;
+esac
+"#,
+            ),
+            (
+                r#"b.sh"#,
+                r#"#!/bin/sh
+read in
+case "$in" in
+  *127.0.0.1*)
+    echo "$1 b $in" >> @WS@/helper.log
+    echo '{"headers":{"Authorization":["Bearer b"]}}'
+    ;;
+  *) echo '{}' ;;
+esac
+"#,
+            ),
+            (
+                r#"c.sh"#,
+                r#"#!/bin/sh
+read in
+case "$in" in
+  *127.0.0.1*)
+    echo "$1 c $in" >> @WS@/helper.log
+    echo '{"headers":{"Authorization":["Bearer c"]}}'
+    ;;
+  *) echo '{}' ;;
+esac
+"#,
+            ),
+        ],
+        serve: &[(
+            r#"d.zip"#,
+            Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+        )],
+        fetch: &[r#"@x"#],
+        error: None,
+        printed: &[],
+        tree: &[
+            (r#"+http_archive+x/BUILD.bazel"#, r#"x x"#),
+            (r#"+http_archive+x/a.txt"#, r#"A"#),
+        ],
+        requests: &[r#"/d.zip auth=Bearer b"#],
     },
 ];

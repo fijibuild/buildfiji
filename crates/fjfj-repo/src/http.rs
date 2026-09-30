@@ -7,6 +7,7 @@
 //! `pattern` in which `<password>` is replaced, sent as the `Authorization`
 //! header).
 
+use crate::credentials::CredentialHelpers;
 use base64_wrap::encode;
 use fjfj_starlark::{Downloader, HttpRequest};
 use reqwest::blocking::Client;
@@ -42,6 +43,7 @@ pub struct HttpDownloader {
     client: Client,
     attempts: u32,
     backoff: Duration,
+    credentials: Option<CredentialHelpers>,
 }
 
 impl HttpDownloader {
@@ -56,7 +58,14 @@ impl HttpDownloader {
             client,
             attempts: attempts.max(1),
             backoff,
+            credentials: None,
         })
+    }
+
+    /// Ask these helpers for headers before each request.
+    pub fn with_credential_helpers(mut self, helpers: CredentialHelpers) -> HttpDownloader {
+        self.credentials = Some(helpers);
+        self
     }
 
     /// Bazel's own: eight attempts with a short wait.
@@ -65,7 +74,7 @@ impl HttpDownloader {
     }
 }
 
-fn authorization(auth: &[(String, String)]) -> Option<String> {
+pub(crate) fn authorization(auth: &[(String, String)]) -> Option<String> {
     let field = |name: &str| {
         auth.iter()
             .find(|(k, _)| k == name)
@@ -76,15 +85,32 @@ fn authorization(auth: &[(String, String)]) -> Option<String> {
             "Basic {}",
             encode(format!("{}:{}", field("login")?, field("password")?).as_bytes())
         )),
-        "pattern" => {
-            Some(field("pattern")?.replace("<password>", field("password").unwrap_or_default()))
-        }
+        "pattern" => Some(
+            field("pattern")?
+                .replace("<login>", field("login").unwrap_or_default())
+                .replace("<password>", field("password").unwrap_or_default()),
+        ),
         _ => None,
     }
 }
 
 impl Downloader for HttpDownloader {
     fn get(&self, request: &HttpRequest) -> Result<Vec<u8>, String> {
+        let helped = match self
+            .credentials
+            .as_ref()
+            .map(|c| c.headers_for(&request.url))
+        {
+            Some(Ok(headers)) => headers.unwrap_or_default(),
+            Some(Err(why)) => {
+                tracing::warn!("Error retrieving auth headers, continuing without: {why}");
+                Vec::new()
+            }
+            None => Vec::new(),
+        };
+        let helper_authorizes = helped
+            .iter()
+            .any(|(name, _)| name.eq_ignore_ascii_case("authorization"));
         let mut last = String::new();
         for attempt in 0..self.attempts {
             if attempt > 0 {
@@ -96,7 +122,12 @@ impl Downloader for HttpDownloader {
                     builder = builder.header(name.as_str(), value.as_str());
                 }
             }
-            if let Some(value) = authorization(&request.auth) {
+            for (name, values) in &helped {
+                for value in values {
+                    builder = builder.header(name.as_str(), value.as_str());
+                }
+            }
+            if !helper_authorizes && let Some(value) = authorization(&request.auth) {
                 builder = builder.header("Authorization", value);
             }
             match builder.send() {

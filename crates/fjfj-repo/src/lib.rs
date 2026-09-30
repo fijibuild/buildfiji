@@ -25,6 +25,7 @@
 //! - An extension's working directory is `modextwd/<repo prefix>` in the
 //!   output base, and a generated repository is made in `external/<name>`.
 
+mod credentials;
 #[cfg(test)]
 mod driver_tests;
 mod http;
@@ -42,6 +43,7 @@ mod replay_matrix;
 mod replay_tests;
 mod tools;
 
+pub use credentials::{CredentialHelper, CredentialHelpers, Headers};
 pub use http::HttpDownloader;
 pub use tools::{BAZEL_TOOLS_FILES, materialize_bazel_tools};
 
