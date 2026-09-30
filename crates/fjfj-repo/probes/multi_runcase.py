@@ -29,7 +29,7 @@ def run(case):
         w(ws + "/BUILD.bazel", "")
     extra = [f"--override_repository={o.replace('@WS@', ws)}" for o in case.get("overrides", [])]
     flags = [f"--output_base={ob}", "--registry=file://" + reg, "--registry=https://bcr.bazel.build",
-             "--lockfile_mode=off", *extra]
+             "--lockfile_mode=" + ("update" if case.get("lock") else "off"), *extra]
     targets = [f"@@{c}//:f" for c in case["fetch"]]
     p = subprocess.run(["bazel", *flags[:1], "build", *targets, *flags[1:]], cwd=ws,
                        capture_output=True, text=True)
@@ -42,10 +42,13 @@ def run(case):
             f = os.path.realpath(f"{ext}/{name}") + "/BUILD.bazel"
             if name in case["fetch"] and os.path.isfile(f):
                 builds[name] = open(f).read()
+    lock_ext = None
+    if case.get("lock") and os.path.isfile(ws + "/MODULE.bazel.lock"):
+        lock_ext = json.load(open(ws + "/MODULE.bazel.lock")).get("moduleExtensions")
     subprocess.run(["bazel", f"--output_base={ob}", "shutdown"], cwd=ws, capture_output=True)
     shutil.rmtree(tmp, ignore_errors=True)
     return {"name": case["name"], "prints": prints, "errors": errors, "builds": builds,
-            "exit": p.returncode, "reg": reg}
+            "exit": p.returncode, "reg": reg, "lock_ext": lock_ext, "log": p.stderr[-3000:]}
 
 if __name__ == "__main__":
     cases = json.load(open(sys.argv[1]))

@@ -284,6 +284,8 @@ struct ModuleState {
     /// name both sides — Bazel's `repoNameUsages`.
     /// Each repo name in use, how it came to be, and where.
     repo_name_usages: Vec<(String, String, String)>,
+    /// The tag calls so far: each tag's `seq`.
+    tag_calls: u32,
 }
 
 impl ModuleContext {
@@ -610,14 +612,16 @@ impl<'v> StarlarkValue<'v> for TagCallable {
         if self.usage_index == IGNORED_USAGE {
             return Ok(Value::new_none());
         }
-        ctx.state.borrow_mut().extension_usages[self.usage_index]
-            .tags
-            .push(Tag {
-                tag_class: self.tag_class.clone(),
-                attrs,
-                dev_dependency: self.dev_dependency,
-                location,
-            });
+        let mut state = ctx.state.borrow_mut();
+        let seq = state.tag_calls;
+        state.tag_calls += 1;
+        state.extension_usages[self.usage_index].tags.push(Tag {
+            tag_class: self.tag_class.clone(),
+            attrs,
+            dev_dependency: self.dev_dependency,
+            location,
+            seq,
+        });
         Ok(Value::new_none())
     }
 }
@@ -683,12 +687,15 @@ impl<'v> StarlarkValue<'v> for RepoRuleProxy {
         }
         ctx.add_repo_name_usage(&repo_name, "by a repo rule", &location)?;
         let mut state = ctx.state.borrow_mut();
+        let seq = state.tag_calls;
+        state.tag_calls += 1;
         let usage = &mut state.extension_usages[self.usage_index];
         usage.tags.push(Tag {
             tag_class: "repo".to_owned(),
             attrs,
             dev_dependency,
             location,
+            seq,
         });
         usage.imports.push((repo_name.clone(), repo_name));
         Ok(Value::new_none())

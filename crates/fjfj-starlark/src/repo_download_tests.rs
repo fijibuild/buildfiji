@@ -195,6 +195,7 @@ fn run(row: &DlRow) -> Outcome {
             attrs: repository_rule_defaults(&module, "r"),
             downloader: Some(served.clone()),
             repository_cache: Some(cache.clone()),
+            recorded: Default::default(),
         };
         let result = run_repository_rule(&module, "r", env, &probe_mappings(), Some(&capture));
         if let Err(e) = result {
@@ -301,6 +302,7 @@ fn run_with(
         attrs: repository_rule_defaults(&module, "r"),
         downloader: Some(downloader),
         repository_cache: Some(cache.to_owned()),
+        recorded: Default::default(),
     };
     run_repository_rule(&module, "r", env, &probe_mappings(), None).map_err(|e| e.message)
 }

@@ -34,6 +34,10 @@ mod http_archive_matrix;
 #[cfg(test)]
 mod http_archive_tests;
 #[cfg(test)]
+mod lock_matrix;
+#[cfg(test)]
+mod lock_tests;
+#[cfg(test)]
 mod multi_matrix;
 #[cfg(test)]
 mod multi_tests;
@@ -48,15 +52,17 @@ pub use http::HttpDownloader;
 pub use tools::{BAZEL_TOOLS_FILES, materialize_bazel_tools};
 
 use fjfj_bzlmod::extension_repos::ExtensionInstance;
+use fjfj_bzlmod::lockfile::Json;
 use fjfj_bzlmod::overrides::RepoRule;
 use fjfj_bzlmod::registry::Registry;
 use fjfj_bzlmod::{Module, ModuleKey, Resolution};
 use fjfj_graph::Label;
 use fjfj_loading::PackageLookup;
 use fjfj_starlark::{
-    BzlLoader, Downloader, ExtensionInput, GeneratedRepo, ModuleUse, RepoAttr, RepoEnv,
-    RepoMappings, RepoProvider, TagUse, TagValue, convert_repo_attrs, has_module_extension,
-    has_repository_rule, repository_rule_defaults, run_module_extension, run_repository_rule,
+    BzlLoader, Downloader, ExtensionInput, GeneratedRepo, ModuleUse, RecordedInput, RepoAttr,
+    RepoEnv, RepoMappings, RepoProvider, TagUse, TagValue, convert_repo_attrs,
+    has_module_extension, has_repository_rule, repository_rule_defaults, run_module_extension,
+    run_repository_rule,
 };
 use starlark::PrintHandler;
 use starlark::eval::FileLoader;
@@ -124,6 +130,21 @@ struct State {
     making: BTreeSet<String>,
     /// Repos replaced by a directory, by canonical name.
     overridden: BTreeMap<String, PathBuf>,
+    /// What each extension that ran gives `MODULE.bazel.lock`.
+    locked: Vec<LockedExtension>,
+}
+
+/// One extension's entry in `MODULE.bazel.lock`'s `moduleExtensions`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LockedExtension {
+    /// `//:ext.bzl%name`, or `@@repo//:ext.bzl%name` from another repository.
+    pub id: String,
+    /// `general`, or `os:linux`, `arch:amd64`, `os:linux,arch:amd64` for an
+    /// extension that depends on them.
+    pub factors: String,
+    /// What goes under the factors: `bzlTransitiveDigest`, `usagesDigest`,
+    /// `recordedInputs` and `generatedRepoSpecs`.
+    pub entry: Json,
 }
 
 struct Inner {
@@ -305,6 +326,11 @@ impl Repos {
         found
     }
 
+    /// What the extensions that have run give `MODULE.bazel.lock`.
+    pub fn locked_extensions(&self) -> Vec<LockedExtension> {
+        self.inner.state.lock().unwrap().locked.clone()
+    }
+
     /// The canonical names of the repositories extensions generated.
     pub fn generated(&self) -> impl Iterator<Item = String> {
         let names: Vec<String> = self
@@ -408,6 +434,7 @@ impl Inner {
             attrs,
             downloader: self.options.downloader.clone(),
             repository_cache: self.options.repository_cache.clone(),
+            recorded: Default::default(),
         }
     }
 
@@ -701,6 +728,110 @@ impl Inner {
         state.mappings = Arc::new(mappings);
     }
 
+    /// What the extension's run gives `MODULE.bazel.lock`; nothing for one
+    /// that is reproducible.
+    fn locked_entry(
+        &self,
+        extension: &ExtensionInstance,
+        file: &Label,
+        made: &fjfj_starlark::ExtensionOutput,
+    ) -> Option<LockedExtension> {
+        if made.reproducible {
+            return None;
+        }
+        let id = self.resolution.extension_lock_id(extension)?;
+        let factors = match (made.os_dependent, made.arch_dependent) {
+            (false, false) => "general".to_owned(),
+            (true, false) => format!("os:{}", os_factor()),
+            (false, true) => format!("arch:{}", arch_factor()),
+            (true, true) => format!("os:{},arch:{}", os_factor(), arch_factor()),
+        };
+        let b64 = |bytes: &[u8]| {
+            use base64::Engine as _;
+            base64::engine::general_purpose::STANDARD.encode(bytes)
+        };
+        let bzl_digest = self
+            .loader()
+            .transitive_digest(file)
+            .map(|d| b64(&d))
+            .unwrap_or_default();
+        let recorded: Vec<Json> = made
+            .recorded
+            .iter()
+            .filter_map(|input| self.recorded_text(input))
+            .map(Json::String)
+            .collect();
+        let specs: Vec<(String, Json)> = made
+            .repos
+            .iter()
+            .map(|repo| {
+                (
+                    repo.name.clone(),
+                    Json::Object(vec![
+                        ("repoRuleId".to_owned(), Json::String(repo.rule.clone())),
+                        (
+                            "attributes".to_owned(),
+                            Json::Object(
+                                repo.attrs
+                                    .iter()
+                                    .filter_map(|(k, v)| Some((k.clone(), repo_attr_json(v)?)))
+                                    .collect(),
+                            ),
+                        ),
+                    ]),
+                )
+            })
+            .collect();
+        Some(LockedExtension {
+            id,
+            factors,
+            entry: Json::Object(vec![
+                ("bzlTransitiveDigest".to_owned(), Json::String(bzl_digest)),
+                (
+                    "usagesDigest".to_owned(),
+                    Json::String(self.resolution.extension_usages_digest(extension)),
+                ),
+                ("recordedInputs".to_owned(), Json::Array(recorded)),
+                ("generatedRepoSpecs".to_owned(), Json::Object(specs)),
+            ]),
+        })
+    }
+
+    /// `recordedInputs` text for what an extension read: `ENV:`, `FILE:` and
+    /// `DIRENTS:`, the paths as `@@repo//path` (and none for a path that is in
+    /// no repository).
+    fn recorded_text(&self, input: &RecordedInput) -> Option<String> {
+        let repo_path = |path: &Path| -> Option<String> {
+            if let Ok(rest) = path.strip_prefix(&self.options.workspace_root) {
+                return Some(format!("@@//{}", rest.display()));
+            }
+            let external = self.options.output_base.join("external");
+            let rest = path.strip_prefix(&external).ok()?;
+            let mut parts = rest.components();
+            let repo = parts.next()?.as_os_str().to_string_lossy().into_owned();
+            let rest: PathBuf = parts.collect();
+            Some(format!("@@{repo}//{}", rest.display()))
+        };
+        match input {
+            RecordedInput::Env { name, value } => {
+                let value = match value {
+                    None => "\\0".to_owned(),
+                    Some(v) => v
+                        .replace('\\', "\\\\")
+                        .replace(' ', "\\s")
+                        .replace('\n', "\\n"),
+                };
+                Some(format!("ENV:{name} {value}"))
+            }
+            RecordedInput::File { path, sha256 } => {
+                Some(format!("FILE:{} {sha256}", repo_path(path)?))
+            }
+            RecordedInput::Dirents { path, sha256 } => {
+                Some(format!("DIRENTS:{} {sha256}", repo_path(path)?))
+            }
+        }
+    }
+
     /// Run extension `at` if it has not been, over every usage of it.
     fn ensure_ran(self: &Arc<Self>, at: usize) -> Result<(), FetchError> {
         let extension = &self.extensions[at];
@@ -861,7 +992,9 @@ impl Inner {
         }
         let names: Vec<String> = made.repos.iter().map(|r| r.name.clone()).collect();
         let rows = self.resolution.extension_repo_mapping(extension, &names);
+        let locked = self.locked_entry(extension, &file, &made);
         let mut state = self.state.lock().unwrap();
+        state.locked.extend(locked);
         let mut mappings = (*state.mappings).clone();
         for repo in made.repos {
             let canonical = extension.repo_name(&repo.name);
@@ -878,6 +1011,89 @@ impl Inner {
         state.mappings = Arc::new(mappings);
         Ok(())
     }
+}
+
+/// `moduleExtensions` of `MODULE.bazel.lock` for the extensions that ran: each
+/// extension's entry under its factors, both in sorted order.
+pub fn module_extensions_json(entries: &[LockedExtension]) -> Json {
+    let mut by_id: BTreeMap<&str, BTreeMap<&str, &Json>> = BTreeMap::new();
+    for e in entries {
+        by_id.entry(&e.id).or_default().insert(&e.factors, &e.entry);
+    }
+    Json::Object(
+        by_id
+            .into_iter()
+            .map(|(id, factors)| {
+                (
+                    id.to_owned(),
+                    Json::Object(
+                        factors
+                            .into_iter()
+                            .map(|(f, entry)| (f.to_owned(), entry.clone()))
+                            .collect(),
+                    ),
+                )
+            })
+            .collect(),
+    )
+}
+
+fn os_factor() -> &'static str {
+    match std::env::consts::OS {
+        "macos" => "mac os x",
+        other => other,
+    }
+}
+
+fn arch_factor() -> &'static str {
+    match std::env::consts::ARCH {
+        "x86_64" => "amd64",
+        other => other,
+    }
+}
+
+/// An attribute of a generated repository as the lockfile writes it (what
+/// `AttributeValuesAdapter` does): `None` is left out, a label is its
+/// canonical form.
+fn repo_attr_json(value: &RepoAttr) -> Option<Json> {
+    let label = |l: &Label| Json::String(label_text(l));
+    let strings = |items: &[String]| Json::Array(items.iter().cloned().map(Json::String).collect());
+    Some(match value {
+        RepoAttr::None => return None,
+        RepoAttr::Bool(b) => Json::Bool(*b),
+        RepoAttr::Int(i) => Json::Number((*i).into()),
+        RepoAttr::String(s) => Json::String(s.clone()),
+        RepoAttr::StringList(items) => strings(items),
+        RepoAttr::StringDict(items) => Json::Object(
+            items
+                .iter()
+                .map(|(k, v)| (k.clone(), Json::String(v.clone())))
+                .collect(),
+        ),
+        RepoAttr::StringListDict(items) => {
+            Json::Object(items.iter().map(|(k, v)| (k.clone(), strings(v))).collect())
+        }
+        RepoAttr::IntList(items) => {
+            Json::Array(items.iter().map(|i| Json::Number((*i).into())).collect())
+        }
+        RepoAttr::Label(l) => label(l),
+        RepoAttr::LabelList(items) => Json::Array(items.iter().map(label).collect()),
+        RepoAttr::StringKeyedLabelDict(items) => {
+            Json::Object(items.iter().map(|(k, v)| (k.clone(), label(v))).collect())
+        }
+        RepoAttr::LabelKeyedStringDict(items) => Json::Object(
+            items
+                .iter()
+                .map(|(k, v)| (label_text(k), Json::String(v.clone())))
+                .collect(),
+        ),
+        RepoAttr::LabelListDict(items) => Json::Object(
+            items
+                .iter()
+                .map(|(k, v)| (k.clone(), Json::Array(v.iter().map(label).collect())))
+                .collect(),
+        ),
+    })
 }
 
 fn tag_value(value: &fjfj_bzlmod::attrs::AttrValue) -> TagValue {

@@ -35,3 +35,21 @@ ha_cases1.json OUT.json` runs each in real Bazel 9.2.0 with `bazel fetch
 and the requests the server got; `python3 mkha.py OUT1.json OUT2.json ...`
 writes the table. Placeholders in a case: `@URL@`, `@SHA:name@`, `@INT:name@`,
 `@GIT:repo@`, `@COMMIT:repo@` and `@WS@` (the workspace directory).
+
+## Lockfile results (buildfiji-mum.8.6)
+
+`lock_cases1.py`, `lock_cases2.py` and `lock_cases3.py` write the workspaces
+(`lock_cases*.json`), `python3 multi_runcase.py lock_casesN.json OUT.json` runs
+them with `--lockfile_mode=update` and keeps the `moduleExtensions` Bazel wrote
+(`lock_ext`), and `python3 lock_matrix.py lock_cases1.json OUT1.json ...` writes
+`src/lock_matrix.rs`.
+
+How the digests were found: Bazel's classes are in `A-server.jar` and its
+embedded JRE (`install_base/embedded_tools/jdk/bin/java`, no compiler) runs them. A
+small class file assembled by hand (`constant pool` + a dozen instructions) that
+calls `SingleExtensionUsagesValue.trimForEvaluation` and `hashForEvaluation` on a
+value parsed from JSON printed the exact text that is hashed, and the class files'
+constant pools and bytecode (a 150-line disassembler is enough) gave the rest:
+which Gson, which fields in which order, `Fingerprint`'s protobuf encoding. Put the
+probe class in the package `com.google.devtools.build.lib.bazel.bzlmod` (the methods
+are package-private) and run with `--add-opens java.base/java.lang=ALL-UNNAMED`.

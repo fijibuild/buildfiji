@@ -201,6 +201,10 @@ pub struct Tag {
     pub dev_dependency: bool,
     /// Where the call was, `MODULE.bazel:3:8`.
     pub location: String,
+    /// Which tag call of the module file this was, counting from 0: what
+    /// orders the tags of an extension's dev and non-dev usages together.
+    #[serde(skip)]
+    pub seq: u32,
 }
 
 /// One evaluated `MODULE.bazel` file.

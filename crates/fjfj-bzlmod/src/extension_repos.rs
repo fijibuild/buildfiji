@@ -227,3 +227,206 @@ impl Resolution {
         rows
     }
 }
+
+// ---- what goes in MODULE.bazel.lock for an extension (buildfiji-mum.8.6) ----------
+
+use crate::attrs::AttrValue;
+use crate::lockfile::Json;
+use crate::module::{ExtensionUsage, Module, Tag};
+use base64::Engine as _;
+use sha2::Digest as _;
+
+/// An attribute value as Bazel writes it (`AttributeValuesAdapter`): `None` is
+/// left out of a dict and kept in a list (as `null`); an int is a 32-bit one.
+pub fn attr_json(value: &AttrValue) -> Json {
+    match value {
+        AttrValue::None => Json::Null,
+        AttrValue::Bool(b) => Json::Bool(*b),
+        AttrValue::Int(i) => Json::Number((*i).into()),
+        AttrValue::String(s) => Json::String(s.clone()),
+        AttrValue::List(items) => Json::Array(items.iter().map(attr_json).collect()),
+        AttrValue::Dict(items) => Json::Object(
+            items
+                .iter()
+                .filter(|(_, v)| !matches!(v, AttrValue::None))
+                .map(|(k, v)| {
+                    let key = match k {
+                        AttrValue::String(s) => s.clone(),
+                        AttrValue::Int(i) => i.to_string(),
+                        AttrValue::Bool(b) => if *b { "True" } else { "False" }.to_owned(),
+                        _ => String::new(),
+                    };
+                    (key, attr_json(v))
+                })
+                .collect(),
+        ),
+    }
+}
+
+/// The label of an extension's `.bzl` as the lockfile's digest sees it: one
+/// written `//pkg:x.bzl` or `:x.bzl` is `@<the module's repo name>//pkg:x.bzl`,
+/// any other as written.
+fn normalized_bzl(written: &str, repo_name: &str) -> String {
+    if let Some(rest) = written.strip_prefix("//") {
+        format!("@{repo_name}//{rest}")
+    } else if written.starts_with(':') {
+        format!("@{repo_name}//{written}")
+    } else {
+        written.to_owned()
+    }
+}
+
+fn tag_json(tag: &Tag) -> Json {
+    Json::Object(vec![
+        ("tagName".to_owned(), Json::String(tag.tag_class.clone())),
+        (
+            "attributeValues".to_owned(),
+            Json::Object(
+                tag.attrs
+                    .iter()
+                    .filter(|(_, v)| !matches!(v, AttrValue::None))
+                    .map(|(k, v)| (k.clone(), attr_json(v)))
+                    .collect(),
+            ),
+        ),
+        ("devDependency".to_owned(), Json::Bool(tag.dev_dependency)),
+        // `Location.BUILTIN`: where a tag was does not matter to the digest.
+        (
+            "location".to_owned(),
+            Json::Object(vec![
+                ("file".to_owned(), Json::String("<builtin>".to_owned())),
+                ("line".to_owned(), Json::Number(0.into())),
+                ("column".to_owned(), Json::Number(0.into())),
+            ]),
+        ),
+    ])
+}
+
+fn usage_json(module: &Module, usages: &[&ExtensionUsage]) -> Json {
+    let mut tags: Vec<&Tag> = usages.iter().flat_map(|u| u.tags.iter()).collect();
+    tags.sort_by_key(|t| t.seq);
+    Json::Object(vec![
+        (
+            "extensionBzlFile".to_owned(),
+            Json::String(normalized_bzl(&usages[0].bzl_file, &module.repo_name)),
+        ),
+        (
+            "extensionName".to_owned(),
+            Json::String(usages[0].extension_name.clone()),
+        ),
+        ("proxies".to_owned(), Json::Array(Vec::new())),
+        (
+            "tags".to_owned(),
+            Json::Array(tags.into_iter().map(tag_json).collect()),
+        ),
+        ("repoOverrides".to_owned(), Json::Object(Vec::new())),
+    ])
+}
+
+impl Resolution {
+    /// The extension as the lockfile names it: its `.bzl`'s label, `%`, and its
+    /// name. `None` for what `use_repo_rule` makes, which has none.
+    pub fn extension_lock_id(&self, extension: &ExtensionInstance) -> Option<String> {
+        if extension.id.starts_with("@@") {
+            return None;
+        }
+        Some(if extension.bzl_repo.is_empty() {
+            extension.id.clone()
+        } else {
+            format!("@@{}{}", extension.bzl_repo, extension.id)
+        })
+    }
+
+    /// The lockfile names of every extension the graph uses.
+    pub fn extension_lock_ids(&self) -> Vec<String> {
+        self.extensions()
+            .iter()
+            .filter_map(|e| self.extension_lock_id(e))
+            .collect()
+    }
+
+    /// `usagesDigest`: a hash of what the modules that use an extension said
+    /// to it, in the JSON Bazel's `SingleExtensionUsagesValue` gives, with
+    /// where each tag was and what each `use_repo` imported left out: the
+    /// SHA-256 of that text as UTF-16, in base64.
+    pub fn extension_usages_digest(&self, extension: &ExtensionInstance) -> String {
+        let extensions = self.extensions();
+        let at = extensions.iter().position(|e| e == extension);
+        let mut by_module: Vec<(&ModuleKey, &Module, Vec<&ExtensionUsage>)> = Vec::new();
+        for (key, index) in &extension.usages {
+            let module = &self
+                .selection
+                .resolved
+                .iter()
+                .find(|(k, _)| k == key)
+                .expect("a selected module")
+                .1;
+            let usage = &module.extension_usages[*index];
+            match by_module.iter_mut().find(|(k, _, _)| *k == key) {
+                Some((_, _, list)) => list.push(usage),
+                None => by_module.push((key, module, vec![usage])),
+            }
+        }
+        let usages = Json::Object(
+            by_module
+                .iter()
+                .map(|(key, module, list)| (key.to_string(), usage_json(module, list)))
+                .collect(),
+        );
+        let modules = Json::Array(
+            by_module
+                .iter()
+                .map(|(key, module, _)| {
+                    Json::Object(vec![
+                        ("name".to_owned(), Json::String(module.name.clone())),
+                        (
+                            "version".to_owned(),
+                            Json::String(module.version.as_str().to_owned()),
+                        ),
+                        ("key".to_owned(), Json::String(key.to_string())),
+                    ])
+                })
+                .collect(),
+        );
+        // What the root module replaced or added, by the canonical name of the
+        // repo that takes its place.
+        let targets = self.override_targets(&extensions);
+        let mut overrides: Vec<(String, Json)> = Vec::new();
+        if let Some(root) = self.selection.resolved.iter().find(|(k, _)| k.is_root()) {
+            for (user, index) in &extension.usages {
+                if !user.is_root() {
+                    continue;
+                }
+                for change in &root.1.extension_usages[*index].repo_overrides {
+                    let target = at.and_then(|at| {
+                        targets
+                            .get(&(at, change.overridden_repo_name.clone()))
+                            .cloned()
+                    });
+                    let target = target.or_else(|| {
+                        self.module_mapping(&root.0, &root.1, &extensions, None)
+                            .into_iter()
+                            .find(|(n, _)| *n == change.overriding_repo_name)
+                            .map(|(_, c)| c)
+                    });
+                    if let Some(target) = target {
+                        overrides.push((change.overridden_repo_name.clone(), Json::String(target)));
+                    }
+                }
+            }
+        }
+        let value = Json::Object(vec![
+            ("extensionUsages".to_owned(), usages),
+            (
+                "extensionUniqueName".to_owned(),
+                Json::String(format!("{}+{}", extension.bzl_repo, extension.unique_name)),
+            ),
+            ("abridgedModules".to_owned(), modules),
+            ("repoMappings".to_owned(), Json::Object(Vec::new())),
+            ("repoOverrides".to_owned(), Json::Object(overrides)),
+        ]);
+        let text = serde_json::to_string(&value).expect("JSON is text");
+        let utf16: Vec<u8> = text.encode_utf16().flat_map(u16::to_le_bytes).collect();
+        base64::engine::general_purpose::STANDARD.encode(sha2::Sha256::digest(&utf16))
+    }
+}

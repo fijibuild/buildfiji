@@ -289,3 +289,48 @@ fn the_lockfile_is_written_only_when_it_changes_and_the_mode_writes() {
         );
     }
 }
+
+#[test]
+fn module_extensions_this_run_evaluated_replace_the_files_and_the_unused_are_dropped() {
+    let entry = |digest: &str| {
+        Json::Object(vec![(
+            "general".to_owned(),
+            Json::Object(vec![(
+                "usagesDigest".to_owned(),
+                Json::String(digest.to_owned()),
+            )]),
+        )])
+    };
+    let before = Lockfile {
+        module_extensions: Json::Object(vec![
+            ("//:old.bzl%gone".to_owned(), entry("a")),
+            ("//:b.bzl%kept".to_owned(), entry("b")),
+            ("//:c.bzl%redone".to_owned(), entry("old")),
+        ]),
+        ..Lockfile::default()
+    }
+    .to_text();
+    let session = session(LockfileMode::Update, Some(&before));
+    session.set_module_extensions(
+        Json::Object(vec![
+            ("//:c.bzl%redone".to_owned(), entry("new")),
+            ("//:a.bzl%fresh".to_owned(), entry("f")),
+        ]),
+        vec![
+            "//:a.bzl%fresh".to_owned(),
+            "//:b.bzl%kept".to_owned(),
+            "//:c.bzl%redone".to_owned(),
+        ],
+    );
+    let after = session.finish(&[]);
+    let Json::Object(ids) = after.module_extensions else {
+        panic!("an object");
+    };
+    // Sorted by id, the unused one gone.
+    assert_eq!(
+        ids.iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(),
+        ["//:a.bzl%fresh", "//:b.bzl%kept", "//:c.bzl%redone"]
+    );
+    assert_eq!(ids[2].1, entry("new"));
+    assert_eq!(ids[1].1, entry("b"));
+}

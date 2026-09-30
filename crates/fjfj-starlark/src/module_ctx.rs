@@ -128,6 +128,10 @@ impl TagValue {
         if let Some(s) = value.unpack_str() {
             return Some(TagValue::String(s.to_owned()));
         }
+        // A `Label` is the canonical label it stands for.
+        if let Some(label) = value.downcast_ref::<crate::label::StarlarkLabel>() {
+            return Some(TagValue::String(label.canonical()));
+        }
         if let Some(i) = value.unpack_i32() {
             return Some(TagValue::Int(i.into()));
         }
@@ -202,6 +206,14 @@ pub struct GeneratedRepo {
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct ExtensionOutput {
     pub repos: Vec<GeneratedRepo>,
+    /// What the implementation read from outside, in the order it first did.
+    pub recorded: Vec<crate::repo_ctx::RecordedInput>,
+    /// `extension_metadata(reproducible = True)` was returned: the result is the
+    /// same wherever it is run, and is not kept in the lockfile.
+    pub reproducible: bool,
+    /// The extension was declared `os_dependent` and/or `arch_dependent`.
+    pub os_dependent: bool,
+    pub arch_dependent: bool,
 }
 
 /// What a running extension collects, reached through the evaluator's `extra`.
@@ -671,7 +683,9 @@ impl<'v> StarlarkValue<'v> for Facts {}
 
 /// What `extension_metadata()` returns: nothing a module can look at.
 #[derive(Debug, ProvidesStaticType, NoSerialize, Allocative)]
-struct ExtensionMetadata;
+struct ExtensionMetadata {
+    reproducible: bool,
+}
 
 starlark_simple_value!(ExtensionMetadata);
 
@@ -773,8 +787,9 @@ fn mctx_members(builder: &mut MethodsBuilder) {
             p("reproducible", false, false, "bool", is_bool),
         ];
         let _ = this;
-        bind_checked("extension_metadata", PARAMS, args, eval)?;
-        Ok(eval.heap().alloc(ExtensionMetadata))
+        let bound = bind_checked("extension_metadata", PARAMS, args, eval)?;
+        let reproducible = bound[2].and_then(|v| v.unpack_bool()).unwrap_or(false);
+        Ok(eval.heap().alloc(ExtensionMetadata { reproducible }))
     }
 
     fn path<'v>(
@@ -980,6 +995,10 @@ pub(crate) fn call_repository_rule<'v>(
                 key.as_str()
             ))
         })?;
+        // `None` is an attribute that was not given.
+        if matches!(value, TagValue::None) && key.as_str() != "name" {
+            continue;
+        }
         given.push((key.as_str().to_owned(), value));
     }
     let name = match given.iter().find(|(n, _)| n == "name") {
@@ -1071,6 +1090,7 @@ pub fn run_module_extension(
         .get_any_visibility(extension_name)
         .map(|(value, _)| value)
         .map_err(|_| err(format!("no module extension named {extension_name}")))?;
+    let recorder = env.recorded.clone();
     let env = Arc::new(env);
     Module::with_temp_heap(|scratch| {
         scratch.frozen_heap().add_reference(extension.owner());
@@ -1148,13 +1168,27 @@ pub fn run_module_extension(
                 returned.get_type()
             )));
         }
+        let reproducible = returned
+            .downcast_ref::<ExtensionMetadata>()
+            .is_some_and(|m| m.reproducible);
         drop(eval);
         let repos = running
             .extension
             .take()
             .map(|s| s.into_inner().repos)
             .unwrap_or_default();
-        Ok(ExtensionOutput { repos })
+        let flag = |name: &str| {
+            module_extension_arg(ext_value, name)
+                .and_then(|v| v.unpack_bool())
+                .unwrap_or(false)
+        };
+        Ok(ExtensionOutput {
+            repos,
+            recorded: recorder.inputs(),
+            reproducible,
+            os_dependent: flag("os_dependent"),
+            arch_dependent: flag("arch_dependent"),
+        })
     })
 }
 

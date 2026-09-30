@@ -90,7 +90,10 @@ pub use module_ctx::{
 pub use native::{
     BuildFile, BuildFileError, BuildFileOutput, build_globals, bzl_globals, evaluate_build_file,
 };
-pub use repo_ctx::{RepoAttr, RepoEnv, RepoError, repository_rule_defaults, run_repository_rule};
+pub use repo_ctx::{
+    RecordedInput, Recorder, RepoAttr, RepoEnv, RepoError, repository_rule_defaults,
+    run_repository_rule,
+};
 pub use repo_download::{Downloader, HttpRequest};
 pub use structs::{FrozenStruct, Struct, StructGen};
 

@@ -25,6 +25,7 @@ use crate::native::{BuildFile, BuildFileError, BuildFileOutput, bzl_globals, eva
 use fjfj_graph::package::check_subpackage_crossing;
 use fjfj_graph::{Label, LabelContext};
 use fjfj_loading::PackageLookup;
+use sha2::Digest as _;
 use starlark::environment::{FrozenModule, Globals};
 use starlark::eval::FileLoader;
 use std::cell::RefCell;
@@ -93,6 +94,8 @@ pub struct BzlLoader {
     waiting: Mutex<HashMap<ThreadId, ThreadId>>,
     /// How many files have been evaluated.
     evaluations: AtomicUsize,
+    /// The transitive digest of each file evaluated.
+    digests: Mutex<HashMap<(String, String, String), [u8; 32]>>,
 }
 
 /// A loader for the loads one file makes: who is loading decides what a
@@ -100,10 +103,22 @@ pub struct BzlLoader {
 pub struct Importing<'a> {
     loader: &'a BzlLoader,
     importer: Label,
+    /// The files this one loaded, in the order its load statements ran.
+    loads: RefCell<Vec<Label>>,
 }
 
 impl FileLoader for Importing<'_> {
     fn load(&self, path: &str) -> starlark::Result<FrozenModule> {
+        let file = self
+            .loader
+            .parse(&self.importer, path)
+            .map_err(|message| starlark::Error::new_other(anyhow::anyhow!("{message}")))?;
+        {
+            let mut loads = self.loads.borrow_mut();
+            if !loads.contains(&file) {
+                loads.push(file);
+            }
+        }
         self.loader
             .load(&self.importer, path)
             .map_err(|message| starlark::Error::new_other(anyhow::anyhow!("{message}")))
@@ -135,6 +150,7 @@ impl BzlLoader {
             slots: Mutex::new(HashMap::new()),
             waiting: Mutex::new(HashMap::new()),
             evaluations: AtomicUsize::new(0),
+            digests: Mutex::new(HashMap::new()),
         }
     }
 
@@ -149,7 +165,17 @@ impl BzlLoader {
         Importing {
             loader: self,
             importer,
+            loads: RefCell::new(Vec::new()),
         }
+    }
+
+    /// The transitive digest of a `.bzl` that has been evaluated: the SHA-256
+    /// of the SHA-256 of its text followed by the transitive digest of each
+    /// file it loads, in the order of its load statements (what a module
+    /// extension's `bzlTransitiveDigest` in `MODULE.bazel.lock` is).
+    pub fn transitive_digest(&self, file: &Label) -> Option<[u8; 32]> {
+        let key = (file.repo.clone(), file.package.clone(), file.name.clone());
+        self.digests.lock().unwrap().get(&key).copied()
     }
 
     /// Evaluate the BUILD file of `package` in `repo`: what `fjfj build`
@@ -390,6 +416,24 @@ impl BzlLoader {
             loader: &loader,
             print: None,
         });
+        if module.is_ok() {
+            let mut hasher = sha2::Sha256::new();
+            hasher.update(sha2::Sha256::digest(source.as_bytes()));
+            {
+                let digests = self.digests.lock().unwrap();
+                for load in loader.loads.borrow().iter() {
+                    let key = (load.repo.clone(), load.package.clone(), load.name.clone());
+                    if let Some(digest) = digests.get(&key) {
+                        hasher.update(digest);
+                    }
+                }
+            }
+            let key = (file.repo.clone(), file.package.clone(), file.name.clone());
+            self.digests
+                .lock()
+                .unwrap()
+                .insert(key, hasher.finalize().into());
+        }
         // The source is dropped here, and the syntax tree was gone when the
         // module was evaluated: what stays is the frozen module.
         module.map_err(|e| format!("{:#}", e.into_anyhow()))

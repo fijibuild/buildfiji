@@ -10,6 +10,7 @@ rust_library(
     edition = "2024",
     version = "0.0.1",
     deps = [
+        "@crates//:base64",
         "//crates/fjfj-bzlmod",
         "//crates/fjfj-graph",
         "//crates/fjfj-loading",
@@ -27,7 +28,6 @@ rust_test(
     crate = ":fjfj-repo",
     deps = [
         "//crates/fjfj-archive",
-        "@crates//:base64",
         "@crates//:hex",
         "@crates//:regex",
         "@crates//:sha2",

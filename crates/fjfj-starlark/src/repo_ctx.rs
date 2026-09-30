@@ -105,6 +105,90 @@ pub struct RepoEnv {
     pub downloader: Option<Arc<dyn crate::repo_download::Downloader>>,
     /// The repository cache: a directory with `content_addressable/sha256/`.
     pub repository_cache: Option<PathBuf>,
+    /// What the rule or extension read from outside its own directory.
+    pub recorded: Recorder,
+}
+
+/// Something a module extension read that its result depends on: what
+/// `recordedInputs` of `MODULE.bazel.lock` lists.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RecordedInput {
+    /// An environment variable and its value (`None`: not set).
+    Env { name: String, value: Option<String> },
+    /// A file and the SHA-256 (hex) of its content.
+    File { path: PathBuf, sha256: String },
+    /// A directory and the digest of the names in it (Bazel's `Fingerprint` of
+    /// the sorted names: the count, then each name's length and bytes, as
+    /// protobuf varints).
+    Dirents { path: PathBuf, sha256: String },
+}
+
+impl RecordedInput {
+    fn same_input(&self, other: &RecordedInput) -> bool {
+        match (self, other) {
+            (RecordedInput::Env { name: a, .. }, RecordedInput::Env { name: b, .. }) => a == b,
+            (RecordedInput::File { path: a, .. }, RecordedInput::File { path: b, .. }) => a == b,
+            (RecordedInput::Dirents { path: a, .. }, RecordedInput::Dirents { path: b, .. }) => {
+                a == b
+            }
+            _ => false,
+        }
+    }
+}
+
+/// Where [`RecordedInput`]s are collected, in the order they were first
+/// read.
+#[derive(Debug, Clone, Default)]
+pub struct Recorder(Arc<std::sync::Mutex<Vec<RecordedInput>>>);
+
+impl PartialEq for Recorder {
+    fn eq(&self, _: &Recorder) -> bool {
+        true
+    }
+}
+
+impl Eq for Recorder {}
+
+impl Recorder {
+    pub fn push(&self, input: RecordedInput) {
+        let mut inputs = self.0.lock().expect("recorder");
+        if !inputs.iter().any(|i| i.same_input(&input)) {
+            inputs.push(input);
+        }
+    }
+
+    /// What was recorded so far.
+    pub fn inputs(&self) -> Vec<RecordedInput> {
+        self.0.lock().expect("recorder").clone()
+    }
+}
+
+/// The digest `RecordedInput::Dirents` holds for a directory with these names.
+fn dirents_digest(names: &mut [String]) -> String {
+    use sha2::Digest as _;
+    names.sort();
+    let mut bytes = Vec::new();
+    let varint = |out: &mut Vec<u8>, mut n: usize| {
+        loop {
+            let low = (n & 0x7f) as u8;
+            n >>= 7;
+            if n == 0 {
+                out.push(low);
+                return;
+            }
+            out.push(low | 0x80);
+        }
+    };
+    varint(&mut bytes, names.len());
+    for name in names.iter() {
+        varint(&mut bytes, name.len());
+        bytes.extend_from_slice(name.as_bytes());
+    }
+    hex_of(&sha2::Sha256::digest(&bytes))
+}
+
+fn hex_of(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 /// Why a repository rule failed: Bazel's message for it.
@@ -121,6 +205,9 @@ pub struct RepoError {
 pub(crate) struct RepoPath {
     #[allocative(skip)]
     path: PathBuf,
+    /// Where reads through this path are recorded.
+    #[allocative(skip)]
+    recorder: Recorder,
 }
 
 starlark_simple_value!(RepoPath);
@@ -177,7 +264,10 @@ fn path_members(builder: &mut MethodsBuilder) {
     fn dirname<'v>(this: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
         let parent = this_path(this).path.parent().map(Path::to_path_buf);
         Ok(match parent {
-            Some(path) => heap.alloc(RepoPath { path }),
+            Some(path) => heap.alloc(RepoPath {
+                path,
+                recorder: this_path(this).recorder.clone(),
+            }),
             None => Value::new_none(),
         })
     }
@@ -213,7 +303,10 @@ fn path_members(builder: &mut MethodsBuilder) {
                 missing.display()
             ))
         })?;
-        Ok(heap.alloc(RepoPath { path: real }))
+        Ok(heap.alloc(RepoPath {
+            path: real,
+            recorder: this_path(this).recorder.clone(),
+        }))
     }
 
     /// The entries of a directory.
@@ -223,7 +316,8 @@ fn path_members(builder: &mut MethodsBuilder) {
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> starlark::Result<Value<'v>> {
         const PARAMS: &[P] = &[p("watch", false, false, "string", is_str)];
-        bind_checked("readdir", PARAMS, args, eval)?;
+        let bound = bind_checked("readdir", PARAMS, args, eval)?;
+        let bound_no_watch = bound[0].and_then(|w| w.unpack_str()) == Some("no");
         let path = &this_path(this).path;
         if !path.is_dir() {
             return Err(fatal(format!(
@@ -232,11 +326,22 @@ fn path_members(builder: &mut MethodsBuilder) {
             )));
         }
         let mut entries = Vec::new();
+        let mut names = Vec::new();
         for entry in
             std::fs::read_dir(path).map_err(|e| fatal(format!("java.io.IOException: {e}")))?
         {
             let entry = entry.map_err(|e| fatal(format!("java.io.IOException: {e}")))?;
-            entries.push(eval.heap().alloc(RepoPath { path: entry.path() }));
+            names.push(entry.file_name().to_string_lossy().into_owned());
+            entries.push(eval.heap().alloc(RepoPath {
+                path: entry.path(),
+                recorder: this_path(this).recorder.clone(),
+            }));
+        }
+        if !bound_no_watch {
+            this_path(this).recorder.push(RecordedInput::Dirents {
+                path: path.clone(),
+                sha256: dirents_digest(&mut names),
+            });
         }
         Ok(eval.heap().alloc(AllocList(entries)))
     }
@@ -263,7 +368,10 @@ fn path_members(builder: &mut MethodsBuilder) {
             })?;
             path = lexical(&path.join(child));
         }
-        Ok(eval.heap().alloc(RepoPath { path }))
+        Ok(eval.heap().alloc(RepoPath {
+            path,
+            recorder: this_path(this).recorder.clone(),
+        }))
     }
 }
 
@@ -821,6 +929,7 @@ pub(crate) fn op_path<'v>(
     let resolved = resolve(env_of(this), bound[0].expect("required"))?;
     Ok(eval.heap().alloc(RepoPath {
         path: resolved.path,
+        recorder: env_of(this).recorded.clone(),
     }))
 }
 
@@ -902,7 +1011,26 @@ pub(crate) fn op_read<'v>(
     let bound = bind_checked("read", PARAMS, args, eval)?;
     let resolved = resolve(env, arg(PARAMS, &bound, "path").expect("required"))?;
     check_watch(env, &resolved, arg(PARAMS, &bound, "watch"))?;
-    read_text(&resolved)
+    let text = read_text(&resolved)?;
+    if arg(PARAMS, &bound, "watch").and_then(|w| w.unpack_str()) != Some("no") {
+        record_file(env, &resolved.path);
+    }
+    Ok(text)
+}
+
+/// Note that the file at `path` was read, unless it is in the directory being
+/// made.
+pub(crate) fn record_file(env: &RepoEnv, path: &Path) {
+    use sha2::Digest as _;
+    if inside(env, path) {
+        return;
+    }
+    if let Ok(bytes) = std::fs::read(path) {
+        env.recorded.push(RecordedInput::File {
+            path: path.to_path_buf(),
+            sha256: hex_of(&sha2::Sha256::digest(&bytes)),
+        });
+    }
 }
 
 pub(crate) fn op_delete<'v>(
@@ -1062,7 +1190,10 @@ pub(crate) fn op_which<'v>(
         .map(|dir| dir.join(program))
         .find(|candidate| is_executable(candidate));
     Ok(match found {
-        Some(path) => eval.heap().alloc(RepoPath { path }),
+        Some(path) => eval.heap().alloc(RepoPath {
+            path,
+            recorder: env_of(this).recorded.clone(),
+        }),
         None => Value::new_none(),
     })
 }
@@ -1079,6 +1210,10 @@ pub(crate) fn op_getenv<'v>(
     let env = env_of(this);
     let bound = bind_checked("getenv", PARAMS, args, eval)?;
     let name = bound[0].expect("required").unpack_str().expect("checked");
+    env.recorded.push(RecordedInput::Env {
+        name: name.to_owned(),
+        value: env.environ.get(name).cloned(),
+    });
     Ok(match env.environ.get(name) {
         Some(value) => string_value(eval.heap(), value),
         None => bound[1].unwrap_or_else(Value::new_none),
@@ -1157,6 +1292,7 @@ fn ctx_members(builder: &mut MethodsBuilder) {
     fn workspace_root<'v>(this: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
         Ok(heap.alloc(RepoPath {
             path: env_of(this).workspace_root.clone(),
+            recorder: env_of(this).recorded.clone(),
         }))
     }
 
@@ -1352,6 +1488,9 @@ fn watch_under<'v>(
     let resolved = resolve(env, bound[0].expect("required"))?;
     if inside(env, &resolved.path) {
         return Err(fatal("attempted to watch path under working directory"));
+    }
+    if resolved.path.is_file() {
+        record_file(env, &resolved.path);
     }
     Ok(NoneType)
 }

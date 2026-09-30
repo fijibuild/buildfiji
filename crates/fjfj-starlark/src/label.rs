@@ -305,6 +305,11 @@ pub(crate) struct StarlarkLabel {
 starlark_simple_value!(StarlarkLabel);
 
 impl StarlarkLabel {
+    /// The label as `@@repo//package:name`, which names it from anywhere.
+    pub(crate) fn canonical(&self) -> String {
+        format!("@@{}//{}:{}", self.repo, self.package, self.name)
+    }
+
     pub(crate) fn into_label(self) -> Label {
         Label {
             repo: self.repo,

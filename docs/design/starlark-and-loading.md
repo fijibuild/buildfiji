@@ -1382,6 +1382,55 @@ repo, extension repos too):
 - `isolate = True` names repos after the variable the usage is assigned to;
   left out for now (buildfiji-mum.8.7).
 
+### Module extensions in `MODULE.bazel.lock` (implemented 2026-09-30, buildfiji-mum.8.6)
+
+What `moduleExtensions` holds, read off Bazel 9.2.0's lockfiles **and its bytecode**
+(`A-server.jar`'s classes: `SingleExtensionUsagesValue`, `GsonTypeAdapterUtil`,
+`Fingerprint`, `RepoRecordedInput`; a hand-assembled `Probe.class` run on the
+embedded JRE calls them, see the notes in `probes/README.md`). 36 probed rows replay
+(`lock_matrix.rs`).
+
+- The key is the extension as a label then `%` and its name: `//:ext.bzl%collect`
+  for the main repository, `@@lib+//:ext.bzl%collect` for another one. Under it
+  the factors the result depends on: `general`, or `os:linux`, `arch:amd64`,
+  `os:linux,arch:amd64` for `os_dependent` and `arch_dependent`. An extension that
+  returns `extension_metadata(reproducible = True)` is not in the file.
+- `bzlTransitiveDigest` is base64 of `sha256(sha256(text of the .bzl) ++ the
+  transitive digest of each file it loads)`, in the order of its load statements
+  (nothing about Bazel's builtins or flags goes in). `BzlLoader::transitive_digest`.
+- `usagesDigest` is base64 of the SHA-256, of the UTF-16LE bytes, of the compact JSON
+  Gson writes for a trimmed `SingleExtensionUsagesValue`: `extensionUsages` (a
+  module key, `<root>` or `name@version`, to `{extensionBzlFile, extensionName,
+  proxies: [], tags, repoOverrides: {}}`), `extensionUniqueName`
+  (`<repo of the .bzl>+<unique name>`: `+collect`, `lib++collect`),
+  `abridgedModules` (`{name, version, key}` of the modules that use it),
+  `repoMappings: {}` and the root's `repoOverrides`. A tag is `{tagName,
+  attributeValues, devDependency, location}` with the location always
+  `{file: "<builtin>", line: 0, column: 0}`; tags of one module's dev and non-dev
+  usages are together, in the order the calls were made (`Tag::seq`). The `.bzl`
+  written `//pkg:x.bzl` or `:x.bzl` is `@<module's repo name>//pkg:x.bzl`, one
+  written `@dep//...` stays. `isolationKey` (none) and a `None` attribute are left
+  out. `Resolution::extension_usages_digest`.
+- `recordedInputs` are what the implementation read, once each, in the order it
+  first did: `ENV:<name> <value>` (`\0` for not set, `\s` for a space, `\n`, `\\`),
+  `FILE:@@<repo>//<path> <sha256 of the content>` (`read`, `watch`) and
+  `DIRENTS:@@<repo>//<path> <digest>` (`readdir`; the digest is `Fingerprint.addStrings`
+  of the sorted names: the count, then each name's length and bytes, as protobuf
+  varints, then SHA-256). A path outside every repository is not recorded; a file
+  that only `exists` is not.
+- `generatedRepoSpecs` is each repository as `{repoRuleId, attributes}` in
+  the order the extension made them, the attributes as given (a `None` left out, a
+  label as `@@repo//pkg:name`, a label-keyed dict's keys too).
+- A `Label` passed to a repository rule inside an extension is accepted, and a
+  `None` attribute means not given.
+
+Not done (buildfiji-mum.8.8): reusing a locked result instead of running the
+extension (and the `error` mode's refusal when the digests differ), the
+`REPO_MAPPING:` recorded input a `Label("@dep//...")` read adds, what `use_repo_rule`
+and `isolate = True` extensions write, `facts`, and the file's whole pretty-printed text
+(the section is carried as ordered JSON, which the tests of the whole file already
+round-trip).
+
 ### `MODULE.bazel.lock` (implemented 2026-09-30, buildfiji-mum.7)
 
 `fjfj_bzlmod::lockfile` reads and writes Bazel 9.2.0's lockfile, version

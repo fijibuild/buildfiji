@@ -6,6 +6,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+base64.workspace = true
 fjfj-bzlmod.workspace = true
 fjfj-graph.workspace = true
 fjfj-loading.workspace = true
@@ -17,7 +18,6 @@ thiserror.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
-base64.workspace = true
 fjfj-archive.workspace = true
 hex.workspace = true
 regex.workspace = true

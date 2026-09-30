@@ -30,9 +30,11 @@
 //! - A lockfile that is not version 28, or is not JSON, is not used:
 //!   `update` and `refresh` replace it, `error` refuses it.
 //!
-//! What is here and what is not: `moduleExtensions`, `facts` and
-//! `factsVersions` are carried through untouched, in their original order
-//! (module extensions are buildfiji-mum.8's). One known difference:
+//! What is here and what is not: `facts` and `factsVersions` are carried
+//! through untouched, in their original order. `moduleExtensions` is what the
+//! extensions a run evaluated give ([`LockSession::set_module_extensions`],
+//! from `fjfj-repo`'s `LockedExtension`s): the file's entries for extensions the
+//! graph still uses stay, the others go, and the ids and factors are sorted. One known difference:
 //! Bazel writes `selectedYankedVersions` in a Java `HashMap` iteration
 //! order, fjfj in selection order, so the two agree only when at most one
 //! version is yanked (buildfiji-avh).
@@ -363,6 +365,9 @@ pub struct LockSession {
     /// What the previous lockfile was like, for the `error` mode refusal.
     unusable: Option<Unusable>,
     touched: Mutex<BTreeMap<String, FileHash>>,
+    /// The module extensions this run evaluated, and those the module graph
+    /// uses (what stays of the previous lockfile's).
+    extensions: Mutex<Option<(Json, Vec<String>)>>,
 }
 
 impl LockSession {
@@ -387,7 +392,17 @@ impl LockSession {
             previous,
             unusable,
             touched: Mutex::new(BTreeMap::new()),
+            extensions: Mutex::new(None),
         }))
+    }
+
+    /// The module extensions this run evaluated, as `moduleExtensions` holds
+    /// them (an object of extension ids, each an object of the factors it
+    /// ran under), and the ids of all the extensions the module graph uses: an
+    /// extension the graph no longer uses leaves the file, one it still uses
+    /// but this run did not evaluate keeps what the file had.
+    pub fn set_module_extensions(&self, evaluated: Json, used: Vec<String>) {
+        *self.extensions.lock().expect("lock") = Some((evaluated, used));
     }
 
     pub fn mode(&self) -> LockfileMode {
@@ -452,10 +467,38 @@ impl LockSession {
                 .iter()
                 .map(|(key, reason)| (key.to_string(), reason.clone()))
                 .collect(),
-            module_extensions: previous.module_extensions,
+            module_extensions: self.merged_module_extensions(&previous.module_extensions),
             facts: previous.facts,
             facts_versions: previous.facts_versions,
         }
+    }
+
+    /// `previous` with what this run evaluated put in, sorted by id and factors.
+    fn merged_module_extensions(&self, previous: &Json) -> Json {
+        let Some((evaluated, used)) = self.extensions.lock().expect("lock").clone() else {
+            return previous.clone();
+        };
+        let entries = |json: &Json| -> Vec<(String, Json)> {
+            match json {
+                Json::Object(items) => items.clone(),
+                _ => Vec::new(),
+            }
+        };
+        let mut merged: BTreeMap<String, BTreeMap<String, Json>> = BTreeMap::new();
+        for (id, factors) in entries(previous) {
+            if used.contains(&id) {
+                merged.entry(id).or_default().extend(entries(&factors));
+            }
+        }
+        for (id, factors) in entries(&evaluated) {
+            merged.entry(id).or_default().extend(entries(&factors));
+        }
+        Json::Object(
+            merged
+                .into_iter()
+                .map(|(id, factors)| (id, Json::Object(factors.into_iter().collect())))
+                .collect(),
+        )
     }
 
     /// The text to write to `MODULE.bazel.lock`, or `None` if the mode does
