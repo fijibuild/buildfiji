@@ -49,7 +49,7 @@ mod tools;
 
 pub use credentials::{CredentialHelper, CredentialHelpers, Headers};
 pub use http::HttpDownloader;
-pub use tools::{BAZEL_TOOLS_FILES, materialize_bazel_tools};
+pub use tools::{BAZEL_TOOLS_ARCHIVE, materialize_bazel_tools};
 
 use fjfj_bzlmod::extension_repos::{ExtensionInstance, normalized_bzl};
 use fjfj_bzlmod::lockfile::Json;
@@ -333,6 +333,34 @@ impl Repos {
             }
         }
         found
+    }
+
+    /// The canonical name of the repo the main repository calls `apparent` (what
+    /// `@apparent` means there), if it calls one that.
+    pub fn main_repo_canonical(&self, apparent: &str) -> Option<String> {
+        self.inner
+            .state
+            .lock()
+            .unwrap()
+            .mappings
+            .find_apparent("", apparent)
+    }
+
+    /// Every repository a fetch of everything makes, in the order modules and
+    /// extensions come: the selected modules' (not the main repository nor
+    /// `bazel_tools`, which is served from the output base), then what the
+    /// extensions that have run generated.
+    pub fn all_repos(&self) -> Vec<String> {
+        let inner = &self.inner;
+        let mut repos: Vec<String> = inner
+            .resolution
+            .selection
+            .keys()
+            .filter(|key| !key.is_root() && key.name != "bazel_tools")
+            .map(|key| inner.resolution.canonical_name_of(key))
+            .collect();
+        repos.extend(inner.state.lock().unwrap().generated.keys().cloned());
+        repos
     }
 
     /// The warnings there were so far, each as Bazel words it after `WARNING: `.
@@ -811,6 +839,10 @@ impl Inner {
                 };
                 into.extend(usage.imports.iter().map(|(_, exported)| exported.as_str()));
             }
+        }
+        // What the root module imports can only be wrong if it uses the extension.
+        if first.is_none() {
+            return Ok(None);
         }
         let generated: Vec<&str> = made.repos.iter().map(|r| r.name.as_str()).collect();
         fn named<'a>(deps: &'a MetaDeps, generated: &[&'a str]) -> Vec<&'a str> {

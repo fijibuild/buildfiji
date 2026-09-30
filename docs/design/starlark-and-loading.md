@@ -1123,6 +1123,27 @@ Bazel quirks these rows pin: a plain multi-file patch applies only its last file
 Still open: the flags `--override_repository`, `--credential_helper` and the rest
 in `fjfj build`, with `--registry` and `--lockfile_mode` (buildfiji-mum.12.2).
 
+## `fjfj fetch` and `@bazel_tools` (implemented 2026-09-30, buildfiji-mum.12.2)
+
+`fjfj fetch [--repo=@name | --all]` is the first command that joins the resolver, the
+extensions, the repository rules and the lockfile (`crates/fjfj-cli/src/fetch_command.rs`).
+It reads `--repository_cache`, `--distdir`, `--override_repository`, `--credential_helper*`
+as Bazel does, writes `MODULE.bazel.lock` per `--lockfile_mode`, and exits 8 when a
+repository cannot be made.
+
+`@bazel_tools` is the real one: `crates/fjfj-repo/embedded_tools.tar.zst` is Bazel 9.2.0's
+`embedded_tools/` minus the JRE, extracted once into `<output base>/external/bazel_tools`
+(refresh recipe in `crates/fjfj-repo/embedded_tools/README.md`). The hand-written copies of
+`http.bzl`, `git.bzl` and friends are gone. Every `.bzl` module also gets the builtin
+providers (`PackageSpecificationInfo`, ...) from `crates/fjfj-starlark/src/builtins.bzl`.
+
+Known gap: `fetch --all` on a real workspace stops at the analysis-phase builtins that
+rulesets read while loading (`config_common`, `platform_common`, `cc_common`,
+`java_common`, ...), e.g. `@rules_java//java:extensions.bzl`. Per the `starlark` skill these
+are written in Starlark or supplied by the rules, so they belong to the analysis beads.
+`fetch --repo=@bazel_skylib` and `@platforms` host_platform work, and skylib's
+`registryFileHashes` in the lockfile equal Bazel's.
+
 ## Bazel 9.2.0's builtin namespaces, and who owns each name (buildfiji-mum.3)
 
 Read off Bazel 9.2.0 by asking `type(name)` in a BUILD file and in a `.bzl`

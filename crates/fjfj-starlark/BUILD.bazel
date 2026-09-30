@@ -5,7 +5,7 @@ package(default_visibility = ["//visibility:public"])
 rust_library(
     name = "fjfj-starlark",
     srcs = glob(["src/**/*.rs"]),
-    compile_data = glob(["testdata/**"]),
+    compile_data = glob(["testdata/**", "src/**/*.bzl"]),
     crate_name = "fjfj_starlark",
     edition = "2024",
     version = "0.0.1",

@@ -29,6 +29,7 @@ use fjfj_bzlmod::{
 use fjfj_exec::console::ConsoleUi;
 use fjfj_remote::execution_log::{CompactExecutionLogWriter, EntryType, ExecLogEntry, Invocation};
 
+mod fetch_command;
 mod mod_command;
 
 /// `fjfj license`'s output. Bazel's own prints an equivalent short notice
@@ -62,6 +63,9 @@ pub enum CliError {
     /// The requested command ran but didn't succeed.
     #[error("{0}")]
     Build(anyhow::Error),
+    /// A repository could not be made: Bazel's `fetch` exits 8 for it.
+    #[error("{0}")]
+    Fetch(anyhow::Error),
     /// A bug in fjfj itself, not something the user's command line or
     /// build can fix.
     #[error("{0}")]
@@ -73,6 +77,7 @@ impl CliError {
         match self {
             CliError::CommandLine(_) => ExitCode::CommandLineProblem,
             CliError::Build(_) => ExitCode::BuildFailed,
+            CliError::Fetch(_) => ExitCode::Interrupted,
             CliError::Internal(_) => ExitCode::InternalError,
         }
     }
@@ -81,7 +86,9 @@ impl CliError {
     /// can act on, `FATAL: ...` for [`CliError::Internal`].
     fn stderr_line(&self) -> String {
         match self {
-            CliError::CommandLine(e) | CliError::Build(e) => messages::error(e),
+            CliError::CommandLine(e) | CliError::Build(e) | CliError::Fetch(e) => {
+                messages::error(e)
+            }
             CliError::Internal(e) => messages::fatal(e),
         }
     }
@@ -152,12 +159,13 @@ fn bzlmod_resolve_options(
 
 /// Resolves the bzlmod module graph for `module_bazel_text` (the root
 /// `MODULE.bazel`, already read from `workspace_root`) against the flags a
-/// command was given.
-fn resolve_bzlmod(
+/// command was given, leaving the lockfile to [`write_lockfile`].
+fn resolve_bzlmod_session(
     module_bazel_text: &str,
     workspace_root: &std::path::Path,
     flags: &BzlmodFlags,
-) -> Result<Resolution, CliError> {
+    isolated_extension_usages: bool,
+) -> Result<fetch_command::Resolved, CliError> {
     let mode = match &flags.lockfile_mode {
         Some(value) => LockfileMode::parse(value)
             .map_err(|e| CliError::CommandLine(anyhow::anyhow!("--lockfile_mode: {e}")))?,
@@ -177,21 +185,49 @@ fn resolve_bzlmod(
         ),
     };
     let registries = bzlmod_registries(flags, session.as_ref())?;
-    let source = RegistrySource::new(registries);
+    let source =
+        RegistrySource::new(registries).with_isolated_extension_usages(isolated_extension_usages);
     let mut options = bzlmod_resolve_options(flags, workspace_root)?;
     options.for_lockfile = session.is_some();
+    options.experimental_isolated_extension_usages = isolated_extension_usages;
     let resolution = fjfj_bzlmod::resolve(module_bazel_text, &source, &options)
         .map_err(|e| CliError::Build(anyhow::anyhow!(e)))?;
-    // The lockfile is written when resolution succeeded, and only if it
-    // changed (Bazel leaves an unchanged file's timestamp alone).
-    if let Some(session) = &session
-        && let Some(text) = session.to_write(&resolution.selected_yanked, existing.as_deref())
+    Ok(fetch_command::Resolved {
+        resolution,
+        session,
+        existing,
+        lock_path,
+    })
+}
+
+/// Writes the lockfile a run ends with, only if it changed (Bazel leaves an
+/// unchanged file's timestamp alone).
+fn write_lockfile(resolved: &fetch_command::Resolved) -> Result<(), CliError> {
+    if let Some(session) = &resolved.session
+        && let Some(text) = session.to_write(
+            &resolved.resolution.selected_yanked,
+            resolved.existing.as_deref(),
+        )
     {
-        std::fs::write(&lock_path, text).map_err(|e| {
-            CliError::Build(anyhow::anyhow!("cannot write {}: {e}", lock_path.display()))
+        std::fs::write(&resolved.lock_path, text).map_err(|e| {
+            CliError::Build(anyhow::anyhow!(
+                "cannot write {}: {e}",
+                resolved.lock_path.display()
+            ))
         })?;
     }
-    Ok(resolution)
+    Ok(())
+}
+
+/// Resolves the bzlmod module graph and writes the lockfile.
+fn resolve_bzlmod(
+    module_bazel_text: &str,
+    workspace_root: &std::path::Path,
+    flags: &BzlmodFlags,
+) -> Result<Resolution, CliError> {
+    let resolved = resolve_bzlmod_session(module_bazel_text, workspace_root, flags, false)?;
+    write_lockfile(&resolved)?;
+    Ok(resolved.resolution)
 }
 
 /// Reads `MODULE.bazel` from the current directory and resolves it —
@@ -483,6 +519,34 @@ async fn run(cli: Cli) -> Result<(), CliError> {
             print!("{output}");
             Ok(())
         }
+        Command::Fetch(args) => {
+            let (fetch, rest) = fetch_command::extract(&args.patterns)?;
+            let (bzlmod, rest) = bzlmod_flags::extract(&rest, "fetch");
+            let implemented: Vec<&'static str> =
+                [bzlmod_flags::IMPLEMENTED, fetch_command::IMPLEMENTED]
+                    .iter()
+                    .flat_map(|s| s.iter().copied())
+                    .collect();
+            clap_flags::validate(&rest, "fetch", &implemented)
+                .map_err(|e| CliError::CommandLine(anyhow::Error::from(e)))?;
+            let workspace_root = std::env::current_dir().map_err(|e| {
+                CliError::Internal(anyhow::anyhow!("couldn't get current directory: {e}"))
+            })?;
+            let module_bazel_text = std::fs::read_to_string(workspace_root.join("MODULE.bazel"))
+                .map_err(|e| {
+                    CliError::CommandLine(anyhow::anyhow!(
+                        "no MODULE.bazel found in {}: {e}",
+                        workspace_root.display()
+                    ))
+                })?;
+            // `reqwest::blocking` does not start inside the runtime (see
+            // `resolve_workspace_bzlmod`).
+            tokio::task::spawn_blocking(move || {
+                fetch_command::run(&fetch, &bzlmod, &workspace_root, &module_bazel_text)
+            })
+            .await
+            .map_err(|e| CliError::Internal(anyhow::anyhow!("fetch task panicked: {e}")))?
+        }
         other => Err(CliError::Build(anyhow::anyhow!(
             "command not implemented yet: {other:?}"
         ))),
@@ -653,5 +717,105 @@ mod tests {
             panic!("accepted");
         };
         assert!(e.to_string().contains("lockfile_mode"), "{e}");
+    }
+
+    #[test]
+    fn fetch_flags_are_read_as_bazel_reads_them() {
+        let args: Vec<String> = [
+            "--repo=@a",
+            "--repo",
+            "@@b+",
+            "--repository_cache=",
+            "--distdir=/d",
+            "--override_repository=lib=/p",
+            "--credential_helper=example.com=/bin/h",
+            "--credential_helper_timeout=2m",
+            "--registry=x",
+        ]
+        .iter()
+        .map(|s| (*s).to_owned())
+        .collect();
+        let (flags, rest) = fetch_command::extract(&args).unwrap();
+        assert_eq!(flags.repos, ["@a", "@@b+"]);
+        assert_eq!(flags.repository_cache, Some(None));
+        assert_eq!(flags.distdirs, [std::path::PathBuf::from("/d")]);
+        assert_eq!(
+            flags.repo_overrides,
+            [("lib".to_owned(), std::path::PathBuf::from("/p"))]
+        );
+        assert_eq!(
+            flags.credential_helpers[0].scope.as_deref(),
+            Some("example.com")
+        );
+        assert_eq!(
+            flags.credential_helper_timeout,
+            Some(std::time::Duration::from_secs(120))
+        );
+        assert_eq!(rest, ["--registry=x"]);
+        for (flag, message) in [
+            (
+                "--override_repository=lib",
+                "While parsing option --override_repository=lib: Repository overrides must be of the form 'repository-name=path'",
+            ),
+            (
+                "--credential_helper==/h",
+                "While parsing option --credential_helper==/h: Credential helper scope must not be empty",
+            ),
+            (
+                "--credential_helper=",
+                "While parsing option --credential_helper=: Credential helper path must not be empty",
+            ),
+        ] {
+            let Err(CliError::CommandLine(e)) = fetch_command::extract(&[flag.to_owned()]) else {
+                panic!("{flag} accepted");
+            };
+            assert_eq!(e.to_string(), message);
+        }
+    }
+
+    #[test]
+    fn fetch_makes_a_repository_an_extension_generates_and_locks_the_extension() {
+        let dir = Scratch::new("fetch");
+        let module = "module(name = 'root', version = '0')\n\
+            bazel_dep(name = 'ext', version = '2.0')\n\
+            e = use_extension('@ext//:ext.bzl', 'gen')\n\
+            use_repo(e, 'r1')\n";
+        std::fs::write(dir.0.join("BUILD.bazel"), "").unwrap();
+        let mut args = fixture_registry_flags();
+        args.push("--lockfile_mode=update".to_owned());
+        let (bzlmod, rest) = bzlmod_flags::extract(&args, "fetch");
+        assert!(rest.is_empty(), "{rest:?}");
+        let flags = fetch_command::FetchFlags {
+            repos: vec!["@r1".to_owned()],
+            output_base: Some(dir.0.join("ob")),
+            repository_cache: Some(None),
+            ..fetch_command::FetchFlags::default()
+        };
+        fetch_command::run(&flags, &bzlmod, &dir.0, module).unwrap();
+        assert!(dir.0.join("ob/external/ext++gen+r1/BUILD.bazel").is_file());
+        let lock = std::fs::read_to_string(dir.0.join("MODULE.bazel.lock")).unwrap();
+        assert!(lock.contains("\"@@ext+//:ext.bzl%gen\""), "{lock}");
+        assert!(lock.contains("\"usagesDigest\""), "{lock}");
+        // A repository that nothing names is the command line's problem, and
+        // one that cannot be made is exit code 8.
+        let asked = |repo: &str| fetch_command::FetchFlags {
+            repos: vec![repo.to_owned()],
+            output_base: Some(dir.0.join("ob")),
+            repository_cache: Some(None),
+            ..fetch_command::FetchFlags::default()
+        };
+        let Err(CliError::CommandLine(e)) =
+            fetch_command::run(&asked("@nope"), &bzlmod, &dir.0, module)
+        else {
+            panic!("accepted");
+        };
+        assert!(
+            e.to_string().contains("no repository visible as '@nope'"),
+            "{e}"
+        );
+        let Err(e) = fetch_command::run(&asked("@@nope+"), &bzlmod, &dir.0, module) else {
+            panic!("accepted");
+        };
+        assert_eq!(e.exit_code(), ExitCode::Interrupted);
     }
 }

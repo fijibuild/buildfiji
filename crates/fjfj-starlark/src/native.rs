@@ -113,7 +113,12 @@ pub fn build_globals() -> Globals {
 /// `native`.
 pub fn bzl_globals() -> Globals {
     let mut builder = GlobalsBuilder::extended_by(&[LibraryExtension::Print]);
-    builder.namespace("native", native_functions);
+    builder.namespace("native", |native| {
+        native_functions(native);
+        // What Bazel says it is; a module extension and a repository rule
+        // read it (`bazel_features` does).
+        native.set("bazel_version", "9.2.0");
+    });
     builder
         .with(depset_globals)
         .with(attr_globals)
@@ -664,6 +669,22 @@ fn native_functions(builder: &mut GlobalsBuilder) {
         args: &Arguments<'v, '_>,
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> starlark::Result<Value<'v>> {
+        if eval
+            .extra
+            .and_then(|extra| extra.downcast_ref::<BuildContext>())
+            .is_none()
+        {
+            // A module extension asks and is told there is none; a repository
+            // rule is refused.
+            return if crate::module_ctx::extension_running(eval) {
+                Ok(Value::new_none())
+            } else {
+                Err(fatal(
+                    "existing_rule() can only be used while evaluating a BUILD file, a legacy \
+                     macro, or a rule finalizer",
+                ))
+            };
+        }
         let ctx = context(eval, "existing_rule")?;
         no_symbolic_macro(ctx, "existing_rule")?;
         let bound = bind(
@@ -693,6 +714,22 @@ fn native_functions(builder: &mut GlobalsBuilder) {
         args: &Arguments<'v, '_>,
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> starlark::Result<Value<'v>> {
+        if eval
+            .extra
+            .and_then(|extra| extra.downcast_ref::<BuildContext>())
+            .is_none()
+        {
+            return if crate::module_ctx::extension_running(eval) {
+                Ok(eval
+                    .heap()
+                    .alloc(AllocDict(Vec::<(String, Value<'v>)>::new())))
+            } else {
+                Err(fatal(
+                    "existing_rules() can only be used while evaluating a BUILD file, a legacy \
+                     macro, or a rule finalizer",
+                ))
+            };
+        }
         let ctx = context(eval, "existing_rules")?;
         no_symbolic_macro(ctx, "existing_rules")?;
         bind("existing_rules", Wording::Signature, &[], args, eval)?;

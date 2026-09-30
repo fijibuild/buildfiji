@@ -1,10 +1,15 @@
-# The files of `@bazel_tools` that fjfj runs
+# `@bazel_tools`
 
-Copied from `embedded_tools/` of the Bazel 9.2.0 install (`bazel info
-install_base`), Apache-2.0 like Bazel: the repository rules a module file
-names by `use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl",
-"http_archive")`. Bazel serves the whole directory as the repository
-`@bazel_tools`; fjfj serves these files until it ships the rest
-(buildfiji-mum.23, buildfiji-mum.12). Refresh by copying again; the packages'
-`BUILD.bazel` files are the ones Bazel has, kept here as `BUILD.bazel.in` so that
-this directory is not a package of this repository.
+`../embedded_tools.tar.zst` is `embedded_tools/` of the Bazel 9.2.0 install (`bazel
+info install_base`) without `jdk/` (the JRE, 69 MB): the repository `@bazel_tools`, as
+Bazel serves it (Apache-2.0, like Bazel). fjfj extracts it into
+`<output base>/external/bazel_tools` (`src/tools.rs`); `MODULE.bazel` in it is the real
+one. Refresh it with
+
+```sh
+IB=$(bazel info install_base)/embedded_tools
+(cd "$IB" && tar --exclude=./jdk --sort=name --mtime=@0 --owner=0 --group=0 \
+  --numeric-owner --mode=u+rw,go+r-w -cf - .) | zstd -19 -q -o crates/fjfj-repo/embedded_tools.tar.zst
+```
+
+and copy its `MODULE.bazel` to `crates/fjfj-bzlmod/src/bazel_tools.MODULE.bazel`.

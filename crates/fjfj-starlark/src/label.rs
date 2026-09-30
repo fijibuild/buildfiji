@@ -161,8 +161,52 @@ impl<'a> BzlEval<'a> {
     }
 }
 
+/// fjfj's own `.bzl`: the providers every file has as globals.
+const BUILTINS_SOURCE: &str = include_str!("builtins.bzl");
+
+/// The loads of the builtins: there are none.
+struct NoLoads;
+
+impl FileLoader for NoLoads {
+    fn load(&self, path: &str) -> starlark::Result<FrozenModule> {
+        Err(starlark::Error::new_other(anyhow::anyhow!(
+            "the builtins load nothing, not {path}"
+        )))
+    }
+}
+
+/// The frozen module of [`BUILTINS_SOURCE`], made once.
+fn builtins_module() -> &'static FrozenModule {
+    static MODULE: std::sync::OnceLock<FrozenModule> = std::sync::OnceLock::new();
+    MODULE.get_or_init(|| {
+        let globals = crate::native::bzl_globals();
+        let mappings = RepoMappings::new();
+        let label = Label {
+            repo: "_builtins".to_owned(),
+            package: String::new(),
+            name: "providers.bzl".to_owned(),
+        };
+        evaluate_bzl_with(
+            &BzlFile {
+                file: &label,
+                source: BUILTINS_SOURCE,
+                globals: &globals,
+                mappings: &mappings,
+                loader: &NoLoads,
+                print: None,
+            },
+            false,
+        )
+        .expect("the builtins evaluate")
+    })
+}
+
 /// Evaluate a `.bzl` file and freeze what it defines.
 pub fn evaluate_bzl(input: &BzlFile<'_>) -> starlark::Result<FrozenModule> {
+    evaluate_bzl_with(input, true)
+}
+
+fn evaluate_bzl_with(input: &BzlFile<'_>, builtins: bool) -> starlark::Result<FrozenModule> {
     let _span = tracing::debug_span!("evaluate_bzl", file = %bzl_name(input.file)).entered();
     let ast = {
         let _span = tracing::debug_span!("parse", file = %bzl_name(input.file)).entered();
@@ -176,6 +220,17 @@ pub fn evaluate_bzl(input: &BzlFile<'_>) -> starlark::Result<FrozenModule> {
         extension: None,
     };
     Module::with_temp_heap(|module| {
+        if builtins {
+            let provided = builtins_module();
+            for name in provided.names() {
+                if let Ok(owned) = provided.get(&name)
+                    && let Some(value) = owned.value().unpack_frozen()
+                {
+                    module.frozen_heap().add_reference(owned.owner());
+                    module.set(&name, value.to_value());
+                }
+            }
+        }
         {
             let mut eval = Evaluator::new(&module);
             eval.extra = Some(&env);

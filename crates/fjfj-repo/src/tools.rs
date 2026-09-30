@@ -1,56 +1,70 @@
-//! The files of `@bazel_tools` that fjfj serves (see `embedded_tools/README.md`).
+//! `@bazel_tools`: the files Bazel 9.2.0 ships in its binary
+//! (`embedded_tools.tar.zst`, see `embedded_tools/README.md`), put in a
+//! directory of the output base.
 
+use sha2::Digest as _;
 use std::path::Path;
 
-/// `@bazel_tools` as (path, contents), copied from Bazel 9.2.0's install.
-pub const BAZEL_TOOLS_FILES: &[(&str, &str)] = &[
-    (
-        "tools/build_defs/repo/BUILD.bazel",
-        include_str!("../embedded_tools/tools/build_defs/repo/BUILD.bazel.in"),
-    ),
-    (
-        "tools/build_defs/repo/cache.bzl",
-        include_str!("../embedded_tools/tools/build_defs/repo/cache.bzl"),
-    ),
-    (
-        "tools/build_defs/repo/git.bzl",
-        include_str!("../embedded_tools/tools/build_defs/repo/git.bzl"),
-    ),
-    (
-        "tools/build_defs/repo/git_worker.bzl",
-        include_str!("../embedded_tools/tools/build_defs/repo/git_worker.bzl"),
-    ),
-    (
-        "tools/build_defs/repo/http.bzl",
-        include_str!("../embedded_tools/tools/build_defs/repo/http.bzl"),
-    ),
-    (
-        "tools/build_defs/repo/local.bzl",
-        include_str!("../embedded_tools/tools/build_defs/repo/local.bzl"),
-    ),
-    (
-        "tools/build_defs/repo/utils.bzl",
-        include_str!("../embedded_tools/tools/build_defs/repo/utils.bzl"),
-    ),
-];
+/// The archive of `@bazel_tools`.
+pub const BAZEL_TOOLS_ARCHIVE: &[u8] = include_bytes!("../embedded_tools.tar.zst");
 
-/// Write `@bazel_tools` into `dir`, leaving files that are already the right
-/// ones alone.
+/// What the directory holds when it is the archive's: the archive's digest.
+const MARKER: &str = ".fjfj-bazel-tools";
+
+/// Put `@bazel_tools` in `dir`, unless it is there already.
 pub fn materialize_bazel_tools(dir: &Path) -> std::io::Result<()> {
-    for (path, contents) in BAZEL_TOOLS_FILES {
-        let file = dir.join(path);
-        if std::fs::read_to_string(&file).is_ok_and(|existing| existing == *contents) {
-            continue;
-        }
-        if let Some(parent) = file.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        std::fs::write(&file, contents)?;
+    let digest = hex::encode(sha2::Sha256::digest(BAZEL_TOOLS_ARCHIVE));
+    let marker = dir.join(MARKER);
+    if std::fs::read_to_string(&marker).is_ok_and(|text| text == digest) {
+        return Ok(());
     }
+    // Whatever was there is an older one, or another process is at it.
+    if dir.exists() {
+        std::fs::remove_dir_all(dir)?;
+    }
+    let parent = dir.parent().unwrap_or(dir);
+    std::fs::create_dir_all(parent)?;
+    let archive = parent.join(format!(".bazel_tools-{}.tar.zst", std::process::id()));
+    std::fs::write(&archive, BAZEL_TOOLS_ARCHIVE)?;
+    let made = fjfj_archive::extract(&fjfj_archive::ExtractRequest {
+        archive: &archive,
+        format: fjfj_archive::Format::TarZst,
+        output: dir,
+        strip_prefix: "",
+        strip_components: 0,
+        rename: &[],
+    });
+    let _ = std::fs::remove_file(&archive);
+    made.map_err(std::io::Error::other)?;
     // A repository's root package exists.
     let root = dir.join("BUILD.bazel");
-    if !root.exists() {
+    if !root.exists() && !dir.join("BUILD").exists() {
         std::fs::write(root, "")?;
     }
-    Ok(())
+    std::fs::write(marker, digest)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_archive_is_extracted_once_and_holds_the_repository_rules() {
+        let dir = tempfile::tempdir().unwrap();
+        let tools = dir.path().join("external/bazel_tools");
+        materialize_bazel_tools(&tools).unwrap();
+        for file in [
+            "MODULE.bazel",
+            "tools/build_defs/repo/http.bzl",
+            "tools/build_defs/repo/local.bzl",
+            "tools/cpp/cc_configure.bzl",
+            "tools/osx/xcode_configure.bzl",
+        ] {
+            assert!(tools.join(file).is_file(), "{file}");
+        }
+        // Left alone when it is already there.
+        std::fs::write(tools.join("tools/extra.txt"), "x").unwrap();
+        materialize_bazel_tools(&tools).unwrap();
+        assert!(tools.join("tools/extra.txt").exists());
+    }
 }

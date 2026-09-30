@@ -408,6 +408,14 @@ impl LockSession {
     /// ran under), and the ids of all the extensions the module graph uses: an
     /// extension the graph no longer uses leaves the file, one it still uses
     /// but this run did not evaluate keeps what the file had.
+    /// The `facts` the previous lockfile had, by extension id.
+    pub fn previous_facts(&self) -> Vec<(String, Json)> {
+        match self.previous.as_ref().map(|p| &p.facts) {
+            Some(Json::Object(items)) => items.clone(),
+            _ => Vec::new(),
+        }
+    }
+
     /// Serve registry files whose hash the lockfile has from this repository
     /// cache, and put what is fetched in it.
     pub fn set_repository_cache(&self, dir: std::path::PathBuf) {
