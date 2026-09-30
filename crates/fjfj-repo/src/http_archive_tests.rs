@@ -31,8 +31,13 @@ pub(crate) enum Serve {
 /// the repositories it made, and the paths the server was asked for.
 pub(crate) struct HaRow {
     pub(crate) module: &'static str,
-    /// `--credential_helper` flags, the only ones the rows use.
+    /// `--credential_helper`, `--distdir` and `--repository_cache=` flags, the ones
+    /// the rows use.
     pub(crate) flags: &'static [&'static str],
+    /// A second `MODULE.bazel` fetched after the first, in the same output base
+    /// and with the same cache, and what it fetches.
+    pub(crate) then_module: Option<&'static str>,
+    pub(crate) then_fetch: &'static [&'static str],
     /// What the helper scripts of the row logged: a line per call.
     pub(crate) helper_log: &'static [&'static str],
     /// Git repositories to make: a name, the files of each commit, and the
@@ -253,7 +258,14 @@ fn run(row: &HaRow) -> Outcome {
     for (path, text) in row.files {
         let path = ws.join(path);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        std::fs::write(&path, substitute(text)).unwrap();
+        match text
+            .strip_prefix("@SERVE:")
+            .and_then(|t| t.strip_suffix('@'))
+        {
+            // A file that is one the server serves, as bytes.
+            Some(name) => std::fs::write(&path, &files[name].0).unwrap(),
+            None => std::fs::write(&path, substitute(text)).unwrap(),
+        }
         if path.extension().is_some_and(|e| e == "sh") {
             use std::os::unix::fs::PermissionsExt;
             std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
@@ -263,7 +275,10 @@ fn run(row: &HaRow) -> Outcome {
     let mut error = None;
     let mut parsed = Vec::new();
     for flag in row.flags {
-        let value = substitute(flag.strip_prefix("--credential_helper=").unwrap());
+        let Some(value) = flag.strip_prefix("--credential_helper=") else {
+            continue;
+        };
+        let value = substitute(value);
         match CredentialHelper::parse(&value) {
             Ok(helper) => parsed.push(helper),
             Err(e) => {
@@ -292,18 +307,26 @@ fn run(row: &HaRow) -> Outcome {
         helpers,
     });
     let capture = Capture(std::cell::RefCell::new(Vec::new()));
-    let module = match eval_module_file(
-        "MODULE.bazel",
-        &substitute(row.module),
-        &EvalOptions::root(),
-    ) {
-        Ok(file) => Some(file.module),
-        Err(e) => {
-            error = Some(e.to_string());
-            None
+    // `--distdir` and `--repository_cache=` (none) are the flags that reach the
+    // downloads.
+    let mut distdirs = Vec::new();
+    let mut repository_cache = Some(dir.path().join("cache"));
+    for flag in row.flags {
+        if let Some(value) = flag.strip_prefix("--distdir=") {
+            distdirs.push(std::path::PathBuf::from(substitute(value)));
+        } else if *flag == "--repository_cache=" {
+            repository_cache = None;
         }
-    };
-    if let Some(module) = module.filter(|_| error.is_none()) {
+    }
+    let step = |module_text: &str, fetch: &[&str]| -> Option<String> {
+        let module = match eval_module_file(
+            "MODULE.bazel",
+            &substitute(module_text),
+            &EvalOptions::root(),
+        ) {
+            Ok(file) => file.module,
+            Err(e) => return Some(e.to_string()),
+        };
         let mut repos = Repos::new(
             Options {
                 workspace_root: ws.clone(),
@@ -316,7 +339,8 @@ fn run(row: &HaRow) -> Outcome {
                     ),
                 ]),
                 downloader: Some(served.clone()),
-                repository_cache: Some(dir.path().join("cache")),
+                repository_cache: repository_cache.clone(),
+                distdirs: distdirs.clone(),
                 registries: Vec::new(),
                 facts: Vec::new(),
                 repo_overrides: Vec::new(),
@@ -325,7 +349,7 @@ fn run(row: &HaRow) -> Outcome {
         )
         .unwrap();
         let result = repos.run_extensions(Some(&capture)).and_then(|()| {
-            for target in row.fetch {
+            for target in fetch {
                 let apparent = target.trim_start_matches('@');
                 let canonical = repos
                     .imports()
@@ -339,9 +363,17 @@ fn run(row: &HaRow) -> Outcome {
             }
             Ok(())
         });
-        if let Err(e) = result {
-            error = Some(e.message);
-        }
+        result.err().map(|e| e.message)
+    };
+    if error.is_none() {
+        error = step(row.module, row.fetch);
+    }
+    // A second run in the same output base, with the same cache.
+    if error.is_none()
+        && let Some(module) = row.then_module
+    {
+        served.requests.lock().unwrap().push("--then--".to_owned());
+        error = step(module, row.then_fetch);
     }
     let mut tree = BTreeMap::new();
     if error.is_none() {

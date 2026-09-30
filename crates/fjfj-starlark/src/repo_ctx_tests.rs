@@ -81,6 +81,7 @@ fn run_repo(bzl: &str, files: &[(&str, &str)]) -> Outcome {
         attrs: repository_rule_defaults(&module, "r"),
         downloader: None,
         repository_cache: None,
+        distdirs: Vec::new(),
         recorded: Default::default(),
     };
     let capture = Capture(RefCell::new(Vec::new()));
@@ -185,6 +186,7 @@ fn run_with(bzl: &str, given: Vec<(&str, RepoAttr)>) -> (Result<(), String>, Vec
         attrs,
         downloader: None,
         repository_cache: None,
+        distdirs: Vec::new(),
         recorded: Default::default(),
     };
     let capture = Capture(RefCell::new(Vec::new()));
@@ -281,6 +283,7 @@ fn a_name_that_is_not_a_repository_rule_is_reported() {
         attrs: vec![],
         downloader: None,
         repository_cache: None,
+        distdirs: Vec::new(),
         recorded: Default::default(),
     };
     let error = run_repository_rule(&module, "x", env, &probe_mappings(), None).unwrap_err();

@@ -96,6 +96,8 @@ pub struct Options {
     pub downloader: Option<Arc<dyn Downloader>>,
     /// The repository cache directory, which holds `content_addressable/`.
     pub repository_cache: Option<PathBuf>,
+    /// `--distdir`: where a download's file may be found by its name.
+    pub distdirs: Vec<PathBuf>,
     /// The registries the modules of the graph came from: how a module's
     /// repository is made is in its `source.json`.
     pub registries: Vec<Registry>,
@@ -451,6 +453,7 @@ impl Inner {
             attrs,
             downloader: self.options.downloader.clone(),
             repository_cache: self.options.repository_cache.clone(),
+            distdirs: self.options.distdirs.clone(),
             recorded: Default::default(),
         }
     }

@@ -95,6 +95,7 @@ fn what_extensions_leave_in_the_lockfile_is_what_bazel_writes() {
                 .collect(),
             downloader: None,
             repository_cache: None,
+            distdirs: Vec::new(),
             registries: vec![Registry::local(&reg)],
             facts: Vec::new(),
             repo_overrides: Vec::new(),

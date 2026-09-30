@@ -40,11 +40,11 @@ rows, seen = [], set()
 for f in sys.argv[1:]:
     for r in json.load(open(f)):
         c = r["case"]
-        key = json.dumps([c["module"], c.get("serve"), c.get("files"), c.get("flags")], sort_keys=True)
+        key = json.dumps([c["module"], c.get("serve"), c.get("files"), c.get("flags"), c.get("then")], sort_keys=True)
         if key in seen: continue
         seen.add(key)
         if any(s in c["module"] for s in SKIP): continue
-        if any(not f.startswith("--credential_helper=") for f in c.get("flags", [])): continue
+        if any(not f.startswith(("--credential_helper=", "--distdir=", "--repository_cache=")) for f in c.get("flags", [])): continue
         if r["rc"] not in (0, 2, 8): continue
         if any("lockFileVersion" in str(v) for v in r["tree"].values()): continue
         archive_served = any("archive" in s for s in c.get("serve", {}).values())
@@ -64,8 +64,10 @@ for f in sys.argv[1:]:
         reqs = []
         for q in r["requests"]:
             if not reqs or reqs[-1] != q: reqs.append(q)
-        rows.append("    HaRow {\n        module: %s,\n        flags: &[%s],\n        helper_log: &[%s],\n        git: &[%s],\n        files: &[%s],\n        serve: &[%s],\n        fetch: &[%s],\n        error: %s,\n        printed: &[%s],\n        tree: &[%s],\n        requests: &[%s],\n    }," % (
-            raw(c["module"]), ", ".join(raw(f) for f in c.get("flags", [])), ", ".join(raw(l) for l in helper_log), git_lit(c.get("git", {})), ", ".join("(%s, %s)" % (raw(k), raw(v["text"] if isinstance(v, dict) else v)) for k, v in c.get("files", {}).items()),
+        then = c.get("then")
+        rows.append("    HaRow {\n        module: %s,\n        flags: &[%s],\n        then_module: %s,\n        then_fetch: &[%s],\n        helper_log: &[%s],\n        git: &[%s],\n        files: &[%s],\n        serve: &[%s],\n        fetch: &[%s],\n        error: %s,\n        printed: &[%s],\n        tree: &[%s],\n        requests: &[%s],\n    }," % (
+            raw(c["module"]), ", ".join(raw(f) for f in c.get("flags", [])),
+            ("Some(%s)" % raw(then["module"])) if then else "None", ", ".join(raw(x) for x in then.get("fetch", ["@y"])) if then else "", ", ".join(raw(l) for l in helper_log), git_lit(c.get("git", {})), ", ".join("(%s, %s)" % (raw(k), raw(("@SERVE:%s@" % v["serve"]) if isinstance(v, dict) and "serve" in v else v["text"] if isinstance(v, dict) else v)) for k, v in c.get("files", {}).items()),
             ", ".join(serve_lit(n, s) for n, s in c.get("serve", {}).items()),
             ", ".join(raw(x) for x in c.get("fetch", ["@x"])),
             ("Some(%s)" % raw(err)) if err is not None else "None",

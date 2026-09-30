@@ -973,9 +973,18 @@ and `fjfj-archive` list it in full):
   with the checksum in the form it was given in the error; one that is not a
   checksum is only found out after.
 - **The repository cache** keeps a download at
-  `content_addressable/sha256/<hex>/file` and serves one that names its SHA-256
-  (as `sha256` or a `sha256-` SRI) without asking the network. Everything
-  downloaded is put there, `file://` included.
+  `content_addressable/sha256/<hex>/file`, with an empty `id-<SHA-256 of the
+  canonical id>` beside it for each canonical id it was put under: the
+  `canonical_id` argument, or the URL it came from when there is none. A download that
+  names its SHA-256 (as `sha256` or a `sha256-` SRI) is served from it without asking
+  the network only if the file has the id of the call (another `canonical_id`, or
+  none after one, is a miss: it is downloaded again and the id added). Everything
+  downloaded is put there, `file://` included; `--repository_cache=` (empty) turns the
+  cache off. **`--distdir`** directories are looked in after the cache for a file
+  named like the URL's last segment that the checksum accepts (one that does not is
+  passed over, the network is asked); a file from there is not put in the cache.
+  Probed in two steps, a second repository fetched in the same output base after the
+  first (`then` in `probes/ha_cases7.json`).
 - **Results.** `struct(integrity, sha256, success)`; `allow_fail` turns a failed
   download into `struct(success = False)`; `block = False` returns a
   `PendingDownload` whose `wait()` gives the result or the error.
@@ -997,8 +1006,8 @@ and `fjfj-archive` list it in full):
 Differences and gaps, filed: `.7z` is refused as Bazel does (with `null`); an
 `integrity` of `sha1-` is not computed; a timed-out process is killed but not its
 process group; downloads run one at a time where Bazel's `block = False` ones
-overlap; the `--distdir`, `--repository_cache` flag and the cache's `canonical_id`
-behaviour are buildfiji-mum.9's; `--credential_helper_timeout` and the helper's
+overlap; two fjfj processes sharing a cache do not lock or write atomically; the flags
+themselves wait for the CLI wiring (buildfiji-mum.12.2); `--credential_helper_timeout` and the helper's
 result cache (`--credential_helper_cache_duration`) are not probed.
 
 ## Extensions of every module, and repositories made on demand (implemented 2026-09-30, buildfiji-lfe)

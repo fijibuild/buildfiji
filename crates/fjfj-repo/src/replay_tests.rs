@@ -117,6 +117,7 @@ fn run(row: &ExtRow) -> Outcome {
                 ]),
                 downloader: None,
                 repository_cache: None,
+                distdirs: Vec::new(),
                 registries: Vec::new(),
                 facts: Vec::new(),
                 repo_overrides: Vec::new(),

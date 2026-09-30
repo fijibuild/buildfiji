@@ -10,6 +10,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], sha256 = "@SHA:d.zip@", strip_prefix="top", build_file_content="filegroup(name='all')")
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[],
@@ -46,6 +48,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], integrity="@INT:d.zip@", strip_prefix="top", build_file_content="x")
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[],
@@ -79,6 +83,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", url="@URL@/d.zip", sha256 = "@SHA:d.zip@", strip_prefix="top", build_file_content="x")
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[],
@@ -112,6 +118,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/gone.zip", "@URL@/d.zip"], sha256 = "@SHA:d.zip@", strip_prefix="top", build_file_content="x")
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[],
@@ -145,6 +153,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], sha256 = "@SHA:d.zip@", build_file_content="x")
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[],
@@ -179,6 +189,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], sha256 = "@SHA:d.zip@", strip_prefix="nothere", build_file_content="x")
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[],
@@ -208,6 +220,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], sha256 = "@SHA:d.zip@", strip_prefix="top", add_prefix="pre/fix", build_file_content="x")
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[],
@@ -243,6 +257,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], build_file_content="x")
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[],
@@ -272,6 +288,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", build_file_content="x")
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[],
@@ -299,6 +317,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], url="@URL@/d.zip", sha256 = "@SHA:d.zip@", build_file_content="x")
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[],
@@ -333,6 +353,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], sha256 = "@SHA:d.zip@", strip_prefix="top", build_file="//:BUILD.dep")
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[
@@ -377,6 +399,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], sha256 = "@SHA:d.zip@", strip_prefix="top", build_file="//:BUILD.dep", build_file_content="x")
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[(r#"BUILD.dep"#, r#"x"#)],
@@ -404,6 +428,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], sha256 = "@SHA:d.zip@", strip_prefix="top")
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[],
@@ -436,6 +462,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], sha256 = "@SHA:d.zip@", strip_prefix="top", build_file_content="x", type="zip")
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[],
@@ -469,6 +497,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/blob"], sha256="@SHA:blob@", strip_prefix="top", build_file_content="x", type="tar.gz")
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[],
@@ -502,6 +532,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/blob"], sha256="@SHA:blob@", strip_prefix="top", build_file_content="x")
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[],
@@ -531,6 +563,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.tar.gz"], sha256="@SHA:d.tar.gz@", strip_prefix="top", build_file_content="x")
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[],
@@ -564,6 +598,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], sha256 = "@SHA:d.zip@", strip_prefix="top", build_file_content="x", patches=["//:fix.patch"], patch_args=["-p1"])
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[
@@ -612,6 +648,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], sha256 = "@SHA:d.zip@", strip_prefix="top", build_file_content="x", patches=["//:fix.patch"])
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[
@@ -652,6 +690,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], sha256 = "@SHA:d.zip@", strip_prefix="top", build_file_content="x", patch_cmds=["echo hi > made.txt", "echo again >> made.txt"])
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[],
@@ -691,6 +731,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], sha256 = "@SHA:d.zip@", strip_prefix="top", build_file_content="x", patch_cmds=["exit 3"])
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[],
@@ -718,6 +760,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], sha256 = "@SHA:d.zip@", strip_prefix="top", build_file_content="x", remote_file_urls={"extra.txt": ["@URL@/f.txt"]}, remote_file_integrity={"extra.txt": "@INT:f.txt@"})
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[],
@@ -755,6 +799,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], sha256 = "@SHA:d.zip@", strip_prefix="top", build_file_content="x", files={"copied.txt": "//:src.txt"})
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[
@@ -796,6 +842,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], sha256 = "@SHA:d.zip@", strip_prefix="top", build_file_content="x", remote_patches={"@URL@/p.patch": "@INT:p.patch@"}, remote_patch_strip=1)
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[],
@@ -846,6 +894,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], sha256 = "@SHA:d.zip@", strip_prefix="top", build_file_content="x", canonical_id="cid")
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[],
@@ -879,6 +929,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], sha256 = "@SHA:d.zip@", strip_prefix="top", build_file_content="x", workspace_file_content="workspace(name='x')")
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[],
@@ -912,6 +964,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=[], sha256 = "@SHA:d.zip@", build_file_content="x")
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[],
@@ -939,6 +993,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], sha256="ABC", build_file_content="x")
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[],
@@ -968,6 +1024,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], sha256 = "@SHA:d.zip@", strip_prefix="top", build_file_content="x", netrc="/nonexistent")
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[],
@@ -995,6 +1053,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], sha256 = "@SHA:d.zip@", strip_prefix="top", build_file_content="x", auth_patterns={"@URL@/*": "Bearer <password>"})
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[],
@@ -1028,6 +1088,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_file(name="x", urls=["@URL@/f.txt"], sha256="@SHA:f.txt@")
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[],
@@ -1064,6 +1126,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_file(name="x", urls=["@URL@/f.txt"], sha256="@SHA:f.txt@", downloaded_file_path="renamed.dat", executable=True)
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[],
@@ -1100,6 +1164,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_file(name="x", urls=["@URL@/f.txt"], integrity="@INT:f.txt@")
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[],
@@ -1136,6 +1202,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_file(name="x", urls=["@URL@/f.txt"])
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[],
@@ -1155,6 +1223,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_file(name="x", urls=["@URL@/f.txt"], sha256="@SHA:f.txt@", downloaded_file_path="a/b/c.txt")
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[],
@@ -1195,6 +1265,8 @@ new_git_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:git.bzl"
 git_repository(name="x", remote="@GIT:r@", commit="@COMMIT:r@", tag="v1")
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[(
             r#"r"#,
@@ -1234,6 +1306,8 @@ new_git_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:git.bzl"
 git_repository(name="x", remote="@GIT:r@", commit="0000000000000000000000000000000000000001")
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[(
             r#"r"#,
@@ -1275,6 +1349,8 @@ new_git_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:git.bzl"
 git_repository(name="x", remote="file:///nonexistent/repo", commit="@COMMIT:r@")
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[(
             r#"r"#,
@@ -1316,6 +1392,8 @@ new_git_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:git.bzl"
 git_repository(name="x", remote="@GIT:r@", tag="nope")
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[(
             r#"r"#,
@@ -1355,6 +1433,8 @@ new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.
 local_repository(name="x", path="sub")
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[
@@ -1397,6 +1477,8 @@ new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.
 local_repository(name="x", path="@WS@/sub")
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[
@@ -1439,6 +1521,8 @@ new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.
 local_repository(name="x", path="nope")
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[
@@ -1470,6 +1554,8 @@ new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.
 local_repository(name="x", path="sub/a.txt")
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[
@@ -1501,6 +1587,8 @@ new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.
 new_local_repository(name="x", path="sub", build_file_content="filegroup(name='f')")
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[
@@ -1541,6 +1629,8 @@ new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.
 new_local_repository(name="x", path="sub", build_file="//:b.BUILD")
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[
@@ -1582,6 +1672,8 @@ new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.
 new_local_repository(name="x", path="sub")
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[
@@ -1611,6 +1703,8 @@ new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.
 new_local_repository(name="x", path="sub", build_file="//:b.BUILD", build_file_content="x")
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[
@@ -1641,6 +1735,8 @@ new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.
 new_local_repository(name="x", path="nope", build_file_content="x")
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[
@@ -1672,6 +1768,8 @@ new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.
 new_local_repository(name="x", path="sub", build_file_content="x", build_file="//:b.BUILD")
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[
@@ -1702,6 +1800,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[],
@@ -1728,6 +1828,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x", netrc="@WS@/netrc")
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[(
@@ -1758,6 +1860,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x", netrc="@WS@/netrc")
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[(
@@ -1788,6 +1892,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x", netrc="@WS@/netrc")
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[(
@@ -1818,6 +1924,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x", netrc="@WS@/netrc")
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[(
@@ -1851,6 +1959,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x", netrc="@WS@/netrc")
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[(
@@ -1881,6 +1991,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x", netrc="@WS@/nonexistent")
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[],
@@ -1906,6 +2018,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x", netrc="@WS@/netrc", auth_patterns={"127.0.0.1":"Bearer <password>"})
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[(
@@ -1936,6 +2050,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x", netrc="@WS@/netrc", auth_patterns={"127.0.0.1":"Token <login>:<password>"})
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[(
@@ -1966,6 +2082,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x", netrc="@WS@/netrc", auth_patterns={"127.0.0.1":"Bearer <password>"})
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[(
@@ -1996,6 +2114,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x", auth_patterns={"127.0.0.1":"Bearer <password>"})
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[],
@@ -2022,6 +2142,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_file(name="x", urls=["@URL@/f.txt"], sha256="@SHA:f.txt@", netrc="@WS@/netrc")
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[(
@@ -2068,6 +2190,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x", netrc="@WS@/netrc")
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[(
@@ -2102,6 +2226,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x", netrc="@WS@/netrc")
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[(
@@ -2129,6 +2255,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x", netrc="@WS@/netrc")
 "#,
         flags: &[],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[(
@@ -2159,6 +2287,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
 "#,
         flags: &[r#"--credential_helper=@WS@/h.sh"#],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[r#"get {"uri":"@URL@/d.zip"}"#],
         git: &[],
         files: &[(
@@ -2202,6 +2332,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
 "#,
         flags: &[r#"--credential_helper=127.0.0.1=@WS@/h.sh"#],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[r#"get {"uri":"@URL@/d.zip"}"#],
         git: &[],
         files: &[(
@@ -2245,6 +2377,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
 "#,
         flags: &[r#"--credential_helper=example.com=@WS@/h.sh"#],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[(
@@ -2288,6 +2422,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
 "#,
         flags: &[r#"--credential_helper=*.0.0.1=@WS@/h.sh"#],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[r#"get {"uri":"@URL@/d.zip"}"#],
         git: &[],
         files: &[(
@@ -2331,6 +2467,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
 "#,
         flags: &[r#"--credential_helper=*.0.1=@WS@/h.sh"#],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[r#"get {"uri":"@URL@/d.zip"}"#],
         git: &[],
         files: &[(
@@ -2374,6 +2512,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
 "#,
         flags: &[r#"--credential_helper=*.1=@WS@/h.sh"#],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[r#"get {"uri":"@URL@/d.zip"}"#],
         git: &[],
         files: &[(
@@ -2417,6 +2557,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x", netrc="@WS@/netrc")
 "#,
         flags: &[r#"--credential_helper=127.0.0.1=@WS@/h.sh"#],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[r#"get {"uri":"@URL@/d.zip"}"#],
         git: &[],
         files: &[
@@ -2467,6 +2609,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
 "#,
         flags: &[r#"--credential_helper=127.0.0.1=@WS@/h.sh"#],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[r#"get {"uri":"@URL@/d.zip"}"#],
         git: &[],
         files: &[(
@@ -2510,6 +2654,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
 "#,
         flags: &[r#"--credential_helper=127.0.0.1=@WS@/h.sh"#],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[r#"get {"uri":"@URL@/d.zip"}"#],
         git: &[],
         files: &[(
@@ -2553,6 +2699,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
 "#,
         flags: &[r#"--credential_helper=127.0.0.1=@WS@/h.sh"#],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[r#"get {"uri":"@URL@/d.zip"}"#],
         git: &[],
         files: &[(
@@ -2596,6 +2744,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
 "#,
         flags: &[r#"--credential_helper=127.0.0.1=@WS@/h.sh"#],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[r#"get {"uri":"@URL@/d.zip"}"#],
         git: &[],
         files: &[(
@@ -2639,6 +2789,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
 "#,
         flags: &[r#"--credential_helper=127.0.0.1=@WS@/missing.sh"#],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[],
@@ -2672,6 +2824,8 @@ http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix=
             r#"--credential_helper=@WS@/h.sh"#,
             r#"--credential_helper=127.0.0.1=@WS@/g.sh"#,
         ],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[r#"get {"uri":"@URL@/d.zip"}"#],
         git: &[],
         files: &[
@@ -2734,6 +2888,8 @@ http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix=
             r#"--credential_helper=127.0.0.1=@WS@/h.sh"#,
             r#"--credential_helper=127.0.0.1=@WS@/g.sh"#,
         ],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[r#"get {"uri":"@URL@/d.zip"}"#],
         git: &[],
         files: &[
@@ -2793,6 +2949,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
 "#,
         flags: &[r#"--credential_helper=http://127.0.0.1=@WS@/h.sh"#],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[(
@@ -2835,6 +2993,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
 "#,
         flags: &[r#"--credential_helper=127.0.0.1:1234=@WS@/h.sh"#],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[(
@@ -2880,6 +3040,8 @@ http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix=
             r#"--credential_helper=@WS@/h.sh"#,
             r#"--credential_helper=no_such_host_x=@WS@/missing.sh"#,
         ],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[(
@@ -2922,6 +3084,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
 "#,
         flags: &[r#"--credential_helper=127.0.0.1=rel/h.sh"#],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[(
@@ -2964,6 +3128,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
 "#,
         flags: &[r#"--credential_helper="#],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[(
@@ -3006,6 +3172,8 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
 "#,
         flags: &[r#"--credential_helper==@WS@/h.sh"#],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[(
@@ -3047,6 +3215,8 @@ http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "ht
 http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
 "#,
         flags: &[r#"--credential_helper=*.127.0.0.1=@WS@/a.sh"#],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[r#"get a {"uri":"@URL@/d.zip"}"#],
         git: &[],
         files: &[
@@ -3113,6 +3283,8 @@ http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix=
             r#"--credential_helper=*.0.1=@WS@/b.sh"#,
             r#"--credential_helper=@WS@/c.sh"#,
         ],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[r#"get a {"uri":"@URL@/d.zip"}"#],
         git: &[],
         files: &[
@@ -3178,6 +3350,8 @@ http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix=
             r#"--credential_helper=*.0.1=@WS@/b.sh"#,
             r#"--credential_helper=*.1=@WS@/c.sh"#,
         ],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[r#"get b {"uri":"@URL@/d.zip"}"#],
         git: &[],
         files: &[
@@ -3243,6 +3417,8 @@ http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix=
             r#"--credential_helper=*.1=@WS@/c.sh"#,
             r#"--credential_helper=*.0.1=@WS@/b.sh"#,
         ],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[r#"get b {"uri":"@URL@/d.zip"}"#],
         git: &[],
         files: &[
@@ -3308,6 +3484,8 @@ http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix=
             r#"--credential_helper=*.1=@WS@/c.sh"#,
             r#"--credential_helper=@WS@/a.sh"#,
         ],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[r#"get c {"uri":"@URL@/d.zip"}"#],
         git: &[],
         files: &[
@@ -3370,6 +3548,8 @@ http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "ht
 http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
 "#,
         flags: &[r#"--credential_helper=*=@WS@/a.sh"#],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[
@@ -3431,6 +3611,8 @@ http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "ht
 http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
 "#,
         flags: &[r#"--credential_helper=*.=@WS@/a.sh"#],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[],
         git: &[],
         files: &[
@@ -3495,6 +3677,8 @@ http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix=
             r#"--credential_helper=@WS@/a.sh"#,
             r#"--credential_helper=@WS@/b.sh"#,
         ],
+        then_module: None,
+        then_fetch: &[],
         helper_log: &[r#"get b {"uri":"@URL@/d.zip"}"#],
         git: &[],
         files: &[
@@ -3550,5 +3734,293 @@ esac
             (r#"+http_archive+x/a.txt"#, r#"A"#),
         ],
         requests: &[r#"/d.zip auth=Bearer b"#],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
+"#,
+        flags: &[],
+        then_module: Some(
+            r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
+http_archive(name="y", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
+"#,
+        ),
+        then_fetch: &[r#"@y"#],
+        helper_log: &[],
+        git: &[],
+        files: &[],
+        serve: &[(
+            r#"d.zip"#,
+            Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+        )],
+        fetch: &[r#"@x"#],
+        error: None,
+        printed: &[],
+        tree: &[
+            (r#"+http_archive+x/BUILD.bazel"#, r#"x x"#),
+            (r#"+http_archive+x/a.txt"#, r#"A"#),
+            (r#"+http_archive+y/BUILD.bazel"#, r#"x x"#),
+            (r#"+http_archive+y/a.txt"#, r#"A"#),
+        ],
+        requests: &[r#"/d.zip"#, r#"--then--"#],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
+"#,
+        flags: &[],
+        then_module: Some(
+            r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
+http_archive(name="y", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x", canonical_id="a")
+"#,
+        ),
+        then_fetch: &[r#"@y"#],
+        helper_log: &[],
+        git: &[],
+        files: &[],
+        serve: &[(
+            r#"d.zip"#,
+            Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+        )],
+        fetch: &[r#"@x"#],
+        error: None,
+        printed: &[],
+        tree: &[
+            (r#"+http_archive+x/BUILD.bazel"#, r#"x x"#),
+            (r#"+http_archive+x/a.txt"#, r#"A"#),
+            (r#"+http_archive+y/BUILD.bazel"#, r#"x x"#),
+            (r#"+http_archive+y/a.txt"#, r#"A"#),
+        ],
+        requests: &[r#"/d.zip"#, r#"--then--"#, r#"/d.zip"#],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x", canonical_id="a")
+"#,
+        flags: &[],
+        then_module: Some(
+            r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x", canonical_id="a")
+http_archive(name="y", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x", canonical_id="a")
+"#,
+        ),
+        then_fetch: &[r#"@y"#],
+        helper_log: &[],
+        git: &[],
+        files: &[],
+        serve: &[(
+            r#"d.zip"#,
+            Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+        )],
+        fetch: &[r#"@x"#],
+        error: None,
+        printed: &[],
+        tree: &[
+            (r#"+http_archive+x/BUILD.bazel"#, r#"x x"#),
+            (r#"+http_archive+x/a.txt"#, r#"A"#),
+            (r#"+http_archive+y/BUILD.bazel"#, r#"x x"#),
+            (r#"+http_archive+y/a.txt"#, r#"A"#),
+        ],
+        requests: &[r#"/d.zip"#, r#"--then--"#],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x", canonical_id="a")
+"#,
+        flags: &[],
+        then_module: Some(
+            r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x", canonical_id="a")
+http_archive(name="y", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x", canonical_id="b")
+"#,
+        ),
+        then_fetch: &[r#"@y"#],
+        helper_log: &[],
+        git: &[],
+        files: &[],
+        serve: &[(
+            r#"d.zip"#,
+            Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+        )],
+        fetch: &[r#"@x"#],
+        error: None,
+        printed: &[],
+        tree: &[
+            (r#"+http_archive+x/BUILD.bazel"#, r#"x x"#),
+            (r#"+http_archive+x/a.txt"#, r#"A"#),
+            (r#"+http_archive+y/BUILD.bazel"#, r#"x x"#),
+            (r#"+http_archive+y/a.txt"#, r#"A"#),
+        ],
+        requests: &[r#"/d.zip"#, r#"--then--"#, r#"/d.zip"#],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x", canonical_id="a")
+"#,
+        flags: &[],
+        then_module: Some(
+            r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x", canonical_id="a")
+http_archive(name="y", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
+"#,
+        ),
+        then_fetch: &[r#"@y"#],
+        helper_log: &[],
+        git: &[],
+        files: &[],
+        serve: &[(
+            r#"d.zip"#,
+            Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+        )],
+        fetch: &[r#"@x"#],
+        error: None,
+        printed: &[],
+        tree: &[
+            (r#"+http_archive+x/BUILD.bazel"#, r#"x x"#),
+            (r#"+http_archive+x/a.txt"#, r#"A"#),
+            (r#"+http_archive+y/BUILD.bazel"#, r#"x x"#),
+            (r#"+http_archive+y/a.txt"#, r#"A"#),
+        ],
+        requests: &[r#"/d.zip"#, r#"--then--"#, r#"/d.zip"#],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
+"#,
+        flags: &[r#"--repository_cache="#],
+        then_module: Some(
+            r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
+http_archive(name="y", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
+"#,
+        ),
+        then_fetch: &[r#"@y"#],
+        helper_log: &[],
+        git: &[],
+        files: &[],
+        serve: &[(
+            r#"d.zip"#,
+            Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+        )],
+        fetch: &[r#"@x"#],
+        error: None,
+        printed: &[],
+        tree: &[
+            (r#"+http_archive+x/BUILD.bazel"#, r#"x x"#),
+            (r#"+http_archive+x/a.txt"#, r#"A"#),
+            (r#"+http_archive+y/BUILD.bazel"#, r#"x x"#),
+            (r#"+http_archive+y/a.txt"#, r#"A"#),
+        ],
+        requests: &[r#"/d.zip"#, r#"--then--"#, r#"/d.zip"#],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
+"#,
+        flags: &[r#"--distdir=@WS@/dist"#],
+        then_module: Some(
+            r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
+http_archive(name="y", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
+"#,
+        ),
+        then_fetch: &[r#"@y"#],
+        helper_log: &[],
+        git: &[],
+        files: &[(r#"dist/d.zip"#, r#"@SERVE:d.zip@"#)],
+        serve: &[(
+            r#"d.zip"#,
+            Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+        )],
+        fetch: &[r#"@x"#],
+        error: None,
+        printed: &[],
+        tree: &[
+            (r#"+http_archive+x/BUILD.bazel"#, r#"x x"#),
+            (r#"+http_archive+x/a.txt"#, r#"A"#),
+            (r#"+http_archive+y/BUILD.bazel"#, r#"x x"#),
+            (r#"+http_archive+y/a.txt"#, r#"A"#),
+        ],
+        requests: &[r#"--then--"#],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
+"#,
+        flags: &[r#"--distdir=@WS@/dist"#],
+        then_module: Some(
+            r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
+http_archive(name="y", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
+"#,
+        ),
+        then_fetch: &[r#"@y"#],
+        helper_log: &[],
+        git: &[],
+        files: &[(r#"dist/d.zip"#, r#"not the archive"#)],
+        serve: &[(
+            r#"d.zip"#,
+            Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+        )],
+        fetch: &[r#"@x"#],
+        error: None,
+        printed: &[],
+        tree: &[
+            (r#"+http_archive+x/BUILD.bazel"#, r#"x x"#),
+            (r#"+http_archive+x/a.txt"#, r#"A"#),
+            (r#"+http_archive+y/BUILD.bazel"#, r#"x x"#),
+            (r#"+http_archive+y/a.txt"#, r#"A"#),
+        ],
+        requests: &[r#"/d.zip"#, r#"--then--"#],
+    },
+    HaRow {
+        module: r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
+"#,
+        flags: &[r#"--distdir=@WS@/dist"#],
+        then_module: Some(
+            r#"module(name="probe")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_archive(name="x", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
+http_archive(name="y", urls=["@URL@/d.zip"], sha256="@SHA:d.zip@", strip_prefix="top", build_file_content="x")
+"#,
+        ),
+        then_fetch: &[r#"@y"#],
+        helper_log: &[],
+        git: &[],
+        files: &[(r#"dist/other.zip"#, r#"@SERVE:d.zip@"#)],
+        serve: &[(
+            r#"d.zip"#,
+            Serve::Archive(r#"zip"#, &[(r#"top/a.txt"#, "f", r#"A"#)]),
+        )],
+        fetch: &[r#"@x"#],
+        error: None,
+        printed: &[],
+        tree: &[
+            (r#"+http_archive+x/BUILD.bazel"#, r#"x x"#),
+            (r#"+http_archive+x/a.txt"#, r#"A"#),
+            (r#"+http_archive+y/BUILD.bazel"#, r#"x x"#),
+            (r#"+http_archive+y/a.txt"#, r#"A"#),
+        ],
+        requests: &[r#"/d.zip"#, r#"--then--"#],
     },
 ];

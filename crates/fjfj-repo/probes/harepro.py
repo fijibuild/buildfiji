@@ -141,6 +141,9 @@ def run_cases(cases, worker):
         open(f"{D}/MODULE.bazel", "w").write(sub(c["module"]))
         for path, text in c.get("files", {}).items():
             os.makedirs(os.path.dirname(f"{D}/{path}") or D, exist_ok=True)
+            if isinstance(text, dict) and "serve" in text:
+                open(f"{D}/{path}", "wb").write(srv.files[text["serve"]][0])
+                continue
             body = text["text"] if isinstance(text, dict) else text
             open(f"{D}/{path}", "w").write(sub(body))
             if isinstance(text, dict) and text.get("exec"): os.chmod(f"{D}/{path}", 0o755)
@@ -151,6 +154,12 @@ def run_cases(cases, worker):
             shutil.rmtree(f"{OB}/external/+r+{name}", ignore_errors=True)
             subprocess.run([BAZEL, f"--output_base={OB}", "clean"], cwd=D, env=env, capture_output=True)
             p2 = subprocess.run(cmd, cwd=D, env=env, capture_output=True, text=True, errors="replace")
+        if c.get("then"):
+            srv.requests.append("--then--")
+            open(f"{D}/MODULE.bazel", "w").write(sub(c["then"]["module"]))
+            cmd2 = [BAZEL, f"--output_base={OB}", "fetch", *[f"--repo={x}" for x in c["then"].get("fetch", ["@y"])], f"--repository_cache={RC}", *[sub(f) for f in c["then"].get("flags", c.get("flags", []))]]
+            p2 = subprocess.run(cmd2, cwd=D, env=env, capture_output=True, text=True, errors="replace")
+            p = type("R", (), {"stdout": p.stdout + p2.stdout, "stderr": p.stderr + p2.stderr, "returncode": p2.returncode})()
         text = p.stdout + p.stderr
         scrub = lambda s: s.replace(url, "@URL@").replace(f"{OB}", "<ob>").replace(RC, "<cache>").replace(D, "<ws>").replace(name, "NAME")
         prints = [scrub(re.sub(r"^\S*\.bzl:\d+:\d+: ", "", l[7:])) for l in text.split("\n") if l.startswith("DEBUG: ")]
@@ -173,7 +182,12 @@ def run_cases(cases, worker):
                             tree[rel] = ("x " if st.st_mode & 0o111 else "") + body
         cache = sorted(os.path.relpath(os.path.join(d, f), RC) for d, _, fs in os.walk(RC) for f in fs) if os.path.isdir(RC) else []
         helper_log = open(f"{D}/helper.log").read() if os.path.exists(f"{D}/helper.log") else ""
-        rec = {"helper_log": scrub(helper_log), "case": c, "rc": p.returncode, "prints": prints, "log": log, "tree": tree, "requests": [scrub(r) for r in srv.requests], "cache": [scrub(x) for x in cache]}
+        entry = {}
+        for n0, (b0, _) in srv.files.items():
+            hexd = hashlib.sha256(b0).hexdigest()
+            d0 = f"{RC}/content_addressable/sha256/{hexd}"
+            if os.path.isdir(d0): entry[n0] = sorted(os.listdir(d0))
+        rec = {"cache_entry": entry, "helper_log": scrub(helper_log), "case": c, "rc": p.returncode, "prints": prints, "log": log, "tree": tree, "requests": [scrub(r) for r in srv.requests], "cache": [scrub(x) for x in cache]}
         out.append(rec)
         print(p.returncode, prints[:2], log[:1], list(tree)[:4], rec["requests"], flush=True)
     srv.stop()

@@ -105,6 +105,8 @@ pub struct RepoEnv {
     pub downloader: Option<Arc<dyn crate::repo_download::Downloader>>,
     /// The repository cache: a directory with `content_addressable/sha256/`.
     pub repository_cache: Option<PathBuf>,
+    /// `--distdir`: directories that may hold a download's file by its name.
+    pub distdirs: Vec<PathBuf>,
     /// What the rule or extension read from outside its own directory.
     pub recorded: Recorder,
 }

@@ -19,10 +19,18 @@
 //!   (`Invalid SHA-256 checksum 'abc'`, `Unsupported checksum algorithm: 'x'
 //!   (expected SHA-1, SHA-256, SHA-384, or SHA-512)`) is only found out after.
 //! - **The repository cache** keeps each download by the SHA-256 of what it
-//!   got, `content_addressable/sha256/<hex>/file`; a download that names its
-//!   SHA-256 (as `sha256` or as a `sha256-` SRI) is served from it without a
-//!   request, whatever `canonical_id` says, and anything downloaded is put
-//!   there (a `file://` URL too).
+//!   got, `content_addressable/sha256/<hex>/file`, and beside it an empty
+//!   `id-<SHA-256 of the canonical id>` for each canonical id it was put
+//!   under, which is the `canonical_id` argument or, if none was given, the
+//!   URL it came from. A download that names its SHA-256 (as `sha256` or as a
+//!   `sha256-` SRI) is served from it without a request when that file has the
+//!   id of the call (for no `canonical_id`: of any of its URLs); another id is a
+//!   miss, the file is downloaded again and the id added. Anything downloaded is
+//!   put there (a `file://` URL too). With no repository cache (`--repository_cache=`)
+//!   every download goes out.
+//! - **A distdir** (`--distdir`) is looked in after the cache, for a file with
+//!   the URL's last path segment as its name and the checksum wanted; one that
+//!   does not match is passed over. What it gives is not put in the cache.
 //! - **Failure.** Every failure of the download (a 404, a refused URL, a bad
 //!   checksum, no URLs left) is `java.io.IOException: Error downloading [urls]
 //!   to <path>: <why>`; with `allow_fail = True` it is `struct(success =
@@ -86,23 +94,43 @@ fn cache_file(root: &Path, hex: &str) -> PathBuf {
         .join("file")
 }
 
-fn cache_get(env: &RepoEnv, hex: &str) -> Option<Vec<u8>> {
-    std::fs::read(cache_file(env.repository_cache.as_deref()?, hex)).ok()
+fn id_marker(id: &str) -> String {
+    format!("id-{}", hex::encode(sha2::Sha256::digest(id.as_bytes())))
 }
 
-fn cache_put(env: &RepoEnv, hex: &str, bytes: &[u8]) {
+/// The file the cache has for `hex` under one of the canonical `ids`.
+fn cache_get(env: &RepoEnv, hex: &str, ids: &[&str]) -> Option<Vec<u8>> {
+    let file = cache_file(env.repository_cache.as_deref()?, hex);
+    let dir = file.parent()?;
+    if !ids.iter().any(|id| dir.join(id_marker(id)).exists()) {
+        return None;
+    }
+    std::fs::read(file).ok()
+}
+
+fn cache_put(env: &RepoEnv, hex: &str, bytes: &[u8], id: &str) {
     let Some(root) = env.repository_cache.as_deref() else {
         return;
     };
     let file = cache_file(root, hex);
-    if file.exists() {
+    let Some(dir) = file.parent() else {
+        return;
+    };
+    if std::fs::create_dir_all(dir).is_err() {
         return;
     }
-    if let Some(dir) = file.parent()
-        && std::fs::create_dir_all(dir).is_ok()
-    {
+    if !file.exists() {
         let _ = std::fs::write(&file, bytes);
     }
+    let _ = std::fs::write(dir.join(id_marker(id)), b"");
+}
+
+/// The file of a distdir that has the last segment of `url` as its name.
+fn distdir_get(env: &RepoEnv, url: &str) -> Option<Vec<u8>> {
+    let name = url.rsplit('/').next().filter(|n| !n.is_empty())?;
+    env.distdirs
+        .iter()
+        .find_map(|dir| std::fs::read(dir.join(name)).ok())
 }
 
 // ---- checksums ------------------------------------------------------------------------
@@ -217,6 +245,7 @@ struct Request<'a> {
     auth: Vec<(String, Vec<(String, String)>)>,
     sha256: &'a str,
     integrity: &'a str,
+    canonical_id: &'a str,
 }
 
 fn listed(urls: &[String]) -> String {
@@ -254,11 +283,27 @@ fn fetch(env: &RepoEnv, request: &Request<'_>, to: &str) -> Result<(Vec<u8>, Inf
         sha256: hex::encode(sha2::Sha256::digest(bytes)),
         integrity: format!("sha256-{}", base64_of(&sha2::Sha256::digest(bytes))),
     };
-    // A download that names its SHA-256 is one the cache may already have.
+    // A download that names its SHA-256 is one the cache may already have, under
+    // its canonical id, which is the URL it came from when none was given.
+    let ids: Vec<&str> = if request.canonical_id.is_empty() {
+        usable.iter().map(|u| u.as_str()).collect()
+    } else {
+        vec![request.canonical_id]
+    };
     if let Some(key) = expected.as_ref().and_then(Expected::cache_key)
-        && let Some(bytes) = cache_get(env, &key)
+        && let Some(bytes) = cache_get(env, &key, &ids)
     {
         return Ok((bytes.clone(), info_of(&bytes)));
+    }
+    // Then a distdir, for what the checksum accepts.
+    if let Some(expected) = &expected {
+        for url in &usable {
+            if let Some(bytes) = distdir_get(env, url)
+                && expected.check(&env.name, &bytes).ok().flatten().is_none()
+            {
+                return Ok((bytes.clone(), info_of(&bytes)));
+            }
+        }
     }
     let mut last = String::new();
     for url in usable {
@@ -302,7 +347,12 @@ fn fetch(env: &RepoEnv, request: &Request<'_>, to: &str) -> Result<(Vec<u8>, Inf
             )));
         }
         let info = info_of(&bytes);
-        cache_put(env, &info.sha256, &bytes);
+        let id = if request.canonical_id.is_empty() {
+            url.as_str()
+        } else {
+            request.canonical_id
+        };
+        cache_put(env, &info.sha256, &bytes, id);
         return Ok((bytes, info));
     }
     Err(Failure::Io(format!(
@@ -630,6 +680,7 @@ pub(crate) fn op_download<'v>(
         auth: auth_of(arg(DOWNLOAD_PARAMS, &bound, "auth")),
         sha256: string_arg(DOWNLOAD_PARAMS, &bound, "sha256"),
         integrity: string_arg(DOWNLOAD_PARAMS, &bound, "integrity"),
+        canonical_id: string_arg(DOWNLOAD_PARAMS, &bound, "canonical_id"),
     };
     let outcome =
         fetch(env, &request, &output.path.display().to_string()).and_then(|(bytes, info)| {
@@ -761,6 +812,7 @@ pub(crate) fn op_download_and_extract<'v>(
         auth: auth_of(arg(params, &bound, "auth")),
         sha256: string_arg(params, &bound, "sha256"),
         integrity: string_arg(params, &bound, "integrity"),
+        canonical_id: string_arg(params, &bound, "canonical_id"),
     };
     std::fs::create_dir_all(&temp).map_err(|e| io_error(&e))?;
     let outcome =
