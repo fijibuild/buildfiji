@@ -6,27 +6,53 @@
 //! brings its own schema. The lists below were read off Bazel 9.2.0:
 //! which attributes each rule accepts, their types, and what
 //! `native.existing_rule` shows for one that was never set.
+//!
+//! [`AttrDef`] is one attribute as a schema states it, whoever wrote the
+//! schema: `attr.*` in a `.bzl` builds one, and an [`AttrSpec`] of a native
+//! rule converts to one. It holds only data; what needs a Starlark value
+//! (providers, aspects, transitions, a default that is a function) stays with
+//! the `.bzl` that made it.
 
 use crate::Label;
+use std::collections::BTreeSet;
 
 /// A value stored in a rule attribute.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum AttrValue {
     Bool(bool),
+    /// A signed 32-bit integer, all Bazel's `int` attributes can hold.
+    Int(i32),
     String(String),
     Label(Label),
     StringList(Vec<String>),
+    IntList(Vec<i32>),
     LabelList(Vec<Label>),
+    /// The dict kinds keep the order the rule wrote them in.
+    StringDict(Vec<(String, String)>),
+    StringListDict(Vec<(String, Vec<String>)>),
+    LabelKeyedStringDict(Vec<(Label, String)>),
+    StringKeyedLabelDict(Vec<(String, Label)>),
+    LabelListDict(Vec<(String, Vec<Label>)>),
 }
 
 /// What an attribute holds, and so how a value is checked.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AttrType {
     Bool,
+    Int,
     String,
     StringList,
+    IntList,
     Label,
     LabelList,
+    StringDict,
+    StringListDict,
+    LabelKeyedStringDict,
+    StringKeyedLabelDict,
+    LabelListDict,
+    /// A file the rule creates, written as a string.
+    Output,
+    OutputList,
 }
 
 impl AttrType {
@@ -34,12 +60,39 @@ impl AttrType {
     pub fn name(self) -> &'static str {
         match self {
             AttrType::Bool => "bool",
+            AttrType::Int => "int",
             AttrType::String => "string",
             AttrType::StringList => "list(string)",
-            // A label is written as a string.
-            AttrType::Label => "string",
+            AttrType::IntList => "list(int)",
+            // A label or an output is written as a string.
+            AttrType::Label | AttrType::Output => "string",
             AttrType::LabelList => "list(label)",
+            AttrType::StringDict => "dict(string, string)",
+            AttrType::StringListDict => "dict(string, list(string))",
+            AttrType::LabelKeyedStringDict => "dict(label, string)",
+            AttrType::StringKeyedLabelDict => "dict(string, label)",
+            AttrType::LabelListDict => "dict(string, list(label))",
+            AttrType::OutputList => "list(output)",
         }
+    }
+
+    /// What an attribute of this type is when nothing says otherwise:
+    /// `None` for the kinds that have no value (a label, an output).
+    pub fn zero(self) -> Option<AttrValue> {
+        Some(match self {
+            AttrType::Bool => AttrValue::Bool(false),
+            AttrType::Int => AttrValue::Int(0),
+            AttrType::String => AttrValue::String(String::new()),
+            AttrType::StringList => AttrValue::StringList(vec![]),
+            AttrType::IntList => AttrValue::IntList(vec![]),
+            AttrType::LabelList | AttrType::OutputList => AttrValue::LabelList(vec![]),
+            AttrType::StringDict => AttrValue::StringDict(vec![]),
+            AttrType::StringListDict => AttrValue::StringListDict(vec![]),
+            AttrType::LabelKeyedStringDict => AttrValue::LabelKeyedStringDict(vec![]),
+            AttrType::StringKeyedLabelDict => AttrValue::StringKeyedLabelDict(vec![]),
+            AttrType::LabelListDict => AttrValue::LabelListDict(vec![]),
+            AttrType::Label | AttrType::Output => return None,
+        })
     }
 }
 
@@ -63,6 +116,159 @@ impl AttrDefault {
             (AttrDefault::EmptyList, AttrType::LabelList) => Some(AttrValue::LabelList(vec![])),
             (AttrDefault::EmptyList, _) => Some(AttrValue::StringList(vec![])),
         }
+    }
+}
+
+/// The property flags of `attr.*(flags = [...])`, which are the ones Bazel's
+/// `Attribute` carries. `mandatory`, `allow_empty = False`, `executable` and
+/// `allow_single_file` set their flag too, so a flag and its keyword are the
+/// same thing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum AttrFlag {
+    Mandatory,
+    OrderIndependent,
+    DirectCompileTimeInput,
+    NonEmpty,
+    SingleArtifact,
+    SkipAnalysisTimeFiletypeCheck,
+    Undocumented,
+    Executable,
+    SkipConstraintsOverride,
+    OutputLicenses,
+    /// Set on every attribute a `.bzl` declares.
+    StarlarkDefined,
+}
+
+impl AttrFlag {
+    const ALL: [AttrFlag; 11] = [
+        AttrFlag::Mandatory,
+        AttrFlag::OrderIndependent,
+        AttrFlag::DirectCompileTimeInput,
+        AttrFlag::NonEmpty,
+        AttrFlag::SingleArtifact,
+        AttrFlag::SkipAnalysisTimeFiletypeCheck,
+        AttrFlag::Undocumented,
+        AttrFlag::Executable,
+        AttrFlag::SkipConstraintsOverride,
+        AttrFlag::OutputLicenses,
+        AttrFlag::StarlarkDefined,
+    ];
+
+    /// The flag `attr.*` calls `name`.
+    pub fn parse(name: &str) -> Option<AttrFlag> {
+        AttrFlag::ALL.into_iter().find(|f| f.name() == name)
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            AttrFlag::Mandatory => "MANDATORY",
+            AttrFlag::OrderIndependent => "ORDER_INDEPENDENT",
+            AttrFlag::DirectCompileTimeInput => "DIRECT_COMPILE_TIME_INPUT",
+            AttrFlag::NonEmpty => "NON_EMPTY",
+            AttrFlag::SingleArtifact => "SINGLE_ARTIFACT",
+            AttrFlag::SkipAnalysisTimeFiletypeCheck => "SKIP_ANALYSIS_TIME_FILETYPE_CHECK",
+            AttrFlag::Undocumented => "UNDOCUMENTED",
+            AttrFlag::Executable => "EXECUTABLE",
+            AttrFlag::SkipConstraintsOverride => "SKIP_CONSTRAINTS_OVERRIDE",
+            AttrFlag::OutputLicenses => "OUTPUT_LICENSES",
+            AttrFlag::StarlarkDefined => "STARLARK_DEFINED",
+        }
+    }
+}
+
+/// Which source files a label attribute takes (`allow_files`,
+/// `allow_single_file`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FileTypes {
+    /// Rule targets only.
+    None,
+    Any,
+    /// Files with one of these suffixes.
+    Suffixes(Vec<String>),
+}
+
+/// The configuration a dependency is built in (`cfg`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Cfg {
+    Target,
+    Exec,
+    /// `"host"`, which Bazel 9.2.0 still accepts.
+    Host,
+    /// A transition a `.bzl` supplied, which it keeps.
+    Transition,
+}
+
+/// One attribute as a schema states it. See the module docs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AttrDef {
+    pub ty: AttrType,
+    /// The default the schema wrote, `None` if it wrote none.
+    pub default: Option<AttrValue>,
+    /// The default is a function, kept with the `.bzl` that made it.
+    pub computed_default: bool,
+    pub doc: Option<String>,
+    pub flags: BTreeSet<AttrFlag>,
+    pub files: FileTypes,
+    /// Rule kinds a label may name; `None` is any.
+    pub allow_rules: Option<BTreeSet<String>>,
+    pub cfg: Cfg,
+    /// `configurable = ...` if it was given.
+    pub configurable: Option<bool>,
+    pub skip_validations: bool,
+}
+
+impl AttrDef {
+    pub fn new(ty: AttrType) -> AttrDef {
+        AttrDef {
+            ty,
+            default: None,
+            computed_default: false,
+            doc: None,
+            flags: BTreeSet::new(),
+            files: FileTypes::None,
+            allow_rules: None,
+            cfg: Cfg::Target,
+            configurable: None,
+            skip_validations: false,
+        }
+    }
+
+    pub fn mandatory(&self) -> bool {
+        self.flags.contains(&AttrFlag::Mandatory)
+    }
+
+    /// A list or dict attribute may be empty unless flagged non-empty.
+    pub fn allow_empty(&self) -> bool {
+        !self.flags.contains(&AttrFlag::NonEmpty)
+    }
+
+    pub fn executable(&self) -> bool {
+        self.flags.contains(&AttrFlag::Executable)
+    }
+
+    pub fn single_file(&self) -> bool {
+        self.flags.contains(&AttrFlag::SingleArtifact)
+    }
+
+    /// The value the attribute has when a rule sets none. `None` if it has
+    /// no value, or if the default is computed.
+    pub fn default_value(&self) -> Option<AttrValue> {
+        if self.computed_default {
+            return None;
+        }
+        self.default.clone().or_else(|| self.ty.zero())
+    }
+}
+
+/// A native rule's attribute, as a schema would state it.
+impl From<&AttrSpec> for AttrDef {
+    fn from(spec: &AttrSpec) -> AttrDef {
+        let mut def = AttrDef::new(spec.ty);
+        def.default = spec.default.value(spec.ty);
+        if spec.mandatory {
+            def.flags.insert(AttrFlag::Mandatory);
+        }
+        def
     }
 }
 
@@ -173,15 +379,36 @@ pub static ALIAS: RuleClass = RuleClass {
     ],
 };
 
-/// Bazel's `SpellChecker`, as far as it could be told apart from outside:
-/// the candidate with the smallest edit distance, if that distance is at
-/// most a third of the word's length (rounded up).
+/// Bazel's "did you mean" for an unknown repository or rule attribute, as far
+/// as it could be told apart from outside: the candidate with the smallest
+/// edit distance, if that distance is at most a third of the word's length
+/// (rounded up).
 pub fn suggest<'a>(given: &str, candidates: impl IntoIterator<Item = &'a str>) -> Option<&'a str> {
     let limit = (given.chars().count() + 1) / 3;
     candidates
         .into_iter()
         .map(|c| (edit_distance(given, c), c))
         .filter(|&(d, _)| d <= limit)
+        .min_by_key(|&(d, _)| d)
+        .map(|(_, c)| c)
+}
+
+/// The same for a keyword argument a builtin function does not take. It is
+/// not the rule of [`suggest`]: `non_empty` gets `allow_empty` (four edits,
+/// for a word of nine), which that rule refuses. The rule that fits every
+/// suggestion and refusal Bazel 9.2.0 made for a misspelt keyword of the
+/// `attr.*` builders (and of `glob`) is a distance of at most nine
+/// twentieths of the shorter of the two words. It is the only ratio that
+/// does, and no probe separates it from a nearby formula.
+pub fn suggest_keyword<'a>(
+    given: &str,
+    candidates: impl IntoIterator<Item = &'a str>,
+) -> Option<&'a str> {
+    let given_len = given.chars().count();
+    candidates
+        .into_iter()
+        .map(|c| (edit_distance(given, c), c))
+        .filter(|&(d, c)| d * 20 <= 9 * given_len.min(c.chars().count()))
         .min_by_key(|&(d, _)| d)
         .map(|(_, c)| c)
 }
@@ -258,6 +485,40 @@ mod tests {
         assert_eq!(ALIAS.suggest("tag"), Some("tags"));
     }
 
+    /// Keyword suggestions, each a misspelling and what Bazel 9.2.0 offered
+    /// for it among the keywords of `attr.string_list` (an empty string:
+    /// nothing).
+    #[test]
+    fn keyword_suggestions_match_bazels() {
+        let keywords = ["mandatory", "allow_empty", "default", "doc", "configurable"];
+        for (given, want) in [
+            ("non_empty", "allow_empty"),
+            ("defualt", "default"),
+            ("mandatry", "mandatory"),
+            ("allow_empt", "allow_empty"),
+            ("nonempty", ""),
+            ("allowlist", ""),
+            ("order", ""),
+            ("name", ""),
+            ("values", ""),
+            ("visibility", ""),
+            ("default_provider", ""),
+            ("allow_files", ""),
+            ("do", ""),
+        ] {
+            assert_eq!(
+                suggest_keyword(given, keywords).unwrap_or(""),
+                want,
+                "{given}"
+            );
+        }
+        // The keywords of `attr.label`, where `tags` is two edits from
+        // `flags` and is refused.
+        let label = ["default", "flags", "cfg", "doc", "allow_single_file"];
+        assert_eq!(suggest_keyword("tags", label), None);
+        assert_eq!(suggest_keyword("single_file", label), None);
+    }
+
     #[test]
     fn the_two_rules_accept_what_bazel_accepts() {
         for name in [
@@ -325,6 +586,77 @@ mod tests {
             assert!(ALIAS.attr(name).is_none(), "alias {name}");
         }
         assert!(ALIAS.attr("actual").unwrap().mandatory);
+    }
+
+    /// The error text `expected value of type '...' for attribute` uses for
+    /// each kind, from instantiating a `rule()` with each `attr.*` in Bazel
+    /// 9.2.0. `bool` is not in it: Bazel words that one differently.
+    #[test]
+    fn every_attr_kind_has_bazels_name() {
+        for (ty, want) in [
+            (AttrType::Int, "int"),
+            (AttrType::IntList, "list(int)"),
+            (AttrType::Label, "string"),
+            (AttrType::LabelKeyedStringDict, "dict(label, string)"),
+            (AttrType::LabelList, "list(label)"),
+            (AttrType::LabelListDict, "dict(string, list(label))"),
+            (AttrType::Output, "string"),
+            (AttrType::OutputList, "list(output)"),
+            (AttrType::String, "string"),
+            (AttrType::StringDict, "dict(string, string)"),
+            (AttrType::StringKeyedLabelDict, "dict(string, label)"),
+            (AttrType::StringList, "list(string)"),
+            (AttrType::StringListDict, "dict(string, list(string))"),
+        ] {
+            assert_eq!(ty.name(), want);
+        }
+    }
+
+    #[test]
+    fn a_kind_with_no_value_has_no_zero() {
+        assert_eq!(AttrType::Label.zero(), None);
+        assert_eq!(AttrType::Output.zero(), None);
+        assert_eq!(AttrType::Int.zero(), Some(AttrValue::Int(0)));
+        assert_eq!(
+            AttrType::LabelListDict.zero(),
+            Some(AttrValue::LabelListDict(vec![]))
+        );
+    }
+
+    #[test]
+    fn flags_are_read_by_the_names_attr_uses() {
+        for f in AttrFlag::ALL {
+            assert_eq!(AttrFlag::parse(f.name()), Some(f));
+        }
+        assert_eq!(AttrFlag::parse("single_artifact"), None);
+        assert_eq!(AttrFlag::parse("HIDDEN"), None);
+    }
+
+    #[test]
+    fn a_native_attribute_states_itself_as_a_definition() {
+        let actual = AttrDef::from(ALIAS.attr("actual").unwrap());
+        assert_eq!(actual.ty, AttrType::Label);
+        assert!(actual.mandatory());
+        assert_eq!(actual.default_value(), None);
+        let srcs = AttrDef::from(FILEGROUP.attr("srcs").unwrap());
+        assert!(!srcs.mandatory());
+        assert_eq!(srcs.default_value(), Some(AttrValue::LabelList(vec![])));
+        // A native attribute is not a Starlark-defined one.
+        assert!(!srcs.flags.contains(&AttrFlag::StarlarkDefined));
+    }
+
+    #[test]
+    fn a_computed_default_is_not_a_value() {
+        let mut def = AttrDef::new(AttrType::Label);
+        def.computed_default = true;
+        assert_eq!(def.default_value(), None);
+        let mut list = AttrDef::new(AttrType::StringList);
+        assert_eq!(list.default_value(), Some(AttrValue::StringList(vec![])));
+        list.default = Some(AttrValue::StringList(vec!["a".into()]));
+        assert_eq!(
+            list.default_value(),
+            Some(AttrValue::StringList(vec!["a".into()]))
+        );
     }
 
     #[test]

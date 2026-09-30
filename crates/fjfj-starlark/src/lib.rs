@@ -6,6 +6,11 @@
 //! `native.*`, `select`, ...) are supplied by this crate as globals.
 
 mod args;
+mod attr;
+#[cfg(test)]
+mod attr_matrix;
+#[cfg(test)]
+mod attr_tests;
 #[cfg(test)]
 mod builtins_tests;
 mod depset;

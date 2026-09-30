@@ -2,6 +2,7 @@
 
 use crate::{BzlFile, RepoMappings, bzl_globals, evaluate_bzl};
 use fjfj_graph::Label;
+use starlark::environment::FrozenModule;
 use starlark::eval::FileLoader;
 use std::cell::RefCell;
 
@@ -46,6 +47,22 @@ pub(crate) fn run(src: &str) -> Result<Vec<String>, String> {
 /// [`run`] for the file `t.bzl` in `package` of `repo`.
 pub(crate) fn run_in(repo: &str, package: &str, src: &str) -> Result<Vec<String>, String> {
     let capture = Capture(RefCell::new(Vec::new()));
+    module_with(repo, package, src, Some(&capture))?;
+    Ok(capture.0.into_inner())
+}
+
+/// The frozen module of the file `t.bzl` in `package` of `repo`, for a test
+/// that looks at what a global holds.
+pub(crate) fn module_in(repo: &str, package: &str, src: &str) -> Result<FrozenModule, String> {
+    module_with(repo, package, src, None)
+}
+
+fn module_with(
+    repo: &str,
+    package: &str,
+    src: &str,
+    print: Option<&dyn starlark::PrintHandler>,
+) -> Result<FrozenModule, String> {
     let file = Label {
         repo: repo.to_owned(),
         package: package.to_owned(),
@@ -57,10 +74,9 @@ pub(crate) fn run_in(repo: &str, package: &str, src: &str) -> Result<Vec<String>
         globals: &bzl_globals(),
         mappings: &probe_mappings(),
         loader: &NoLoads,
-        print: Some(&capture),
+        print,
     })
-    .map_err(|e| format!("{:#}", e.into_anyhow()))?;
-    Ok(capture.0.into_inner())
+    .map_err(|e| format!("{:#}", e.into_anyhow()))
 }
 
 /// A loader for a file that loads nothing.

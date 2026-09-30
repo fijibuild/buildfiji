@@ -4,7 +4,7 @@
 //! Bazel's natives do not word their argument errors alike, so [`bind`] takes
 //! the wording per function. Everything here was checked against Bazel 9.2.0.
 
-use fjfj_graph::rule::suggest;
+use fjfj_graph::rule::suggest_keyword;
 use starlark::eval::{Arguments, Evaluator};
 use starlark::values::Value;
 use starlark::values::list::ListRef;
@@ -102,7 +102,7 @@ pub(crate) fn bind<'v>(
                 _ => format!(
                     "{function}() got unexpected keyword argument '{}'{}",
                     key.as_str(),
-                    suggest(key.as_str(), params.iter().map(|p| p.name))
+                    suggest_keyword(key.as_str(), params.iter().map(|p| p.name))
                         .map(|s| format!(" (did you mean '{s}'?)"))
                         .unwrap_or_default()
                 ),

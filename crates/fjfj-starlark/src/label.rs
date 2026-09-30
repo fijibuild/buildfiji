@@ -155,7 +155,7 @@ fn mappings_of<'a>(eval: &Evaluator<'_, 'a, '_>) -> Option<&'a RepoMappings> {
 }
 
 /// The `.bzl` file whose code is making the current call, and the mappings.
-fn caller<'a>(
+pub(crate) fn caller<'a>(
     eval: &Evaluator<'_, 'a, '_>,
     function: &str,
 ) -> starlark::Result<(Label, &'a RepoMappings)> {
@@ -195,6 +195,40 @@ pub(crate) fn resolve(
         mappings.resolve(written_in, apparent)
     })
     .map(StarlarkLabel::from)
+}
+
+/// `text` as a label written in the `.bzl` whose code is making the call
+/// `function`. The outer error is that no `.bzl` is; the inner one is Bazel's
+/// text for a label that does not parse.
+pub(crate) fn parse_in_caller(
+    eval: &Evaluator<'_, '_, '_>,
+    function: &str,
+    text: &str,
+) -> starlark::Result<Result<Label, LabelParseError>> {
+    let (file, mappings) = caller(eval, function)?;
+    Ok(Label::parse_mapped(
+        text,
+        LabelContext {
+            repo: &file.repo,
+            package: &file.package,
+        },
+        &mut |apparent| mappings.resolve(&file.repo, apparent),
+    ))
+}
+
+/// The label a `Label` value holds.
+pub(crate) fn label_of_value(value: Value<'_>) -> Option<Label> {
+    value.downcast_ref::<StarlarkLabel>().map(|l| Label {
+        repo: l.repo.clone(),
+        package: l.package.clone(),
+        name: l.name.clone(),
+    })
+}
+
+/// How a label is written to say which one it is: `//pkg:name` in the main
+/// repo, `@@repo//pkg:name` elsewhere.
+pub(crate) fn display_label(label: &Label) -> String {
+    format!("@@{}//{}:{}", label.repo, label.package, label.name).replacen("@@//", "//", 1)
 }
 
 /// A label, as a Starlark value.

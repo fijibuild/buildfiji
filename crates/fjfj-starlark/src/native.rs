@@ -37,6 +37,7 @@ use std::cell::RefCell;
 use crate::args::{
     Wording, bind, describe, fatal, param, positional_only, sequence, want_sequence,
 };
+use crate::attr::attr_globals;
 use crate::depset::depset_globals;
 use crate::json::JsonModule;
 use crate::label::{RepoMappings, label_globals, relative_to_package};
@@ -103,6 +104,7 @@ pub fn bzl_globals() -> Globals {
     builder.namespace("native", native_functions);
     builder
         .with(depset_globals)
+        .with(attr_globals)
         .with(label_globals)
         .with(struct_globals)
         .with(module_globals)
@@ -828,6 +830,13 @@ fn attr_value(
                     .collect::<Result<_, _>>()?,
             )
         }
+        // No native rule has an attribute of the other kinds.
+        other => {
+            return Err(format!(
+                "attribute '{attr}' of '{rule}' is of type {}, which a native rule cannot take",
+                other.name()
+            ));
+        }
     }))
 }
 
@@ -886,6 +895,37 @@ fn attr_to_value<'v>(
         AttrValue::LabelList(items) => {
             heap.alloc(AllocTuple(items.iter().map(|l| heap.alloc(relative(l)))))
         }
+        AttrValue::Int(i) => heap.alloc(*i),
+        AttrValue::IntList(items) => heap.alloc(AllocTuple(items.iter().map(|i| heap.alloc(*i)))),
+        AttrValue::StringDict(entries) => heap.alloc(AllocDict(
+            entries
+                .iter()
+                .map(|(k, v)| (heap.alloc(k.as_str()), heap.alloc(v.as_str()))),
+        )),
+        AttrValue::StringListDict(entries) => {
+            heap.alloc(AllocDict(entries.iter().map(|(k, v)| {
+                (
+                    heap.alloc(k.as_str()),
+                    heap.alloc(AllocTuple(v.iter().map(|s| heap.alloc(s.as_str())))),
+                )
+            })))
+        }
+        AttrValue::LabelKeyedStringDict(entries) => heap.alloc(AllocDict(
+            entries
+                .iter()
+                .map(|(k, v)| (heap.alloc(relative(k)), heap.alloc(v.as_str()))),
+        )),
+        AttrValue::StringKeyedLabelDict(entries) => heap.alloc(AllocDict(
+            entries
+                .iter()
+                .map(|(k, v)| (heap.alloc(k.as_str()), heap.alloc(relative(v)))),
+        )),
+        AttrValue::LabelListDict(entries) => heap.alloc(AllocDict(entries.iter().map(|(k, v)| {
+            (
+                heap.alloc(k.as_str()),
+                heap.alloc(AllocTuple(v.iter().map(|l| heap.alloc(relative(l))))),
+            )
+        }))),
     }
 }
 

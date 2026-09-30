@@ -369,12 +369,60 @@ tests beside them and in `native.rs`).
   around and called as `L("...")` reads in the file that *calls* it, as
   Bazel does.
 
+## `attr.*` (implemented 2026-09-30, buildfiji-mum.3.3)
+
+`attr` is a value of type `attr` in `attr.rs` (`.bzl` only), with the fourteen
+builders as methods. Each returns an `Attribute` descriptor, which prints as
+`<attr.string>`, has no members and is not hashable. About 3,100 probes of
+Bazel 9.2.0 are replayed: every keyword each builder takes against sixteen
+values of every type (`attr_matrix.rs`), and the conversions, orderings and
+equalities (`attr_tests.rs`).
+
+- **Which keywords.** A table per builder (`BOOL`, `LABEL`, ...) says which
+  keywords it takes and which are positional (`int_list` and `string_list`
+  take `mandatory, allow_empty`; the other list and dict builders and
+  `output_list` take `allow_empty`; the rest take none). `materializer` is
+  refused whenever it is given (it is behind `--experimental_dormant_deps`),
+  and `for_dependency_resolution` takes anything and is kept.
+- **Order of errors.** Arguments are checked as they are bound, in the order
+  the call writes them (positional first), and a keyword the builder does
+  not take is an error at its place in that order; a surplus positional
+  argument is reported after the keywords. Only when all are bound is
+  anything converted, in this order: `default`, `flags`, `executable` without
+  `cfg`, `allow_files`/`allow_single_file` (both given, then the elements),
+  `allow_rules`, `providers`, `cfg`, `aspects`. The attribute name in a
+  default's message is the builder's own for a label builder and blank for
+  the others.
+- **What is stored.** The pure data is a `fjfj_graph::rule::AttrDef`, which a
+  native rule's `AttrSpec` also converts to: type, the default converted to an
+  `AttrValue` (a label is read in the `.bzl` that made the call, `:x` in its
+  package and `@r` through its repo's mapping; dicts keep their order), a
+  set of `AttrFlag`s, the file types, allowed rule kinds, `cfg`, `configurable`
+  and `skip_validations`. `mandatory`, `allow_empty = False`, `executable` and
+  `allow_single_file` set the flag of the same meaning, so `flags =
+  ["MANDATORY"]` is `mandatory = True`. What needs a Starlark value stays on
+  the descriptor: `values` as given, `providers` as alternatives (a flat list
+  of providers is one), `aspects`, a transition, and a `default` that is a
+  function, which is kept and not called. `attr::view` reads it back for
+  `rule()` (buildfiji-mum.3.5).
+- **Equality** is Bazel's `Attribute.equals`: by content, except that a value
+  list, a suffix list, a configuration other than the target's and a computed
+  default are never equal to another descriptor's (only to itself). A default
+  left out is the type's zero, dicts compare in any order and lists do not,
+  and the alternatives of `providers` compare as sets of sets in order.
+- **Known differences.** `attr.label(default=print)` is accepted, as the crate
+  calls a builtin a `function` (buildfiji-v32); `1<<31` wraps in the crate
+  (buildfiji-sbj); `providers`, `aspects`, `cfg = <transition>` and the
+  "should be top-level values" checks wait for `provider()` and `aspect()`
+  (buildfiji-mum.3.4, buildfiji-mum.3.7). The did-you-mean for a misspelt
+  keyword is a fit, not a known rule (`suggest_keyword`, buildfiji-2cb).
+
 ## Bazel 9.2.0's builtin namespaces, and who owns each name (buildfiji-mum.3)
 
 Read off Bazel 9.2.0 by asking `type(name)` in a BUILD file and in a `.bzl`
 loaded by one, and `dir()` of each namespace. `B` is visible in BUILD files,
 `Z` in `.bzl` files. fjfj has, so far, `depset` (B, Z), `set`, `json`, `proto` (B, Z),
-`struct` and `Label` (Z), `print` and the standard Starlark library, and the natives of
+`struct`, `Label` and `attr` (Z), `print` and the standard Starlark library, and the natives of
 buildfiji-mum.4.
 
 | Names | Where | Owner |
@@ -384,7 +432,7 @@ buildfiji-mum.4.
 | `struct` | Z only | buildfiji-mum.3.1, done |
 | `json` (`encode decode encode_indent indent`), `proto` (`encode_text`) | B Z | buildfiji-mum.3.1, done |
 | `Label` (`name package relative repo_name same_package_label workspace_name workspace_root`) | Z only | buildfiji-mum.3.2, done |
-| `attr` (`bool int int_list label label_keyed_string_dict label_list label_list_dict output output_list string string_dict string_keyed_label_dict string_list string_list_dict`) | Z only | buildfiji-mum.3.3 |
+| `attr` (`bool int int_list label label_keyed_string_dict label_list label_list_dict output output_list string string_dict string_keyed_label_dict string_list string_list_dict`) | Z only | buildfiji-mum.3.3, done |
 | `provider` | Z only | buildfiji-mum.3.4 |
 | `rule` | Z only | buildfiji-mum.3.5 |
 | `select` | B Z | buildfiji-mum.3.6 |

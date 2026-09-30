@@ -96,3 +96,15 @@ and `repr` is `Label("//pkg:name")`, so do not let `Display` and `collect_str`
 drift apart: the crate's `Display` *is* `repr`, and it is what lists, tuples
 and structs use for their elements. Design and known gaps:
 `docs/design/starlark-and-loading.md`.
+
+## attr
+
+`attr.*` (`attr.rs`) builds an `Attribute` descriptor, replayed against Bazel
+9.2.0 in `attr_tests.rs` and `attr_matrix.rs`. Bazel checks the arguments in
+the order the call writes them and converts the `default`, `flags`, `cfg` and
+the rest only afterwards, in a fixed order, so keep both orders when adding a
+keyword. The pure part of a descriptor is `fjfj_graph::rule::AttrDef`; what
+holds a Starlark value stays in `AttributeGen`, and `attr::view` reads either
+back. A keyword's spelling suggestion is `suggest_keyword`, not `suggest`
+(which is for repositories and rule attributes). Design and known gaps:
+`docs/design/starlark-and-loading.md`.
