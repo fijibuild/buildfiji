@@ -7,7 +7,9 @@ patch here, applied by Bazel to the crate it downloads: `crate.annotation(crate 
 forked or vendored. Cargo does not build fjfj (it only keeps `Cargo.toml` and
 `Cargo.lock`), so it never sees them.
 
-Make a patch against the crate's source in the cargo registry:
+`mkpatch.py NAME FILE OLD NEW ...` writes one from edits (`CRATE=starlark_syntax` for the
+other crate; its annotation is in `MODULE.bazel` too). By hand, against the crate's source
+in the cargo registry:
 
 ```sh
 R=$(ls -d ~/.cargo/registry/src/*/starlark-0.14.2)
@@ -27,3 +29,8 @@ that no longer applies fails the build, which is the reminder.
 |---|---|---|
 | 0001-percent-s-is-str | buildfiji-b9c | `"%s" % x` formats a non-string with `str()`, not `repr()` |
 | 0002-no-recursion | buildfiji-2r5 | a `def` called while it is already being called is `function 'f' called recursively` |
+| 0003-excessive-repeat | buildfiji-gpj | `[1, 2, 3] * (1 << 30)` (more than `i32::MAX` elements or characters) is `excessive repeat (3 * 1073741824 elements)`, not a panic |
+| 0004-split-keywords-and-empty-separator | buildfiji-wtt | `split` and `rsplit` take `sep` and `maxsplit` by name, and an empty separator is an error |
+| 0005-elems-and-codepoints-are-lists | buildfiji-9zq | `s.elems()` and `s.codepoints()` are lists (they have a length, and `set()` takes them) |
+| 0006-cycle-marker | buildfiji-sib | a list, dict or tuple that contains itself is written `...` inside, as Bazel does |
+| 0007-raw-string-keeps-backslash (`starlark_syntax`) | buildfiji-sib | `r'\"'` keeps the backslash before a quote |

@@ -1,0 +1,14 @@
+diff --git a/src/lexer.rs b/src/lexer.rs
+--- a/src/lexer.rs
++++ b/src/lexer.rs
+@@ -419,9 +419,7 @@
+                     if raw {
+                         match it.next() {
+                             Some(c) => {
+-                                if c != '\'' && c != '"' {
+-                                    res.push('\\');
+-                                }
++                                res.push('\\');
+                                 res.push(c);
+                             }
+                             _ => break, // Out of chars

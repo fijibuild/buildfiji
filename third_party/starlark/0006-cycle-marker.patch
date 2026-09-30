@@ -1,0 +1,36 @@
+diff --git a/src/values/types/list/value.rs b/src/values/types/list/value.rs
+--- a/src/values/types/list/value.rs
++++ b/src/values/types/list/value.rs
+@@ -455,7 +455,7 @@
+     }
+ 
+     fn collect_repr_cycle(&self, collector: &mut String) {
+-        collector.push_str("[...]");
++        collector.push_str("...");
+     }
+ 
+     fn to_bool(&self) -> bool {
+diff --git a/src/values/types/dict/value.rs b/src/values/types/dict/value.rs
+--- a/src/values/types/dict/value.rs
++++ b/src/values/types/dict/value.rs
+@@ -437,7 +437,7 @@
+     }
+ 
+     fn collect_repr_cycle(&self, collector: &mut String) {
+-        collector.push_str("{...}");
++        collector.push_str("...");
+     }
+ 
+     fn to_bool(&self) -> bool {
+diff --git a/src/values/types/tuple/value.rs b/src/values/types/tuple/value.rs
+--- a/src/values/types/tuple/value.rs
++++ b/src/values/types/tuple/value.rs
+@@ -252,7 +252,7 @@
+     }
+ 
+     fn collect_repr_cycle(&self, collector: &mut String) {
+-        collector.push_str("(...)");
++        collector.push_str("...");
+     }
+ 
+     fn typechecker_ty(&self) -> Option<Ty> {

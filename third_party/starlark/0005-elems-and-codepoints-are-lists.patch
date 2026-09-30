@@ -1,0 +1,27 @@
+diff --git a/src/values/types/string/methods.rs b/src/values/types/string/methods.rs
+--- a/src/values/types/string/methods.rs
++++ b/src/values/types/string/methods.rs
+@@ -124,8 +124,9 @@
+     fn elems<'v>(
+         this: StringValue<'v>,
+         heap: Heap<'v>,
+-    ) -> anyhow::Result<ValueOfUnchecked<'v, StarlarkIter<String>>> {
+-        Ok(iterate_chars(this, heap))
++    ) -> anyhow::Result<ValueOfUnchecked<'v, UnpackList<String>>> {
++        let chars: Vec<String> = this.chars().map(|c| c.to_string()).collect();
++        Ok(heap.alloc_typed_unchecked(AllocList(chars)).cast())
+     }
+ 
+     /// [string.capitalize](
+@@ -174,8 +175,9 @@
+     fn codepoints<'v>(
+         this: StringValue<'v>,
+         heap: Heap<'v>,
+-    ) -> anyhow::Result<ValueOfUnchecked<'v, StarlarkIter<String>>> {
+-        Ok(iterate_codepoints(this, heap))
++    ) -> anyhow::Result<ValueOfUnchecked<'v, UnpackList<i32>>> {
++        let points: Vec<i32> = this.chars().map(|c| c as i32).collect();
++        Ok(heap.alloc_typed_unchecked(AllocList(points)).cast())
+     }
+ 
+     /// [string.count](

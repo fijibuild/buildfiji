@@ -64,6 +64,15 @@ crate.annotation(
     patches = [
         "//third_party/starlark:0001-percent-s-is-str.patch",
         "//third_party/starlark:0002-no-recursion.patch",
+        "//third_party/starlark:0003-excessive-repeat.patch",
+        "//third_party/starlark:0004-split-keywords-and-empty-separator.patch",
+        "//third_party/starlark:0005-elems-and-codepoints-are-lists.patch",
+        "//third_party/starlark:0006-cycle-marker.patch",
     ],
+)
+crate.annotation(
+    crate = "starlark_syntax",
+    patch_args = ["-p1"],
+    patches = ["//third_party/starlark:0007-raw-string-keeps-backslash.patch"],
 )
 use_repo(crate, "crates")

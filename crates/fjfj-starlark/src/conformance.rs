@@ -181,10 +181,8 @@ const FILES: &[(&str, &str)] = &[
 
 const KNOWN: &str = include_str!("../testdata/conformance_known.txt");
 
-/// Chunks that are not run because running them takes minutes of the
-/// machine (and ends in a panic) rather than an error: a repeat of three
-/// elements a billion times (buildfiji-gpj).
-const NOT_RUN: &[&str] = &["list.star:1"];
+/// Chunks that are not run.
+const NOT_RUN: &[&str] = &[];
 
 /// What the asserts report: one line for each failure.
 #[derive(ProvidesStaticType, Default)]

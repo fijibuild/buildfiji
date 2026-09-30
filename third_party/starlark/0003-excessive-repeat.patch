@@ -1,0 +1,51 @@
+diff --git a/src/values/types/list/value.rs b/src/values/types/list/value.rs
+--- a/src/values/types/list/value.rs
++++ b/src/values/types/list/value.rs
+@@ -535,6 +535,13 @@
+             Ok(None) => return None,
+             Err(e) => return Some(Err(e)),
+         };
++        if i64::from(cmp::max(0, l)) * self.0.content().len() as i64 > i64::from(i32::MAX) {
++            return Some(Err(crate::Error::new_native(anyhow::anyhow!(
++                "excessive repeat ({} * {} elements)",
++                self.0.content().len(),
++                l
++            ))));
++        }
+         let mut result = Vec::with_capacity(self.0.content().len() * cmp::max(0, l) as usize);
+         for _ in 0..l {
+             result.extend(self.0.content().iter());
+diff --git a/src/values/types/tuple/value.rs b/src/values/types/tuple/value.rs
+--- a/src/values/types/tuple/value.rs
++++ b/src/values/types/tuple/value.rs
+@@ -240,6 +240,13 @@
+             Ok(None) => return None,
+             Err(e) => return Some(Err(e)),
+         };
++        if i64::from(l.max(0)) * self.content().len() as i64 > i64::from(i32::MAX) {
++            return Some(Err(crate::Error::new_native(anyhow::anyhow!(
++                "excessive repeat ({} * {} elements)",
++                self.content().len(),
++                l
++            ))));
++        }
+         let mut result = Vec::new();
+         for _i in 0..l {
+             result.extend(self.content().iter().map(|e| e.to_value()));
+diff --git a/src/values/types/string/str_type.rs b/src/values/types/string/str_type.rs
+--- a/src/values/types/string/str_type.rs
++++ b/src/values/types/string/str_type.rs
+@@ -361,6 +361,13 @@
+             Ok(None) => return None,
+             Err(e) => return Some(Err(e)),
+         };
++        if i64::from(cmp::max(0, l)) * self.len() as i64 > i64::from(i32::MAX) {
++            return Some(Err(crate::Error::new_native(anyhow::anyhow!(
++                "excessive repeat ({} * {} characters)",
++                self.len(),
++                l
++            ))));
++        }
+         let mut result = String::with_capacity(self.len() * cmp::max(0, l) as usize);
+         for _i in 0..l {
+             result.push_str(self)

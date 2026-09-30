@@ -1,0 +1,45 @@
+diff --git a/src/values/types/string/methods.rs b/src/values/types/string/methods.rs
+--- a/src/values/types/string/methods.rs
++++ b/src/values/types/string/methods.rs
+@@ -928,8 +928,8 @@
+     #[starlark(speculative_exec_safe)]
+     fn rsplit<'v>(
+         this: &str,
+-        #[starlark(require = pos, default = NoneOr::None)] sep: NoneOr<&str>,
+-        #[starlark(require = pos, default = NoneOr::None)] maxsplit: NoneOr<i32>,
++        #[starlark(default = NoneOr::None)] sep: NoneOr<&str>,
++        #[starlark(default = NoneOr::None)] maxsplit: NoneOr<i32>,
+         heap: Heap<'v>,
+     ) -> anyhow::Result<ValueOfUnchecked<'v, UnpackList<String>>> {
+         let maxsplit = match maxsplit.into_option() {
+@@ -942,6 +942,9 @@
+                 }
+             }
+         };
++        if sep.into_option() == Some("") {
++            return Err(anyhow::anyhow!("Empty separator"));
++        }
+         Ok(match sep.into_option() {
+             None => match maxsplit {
+                 None => heap
+@@ -1027,8 +1030,8 @@
+     #[starlark(speculative_exec_safe)]
+     fn split<'v>(
+         this: &str,
+-        #[starlark(require = pos, default = NoneOr::None)] sep: NoneOr<&str>,
+-        #[starlark(require = pos, default = NoneOr::None)] maxsplit: NoneOr<i32>,
++        #[starlark(default = NoneOr::None)] sep: NoneOr<&str>,
++        #[starlark(default = NoneOr::None)] maxsplit: NoneOr<i32>,
+         heap: Heap<'v>,
+     ) -> anyhow::Result<ValueOfUnchecked<'v, UnpackList<String>>> {
+         let maxsplit = match maxsplit.into_option() {
+@@ -1041,6 +1044,9 @@
+                 }
+             }
+         };
++        if sep.into_option() == Some("") {
++            return Err(anyhow::anyhow!("Empty separator"));
++        }
+         Ok(match (sep.into_option(), maxsplit) {
+             (None, None) => heap
+                 .alloc_typed_unchecked(AllocList(this.split_whitespace()))

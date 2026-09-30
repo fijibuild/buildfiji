@@ -1,22 +1,12 @@
 # Chunks of Bazel's script tests that fail here, by the bead that owns each difference.
 # The test fails if a chunk is missing from this list and fails, or is here and passes.
 
-# buildfiji-2r5: recursion is an error in Bazel
-
-# buildfiji-gpj: a huge repeat panics the crate
-list.star:1
-
-# buildfiji-wtt: split and rsplit take keywords
-string_split.star:1
-
-# buildfiji-9zq: elems() is a sequence in Bazel
+# buildfiji-tg2: in-place set operators, and the wording of the set errors
 set.star:1
-string_elems.star:1
 
-# buildfiji-sib: cyclic reprs and raw strings
-cycles.star:1
-cycles.star:8
-cycles.star:13
+# buildfiji-v32, left after the patches to the crate (third_party/starlark): the
+# wording of the index errors (list.star:1) and of the json ones (json.star:1)
+list.star:1
 json.star:1
 
 # buildfiji-exk: the harness has no freeze() or mutablestruct
