@@ -5,6 +5,7 @@ use fjfj_graph::Label;
 use starlark::environment::FrozenModule;
 use starlark::eval::FileLoader;
 use std::cell::RefCell;
+use std::collections::HashMap;
 
 pub(crate) struct Capture(pub(crate) RefCell<Vec<String>>);
 
@@ -77,6 +78,67 @@ fn module_with(
         print,
     })
     .map_err(|e| format!("{:#}", e.into_anyhow()))
+}
+
+/// Run `main` as `//:t.bzl` in a workspace of the other `files` (named
+/// `a.bzl`, loaded as `:a.bzl`), returning what it printed or its error. A
+/// file is evaluated once, however many others load it.
+pub(crate) fn run_files(files: &[(&str, &str)], main: &str) -> Result<Vec<String>, String> {
+    let loader = Files {
+        sources: files.iter().copied().collect(),
+        loaded: RefCell::new(HashMap::new()),
+    };
+    let capture = Capture(RefCell::new(Vec::new()));
+    let file = Label {
+        repo: String::new(),
+        package: String::new(),
+        name: "t.bzl".to_owned(),
+    };
+    evaluate_bzl(&BzlFile {
+        file: &file,
+        source: main,
+        globals: &bzl_globals(),
+        mappings: &probe_mappings(),
+        loader: &loader,
+        print: Some(&capture),
+    })
+    .map_err(|e| format!("{:#}", e.into_anyhow()))?;
+    Ok(capture.0.into_inner())
+}
+
+/// The loader of [`run_files`].
+struct Files<'a> {
+    sources: HashMap<&'a str, &'a str>,
+    loaded: RefCell<HashMap<String, FrozenModule>>,
+}
+
+impl FileLoader for Files<'_> {
+    fn load(&self, path: &str) -> starlark::Result<FrozenModule> {
+        let name = path.trim_start_matches(':');
+        if let Some(done) = self.loaded.borrow().get(name) {
+            return Ok(done.clone());
+        }
+        let source = self.sources.get(name).ok_or_else(|| {
+            starlark::Error::new_other(anyhow::anyhow!("cannot load '{path}': no such file"))
+        })?;
+        let file = Label {
+            repo: String::new(),
+            package: String::new(),
+            name: name.to_owned(),
+        };
+        let module = evaluate_bzl(&BzlFile {
+            file: &file,
+            source,
+            globals: &bzl_globals(),
+            mappings: &probe_mappings(),
+            loader: self,
+            print: None,
+        })?;
+        self.loaded
+            .borrow_mut()
+            .insert(name.to_owned(), module.clone());
+        Ok(module)
+    }
 }
 
 /// A loader for a file that loads nothing.

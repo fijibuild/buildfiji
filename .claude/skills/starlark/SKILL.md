@@ -108,3 +108,18 @@ holds a Starlark value stays in `AttributeGen`, and `attr::view` reads either
 back. A keyword's spelling suggestion is `suggest_keyword`, not `suggest`
 (which is for repositories and rule attributes). Design and known gaps:
 `docs/design/starlark-and-loading.md`.
+
+## provider
+
+`provider()` (`provider.rs`) makes a `Provider` symbol; calling one makes an
+*instance*, which is the `structs.rs` struct with a reference to its provider
+(type `struct`, repr `struct(a = 1)`, no name in it). Two instances are equal
+only for the same provider, and a provider is identified by a counter, not an
+address, so identity survives freezing and `load()`. A provider is named by the
+first top-level name a `.bzl` binds it to, at the assignment in Bazel and here
+at first use (public names of the running module) or at the end of the module
+(`export_providers`, from `evaluate_bzl`), because the crate has no
+assignment hook and hides `_private` names from a native function: use
+`provider::is_exported`, not the raw name, to ask whether one may be named in
+`providers=` or `provides=`. Design and known gaps:
+`docs/design/starlark-and-loading.md`.

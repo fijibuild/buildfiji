@@ -36,7 +36,9 @@
 //! does. The crate's `print` calls `str`; see buildfiji-xq5.
 
 use crate::args::{Wording, bind, fatal, positional_only};
+use crate::dialect::assigned_names;
 use crate::native::BuildContext;
+use crate::provider::export_providers;
 use crate::{FileKind, parse};
 use allocative::Allocative;
 use fjfj_graph::label::validate_target_name;
@@ -120,6 +122,8 @@ pub struct BzlFile<'a> {
 #[derive(ProvidesStaticType)]
 struct BzlEval<'a> {
     mappings: &'a RepoMappings,
+    /// The names the file assigns at its top level, in order.
+    assigned: Vec<String>,
 }
 
 /// Evaluate a `.bzl` file and freeze what it defines.
@@ -129,6 +133,7 @@ pub fn evaluate_bzl(input: &BzlFile<'_>) -> starlark::Result<FrozenModule> {
         .map_err(starlark::Error::new_other)?;
     let env = BzlEval {
         mappings: input.mappings,
+        assigned: assigned_names(&ast),
     };
     Module::with_temp_heap(|module| {
         {
@@ -140,8 +145,25 @@ pub fn evaluate_bzl(input: &BzlFile<'_>) -> starlark::Result<FrozenModule> {
             }
             eval.eval_module(ast, input.globals)?;
         }
-        Ok(module.freeze()?)
+        let frozen = module.freeze()?;
+        export_providers(&frozen, &env.assigned);
+        Ok(frozen)
     })
+}
+
+/// Whether `eval` is running a `.bzl` file (and not a BUILD file, in which
+/// the module it looks at is not the one that made a value).
+pub(crate) fn evaluating_bzl(eval: &Evaluator<'_, '_, '_>) -> bool {
+    eval.extra
+        .is_some_and(|e| e.downcast_ref::<BzlEval>().is_some())
+}
+
+/// Whether the `.bzl` being evaluated assigns a top-level name that starts
+/// with `_`, which the `starlark` crate will not let a native function read.
+pub(crate) fn assigns_private_names(eval: &Evaluator<'_, '_, '_>) -> bool {
+    eval.extra
+        .and_then(|e| e.downcast_ref::<BzlEval>())
+        .is_some_and(|env| env.assigned.iter().any(|n| n.starts_with('_')))
 }
 
 /// The mappings of the evaluation `eval` is running, if it has any.

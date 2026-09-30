@@ -412,17 +412,77 @@ equalities (`attr_tests.rs`).
   and the alternatives of `providers` compare as sets of sets in order.
 - **Known differences.** `attr.label(default=print)` is accepted, as the crate
   calls a builtin a `function` (buildfiji-v32); `1<<31` wraps in the crate
-  (buildfiji-sbj); `providers`, `aspects`, `cfg = <transition>` and the
-  "should be top-level values" checks wait for `provider()` and `aspect()`
-  (buildfiji-mum.3.4, buildfiji-mum.3.7). The did-you-mean for a misspelt
-  keyword is a fit, not a known rule (`suggest_keyword`, buildfiji-2cb).
+  (buildfiji-sbj); `aspects`, `cfg = <transition>` and the "should be
+  top-level values" check for an aspect wait for `aspect()`
+  (buildfiji-mum.3.7). The did-you-mean for a misspelt keyword is a fit, not
+  a known rule (`suggest_keyword`, buildfiji-2cb).
+
+## `provider()` (implemented 2026-09-30, buildfiji-mum.3.4)
+
+`provider(doc, *, fields, init)` (`provider.rs`, `.bzl` only) returns a
+`Provider`, which prints as `<provider>`, has no members, hashes by identity
+and equals only itself. About 360 probes of Bazel 9.2.0 are replayed in
+`provider_tests.rs`, and the hand tests there cover identity across freezing
+and `load()`.
+
+- **An instance is a struct.** Calling a provider makes a value of type
+  `struct` that prints as `struct(a = 1)`, whichever provider made it:
+  Bazel's repr does not show the provider's name, and `dir`, `json.encode`
+  and `proto.encode_text` treat it as a struct. It is the `structs.rs` value
+  with a reference to its provider, so two instances are equal only if the
+  providers are the same and the fields are, `+` joins instances of one
+  provider and says `Cannot use '+' operator on instances of different
+  providers (P and Q)` otherwise (`struct` is a provider too, for that
+  message), and a field cannot be assigned. Arguments are keywords only, and
+  a field left out is absent, not `None`. `fields`, as a list, tuple, range
+  or dict of names, restricts them.
+- **`init`.** With `init` the call is `(provider, raw_constructor)`. Calling
+  the provider passes the arguments to `init`, whose own argument errors come
+  first, and its result must be a dict with string keys (`got dict<int, int>
+  for 'return value of provider init()', want dict<string, unknown>`); those
+  are the fields. The raw constructor (type `RawConstructor`, printed the way
+  Bazel prints a Java class it has no name for) makes an instance directly.
+  Both check `fields`.
+- **Argument checks** follow `provider()`'s own order: the first positional
+  (`doc`) and each keyword are type-checked as bound, an unknown keyword is
+  an error at its place, and a surplus positional comes after the keywords.
+  Then `fields` is read. The wording is the signature's (`in call to
+  provider(), parameter 'doc' got value of type ...`), and the dict-shaped
+  errors name the types of the first entry that is wrong.
+- **Names.** Bazel names a provider at the assignment that binds it to a
+  top-level name, the first such name winning (`Q = provider()` then `P = Q`
+  is `Q`), and by value: `P = make()` names what `make()` returned, `P, R =
+  provider(init = ...)` names `P`, and one that is only in a list, a dict or
+  a struct is never named (`<no name>`). The name is in `got unexpected field
+  'b' in call to instantiate provider P`, in `P: unexpected positional
+  arguments` (`<raw constructor for P>` for the raw constructor), and in what
+  `providers=` and `provides=` accept: an unnamed provider gives `Providers
+  should be top-level values in extension files that define them.` The
+  `starlark` crate has no hook on an assignment and will not show a native
+  function a private name, so a provider looks for its name among the
+  *public* top-level names of the module being evaluated when it needs one,
+  and `evaluate_bzl` names the rest, `_P` included, once the module is
+  frozen (the names come from the parsed file, values from the frozen module).
+  A provider is identified by a counter that survives freezing, not by
+  address, and its name is a `OnceLock` that freezing carries across.
+- **Known differences.** A provider bound only to a `_private` name is
+  anonymous until its module ends, so an error about it *during* that
+  evaluation says `<no name>` where Bazel says `_P`, and `providers=[_P]`
+  is accepted in any module that binds a private name (it cannot tell `_P`
+  from a provider bound to nothing). `provider(init = struct)` is accepted
+  (Bazel's `struct` is a `Provider` and not callable; the crate's is a
+  function); `provider(fields = ["a", "a"])` is an error here and a crash in
+  Bazel, which prints no message. The crate words a bad call to `init`'s
+  own function, `x.a = 1`'s field-assignment error on other types, and the
+  generic operator errors its own way (buildfiji-v32). `DefaultInfo` and
+  the other predeclared providers are buildfiji-136.4's.
 
 ## Bazel 9.2.0's builtin namespaces, and who owns each name (buildfiji-mum.3)
 
 Read off Bazel 9.2.0 by asking `type(name)` in a BUILD file and in a `.bzl`
 loaded by one, and `dir()` of each namespace. `B` is visible in BUILD files,
 `Z` in `.bzl` files. fjfj has, so far, `depset` (B, Z), `set`, `json`, `proto` (B, Z),
-`struct`, `Label` and `attr` (Z), `print` and the standard Starlark library, and the natives of
+`struct`, `Label`, `attr` and `provider` (Z), `print` and the standard Starlark library, and the natives of
 buildfiji-mum.4.
 
 | Names | Where | Owner |
@@ -433,7 +493,7 @@ buildfiji-mum.4.
 | `json` (`encode decode encode_indent indent`), `proto` (`encode_text`) | B Z | buildfiji-mum.3.1, done |
 | `Label` (`name package relative repo_name same_package_label workspace_name workspace_root`) | Z only | buildfiji-mum.3.2, done |
 | `attr` (`bool int int_list label label_keyed_string_dict label_list label_list_dict output output_list string string_dict string_keyed_label_dict string_list string_list_dict`) | Z only | buildfiji-mum.3.3, done |
-| `provider` | Z only | buildfiji-mum.3.4 |
+| `provider` | Z only | buildfiji-mum.3.4, done |
 | `rule` | Z only | buildfiji-mum.3.5 |
 | `select` | B Z | buildfiji-mum.3.6 |
 | `aspect transition exec_group configuration_field subrule analysis_test_transition` | Z only | buildfiji-mum.3.7 |

@@ -87,6 +87,22 @@ pub fn parse(path: &str, src: &str, kind: FileKind) -> anyhow::Result<AstModule>
     Ok(ast)
 }
 
+/// The names a file assigns at its top level (not `def`s or `load`s), in
+/// the order it assigns them.
+pub(crate) fn assigned_names(ast: &AstModule) -> Vec<String> {
+    let stmts: &[AstStmt] = match &ast.statement().node {
+        StmtP::Statements(v) => v,
+        _ => std::slice::from_ref(ast.statement()),
+    };
+    let mut names = Vec::new();
+    for stmt in stmts {
+        if let StmtP::Assign(a) = &stmt.node {
+            target_names(&a.lhs.node, &mut names);
+        }
+    }
+    names.into_iter().map(|(name, _)| name.to_owned()).collect()
+}
+
 fn error_at(ast: &AstModule, span: Span, msg: String) -> starlark::Error {
     let FileSpan { file, span } = ast.file_span(span);
     starlark::Error::new_spanned(ErrorKind::Parser(anyhow!(msg)), span, &file)

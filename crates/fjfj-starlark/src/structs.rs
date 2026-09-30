@@ -12,8 +12,14 @@
 //!   if every field is;
 //! - `+` joins two structs and refuses a field they share; it is the only
 //!   operator a struct has, and it is always true.
+//!
+//! An instance of a `provider()` (buildfiji-mum.3.4) is the same value: it
+//! prints as `struct(a = 1)`, has type `struct` and holds a reference to its
+//! provider. Two are equal only if their providers are the same, and `+`
+//! joins only instances of one provider.
 
 use crate::args::{fatal, unsupported_binary};
+use crate::provider::{instance_of, same_provider};
 use allocative::Allocative;
 use starlark::collections::StarlarkHasher;
 use starlark::eval::{Arguments, Evaluator};
@@ -37,6 +43,8 @@ pub struct StructGen<V> {
     #[trace(static)]
     names: Vec<String>,
     values: Vec<V>,
+    /// The provider this is an instance of; none for `struct()` itself.
+    provider: Vec<V>,
 }
 
 starlark_complex_value!(pub Struct);
@@ -49,6 +57,11 @@ impl<'v> Freeze for Struct<'v> {
             names: self.names,
             values: self
                 .values
+                .into_iter()
+                .map(|v| v.freeze(freezer))
+                .collect::<FreezeResult<Vec<FrozenValue>>>()?,
+            provider: self
+                .provider
                 .into_iter()
                 .map(|v| v.freeze(freezer))
                 .collect::<FreezeResult<Vec<FrozenValue>>>()?,
@@ -95,11 +108,44 @@ pub(crate) fn fields_of<'v>(value: Value<'v>) -> Option<Vec<(&'v str, Value<'v>)
     }
 }
 
+/// The provider of `value` if it is a struct: `Some(None)` for what
+/// `struct()` made, `Some(Some(p))` for an instance of `p`.
+pub(crate) fn provider_of<'v>(value: Value<'v>) -> Option<Option<Value<'v>>> {
+    if let Some(live) = value.downcast_ref::<Struct<'v>>() {
+        Some(live.provider.first().copied())
+    } else {
+        value
+            .downcast_ref::<FrozenStruct>()
+            .map(|frozen| frozen.provider.first().map(|p| p.to_value()))
+    }
+}
+
 /// Build the struct with these fields, in any order.
-pub(crate) fn new_struct<'v>(heap: Heap<'v>, mut fields: Vec<(String, Value<'v>)>) -> Value<'v> {
+pub(crate) fn new_struct<'v>(heap: Heap<'v>, fields: Vec<(String, Value<'v>)>) -> Value<'v> {
+    build(heap, None, fields)
+}
+
+/// Build an instance of `provider` with these fields, in any order.
+pub(crate) fn new_instance<'v>(
+    heap: Heap<'v>,
+    provider: Value<'v>,
+    fields: Vec<(String, Value<'v>)>,
+) -> Value<'v> {
+    build(heap, Some(provider), fields)
+}
+
+fn build<'v>(
+    heap: Heap<'v>,
+    provider: Option<Value<'v>>,
+    mut fields: Vec<(String, Value<'v>)>,
+) -> Value<'v> {
     fields.sort_by(|a, b| a.0.cmp(&b.0));
     let (names, values) = fields.into_iter().unzip();
-    heap.alloc_complex(StructGen { names, values })
+    heap.alloc_complex(StructGen {
+        names,
+        values,
+        provider: provider.into_iter().collect(),
+    })
 }
 
 #[starlark_value(type = "struct")]
@@ -119,6 +165,10 @@ where
         self.names.clone()
     }
 
+    fn set_attr(&self, _attribute: &str, _new_value: Value<'v>) -> starlark::Result<()> {
+        Err(fatal("struct value does not support field assignment"))
+    }
+
     fn write_hash(&self, hasher: &mut StarlarkHasher) -> starlark::Result<()> {
         for (name, value) in self.names.iter().zip(&self.values) {
             name.hash(hasher);
@@ -134,7 +184,8 @@ where
         let Some(theirs) = fields_of(other) else {
             return Ok(false);
         };
-        if theirs.len() != self.names.len() {
+        let mine = self.provider.first().map(|p| p.to_value());
+        if !same_provider(mine, provider_of(other).flatten()) || theirs.len() != self.names.len() {
             return Ok(false);
         }
         for ((name, value), (their_name, their_value)) in
@@ -151,6 +202,15 @@ where
         let Some(theirs) = fields_of(rhs) else {
             return Some(Err(unsupported_binary("+", "struct", rhs.get_type())));
         };
+        let mine = self.provider.first().map(|p| p.to_value());
+        let their_provider = provider_of(rhs).flatten();
+        if !same_provider(mine, their_provider) {
+            return Some(Err(fatal(format!(
+                "Cannot use '+' operator on instances of different providers ({} and {})",
+                instance_of(mine),
+                instance_of(their_provider)
+            ))));
+        }
         let mut fields: Vec<(String, Value<'v>)> = self
             .names
             .iter()
@@ -165,7 +225,7 @@ where
             }
             fields.push((name.to_owned(), value));
         }
-        Some(Ok(new_struct(heap, fields)))
+        Some(Ok(build(heap, mine, fields)))
     }
 
     fn radd(&self, lhs: Value<'v>, _heap: Heap<'v>) -> Option<starlark::Result<Value<'v>>> {

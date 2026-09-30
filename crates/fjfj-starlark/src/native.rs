@@ -42,6 +42,7 @@ use crate::depset::depset_globals;
 use crate::json::JsonModule;
 use crate::label::{RepoMappings, label_globals, relative_to_package};
 use crate::proto::ProtoModule;
+use crate::provider::provider_globals;
 use crate::set::set_globals;
 use crate::structs::struct_globals;
 use crate::{FileKind, parse};
@@ -105,6 +106,7 @@ pub fn bzl_globals() -> Globals {
     builder
         .with(depset_globals)
         .with(attr_globals)
+        .with(provider_globals)
         .with(label_globals)
         .with(struct_globals)
         .with(module_globals)

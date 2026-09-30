@@ -24,6 +24,9 @@ mod label;
 mod label_tests;
 mod native;
 mod proto;
+mod provider;
+#[cfg(test)]
+mod provider_tests;
 mod set;
 mod structs;
 #[cfg(test)]

@@ -37,7 +37,6 @@ const GENERIC: &[&str] = &[
 const SKIPPED: &[&str] = &[
     "config.",
     "aspect(",
-    "provider()",
     "DefaultInfo",
     "OutputGroupInfo",
     "transition(",

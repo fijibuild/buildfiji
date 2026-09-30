@@ -23,6 +23,7 @@
 use crate::args::{describe, fatal};
 use crate::depset::{depset_to_list, is_depset};
 use crate::label::{display_label, label_of_value, parse_in_caller};
+use crate::provider::is_exported;
 use allocative::Allocative;
 use fjfj_graph::Label;
 use fjfj_graph::rule::{
@@ -321,7 +322,7 @@ impl<'v> Given<'v> {
 }
 
 /// A list, tuple or range: what Bazel takes for a `sequence`.
-fn sequence<'v>(value: Value<'v>, heap: Heap<'v>) -> Option<Vec<Value<'v>>> {
+pub(crate) fn sequence<'v>(value: Value<'v>, heap: Heap<'v>) -> Option<Vec<Value<'v>>> {
     if matches!(value.get_type(), "list" | "tuple" | "range") {
         value.iterate(heap).ok().map(|items| items.collect())
     } else {
@@ -1154,7 +1155,7 @@ fn constrain_labels<'v>(
     }
 
     if let Some(providers) = given.get(Providers) {
-        kept.providers = provider_alternatives(providers, heap)?;
+        kept.providers = provider_alternatives(providers, eval)?;
     }
 
     if let Some(cfg) = cfg {
@@ -1221,14 +1222,31 @@ fn file_types<'v>(value: Value<'v>, heap: Heap<'v>, single: bool) -> starlark::R
     Ok(FileTypes::Suffixes(suffixes))
 }
 
+/// A provider can only be required by a name a `.bzl` gave it.
+fn check_exported<'v>(
+    providers: &[Value<'v>],
+    eval: &Evaluator<'v, '_, '_>,
+) -> starlark::Result<()> {
+    for provider in providers {
+        if crate::provider::is_provider(*provider) && !is_exported(*provider, eval) {
+            return Err(fatal(
+                "Providers should be top-level values in extension files that define them.",
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// `providers`: a list of providers is one alternative, and a list of lists
 /// is several.
 fn provider_alternatives<'v>(
     value: Value<'v>,
-    heap: Heap<'v>,
+    eval: &Evaluator<'v, '_, '_>,
 ) -> starlark::Result<Vec<Vec<Value<'v>>>> {
+    let heap = eval.heap();
     let items = sequence(value, heap).unwrap_or_default();
     if !items.is_empty() && items.iter().all(|p| p.get_type() == "Provider") {
+        check_exported(&items, eval)?;
         return Ok(vec![items]);
     }
     let mut lists = Vec::with_capacity(items.len());
@@ -1250,6 +1268,9 @@ fn provider_alternatives<'v>(
                 )));
             }
         }
+    }
+    for list in &lists {
+        check_exported(list, eval)?;
     }
     // One empty alternative is no constraint, as an empty list is.
     if lists.len() == 1 && lists[0].is_empty() {
