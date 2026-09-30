@@ -17,7 +17,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use fjfj_bzlmod::discovery::RegistrySource;
-use fjfj_bzlmod::lockfile::{FileHash, LockSession, LockfileMode};
+use fjfj_bzlmod::lockfile::{FileHash, LockSession, Lockfile, LockfileMode};
 use fjfj_bzlmod::registry::Fetcher;
 use fjfj_bzlmod::{Registry, Resolution, ResolveOptions, WorkspaceIncludeSource, resolve};
 
@@ -31,15 +31,31 @@ fn fixtures_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
 }
 
+/// The registries the fixtures resolve against, in the order the goldens
+/// were captured with: the fixture registry, then the part of the Bazel
+/// Central Registry that `bazel_tools`' dependency graph reads
+/// (`fixtures/bcr`, vendored by `vendor_bcr.py`, because every module graph
+/// includes `bazel_tools`' and so needs those modules).
+fn fixture_registries() -> Vec<Registry> {
+    vec![
+        Registry::local(
+            fixtures_dir()
+                .join("registry")
+                .canonicalize()
+                .expect("fixture registry"),
+        ),
+        Registry::local(
+            fixtures_dir()
+                .join("bcr")
+                .canonicalize()
+                .expect("bcr subset"),
+        ),
+    ]
+}
+
 fn resolve_workspace(workspace: &Path) -> fjfj_bzlmod::Result<Resolution> {
     let source_text = std::fs::read_to_string(workspace.join("MODULE.bazel")).unwrap();
-    let registry = Registry::local(
-        fixtures_dir()
-            .join("registry")
-            .canonicalize()
-            .expect("fixture registry"),
-    );
-    let source = RegistrySource::new(vec![registry]);
+    let source = RegistrySource::new(fixture_registries());
     // Harmless for a fixture with no include(): the source is only ever
     // asked to resolve a label if the root MODULE.bazel calls include().
     let options = ResolveOptions {
@@ -49,16 +65,40 @@ fn resolve_workspace(workspace: &Path) -> fjfj_bzlmod::Result<Resolution> {
     resolve(&source_text, &source, &options)
 }
 
+/// The selected modules the root reaches without passing through
+/// `bazel_tools`.
+fn reachable_without_bazel_tools(resolution: &Resolution) -> BTreeSet<fjfj_bzlmod::ModuleKey> {
+    let resolved: BTreeMap<_, _> = resolution.selection.resolved.iter().cloned().collect();
+    let root = resolution.selection.resolved[0].0.clone();
+    let mut seen = BTreeSet::from([root.clone()]);
+    let mut queue = vec![root];
+    while let Some(key) = queue.pop() {
+        for dep in &resolved[&key].deps {
+            let child = dep.spec.to_module_key();
+            if child.name != "bazel_tools" && seen.insert(child.clone()) {
+                queue.push(child);
+            }
+        }
+    }
+    seen
+}
+
 /// Renders a resolution in the same shape as
 /// `tests/fixtures/graph_to_golden.py` renders `bazel mod graph
 /// --output=json`: one `<parent key> <apparent name> <child key>` line per
-/// edge, sorted and deduplicated.
-fn render_graph(resolution: &Resolution) -> String {
+/// edge, sorted and deduplicated. `include_builtin` is `--include_builtin`:
+/// without it Bazel shows neither `bazel_tools` nor what it depends on.
+fn render_graph(resolution: &Resolution, include_builtin: bool) -> String {
     let mut edges: BTreeSet<String> = BTreeSet::new();
+    // Without `--include_builtin`, what is shown is what the workspace's own
+    // modules reach without going through `bazel_tools`.
+    let shown = reachable_without_bazel_tools(resolution);
     for (key, module) in &resolution.selection.resolved {
+        if !include_builtin && !shown.contains(key) {
+            continue;
+        }
         for dep in &module.deps {
-            // Built-in modules are implicit; Bazel does not show them.
-            if dep.spec.name == "bazel_tools" {
+            if !include_builtin && dep.spec.name == "bazel_tools" {
                 continue;
             }
             edges.insert(format!(
@@ -105,9 +145,17 @@ fn resolution_matches_bazel() {
             let resolution = resolve_workspace(&workspace)
                 .unwrap_or_else(|e| panic!("{name}: resolution failed: {e}"));
             assert_eq!(
-                render_graph(&resolution),
+                render_graph(&resolution, false),
                 expected,
                 "{name}: resolved graph differs from Bazel's"
+            );
+            // With `bazel_tools`' own dependencies, which raise versions.
+            let expected = std::fs::read_to_string(workspace.join("expected_graph_builtin.txt"))
+                .unwrap_or_else(|e| panic!("{name}: {e}"));
+            assert_eq!(
+                render_graph(&resolution, true),
+                expected,
+                "{name}: resolved graph with bazel_tools differs from Bazel's"
             );
         }
         checked += 1;
@@ -122,11 +170,25 @@ fn resolution_matches_bazel() {
 /// Bazel's (`dump_mappings.py`): a line per repo, sorted, of its canonical
 /// name, a tab, and the mapping as a JSON object in the order it was built.
 fn render_repo_mappings(resolution: &Resolution) -> String {
-    let mut lines: Vec<String> = resolution
-        .repo_mappings()
-        .into_iter()
-        // `@bazel_tools`' own dependencies come from the registry, not the workspace.
-        .filter(|(repo, _)| repo != "bazel_tools")
+    // `dump_mappings.py` walks the mappings out from the main repo and leaves
+    // `@bazel_tools` (and so what only it reaches) out.
+    let all = resolution.repo_mappings();
+    let by_repo: BTreeMap<&str, &Vec<(String, String)>> = all
+        .iter()
+        .map(|(repo, rows)| (repo.as_str(), rows))
+        .collect();
+    let mut shown = BTreeSet::from([""]);
+    let mut queue = vec![""];
+    while let Some(repo) = queue.pop() {
+        for (_, canonical) in by_repo[repo] {
+            if canonical != "bazel_tools" && shown.insert(canonical.as_str()) {
+                queue.push(canonical);
+            }
+        }
+    }
+    let mut lines: Vec<String> = all
+        .iter()
+        .filter(|(repo, _)| shown.contains(repo.as_str()))
         .map(|(repo, rows)| {
             let body: Vec<String> = rows
                 .iter()
@@ -215,8 +277,7 @@ fn multiple_version_override_lets_two_versions_coexist() {
 fn yanked_versions_are_allowed_when_the_user_says_so() {
     let workspace = fixtures_dir().join("workspaces/yanked");
     let source_text = std::fs::read_to_string(workspace.join("MODULE.bazel")).unwrap();
-    let registry = Registry::local(fixtures_dir().join("registry").canonicalize().unwrap());
-    let source = RegistrySource::new(vec![registry]);
+    let source = RegistrySource::new(fixture_registries());
     let options = ResolveOptions {
         yanked: fjfj_bzlmod::YankedPolicy::AllowAll,
         ..ResolveOptions::default()
@@ -283,61 +344,47 @@ fn reads_the_bazel_central_registry() {
 /// Resolves this repository's own `MODULE.bazel` against the real registry
 /// and checks the result against what the root module asked for.
 ///
-/// Ignored for the same reason as the test above. When this was last run
-/// by hand, the selected version of all 29 modules `bazel mod graph`
-/// reports for this repository matched Bazel's exactly, resolved from the
-/// live Bazel Central Registry.
+/// Ignored for the same reason as the test above. Resolves a copy of this
+/// repository's own `MODULE.bazel` (`fixtures/repo`) against the live Bazel
+/// Central Registry and compares every edge of the graph with the one
+/// `bazel mod graph` printed for it, which needs `bazel_tools`' real module
+/// file (buildfiji-mum.23: without it `protobuf` came out at 29.1 and not
+/// 33.4, among others).
 ///
-/// To reproduce that comparison, resolve the repo's `MODULE.bazel` with
-/// `BAZEL_TOOLS_MODULE` pointing at
-/// `$(bazel info install_base)/embedded_tools/MODULE.bazel` — without the
-/// real `bazel_tools` module file, its own `bazel_dep`s are missing and
-/// several versions come out lower (see
-/// `fjfj_bzlmod::discovery::PLACEHOLDER_BAZEL_TOOLS_MODULE` and
-/// buildfiji-mum.23).
+/// Refresh the golden with `bazel mod graph --output=json
+/// --lockfile_mode=off | python3 tests/fixtures/graph_to_golden.py` run in a
+/// directory holding that `MODULE.bazel`.
 #[test]
 #[ignore = "reaches the network"]
 fn resolves_this_repository_against_the_real_registry() {
-    let root_module_file =
-        std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../MODULE.bazel"))
-            .unwrap();
-    let registry = Registry::remote(fjfj_bzlmod::BAZEL_CENTRAL_REGISTRY).unwrap();
-    let mut source = RegistrySource::new(vec![registry]);
-    if let Ok(path) = std::env::var("BAZEL_TOOLS_MODULE") {
-        source = source.with_builtin_module("bazel_tools", std::fs::read_to_string(path).unwrap());
-    }
+    let dir = fixtures_dir().join("repo");
+    let root_module_file = std::fs::read_to_string(dir.join("MODULE.bazel")).unwrap();
+    // `BCR_DIR` replays a directory laid out like the registry (for a
+    // machine with Bazel's repository cache and no network).
+    let registry = match std::env::var("BCR_DIR") {
+        Ok(dir) => Registry::local(dir),
+        Err(_) => Registry::remote(fjfj_bzlmod::BAZEL_CENTRAL_REGISTRY).unwrap(),
+    };
+    let source = RegistrySource::new(vec![registry]);
 
     let resolution = resolve(&root_module_file, &source, &ResolveOptions::default()).unwrap();
 
-    // Minimal version selection never picks a version below what was
-    // requested, and every direct dep must survive selection.
-    for dep in &resolution.root.deps {
-        let selected = resolution
-            .selection
-            .module(&dep.spec.name)
-            .unwrap_or_else(|| panic!("{} was not selected", dep.spec.name));
-        assert!(
-            selected.version >= dep.spec.version,
-            "{} resolved to {} but the root asked for {}",
-            dep.spec.name,
-            selected.version,
-            dep.spec.version
-        );
-    }
-    // A transitive graph, not just the direct deps.
-    assert!(
-        resolution.selection.resolved.len() > 20,
-        "expected a transitive graph, got {} modules",
-        resolution.selection.resolved.len()
+    assert_eq!(
+        render_graph(&resolution, false),
+        std::fs::read_to_string(dir.join("expected_graph.txt")).unwrap(),
+        "the graph differs from `bazel mod graph`'s"
     );
 }
 
-/// Serves `tests/fixtures/registry` under a made-up `http://` URL, so the
-/// lockfile treats it as the remote registry it locks (`file://` registries
-/// are not locked), without a network.
+/// Serves a directory of registry files under a URL, so the lockfile treats
+/// it as the remote registry it locks (`file://` registries are not locked),
+/// without a network. With `archive_sources`, every `source.json` is the
+/// archive source `lock_hashes.py` served in its place (Bazel refuses a
+/// `local_path` module from a remote registry), so the hashes compare.
 struct ServedRegistry {
     base: String,
     dir: PathBuf,
+    archive_sources: bool,
 }
 
 impl Fetcher for ServedRegistry {
@@ -345,45 +392,61 @@ impl Fetcher for ServedRegistry {
         let Some(path) = url.strip_prefix(&self.base) else {
             panic!("asked for {url}, outside {}", self.base);
         };
+        let parts: Vec<&str> = path.split('/').collect();
+        if self.archive_sources
+            && let ["modules", name, version, "source.json"] = parts[..]
+            && self.dir.join(path).exists()
+        {
+            return Ok(Some(
+                format!(
+                    "{{\"url\":\"https://example.invalid/{name}-{version}.tar.gz\",\"integrity\":\
+                     \"sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\",\"strip_prefix\":\"{name}\"}}\n"
+                )
+                .into_bytes(),
+            ));
+        }
         Ok(std::fs::read(self.dir.join(path)).ok())
     }
 }
 
-/// What a locked resolution of `workspace` recorded: the registry file hashes
-/// (with the registry's URL taken off) and the yanked versions it selected.
+const FIXTURE_REGISTRY_URL: &str = "http://127.0.0.1:1";
+const BCR_URL: &str = "https://bcr.bazel.build";
+
+/// What a locked resolution of `workspace` recorded, keyed by URL: the
+/// registry file hashes and the yanked versions it selected.
 fn lock_of(
     workspace: &Path,
     options: ResolveOptions,
 ) -> (BTreeMap<String, FileHash>, Vec<(String, String)>) {
-    let base = "http://127.0.0.1:1/".to_owned();
     let session = LockSession::new(LockfileMode::Update, None).unwrap();
-    let registry = Registry::new(
-        base.trim_end_matches('/'),
-        Box::new(ServedRegistry {
-            base: base.clone(),
-            dir: fixtures_dir().join("registry"),
-        }),
-    )
-    .locked(&session);
-    let source = RegistrySource::new(vec![registry]);
+    let served = |base: &str, dir: &str, archive_sources: bool| {
+        Registry::new(
+            base,
+            Box::new(ServedRegistry {
+                base: format!("{base}/"),
+                dir: fixtures_dir().join(dir),
+                archive_sources,
+            }),
+        )
+        .locked(&session)
+    };
+    let source = RegistrySource::new(vec![
+        served(FIXTURE_REGISTRY_URL, "registry", true),
+        served(BCR_URL, "bcr", false),
+    ]);
     let source_text = std::fs::read_to_string(workspace.join("MODULE.bazel")).unwrap();
     let options = ResolveOptions {
-        track_yanked: true,
+        for_lockfile: true,
         include_source: Some(std::rc::Rc::new(WorkspaceIncludeSource::new(workspace))),
         ..options
     };
     let resolution = resolve(&source_text, &source, &options).unwrap();
     let lock = session.finish(&resolution.selected_yanked);
-    let hashes = lock
-        .registry_file_hashes
-        .into_iter()
-        .map(|(url, hash)| (url.strip_prefix(&base).unwrap().to_owned(), hash))
-        .collect();
-    (hashes, lock.selected_yanked_versions)
+    (lock.registry_file_hashes, lock.selected_yanked_versions)
 }
 
-/// `expected_lock_hashes.txt`: Bazel's `MODULE.bazel.lock` for the same
-/// workspace, captured by `lock_hashes.py`.
+/// `expected_lock_hashes.txt`: what Bazel's `MODULE.bazel.lock` recorded for
+/// the fixture registry, as `lock_hashes.py` captured it, keyed by URL.
 fn golden_lock(workspace: &Path) -> (BTreeMap<String, FileHash>, Vec<(String, String)>) {
     let text = std::fs::read_to_string(workspace.join("expected_lock_hashes.txt")).unwrap();
     let mut hashes = BTreeMap::new();
@@ -392,27 +455,29 @@ fn golden_lock(workspace: &Path) -> (BTreeMap<String, FileHash>, Vec<(String, St
         let fields: Vec<&str> = line.split('\t').collect();
         match fields[..] {
             ["yanked", key, reason] => yanked.push((key.to_owned(), reason.to_owned())),
-            [path, "not found"] => {
-                hashes.insert(path.to_owned(), FileHash::NotFound);
-            }
             [path, hash] => {
-                hashes.insert(path.to_owned(), FileHash::Sha256(hash.to_owned()));
+                let hash = match hash {
+                    "not found" => FileHash::NotFound,
+                    hash => FileHash::Sha256(hash.to_owned()),
+                };
+                hashes.insert(format!("{FIXTURE_REGISTRY_URL}/{path}"), hash);
             }
             _ => panic!("bad golden line {line:?}"),
         }
     }
+    // What Bazel read from the Bazel Central Registry is `bazel_tools`' own
+    // graph, the same for every fixture (`lock_hashes.py` checks that).
+    let real = Lockfile::parse(
+        &std::fs::read_to_string(fixtures_dir().join("lockfiles/9.2.0.lock")).unwrap(),
+    )
+    .unwrap();
+    hashes.extend(real.registry_file_hashes);
     (hashes, yanked)
 }
 
-/// The lockfile fjfj writes records the registry files Bazel's does, with
-/// the same hashes, and the same yanked versions.
-///
-/// Two things Bazel records that fjfj does not yet, and so are left out of
-/// the comparison: `source.json` (fjfj reads it when it fetches a module,
-/// and resolution does not fetch), and the probes of `bazel_tools`' own
-/// dependency graph, which are all `not found` here because the test
-/// registry has none of those modules (buildfiji-mum.23 makes fjfj resolve
-/// `bazel_tools`' real module file, which brings them).
+/// The lockfile fjfj writes records exactly the registry files Bazel's does,
+/// with the same hashes (including the `not found` probes), and the same
+/// yanked versions.
 #[test]
 fn lockfile_registry_hashes_match_bazel() {
     let workspaces = fixtures_dir().join("workspaces");
@@ -437,20 +502,33 @@ fn lockfile_registry_hashes_match_bazel() {
         };
         let (ours, our_yanked) = lock_of(&workspace, options);
         let (theirs, their_yanked) = golden_lock(&workspace);
-        let comparable = |hashes: &BTreeMap<String, FileHash>| -> BTreeMap<String, FileHash> {
-            hashes
-                .iter()
-                .filter(|(path, hash)| {
-                    !path.ends_with("/source.json") && **hash != FileHash::NotFound
-                })
-                .map(|(path, hash)| (path.clone(), hash.clone()))
-                .collect()
+        let differences = |a: &BTreeMap<String, FileHash>, b: &BTreeMap<String, FileHash>| {
+            a.iter()
+                .filter(|(url, hash)| b.get(*url) != Some(*hash))
+                .map(|(url, _)| url.clone())
+                .collect::<Vec<_>>()
         };
-        assert_eq!(comparable(&ours), comparable(&theirs), "{name}");
+        assert_eq!(
+            differences(&ours, &theirs),
+            Vec::<String>::new(),
+            "{name}: recorded but not (or differently) by Bazel"
+        );
+        assert_eq!(
+            differences(&theirs, &ours),
+            Vec::<String>::new(),
+            "{name}: recorded by Bazel but not (or differently) by fjfj"
+        );
         assert_eq!(our_yanked, their_yanked, "{name}");
         checked += 1;
     }
-    assert!(checked >= 7, "only {checked} workspaces had a golden");
+    assert!(
+        checked >= 8,
+        "only {checked} workspaces had a golden: {:?}",
+        std::fs::read_dir(&workspaces)
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .collect::<Vec<_>>()
+    );
 }
 
 /// A `MODULE.bazel.lock` exactly as Bazel 9.2.0 wrote it (for a workspace
@@ -460,7 +538,7 @@ fn lockfile_registry_hashes_match_bazel() {
 #[test]
 fn a_lockfile_bazel_wrote_round_trips_byte_for_byte() {
     let text = std::fs::read_to_string(fixtures_dir().join("lockfiles/9.2.0.lock")).unwrap();
-    let lock = fjfj_bzlmod::lockfile::Lockfile::parse(&text).unwrap();
+    let lock = Lockfile::parse(&text).unwrap();
     assert_eq!(lock.registry_file_hashes.len(), 184);
     assert!(lock.selected_yanked_versions.is_empty());
     assert_eq!(lock.to_text(), text);

@@ -11,7 +11,11 @@ filegroup(
         "registry/**",
         "workspaces/**",
         "lockfiles/**",
-    ]),
+        "bcr/**",
+    ]) + [
+        # `workspaces/include` is a package of its own.
+        "//crates/fjfj-bzlmod/tests/fixtures/workspaces/include:files",
+    ],
     # buildfiji-gwl.17: fjfj-cli's own bzlmod-flag test reuses the registry
     # fixture rather than duplicating it.
     visibility = [

@@ -898,16 +898,25 @@ sets of proxy, redirect and TLS behaviour to keep in step. It builds under
 Bazel unmodified; `aws-lc-sys` compiles through `crate_universe` with no
 annotation, taking about 80 seconds once.
 
-### `bazel_tools` is a placeholder
+### `bazel_tools` is Bazel's own module file (buildfiji-mum.23)
 
 Every module implicitly depends on `bazel_tools`, which Bazel ships inside
-its own binary rather than serving from a registry. fjfj has no embedded
-tools repository yet, so `RegistrySource` supplies a `bazel_tools` module
-file with no dependencies (buildfiji-mum.23). This is invisible to
-`fjfj mod graph`, which hides the `bazel_tools` subtree as Bazel does, but
-it is not invisible to resolution: Bazel's real `bazel_tools` has
-`bazel_dep`s of its own, and they raise selected versions elsewhere in the
-graph. Feeding fjfj the real file makes the difference disappear (below).
+its own binary rather than serving from a registry
+(`NonRegistryOverride.BAZEL_TOOLS_OVERRIDE`). fjfj embeds the
+`MODULE.bazel` from that binary's `embedded_tools`
+(`crates/fjfj-bzlmod/src/bazel_tools.MODULE.bazel`, copied from
+`$(bazel info install_base)/embedded_tools/MODULE.bazel`; refresh it when
+the Bazel version moves) and serves it as `discovery::BAZEL_TOOLS_MODULE`.
+
+It matters because `bazel_tools` has `bazel_dep`s of its own (`rules_cc`,
+`rules_java`, `protobuf`, `rules_python`, ...), which are part of every
+module graph and raise the selected version of anything that shares them:
+with a dependency-free placeholder protobuf resolved to 29.1 where Bazel
+picks 33.4. `fjfj mod graph` hides the `bazel_tools` subtree as Bazel does;
+Bazel's `--include_builtin` shows it, and so does the conformance test.
+Its `use_extension`/`use_repo`/`use_repo_rule` calls are recorded but not
+run (buildfiji-mum.8), and the tools repository those labels point into is
+not shipped yet (buildfiji-mum.12).
 
 ### Conformance method
 
@@ -920,16 +929,26 @@ unfulfilled nodep edges, a yanked version. The expected result of each is
 committed, so the test compares against Bazel rather than against a
 restatement of the implementation.
 
+Every module graph includes `bazel_tools`' own, so the fixtures resolve
+against two registries, in the order the goldens were captured with: the
+fixture registry, then `fixtures/bcr`, the 184 files of the Bazel Central
+Registry that graph reads (`vendor_bcr.py` copies them, each checked
+against the hash in `lockfiles/9.2.0.lock`, a lockfile Bazel 9.2.0 wrote).
+Each workspace has two graph goldens: `expected_graph.txt` (`bazel mod
+graph`) and `expected_graph_builtin.txt` (`--include_builtin`, which adds
+`bazel_tools`' subtree and so the versions of all 29 BCR modules it pulls
+in). `graph_to_golden.py` also records the edges Bazel lists under
+`cycles`, where `bazel_tools` and the modules it depends on depend on each
+other.
+
 Two ignored tests reach the network, run by hand: one reads real modules,
 `source.json` and `metadata.json` from `bcr.bazel.build`, and one resolves
-this repository's own `MODULE.bazel` against it. On the run that closed
-buildfiji-mum.6, the second produced the same selected version as
-`bazel mod graph` for all 29 modules Bazel reports for this repository —
-including the ones where the answer is not the obvious one, such as
-protobuf 33.4 winning over the 29.1 that `rules_proto` and `rules_python`
-ask for. That match requires the real `bazel_tools` module file; with the
-placeholder, protobuf resolves to 29.1 instead, which is the clearest
-statement of why buildfiji-mum.23 matters.
+a copy of this repository's own `MODULE.bazel` (`fixtures/repo`) against it
+and compares every edge of the graph (131 of them) with `bazel mod graph`'s.
+With `BCR_DIR` set to a directory laid out like the registry, the second
+runs offline: built from the files in a Bazel repository cache by the URLs
+in this repository's own `MODULE.bazel.lock`, it agrees with Bazel on all of
+them. Before `bazel_tools`' real module file was embedded it did not.
 
 ### `include()` runs inline, in the same evaluation
 
@@ -1014,7 +1033,7 @@ already use, so the same golden data conformance-tests two things: bzlmod
 resolution (buildfiji-mum.6) and its `mod graph` rendering, without a
 second run of real Bazel. `bazel_tools`'s subtree is hidden the same way
 `bazel mod graph` hides it — it isn't something the user wrote
-(`RegistrySource`'s placeholder module, discovery.rs).
+(its module file is `discovery::BAZEL_TOOLS_MODULE`).
 
 `--output=text` is not byte-matched against Bazel's own box-drawing tree,
 and `deps`/`show_repo`/`explain`'s text isn't matched against Bazel's at
@@ -1063,20 +1082,24 @@ memory does not pose as the lockfile), not its documentation.
   root, resolves through a `LockSession`, and writes the file when
   resolution succeeded.
 
+Bazel also reads the `source.json` of every selected registry module (to
+build its repo specs), which resolution itself does not need; with
+`ResolveOptions::for_lockfile` fjfj does too, so the hashes are recorded.
+
 Conformance (`tests/conformance.rs`): `expected_lock_hashes.txt` per
 workspace is what Bazel recorded for the fixture registry, captured by
 `lock_hashes.py` (which serves the registry with every `source.json`
 rewritten to an archive source, because Bazel refuses `local_path` from a
-remote registry). The comparison leaves out what fjfj does not read yet:
-`source.json`, which it reads when it fetches, and the `not found` probes
-of `bazel_tools`' dependencies, which wait for buildfiji-mum.23.
+remote registry, and includes the 156 `not found` probes of `bazel_tools`'
+graph). What Bazel recorded for the Bazel Central Registry is the same for
+every fixture and is `lockfiles/9.2.0.lock`'s. The comparison is exact in
+both directions: same files, same hashes.
 
 Known differences, each with a bead: `selectedYankedVersions` is written
 in selection order where Bazel uses a Java `HashMap`'s (buildfiji-avh);
 registry files are always fetched rather than served from the repository
-cache by their recorded hash (buildfiji-g1z); until `bazel_tools`' real
-module file is resolved, the CLI keeps the hashes of files it did not read
-instead of dropping them, so it does not shrink a lockfile Bazel wrote
-(`LockSession::keeping_unread`, removed by buildfiji-mum.23); and what
+cache by their recorded hash (buildfiji-g1z); the `moduleExtensions` of a
+lockfile are kept as they were, not pruned or refreshed (buildfiji-mum.8);
+and what
 `--lockfile_mode=error` does about stale extension or yanked entries is not
 probed yet (buildfiji-cob).

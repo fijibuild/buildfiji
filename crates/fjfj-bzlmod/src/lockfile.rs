@@ -362,12 +362,6 @@ pub struct LockSession {
     previous: Option<Lockfile>,
     /// What the previous lockfile was like, for the `error` mode refusal.
     unusable: Option<Unusable>,
-    /// Keep the previous lockfile's hashes for files this run did not read,
-    /// instead of dropping them as Bazel does. fjfj does not yet read
-    /// `bazel_tools`' own module file (buildfiji-mum.23), so a lockfile
-    /// Bazel wrote has hashes for its dependencies that fjfj would
-    /// otherwise throw away.
-    keep_unread: bool,
     touched: Mutex<BTreeMap<String, FileHash>>,
 }
 
@@ -376,20 +370,6 @@ impl LockSession {
     /// there was one. `Err` is the refusal `error` mode gives a lockfile
     /// it cannot use; the other modes start over from nothing.
     pub fn new(mode: LockfileMode, existing: Option<&str>) -> Result<Arc<LockSession>> {
-        LockSession::start(mode, existing, false)
-    }
-
-    /// [`LockSession::new`], but a written lockfile keeps the hashes of
-    /// files this run did not read.
-    pub fn keeping_unread(mode: LockfileMode, existing: Option<&str>) -> Result<Arc<LockSession>> {
-        LockSession::start(mode, existing, true)
-    }
-
-    fn start(
-        mode: LockfileMode,
-        existing: Option<&str>,
-        keep_unread: bool,
-    ) -> Result<Arc<LockSession>> {
         let (previous, unusable) = match existing.map(Lockfile::parse) {
             Some(Ok(lockfile)) => (Some(lockfile), None),
             Some(Err(why)) => (None, Some(why)),
@@ -406,7 +386,6 @@ impl LockSession {
             mode,
             previous,
             unusable,
-            keep_unread,
             touched: Mutex::new(BTreeMap::new()),
         }))
     }
@@ -466,12 +445,7 @@ impl LockSession {
     /// versions it selected, and everything else as it was.
     pub fn finish(&self, selected_yanked: &[(ModuleKey, String)]) -> Lockfile {
         let previous = self.previous.clone().unwrap_or_default();
-        let mut registry_file_hashes = if self.keep_unread {
-            previous.registry_file_hashes.clone()
-        } else {
-            BTreeMap::new()
-        };
-        registry_file_hashes.extend(self.touched.lock().expect("lock").clone());
+        let registry_file_hashes = self.touched.lock().expect("lock").clone();
         Lockfile {
             registry_file_hashes,
             selected_yanked_versions: selected_yanked

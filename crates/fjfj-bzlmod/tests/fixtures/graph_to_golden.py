@@ -21,6 +21,11 @@ def walk(node, edges):
         # elsewhere in the tree, so its children are not repeated here.
         if not dep.get("unexpanded"):
             walk(dep, edges)
+    # An edge back to a module above it in the tree is listed under `cycles`
+    # instead of `dependencies` (`bazel_tools` and the modules it depends on
+    # depend on each other).
+    for dep in node.get("cycles", []):
+        edges.add((parent, dep.get("apparentName", dep["name"]), dep["key"]))
 
 
 def main():

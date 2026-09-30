@@ -1,0 +1,9 @@
+# The presence of this file makes `//:extra.MODULE.bazel` a label real Bazel
+# resolves when it evaluates this workspace's include(). It also makes this
+# directory a package of its own, which `glob(["workspaces/**"])` in the
+# parent package does not cross, so the files are exported here.
+filegroup(
+    name = "files",
+    srcs = glob(["**"]),
+    visibility = ["//crates/fjfj-bzlmod/tests/fixtures:__pkg__"],
+)

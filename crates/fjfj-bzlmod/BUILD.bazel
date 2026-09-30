@@ -5,6 +5,7 @@ package(default_visibility = ["//visibility:public"])
 rust_library(
     name = "fjfj-bzlmod",
     srcs = glob(["src/**/*.rs"]),
+    compile_data = ["src/bazel_tools.MODULE.bazel"],
     crate_name = "fjfj_bzlmod",
     edition = "2024",
     version = "0.0.1",

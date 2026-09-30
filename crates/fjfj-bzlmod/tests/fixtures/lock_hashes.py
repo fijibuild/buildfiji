@@ -7,7 +7,9 @@ fixture registry from a local HTTP server on a free port, runs
 `bazel mod graph --lockfile_mode=update` on a copy of the workspace, and prints
 what the lockfile recorded for that registry, one `<path> <TAB> <hash>` line per
 file, with the registry's URL taken off the front (the port is not part of the
-fixture). The hash is `not found` for a file the registry did not have.
+fixture). The hash is `not found` for a file the registry did not have. What it
+recorded for the Bazel Central Registry is checked against
+`lockfiles/9.2.0.lock` and not printed.
 
 The registry is served with every `source.json` rewritten to an archive
 source: Bazel refuses a `local_path` module from a remote registry. The
@@ -70,6 +72,14 @@ def main():
             lock = json.load(f)
         subprocess.run(["bazel", "shutdown"], cwd=work, capture_output=True)
         server.shutdown()
+    # What Bazel read from the Bazel Central Registry is `bazel_tools`' own
+    # graph, the same for every fixture, and is `lockfiles/9.2.0.lock`'s;
+    # only the fixture registry's entries differ per workspace.
+    here = os.path.dirname(os.path.abspath(__file__))
+    with open(os.path.join(here, "lockfiles", "9.2.0.lock")) as f:
+        bcr = {u: h for u, h in json.load(f)["registryFileHashes"].items()}
+    ours = {u: h for u, h in lock["registryFileHashes"].items() if u.startswith("https://bcr.")}
+    assert ours == bcr, "the BCR part of the lockfile is not lockfiles/9.2.0.lock's"
     for url, digest in sorted(lock["registryFileHashes"].items()):
         if url.startswith(base):
             print("%s\t%s" % (url[len(base):], digest))

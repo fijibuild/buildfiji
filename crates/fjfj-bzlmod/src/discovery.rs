@@ -43,6 +43,13 @@ pub trait ModuleFileSource: Sync {
     fn yanked_versions(&self, _module_name: &str) -> Result<BTreeMap<Version, String>> {
         Ok(BTreeMap::new())
     }
+
+    /// Reads the `source.json` of a selected module, from the registry its
+    /// module file came from. Nothing in resolution needs it; Bazel reads
+    /// it for every selected module, and the lockfile records its hash.
+    fn read_source(&self, _key: &ModuleKey, _registry: &str) -> Result<()> {
+        Ok(())
+    }
 }
 
 /// The ordinary source: a list of registries tried in order, with a
@@ -57,24 +64,27 @@ pub struct RegistrySource {
     builtin: BTreeMap<String, String>,
 }
 
-/// The `bazel_tools` module file fjfj supplies until it ships an embedded
-/// tools repository (buildfiji-mum.23).
+/// `bazel_tools`' own `MODULE.bazel`, the one Bazel 9.2.0 ships inside its
+/// binary (`embedded_tools/MODULE.bazel` in the install base) and serves
+/// instead of asking a registry (`NonRegistryOverride.BAZEL_TOOLS_OVERRIDE`).
 ///
-/// Bazel's real one carries `bazel_dep`s of its own (`rules_cc`,
-/// `rules_java`, `rules_license`, ...), so a graph resolved against this
-/// placeholder is missing them. It is invisible to `mod graph`, which
-/// hides the `bazel_tools` subtree, but it is not invisible to a build.
-pub const PLACEHOLDER_BAZEL_TOOLS_MODULE: &str = "module(name = \"bazel_tools\")\n";
+/// Its `bazel_dep`s (`rules_cc`, `rules_java`, `protobuf`, ...) are part of
+/// every module graph, and raise the selected version of anything else that
+/// depends on them, so a graph resolved without them picks versions a build
+/// under Bazel would not (buildfiji-mum.23). `mod graph` hides the subtree;
+/// `--include_builtin` shows it.
+///
+/// Refresh it from a newer Bazel with
+/// `cp "$(bazel info install_base)/embedded_tools/MODULE.bazel"
+/// crates/fjfj-bzlmod/src/bazel_tools.MODULE.bazel`.
+pub const BAZEL_TOOLS_MODULE: &str = include_str!("bazel_tools.MODULE.bazel");
 
 impl RegistrySource {
     pub fn new(registries: Vec<Registry>) -> RegistrySource {
         RegistrySource {
             registries,
             overridden: BTreeMap::new(),
-            builtin: BTreeMap::from([(
-                "bazel_tools".to_owned(),
-                PLACEHOLDER_BAZEL_TOOLS_MODULE.to_owned(),
-            )]),
+            builtin: BTreeMap::from([("bazel_tools".to_owned(), BAZEL_TOOLS_MODULE.to_owned())]),
         }
     }
 
@@ -158,6 +168,18 @@ impl ModuleFileSource for RegistrySource {
 
     fn yanked_versions(&self, module_name: &str) -> Result<BTreeMap<Version, String>> {
         self.metadata_yanked(module_name)
+    }
+
+    fn read_source(&self, key: &ModuleKey, registry: &str) -> Result<()> {
+        let registry = self
+            .registries
+            .iter()
+            .chain(self.overridden.values())
+            .find(|r| r.url() == registry);
+        if let Some(registry) = registry {
+            registry.repo_spec(key)?;
+        }
+        Ok(())
     }
 }
 

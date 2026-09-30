@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Regenerates the golden module graphs in workspaces/*/expected_graph.txt,
+# Regenerates the golden module graphs in workspaces/*/expected_graph.txt
+# and expected_graph_builtin.txt,
 # repo mappings in workspaces/*/expected_repo_mapping.txt and lockfile
 # registry file hashes in workspaces/*/expected_lock_hashes.txt
 # from real Bazel, which is the specification these fixtures test against
@@ -59,6 +60,16 @@ for workspace in "${fixtures}"/workspaces/*/; do
       --lockfile_mode=off \
       2>/dev/null
   ) | "${graph_to_golden}" > "${workspace}/expected_graph.txt"
+  # The same with the built-in `bazel_tools` subtree shown, which is where its
+  # own dependencies raise the versions of modules the workspace shares them with.
+  (
+    cd "${workspace}"
+    bazel mod graph --output=json --include_builtin \
+      --registry="${registry}" \
+      --registry=https://bcr.bazel.build \
+      --lockfile_mode=off \
+      2>/dev/null
+  ) | "${graph_to_golden}" > "${workspace}/expected_graph_builtin.txt"
   # What each repo of the graph calls the others (`bazel mod
   # dump_repo_mapping`), for the repo mappings fjfj builds from the graph.
   "${dump_mappings}" "${workspace}" \

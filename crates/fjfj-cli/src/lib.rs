@@ -145,7 +145,7 @@ fn bzlmod_resolve_options(
         include_source: Some(std::rc::Rc::new(WorkspaceIncludeSource::new(
             workspace_root,
         ))),
-        track_yanked: false,
+        for_lockfile: false,
     })
 }
 
@@ -171,18 +171,14 @@ fn resolve_bzlmod(
     let session = match mode {
         LockfileMode::Off => None,
         _ => Some(
-            // Until fjfj resolves `bazel_tools`' real module file
-            // (buildfiji-mum.23) it reads fewer registry files than Bazel,
-            // and must not drop the hashes of the ones it did not read from
-            // a lockfile Bazel maintains.
-            LockSession::keeping_unread(mode, existing.as_deref())
+            LockSession::new(mode, existing.as_deref())
                 .map_err(|e| CliError::Build(anyhow::anyhow!(e)))?,
         ),
     };
     let registries = bzlmod_registries(flags, session.as_ref())?;
     let source = RegistrySource::new(registries);
     let mut options = bzlmod_resolve_options(flags, workspace_root)?;
-    options.track_yanked = session.is_some();
+    options.for_lockfile = session.is_some();
     let resolution = fjfj_bzlmod::resolve(module_bazel_text, &source, &options)
         .map_err(|e| CliError::Build(anyhow::anyhow!(e)))?;
     // The lockfile is written when resolution succeeded, and only if it
@@ -512,17 +508,27 @@ mod tests {
             .expect("fjfj-bzlmod fixture registry")
     }
 
+    /// `--registry` for the fixture registry and for the part of the Bazel
+    /// Central Registry that `bazel_tools`' own dependencies need, which
+    /// `fjfj-bzlmod` vendors next to it.
+    fn fixture_registry_flags() -> Vec<String> {
+        let registry = fixture_registry_dir();
+        let bcr = registry.parent().unwrap().join("bcr");
+        vec![
+            format!("--registry=file://{}", registry.display()),
+            format!("--registry=file://{}", bcr.display()),
+        ]
+    }
+
     #[test]
     fn registry_flag_resolves_a_fixture_workspace() {
-        let args = vec![
-            format!("--registry=file://{}", fixture_registry_dir().display()),
-            // The workspace root here is the current directory, which is
-            // not the place for a MODULE.bazel.lock.
-            "--lockfile_mode=off".to_owned(),
-        ];
+        let mut args = fixture_registry_flags();
+        // The workspace root here is the current directory, which is not
+        // the place for a MODULE.bazel.lock.
+        args.push("--lockfile_mode=off".to_owned());
         let (bzlmod, rest) = bzlmod_flags::extract(&args, "build");
         assert!(rest.is_empty());
-        assert_eq!(bzlmod.registry.len(), 1);
+        assert_eq!(bzlmod.registry.len(), 2);
 
         let module_bazel =
             "module(name = 'root', version = '0')\nbazel_dep(name = 'a', version = '1.0')\n";
@@ -590,10 +596,7 @@ mod tests {
     }
 
     fn resolve_in(workspace: &std::path::Path, extra: &[&str]) -> Result<Resolution, CliError> {
-        let mut args = vec![format!(
-            "--registry=file://{}",
-            fixture_registry_dir().display()
-        )];
+        let mut args = fixture_registry_flags();
         args.extend(extra.iter().map(|a| (*a).to_owned()));
         let (bzlmod, rest) = bzlmod_flags::extract(&args, "build");
         assert!(rest.is_empty(), "{rest:?}");

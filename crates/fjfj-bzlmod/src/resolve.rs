@@ -78,10 +78,11 @@ pub struct ResolveOptions {
     /// `None` makes an `include()` in the root file an error — same as
     /// having no include source at all (buildfiji-mum.22).
     pub include_source: Option<Rc<dyn IncludeSource>>,
-    /// Look up every selected version's yanked status even when
-    /// `--allow_yanked_versions=all` makes the answer moot, because the
-    /// lockfile records them (`--lockfile_mode` other than `off`).
-    pub track_yanked: bool,
+    /// The run writes a lockfile (`--lockfile_mode` other than `off`): look
+    /// up every selected version's yanked status even when
+    /// `--allow_yanked_versions=all` makes the answer moot, and read each
+    /// selected module's `source.json`, as Bazel does, so both are recorded.
+    pub for_lockfile: bool,
 }
 
 /// Resolves `include()` labels against the workspace directory the root
@@ -143,7 +144,7 @@ pub struct Resolution {
     pub selection: Selection,
     pub warnings: Vec<String>,
     /// Each selected version the registry has yanked, and why, in selection
-    /// order. Only filled when [`ResolveOptions::track_yanked`] is set or
+    /// order. Only filled when [`ResolveOptions::for_lockfile`] is set or
     /// yanked versions are not all allowed.
     pub selected_yanked: Vec<(ModuleKey, String)>,
 }
@@ -223,6 +224,13 @@ pub fn resolve(
     let dep_graph = discover(&root, &overrides, source)?;
     let selection = selection::run(&dep_graph, &overrides)?;
     let selected_yanked = check_yanked(&selection, source, options)?;
+    if options.for_lockfile {
+        for (key, module) in &selection.resolved {
+            if let Some(registry) = &module.registry {
+                source.read_source(key, registry)?;
+            }
+        }
+    }
 
     Ok(Resolution {
         root: root.module,
@@ -298,7 +306,7 @@ fn check_yanked(
     options: &ResolveOptions,
 ) -> Result<Vec<(ModuleKey, String)>> {
     let mut yanked = Vec::new();
-    if options.yanked == YankedPolicy::AllowAll && !options.track_yanked {
+    if options.yanked == YankedPolicy::AllowAll && !options.for_lockfile {
         return Ok(yanked);
     }
     for key in selection.keys() {

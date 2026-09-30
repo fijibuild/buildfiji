@@ -170,19 +170,6 @@ fn what_a_run_reads_is_recorded_and_the_rest_is_dropped() {
 }
 
 #[test]
-fn keeping_unread_hashes_is_opt_in() {
-    let old = lock_text(&[("modules/gone/1/MODULE.bazel", &sha("old"))]);
-    let s = LockSession::keeping_unread(LockfileMode::Update, Some(&old)).unwrap();
-    let (inner, _) = served(&[("modules/a/1/MODULE.bazel", "x")]);
-    s.fetcher(REG, inner)
-        .fetch(&url("modules/a/1/MODULE.bazel"))
-        .unwrap();
-    let kept = s.finish(&[]).registry_file_hashes;
-    assert_eq!(kept.len(), 2, "{kept:?}");
-    assert!(kept.contains_key(&url("modules/gone/1/MODULE.bazel")));
-}
-
-#[test]
 fn a_recorded_hash_is_checked_and_a_mismatch_is_an_error() {
     let old = lock_text(&[("modules/a/1/MODULE.bazel", &"0".repeat(64))]);
     let s = session(LockfileMode::Update, Some(&old));

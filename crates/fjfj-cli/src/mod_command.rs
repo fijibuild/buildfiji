@@ -17,10 +17,9 @@ use std::fmt::Write as _;
 use fjfj_bzlmod::{Module, ModuleKey, Resolution};
 use serde_json::{Value, json};
 
-/// Bazel hides the `bazel_tools` subtree from `mod` output — fjfj supplies
-/// a placeholder for it (`fjfj_bzlmod::discovery::PLACEHOLDER_BAZEL_TOOLS_MODULE`),
-/// so showing it would be showing an implementation detail, not something
-/// the user wrote.
+/// Bazel hides the `bazel_tools` subtree from `mod` output (its own
+/// `--include_builtin` shows it; `fjfj_bzlmod::discovery::BAZEL_TOOLS_MODULE`
+/// is the module file behind it), since it is not something the user wrote.
 fn is_hidden(name: &str) -> bool {
     name == "bazel_tools"
 }
@@ -246,8 +245,11 @@ mod tests {
     }
 
     fn resolve_fixture(module_bazel: &str) -> Resolution {
-        let registry = Registry::local(fixtures_dir());
-        let source = RegistrySource::new(vec![registry]);
+        // `bazel_tools`' own dependencies come from the Bazel Central
+        // Registry, of which the fixtures vendor the part they need.
+        let bcr = fixtures_dir().parent().unwrap().join("bcr");
+        let source =
+            RegistrySource::new(vec![Registry::local(fixtures_dir()), Registry::local(bcr)]);
         resolve(module_bazel, &source, &ResolveOptions::default()).unwrap()
     }
 
