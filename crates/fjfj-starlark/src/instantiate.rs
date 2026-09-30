@@ -192,8 +192,10 @@ pub(crate) fn call_rule<'v>(
                 continue;
             }
             checked.push(label.clone());
-            if let Err(e) =
-                check_subpackage_crossing(ctx.repo, ctx.package, &label.name, &is_package)
+            // A macro's labels are not looked at (what Bazel does).
+            if !ctx.macros.borrow().inside()
+                && let Err(e) =
+                    check_subpackage_crossing(ctx.repo, ctx.package, &label.name, &is_package)
             {
                 ctx.late_event(&at, e.to_string());
             }
@@ -203,6 +205,17 @@ pub(crate) fn call_rule<'v>(
         test_events(ctx, &at, &name, &attrs, schema);
     }
 
+    // A target may not take the name of a macro that did not make it.
+    if !ctx.state.borrow().builder.has_target(&name) {
+        let macros = ctx.macros.borrow();
+        if let Some(owner) = macros.instances.get(&name)
+            && !macros.stack.iter().any(|f| f.instance == *owner)
+        {
+            return Err(fatal(format!(
+                "target '{name}' conflicts with an existing macro (and was not created by it)"
+            )));
+        }
+    }
     let visibility = attrs.iter().find_map(|(k, v)| match (k.as_str(), v) {
         ("visibility", AttrValue::LabelList(labels)) => Some(visibility_of(ctx, labels)),
         _ => None,
@@ -379,7 +392,7 @@ fn duplicate_groups(value: &AttrValue) -> Vec<Vec<Label>> {
 }
 
 /// `values = [...]`: the event for a value the attribute may not take.
-fn check_values(attr: &SchemaAttr, value: &AttrValue) -> Vec<String> {
+pub(crate) fn check_values(attr: &SchemaAttr, value: &AttrValue) -> Vec<String> {
     if let AttrValue::Select(list) = value {
         return list
             .elements

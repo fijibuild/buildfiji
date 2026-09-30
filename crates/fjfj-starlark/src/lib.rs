@@ -29,6 +29,11 @@ mod json;
 mod label;
 #[cfg(test)]
 mod label_tests;
+mod macros;
+#[cfg(test)]
+mod macros_matrix;
+#[cfg(test)]
+mod macros_tests;
 mod native;
 mod proto;
 mod provider;

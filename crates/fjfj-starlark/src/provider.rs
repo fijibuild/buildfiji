@@ -34,7 +34,7 @@
 
 use crate::args::fatal;
 use crate::attr::sequence;
-use crate::exports::{Kind, Named, next_id, resolve_name};
+use crate::exports::{Kind, Named, name_at_assignment, next_id, resolve_name};
 use crate::structs::new_instance;
 use allocative::Allocative;
 use starlark::collections::StarlarkHasher;
@@ -458,12 +458,16 @@ fn make_provider<'v>(
     };
     let init: Vec<Value<'v>> = init.filter(|i| !i.is_none()).into_iter().collect();
     let has_init = !init.is_empty();
+    let name = OnceLock::new();
+    // `P = provider(...)` names it at once; `P, R = provider(init = ...)` is
+    // named when the module is done.
+    name_at_assignment(eval, Kind::Provider, &name)?;
     let provider = heap.alloc_complex(ProviderGen {
         id: next_id(),
         fields,
         doc: doc.and_then(|d| d.unpack_str()).map(str::to_owned),
         init,
-        name: OnceLock::new(),
+        name,
     });
     if !has_init {
         return Ok(provider);

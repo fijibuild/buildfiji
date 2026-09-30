@@ -30,7 +30,7 @@ use crate::decl::{
     all_of_type, build_setting_attrs, build_setting_of, check_exec_groups, check_subrules_exported,
     is_transition,
 };
-use crate::exports::{Kind, Named, is_exported, next_id, resolve_name};
+use crate::exports::{Kind, Named, is_exported, name_at_assignment, next_id, resolve_name};
 use crate::instantiate::call_rule;
 use crate::label::{evaluating_bzl, label_of_value, parse_in_caller};
 use crate::provider::is_provider;
@@ -131,6 +131,18 @@ fn identity<'v>(value: Value<'v>) -> Option<(u64, &'v OnceLock<String>, bool)> {
         (r.id, &r.name, r.schema.test)
     }
     if let Some(live) = value.downcast_ref::<Rule<'v>>() {
+        Some(of(live))
+    } else {
+        value.downcast_ref::<FrozenRule>().map(of)
+    }
+}
+
+/// The schema of the rule `value`, if it is one.
+pub(crate) fn schema_of(value: Value<'_>) -> Option<Arc<RuleSchema>> {
+    fn of<V>(rule: &RuleGen<V>) -> Arc<RuleSchema> {
+        rule.schema.clone()
+    }
+    if let Some(live) = value.downcast_ref::<Rule<'_>>() {
         Some(of(live))
     } else {
         value.downcast_ref::<FrozenRule>().map(of)
@@ -562,6 +574,8 @@ fn make_rule<'v>(
     }
 
     let doc = arg("doc").and_then(|d| d.unpack_str()).map(str::to_owned);
+    let name = OnceLock::new();
+    name_at_assignment(eval, Kind::Rule { test }, &name)?;
     Ok(heap.alloc_complex(RuleGen {
         id: next_id(),
         schema: Arc::new(schema),
@@ -572,7 +586,7 @@ fn make_rule<'v>(
         declared_names: declared.iter().map(|(n, _)| *n).collect(),
         declared: declared.iter().map(|(_, v)| *v).collect(),
         doc,
-        name: OnceLock::new(),
+        name,
     }))
 }
 

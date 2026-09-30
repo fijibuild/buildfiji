@@ -35,10 +35,6 @@ const SKIPPED: &[&str] = &[
     "type(config.target)",
     ".and_then)",
     "type(config.exec().and_then)",
-    // A subrule is named at its assignment in Bazel, and here once its module
-    // is done or something asks its name (buildfiji-10f).
-    "print(repr(s))",
-    "print(S)",
 ];
 
 fn assert_replays(wrong: Vec<String>) {

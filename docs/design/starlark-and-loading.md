@@ -457,17 +457,21 @@ and `load()`.
   `providers=` and `provides=` accept: an unnamed provider gives `Providers
   should be top-level values in extension files that define them.` The
   `starlark` crate has no hook on an assignment and will not show a native
-  function a private name, so a provider looks for its name among the
-  *public* top-level names of the module being evaluated when it needs one,
-  and `evaluate_bzl` names the rest, `_P` included, once the module is
-  frozen (the names come from the parsed file, values from the frozen module).
+  function a private name, so `exports::name_at_assignment` reads the name
+  off the line being run: a call made by the module itself (not from a
+  function) as the whole right side of `NAME = provider(...)` is named `NAME`
+  at once, a `_P` included. Anything else (`P, R = provider(init = ...)`, a
+  value a function returned) looks for its name among the *public* top-level
+  names of the module being evaluated when it needs one, and `evaluate_bzl`
+  names the rest once the module is frozen (the names come from the parsed
+  file, values from the frozen module).
   A provider is identified by a counter that survives freezing, not by
   address, and its name is a `OnceLock` that freezing carries across.
-- **Known differences.** A provider bound only to a `_private` name is
-  anonymous until its module ends, so an error about it *during* that
-  evaluation says `<no name>` where Bazel says `_P`, and `providers=[_P]`
-  is accepted in any module that binds a private name (it cannot tell `_P`
-  from a provider bound to nothing). `provider(init = struct)` is accepted
+- **Known differences.** A provider a function made and a `_private` name was
+  bound to is anonymous until its module ends, so an error about it *during*
+  that evaluation says `<no name>` where Bazel says `_Q`, and
+  `providers=[_Q]` is accepted in any module that binds a private name (it
+  cannot tell `_Q` from a provider bound to nothing). `provider(init = struct)` is accepted
   (Bazel's `struct` is a `Provider` and not callable; the crate's is a
   function); `provider(fields = ["a", "a"])` is an error here and a crash in
   Bazel, which prints no message. The crate words a bad call to `init`'s
@@ -546,9 +550,8 @@ are replayed in `rule_tests.rs`.
 - **`existing_rule`** shows the attributes the call set and the schema's
   defaults, skipping `_private` ones and what has no default; the schema a
   call used is kept by target name in the `BuildContext`.
-- **Known differences.** A rule bound only to a `_private` name is anonymous
-  until its module ends, so `print(R)` right after `R = rule(...)` prints
-  `<rule>` (buildfiji-10f). Native rules' attribute labels are now read
+- **Known differences.** A rule a function made, bound to a name, is anonymous
+  until its module ends (buildfiji-10f). Native rules' attribute labels are now read
   through the repo mapping like a `rule()`'s, so an unknown repo is
   `@@[unknown repo 'r' requested from @@dep+]//s:t` for them too.
   `provider(init = struct)`-style crate differences and the crate's generic
@@ -628,8 +631,7 @@ replay in `decl_matrix.rs`.
 - **Names.** An aspect and a subrule are named by the top-level name they are
   bound to, as rules are (`exports.rs`), and an aspect used in
   `attr.*(aspects = ...)` must have one. An aspect always prints `<aspect>`; a
-  subrule prints `<subrule NAME>`, which fjfj knows once its module is done
-  (buildfiji-10f). Only `aspect()` and `configuration_field()` refuse to run
+  subrule prints `<subrule NAME>`. Only `aspect()` and `configuration_field()` refuse to run
   outside `.bzl` initialization.
 - **Transitions.** A setting is `//command_line_option:x` or an absolute
   label, with Bazel's words for each way it can be wrong; none may repeat
@@ -652,12 +654,52 @@ replay in `decl_matrix.rs`.
   name and gives it type `function` (buildfiji-v32), and `print(config)` is a
   namespace's.
 
+## `macro()` (implemented 2026-09-30, buildfiji-mum.3.8)
+
+`macros.rs`, replayed from about 440 probe rows in `macros_matrix.rs`.
+
+- **Declaring.** `macro(*, implementation, attrs, inherit_attrs, finalizer,
+  doc)`. `attrs` may not declare `name` or `visibility` (the macro's own),
+  nor a computed or late-bound default; a `None` value removes an inherited
+  attribute. `inherit_attrs` is a rule, a macro or `"common"`: the public
+  attributes of the rule, less `name` and `generator_*`; those of the macro;
+  or the ones every rule has. Natives are not rule values here, so
+  `inherit_attrs = native.filegroup` waits for buildfiji-136.10. A macro is
+  named like a rule (`NAME = macro(...)` at once, `Kind::Macro`); one with no
+  name cannot be instantiated.
+- **Instantiating** (keywords only, `name` a string, from a BUILD file, a
+  legacy macro, or another macro): an unknown attribute, a value of the wrong
+  type and a `select()` for an attribute that is not configurable are fatal
+  (a rule's are events), with the conversion's words (`convert`); a missing
+  mandatory attribute and a value outside `values` are events *without a
+  location*. The implementation is called with `name` and every attribute
+  (`decl` and `rule()`'s `bind` do not apply: it is an ordinary call, so one
+  that does not take `visibility` fails with the crate's words): a
+  configurable attribute is a `select`, so a plain `v` is `select({"//conditions:default":
+  v})`; an inherited attribute not given is `None`; `visibility` is the
+  labels given plus `//pkg:__pkg__` of the call, sorted, or
+  `//visibility:public` alone; a label is a `Label`. It returns `None`.
+- **Names.** A macro's name is a target name: it may not be another macro's or
+  a target's (`macro 'a' conflicts with an existing target.`), and a target may
+  not take a macro's unless that macro made it. A macro that calls itself,
+  directly or not, is an event and is not run. A label of a rule a macro
+  declares is not checked for entering a subpackage.
+- **Inside a macro**, `glob()` and `package()` and, unless it is a finalizer,
+  `existing_rule()` and `existing_rules()` are errors.
+- **Finalizers** are queued and run after the BUILD file, in order, and then
+  `existing_rules()` shows the rules there were before the first (not what
+  finalizers made); a finalizer may not be instantiated by a macro that is
+  not one, and may instantiate another.
+- **Known differences.** `print(label)` writes `//a:b` in Bazel and the crate
+  `@@//a:b` (buildfiji-v32); an event inside a macro is at the call in the
+  BUILD file (`native::location` reads the whole call stack).
+
 ## Bazel 9.2.0's builtin namespaces, and who owns each name (buildfiji-mum.3)
 
 Read off Bazel 9.2.0 by asking `type(name)` in a BUILD file and in a `.bzl`
 loaded by one, and `dir()` of each namespace. `B` is visible in BUILD files,
 `Z` in `.bzl` files. fjfj has, so far, `depset` (B, Z), `set`, `json`, `proto` (B, Z),
-`struct`, `Label`, `attr`, `provider` and `rule` (Z), `select` (B, Z), `print` and the standard Starlark library, and the natives of
+`struct`, `Label`, `attr`, `provider`, `rule` and `macro` (Z), `select` (B, Z), `print` and the standard Starlark library, and the natives of
 buildfiji-mum.4.
 
 | Names | Where | Owner |
@@ -673,7 +715,7 @@ buildfiji-mum.4.
 | `select` | B Z | buildfiji-mum.3.6, done |
 | `aspect transition exec_group configuration_field subrule analysis_test_transition` | Z only | buildfiji-mum.3.7, done |
 | `config` (`bool exec int none string string_list string_set target`) | Z only | buildfiji-mum.3.7, done |
-| `macro` | Z only | buildfiji-mum.3.8 |
+| `macro` | Z only | buildfiji-mum.3.8, done |
 | `visibility` | Z only | buildfiji-ps4 |
 | `module_extension repository_rule tag_class` | Z only | buildfiji-mum.8 |
 | `DefaultInfo OutputGroupInfo RunEnvironmentInfo InstrumentedFilesInfo PackageSpecificationInfo` | Z only | buildfiji-136.4 |

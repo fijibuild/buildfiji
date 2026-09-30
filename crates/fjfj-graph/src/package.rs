@@ -388,6 +388,11 @@ impl<'a> PackageBuilder<'a> {
         Ok(())
     }
 
+    /// Whether a target of any kind is called `name`.
+    pub fn has_target(&self, name: &str) -> bool {
+        self.index.contains_key(name)
+    }
+
     /// The rule called `name`, if one has been declared. Exported files and
     /// package groups are targets but not rules.
     pub fn rule(&self, name: &str) -> Option<&Target> {

@@ -36,9 +36,6 @@ const GENERIC: &[&str] = &[
 const SKIPPED: &[&str] = &[
     "DefaultInfo",
     "macro(",
-    // `print(R)` right after `R = rule(...)` says `<rule R>` in Bazel, which
-    // names a rule at the assignment (buildfiji-10f).
-    "print(R)\n",
     // The crate calls a builtin a `function` and accepts it where Bazel
     // does not (buildfiji-v32).
     "implementation=print",

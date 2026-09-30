@@ -27,6 +27,46 @@ use starlark::values::Value;
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+/// The top-level name the call being made is assigned to right away
+/// (`NAME = rule(...)` on one line at the top of a `.bzl`), which is what
+/// Bazel names a value by.
+pub(crate) fn assigned_name(eval: &Evaluator<'_, '_, '_>) -> Option<String> {
+    if !evaluating_bzl(eval) {
+        return None;
+    }
+    // The module's frame and the call's: anything deeper is in a function.
+    if eval.call_stack_count() != 2 {
+        return None;
+    }
+    let at = eval.call_stack_top_location()?;
+    let begin = at.span.begin();
+    let line = at.file.find_line(begin);
+    let start = at.file.line_span(line).begin();
+    let text = at.file.source_line(line);
+    let prefix = text.get(..(begin.get() - start.get()) as usize)?;
+    let name = prefix.trim_end().strip_suffix('=')?.trim_end();
+    let identifier = name
+        .chars()
+        .next()
+        .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+        && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+    identifier.then(|| name.to_owned())
+}
+
+/// Give the value `cell` belongs to the name it is assigned to on the line
+/// being run, if there is one, and the error if its kind may not have it.
+pub(crate) fn name_at_assignment(
+    eval: &Evaluator<'_, '_, '_>,
+    kind: Kind,
+    cell: &OnceLock<String>,
+) -> starlark::Result<()> {
+    if let Some(name) = assigned_name(eval) {
+        kind.accepts(&name).map_err(fatal)?;
+        let _ = cell.set(name);
+    }
+    Ok(())
+}
+
 /// A number no other provider or rule has, which is what stays the same
 /// about one when it is frozen.
 pub(crate) fn next_id() -> u64 {
@@ -41,11 +81,12 @@ pub(crate) enum Kind {
     Rule { test: bool },
     Aspect,
     Subrule,
+    Macro,
 }
 
 impl Kind {
     /// Whether a value of this kind may have this name.
-    fn accepts(self, name: &str) -> Result<(), String> {
+    pub(crate) fn accepts(self, name: &str) -> Result<(), String> {
         match self {
             Kind::Rule { test } if test != name.ends_with("_test") => Err(format!(
                 "Invalid rule class name '{name}', test rule class names must end with '_test' \
@@ -69,6 +110,7 @@ pub(crate) fn named<'v>(value: Value<'v>) -> Option<Named<'v>> {
     provider::named(value)
         .or_else(|| rule::named(value))
         .or_else(|| crate::decl::named(value))
+        .or_else(|| crate::macros::named(value))
 }
 
 /// The name of `value` if it is bound to one, looking for it in the module

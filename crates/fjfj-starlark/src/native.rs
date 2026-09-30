@@ -42,6 +42,7 @@ use crate::decl::decl_globals;
 use crate::depset::depset_globals;
 use crate::json::JsonModule;
 use crate::label::{RepoMappings, label_globals, relative_to_package};
+use crate::macros::{MacroState, macro_globals, run_finalizers};
 use crate::proto::ProtoModule;
 use crate::provider::provider_globals;
 use crate::rule::rule_globals;
@@ -115,6 +116,7 @@ pub fn bzl_globals() -> Globals {
         .with(depset_globals)
         .with(attr_globals)
         .with(decl_globals)
+        .with(macro_globals)
         .with(provider_globals)
         .with(rule_globals)
         .with(label_globals)
@@ -142,6 +144,7 @@ pub fn evaluate_build_file(input: &BuildFile<'_>) -> Result<BuildFileOutput, Bui
         }),
         printed: RefCell::new(Vec::new()),
         schemas: RefCell::new(HashMap::new()),
+        macros: RefCell::new(MacroState::default()),
     };
     let globals = build_globals();
     Module::with_temp_heap(|module| {
@@ -150,8 +153,9 @@ pub fn evaluate_build_file(input: &BuildFile<'_>) -> Result<BuildFileOutput, Bui
         eval.set_loader(input.loader);
         eval.set_print_handler(&ctx);
         eval.eval_module(ast, &globals)
-            .map(|_| ())
-            .map_err(|e| BuildFileError::Eval(e.into_anyhow()))
+            .map_err(|e| BuildFileError::Eval(e.into_anyhow()))?;
+        // Finalizers run when everything else has.
+        run_finalizers(&ctx, &mut eval).map_err(|e| BuildFileError::Eval(e.into_anyhow()))
     })?;
     let BuildContext { state, printed, .. } = ctx;
     let mut state = state.into_inner();
@@ -182,6 +186,8 @@ pub(crate) struct BuildContext<'a> {
     /// The schema each rule of the package was called with, by target name,
     /// for `existing_rule`.
     pub(crate) schemas: RefCell<HashMap<String, Arc<RuleSchema>>>,
+    /// The symbolic macros running, and those instantiated.
+    pub(crate) macros: RefCell<MacroState>,
 }
 
 pub(crate) struct BuildState<'a> {
@@ -214,6 +220,14 @@ impl BuildContext<'_> {
             .borrow_mut()
             .late
             .push(format!("{location}: {}", message.as_ref()));
+    }
+
+    /// An event with no location, as a macro's are.
+    pub(crate) fn event_plain(&self, message: impl AsRef<str>) {
+        self.state
+            .borrow_mut()
+            .errors
+            .push(message.as_ref().to_owned());
     }
 
     pub(crate) fn event(&self, location: &str, message: impl AsRef<str>) {
@@ -265,12 +279,15 @@ pub(crate) fn location(eval: &Evaluator<'_, '_, '_>) -> String {
     // macro: the outermost frame that is not a `.bzl` (those are named by
     // their canonical label, `@@repo//pkg:file.bzl`).
     let mut chosen = eval.call_stack_top_location();
-    let mut depth = 0;
-    while let Some(span) = eval.call_stack_nth_location(depth) {
-        if !span.resolve().file.starts_with("@@") {
-            chosen = Some(span);
-        }
-        depth += 1;
+    // Outermost first. A frame with no location (a macro's own) is skipped.
+    if let Some(span) = eval
+        .call_stack()
+        .frames
+        .into_iter()
+        .filter_map(|frame| frame.location)
+        .find(|span| !span.resolve().file.starts_with("@@"))
+    {
+        chosen = Some(span);
     }
     let Some(span) = chosen else {
         return "<unknown>".to_owned();
@@ -291,6 +308,29 @@ pub(crate) fn location(eval: &Evaluator<'_, '_, '_>) -> String {
         begin.line + 1,
         begin.column + column + 1
     )
+}
+
+/// Whether the rule `name` is one a finalizer sees: those there were when
+/// the finalizers began.
+fn visible_in_finalizer(ctx: &BuildContext<'_>, name: &str) -> bool {
+    let macros = ctx.macros.borrow();
+    match (&macros.visible_to_finalizers, macros.in_finalizer()) {
+        (Some(rules), true) => rules.iter().any(|r| r == name),
+        _ => true,
+    }
+}
+
+/// What `existing_rule` and `existing_rules` refuse: a symbolic macro that is
+/// not a finalizer.
+fn no_symbolic_macro(ctx: &BuildContext<'_>, function: &str) -> starlark::Result<()> {
+    let macros = ctx.macros.borrow();
+    if macros.inside() && !macros.in_finalizer() {
+        return Err(fatal(format!(
+            "{function}() can only be used while evaluating a BUILD file, a legacy macro, or a \
+             rule finalizer"
+        )));
+    }
+    Ok(())
 }
 
 // ---- argument handling ----------------------------------------------------
@@ -339,6 +379,11 @@ fn native_functions(builder: &mut GlobalsBuilder) {
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> starlark::Result<Value<'v>> {
         let ctx = context(eval, "glob")?;
+        if ctx.macros.borrow().inside() {
+            return Err(fatal(
+                "glob() can only be used while evaluating a BUILD file or a legacy macro",
+            ));
+        }
         let bound = bind(
             "glob",
             Wording::Signature,
@@ -404,6 +449,11 @@ fn native_functions(builder: &mut GlobalsBuilder) {
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> starlark::Result<NoneType> {
         let ctx = context(eval, "package")?;
+        if ctx.macros.borrow().inside() {
+            return Err(fatal(
+                "package() can only be used while evaluating a BUILD file",
+            ));
+        }
         let bound = bind(
             "package",
             Wording::Package,
@@ -608,6 +658,7 @@ fn native_functions(builder: &mut GlobalsBuilder) {
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> starlark::Result<Value<'v>> {
         let ctx = context(eval, "existing_rule")?;
+        no_symbolic_macro(ctx, "existing_rule")?;
         let bound = bind(
             "existing_rule",
             Wording::Signature,
@@ -624,7 +675,8 @@ fn native_functions(builder: &mut GlobalsBuilder) {
             ))
         })?;
         let state = ctx.state.borrow();
-        Ok(match state.builder.rule(name) {
+        let visible = visible_in_finalizer(ctx, name);
+        Ok(match state.builder.rule(name).filter(|_| visible) {
             Some(target) => rule_view(ctx, target, eval.heap()),
             None => Value::new_none(),
         })
@@ -635,11 +687,13 @@ fn native_functions(builder: &mut GlobalsBuilder) {
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> starlark::Result<Value<'v>> {
         let ctx = context(eval, "existing_rules")?;
+        no_symbolic_macro(ctx, "existing_rules")?;
         bind("existing_rules", Wording::Signature, &[], args, eval)?;
         let state = ctx.state.borrow();
         let entries: Vec<(String, Value<'v>)> = state
             .builder
             .rules()
+            .filter(|target| visible_in_finalizer(ctx, &target.name))
             .map(|target| (target.name.clone(), rule_view(ctx, target, eval.heap())))
             .collect();
         Ok(eval.heap().alloc(AllocDict(entries)))

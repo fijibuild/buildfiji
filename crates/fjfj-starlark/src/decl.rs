@@ -33,7 +33,7 @@
 
 use crate::args::{Param, Wording, bind, fatal, param};
 use crate::attr::{provider_alternatives, sequence, view as attribute_view};
-use crate::exports::{Kind, Named, next_id, resolve_name};
+use crate::exports::{Kind, Named, name_at_assignment, next_id, resolve_name};
 use crate::label::{display_label, evaluating_bzl, label_of_value, parse_in_caller};
 use allocative::Allocative;
 use fjfj_graph::Label;
@@ -58,17 +58,17 @@ use std::sync::OnceLock;
 
 /// One parameter of a declaration builtin.
 #[derive(Clone, Copy)]
-struct P {
-    name: &'static str,
+pub(crate) struct P {
+    pub(crate) name: &'static str,
     /// Can be given by position (in the order listed).
-    positional: bool,
-    required: bool,
+    pub(crate) positional: bool,
+    pub(crate) required: bool,
     /// How the signature words the type it takes.
-    want: &'static str,
-    ok: fn(Value<'_>) -> bool,
+    pub(crate) want: &'static str,
+    pub(crate) ok: fn(Value<'_>) -> bool,
 }
 
-const fn p(
+pub(crate) const fn p(
     name: &'static str,
     positional: bool,
     required: bool,
@@ -84,10 +84,10 @@ const fn p(
     }
 }
 
-fn is_sequence(v: Value<'_>) -> bool {
+pub(crate) fn is_sequence(v: Value<'_>) -> bool {
     matches!(v.get_type(), "list" | "tuple" | "range")
 }
-fn is_function(v: Value<'_>) -> bool {
+pub(crate) fn is_function(v: Value<'_>) -> bool {
     v.get_type() == "function"
 }
 fn is_callable(v: Value<'_>) -> bool {
@@ -96,10 +96,10 @@ fn is_callable(v: Value<'_>) -> bool {
         "function" | "Provider" | "RawConstructor" | "rule"
     )
 }
-fn is_dict(v: Value<'_>) -> bool {
+pub(crate) fn is_dict(v: Value<'_>) -> bool {
     DictRef::from_value(v).is_some()
 }
-fn is_bool(v: Value<'_>) -> bool {
+pub(crate) fn is_bool(v: Value<'_>) -> bool {
     v.unpack_bool().is_some()
 }
 fn is_string(v: Value<'_>) -> bool {
@@ -111,7 +111,7 @@ fn is_sequence_or_function(v: Value<'_>) -> bool {
 fn is_function_or_none(v: Value<'_>) -> bool {
     v.is_none() || is_function(v)
 }
-fn is_string_or_none(v: Value<'_>) -> bool {
+pub(crate) fn is_string_or_none(v: Value<'_>) -> bool {
     v.is_none() || is_string(v)
 }
 fn is_dict_or_none(v: Value<'_>) -> bool {
@@ -120,7 +120,7 @@ fn is_dict_or_none(v: Value<'_>) -> bool {
 
 /// Bind `args` to `params` as Bazel does and check the type of each as it
 /// was given, in the order it was given. Returns the values by parameter.
-fn bind_checked<'v>(
+pub(crate) fn bind_checked<'v>(
     function: &str,
     params: &[P],
     args: &Arguments<'v, '_>,
@@ -342,7 +342,7 @@ fn attribute_names<'v>(dict: &DictRef<'v>) -> starlark::Result<()> {
     Ok(())
 }
 
-fn is_identifier(name: &str) -> bool {
+pub(crate) fn is_identifier(name: &str) -> bool {
     let mut chars = name.chars();
     chars
         .next()
@@ -590,11 +590,13 @@ fn make_aspect<'v>(
             values.push(*value);
         }
     }
+    let name = OnceLock::new();
+    name_at_assignment(eval, Kind::Aspect, &name)?;
     Ok(heap.alloc_complex(AspectGen {
         id: next_id(),
         names,
         args: values,
-        name: OnceLock::new(),
+        name,
     }))
 }
 
@@ -769,11 +771,13 @@ fn make_subrule<'v>(
             values.push(*value);
         }
     }
+    let name = OnceLock::new();
+    name_at_assignment(eval, Kind::Subrule, &name)?;
     Ok(heap.alloc_complex(SubruleGen {
         id: next_id(),
         names,
         args: values,
-        name: OnceLock::new(),
+        name,
     }))
 }
 

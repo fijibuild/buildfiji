@@ -117,9 +117,11 @@ back. A keyword's spelling suggestion is `suggest_keyword`, not `suggest`
 only for the same provider, and a provider is identified by a counter, not an
 address, so identity survives freezing and `load()`. A provider is named by the
 first top-level name a `.bzl` binds it to, at the assignment in Bazel and here
-at first use (public names of the running module) or at the end of the module
-(`export_providers`, from `evaluate_bzl`), because the crate has no
-assignment hook and hides `_private` names from a native function: use
+from the line being run (`exports::name_at_assignment`, for `NAME = f(...)` at
+the top of a file), else at first use (public names of the running module) or
+at the end of the module (`export_all`, from `evaluate_bzl`), because the
+crate has no assignment hook and hides `_private` names from a native
+function: use
 `provider::is_exported`, not the raw name, to ask whether one may be named in
 `providers=` or `provides=`. Design and known gaps:
 `docs/design/starlark-and-loading.md`.
@@ -158,4 +160,16 @@ so add a probe row to `decl_matrix.rs`'s source before moving a check.
 `bind_checked` is the one way to bind their arguments; it also gives Bazel's
 plural "missing 2 required named arguments: a, b". An aspect's or subrule's
 arguments are read with `aspect_arg` / `subrule_arg`, not parsed again.
+
+## macro
+
+`macro()` (`macros.rs`) instantiates through `macros::instantiate`, which
+converts attributes with `instantiate::convert` (fatal where a rule reports
+events), keeps the macros running in `BuildContext::macros`, and queues a
+finalizer with owned data (`PendingFinalizer`), because the values of its
+arguments live in a heap that is gone when the BUILD file is done; they are
+made again from `Passed` when it runs. A native that a macro may not call
+checks `ctx.macros` (`glob`, `package`, `existing_rule(s)`); a probe row in
+`macros_matrix.rs`'s source comes before any change to an order or a message.
+Design and known gaps: `docs/design/starlark-and-loading.md`.
 

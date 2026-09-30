@@ -147,9 +147,16 @@ fn a_provider_is_named_by_the_first_top_level_name_it_is_bound_to() {
 fn a_provider_is_named_where_it_is_bound_even_while_its_module_runs() {
     let out = outcome(&[], "P = provider(fields = [])\nP(b = 1)\n");
     assert!(out.contains("in call to instantiate provider P"), "{out}");
-    // `_P` is named only when the module ends, so this says `<no name>`
-    // where Bazel says `_P`.
+    // So is a `_P`, which a native function cannot read by name: the name is
+    // taken from the assignment being run.
     let out = outcome(&[], "_P = provider(fields = [])\n_P(b = 1)\n");
+    assert!(out.contains("in call to instantiate provider _P"), "{out}");
+    // A value made by a function and bound to a `_Q` is named when the module
+    // is done.
+    let out = outcome(
+        &[],
+        "def f():\n    return provider(fields = [])\n_Q = f()\n_Q(b = 1)\n",
+    );
     assert!(
         out.contains("in call to instantiate provider <no name>"),
         "{out}"
