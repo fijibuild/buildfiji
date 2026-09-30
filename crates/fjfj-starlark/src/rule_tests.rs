@@ -34,7 +34,6 @@ const GENERIC: &[&str] = &[
 /// Probes that need something no bead has built yet, or differ in the
 /// crate.
 const SKIPPED: &[&str] = &[
-    "select(",
     "DefaultInfo",
     "aspect(",
     "transition(",

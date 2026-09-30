@@ -44,6 +44,7 @@ use crate::label::{RepoMappings, label_globals, relative_to_package};
 use crate::proto::ProtoModule;
 use crate::provider::provider_globals;
 use crate::rule::rule_globals;
+use crate::select::select_globals;
 use crate::set::set_globals;
 use crate::structs::struct_globals;
 use crate::{FileKind, parse};
@@ -99,6 +100,7 @@ pub fn build_globals() -> Globals {
         .with(native_functions)
         .with(depset_globals)
         .with(module_globals)
+        .with(select_globals)
         .with(set_globals)
         .build()
 }
@@ -116,6 +118,7 @@ pub fn bzl_globals() -> Globals {
         .with(label_globals)
         .with(struct_globals)
         .with(module_globals)
+        .with(select_globals)
         .with(set_globals)
         .build()
 }
@@ -1264,8 +1267,14 @@ mod tests {
                 name: "a".into()
             })
         )));
-        // `actual = None` is not "missing", oddly.
-        package("alias(name = \"al\", actual = None)");
+        // `actual = None` is as if it were left out (probed again in
+        // buildfiji-mum.3.6: Bazel 9.2.0 reports it missing).
+        assert_eq!(
+            events("alias(name = \"al\", actual = None)"),
+            [
+                "BUILD.bazel:1:6: //:al: missing value for mandatory attribute 'actual' in 'alias' rule"
+            ]
+        );
     }
 
     #[test]

@@ -33,6 +33,84 @@ pub enum AttrValue {
     LabelKeyedStringDict(Vec<(Label, String)>),
     StringKeyedLabelDict(Vec<(String, Label)>),
     LabelListDict(Vec<(String, Vec<Label>)>),
+    /// A value that depends on the configuration: `select()`s, and plain
+    /// values between them. Resolving one is buildfiji-136.5's.
+    Select(SelectorList),
+}
+
+/// The label of the branch a `select()` takes when no other matches.
+pub fn default_condition() -> Label {
+    Label {
+        repo: String::new(),
+        package: "conditions".to_owned(),
+        name: "default".to_owned(),
+    }
+}
+
+/// One `select()` (or a plain value between selects, which is one with
+/// only the default branch).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Selector {
+    /// The conditions in the order the `select()` named them, each with the
+    /// value it gives. `None` is a `None` branch of a label attribute.
+    pub branches: Vec<(Label, Option<AttrValue>)>,
+    pub no_match_error: String,
+    /// Written as a plain value, or as `select({"//conditions:default": x})`:
+    /// `existing_rule` shows `x` itself when nothing else is in the list.
+    pub unconditional: bool,
+}
+
+/// Selectors joined by `+` (or `|` for dicts). A list that is all
+/// unconditional is a plain value and never becomes one of these.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SelectorList {
+    pub elements: Vec<Selector>,
+    pub pipe: bool,
+}
+
+impl AttrValue {
+    /// `a` followed by `b`, as `+` joins two lists, two strings or two ints
+    /// and `|` two dicts (the later entry of a key wins). `None` for values
+    /// of different kinds, and kinds that do not join (a bool, a label).
+    pub fn concat(a: &AttrValue, b: &AttrValue) -> Option<AttrValue> {
+        use AttrValue::*;
+        fn union<K: Clone + PartialEq, V: Clone>(a: &[(K, V)], b: &[(K, V)]) -> Vec<(K, V)> {
+            let mut out: Vec<(K, V)> = a.to_vec();
+            for (k, v) in b {
+                match out.iter_mut().find(|(ok, _)| ok == k) {
+                    Some(entry) => entry.1 = v.clone(),
+                    None => out.push((k.clone(), v.clone())),
+                }
+            }
+            out
+        }
+        Some(match (a, b) {
+            (String(x), String(y)) => String(format!("{x}{y}")),
+            (Int(x), Int(y)) => Int(x.wrapping_add(*y)),
+            (StringList(x), StringList(y)) => StringList([x.as_slice(), y].concat()),
+            (IntList(x), IntList(y)) => IntList([x.as_slice(), y].concat()),
+            (LabelList(x), LabelList(y)) => LabelList([x.as_slice(), y].concat()),
+            (StringDict(x), StringDict(y)) => StringDict(union(x, y)),
+            (StringListDict(x), StringListDict(y)) => StringListDict(union(x, y)),
+            (LabelKeyedStringDict(x), LabelKeyedStringDict(y)) => LabelKeyedStringDict(union(x, y)),
+            (StringKeyedLabelDict(x), StringKeyedLabelDict(y)) => StringKeyedLabelDict(union(x, y)),
+            (LabelListDict(x), LabelListDict(y)) => LabelListDict(union(x, y)),
+            _ => return None,
+        })
+    }
+}
+
+impl SelectorList {
+    /// What the list is if nothing in it depends on the configuration: its
+    /// elements joined. `None` when any does, or a `None` branch is left.
+    pub fn flatten(&self) -> Option<AttrValue> {
+        let mut values = self.elements.iter().map(|e| match e.branches.as_slice() {
+            [(_, value)] if e.unconditional => value.as_ref(),
+            _ => None,
+        });
+        let first = values.next()??.clone();
+        values.try_fold(first, |acc, next| AttrValue::concat(&acc, next?))
+    }
 }
 
 /// What an attribute holds, and so how a value is checked.
@@ -675,5 +753,82 @@ mod tests {
         assert_eq!(label_relative_to(&l("", "b", "x"), "", "a"), "//b:x");
         assert_eq!(label_relative_to(&l("r", "b", "x"), "", "a"), "@@r//b:x");
         assert_eq!(label_relative_to(&l("", "b", "x"), "r", "b"), "@@//b:x");
+    }
+
+    fn one(value: Option<AttrValue>, unconditional: bool) -> Selector {
+        Selector {
+            branches: vec![(default_condition(), value)],
+            no_match_error: String::new(),
+            unconditional,
+        }
+    }
+
+    fn strings(items: &[&str]) -> AttrValue {
+        AttrValue::StringList(items.iter().map(|s| s.to_string()).collect())
+    }
+
+    #[test]
+    fn values_join_as_their_type_does() {
+        use AttrValue as V;
+        let join = |a: V, b: V| V::concat(&a, &b);
+        let text = |s: &str| V::String(s.to_owned());
+        assert_eq!(
+            join(strings(&["a"]), strings(&["b"])),
+            Some(strings(&["a", "b"]))
+        );
+        assert_eq!(join(text("a"), text("b")), Some(text("ab")));
+        assert_eq!(join(V::Int(2), V::Int(3)), Some(V::Int(5)));
+        // A dict joins by key, the later value winning and the earlier key's place kept.
+        let entries = |rows: &[(&str, &str)]| {
+            V::StringDict(
+                rows.iter()
+                    .map(|(k, v)| (k.to_string(), v.to_string()))
+                    .collect(),
+            )
+        };
+        assert_eq!(
+            join(
+                entries(&[("a", "1"), ("b", "2")]),
+                entries(&[("a", "3"), ("c", "4")])
+            ),
+            Some(entries(&[("a", "3"), ("b", "2"), ("c", "4")]))
+        );
+        // Bools and labels do not join, and neither do unlike kinds.
+        assert_eq!(join(V::Bool(true), V::Bool(false)), None);
+        let label = Label {
+            repo: String::new(),
+            package: String::new(),
+            name: "a".into(),
+        };
+        assert_eq!(join(V::Label(label.clone()), V::Label(label)), None);
+        assert_eq!(join(V::Int(1), text("a")), None);
+    }
+
+    #[test]
+    fn a_selector_list_that_no_configuration_changes_flattens() {
+        let list = |elements| SelectorList {
+            elements,
+            pipe: false,
+        };
+        assert_eq!(
+            list(vec![
+                one(Some(strings(&["a"])), true),
+                one(Some(strings(&["b"])), true)
+            ])
+            .flatten(),
+            Some(strings(&["a", "b"]))
+        );
+        // One conditional element, or a `None` branch, leaves it as it is.
+        assert_eq!(
+            list(vec![
+                one(Some(strings(&["a"])), true),
+                one(Some(strings(&["b"])), false)
+            ])
+            .flatten(),
+            None
+        );
+        assert_eq!(list(vec![one(None, true)]).flatten(), None);
+        // The default condition is a label of the main repo.
+        assert_eq!(default_condition().to_string(), "//conditions:default");
     }
 }

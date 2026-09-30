@@ -296,6 +296,10 @@ where
     }
 
     fn add(&self, rhs: Value<'v>, _heap: Heap<'v>) -> Option<starlark::Result<Value<'v>>> {
+        // A select takes the sum over (`select`'s `radd`).
+        if crate::select::is_select(rhs) {
+            return None;
+        }
         Some(Err(unsupported("+", "depset", rhs.get_type())))
     }
 

@@ -242,7 +242,7 @@ Every rule below was read off Bazel 9.2.0, and each test names what it copies.
   fjfj returns a snapshot dict (buildfiji-ie2).
 - **Locations.** `file:line:col` where the column is the call's `(`, which is
   what Bazel prints, and conflict messages quote it.
-- **Not here.** `select` (buildfiji-mum.3.6), the native rules other
+- **Not here.** The native rules other
   than `filegroup` and `alias` (buildfiji-136.10), and `subpackages`,
   `package_default_visibility`, `module_name` and `module_version`
   (buildfiji-hrx). `package_relative_label` is in `label.rs` (below).
@@ -521,8 +521,9 @@ are replayed in `rule_tests.rs`.
 - **A call** takes keywords only (`Unexpected positional arguments` for a
   Starlark rule, `unexpected positional arguments` for a native one). An
   unknown or private attribute, a value of the wrong type, a label that does
-  not parse, a mandatory attribute left out (`None` counts as left out for a
-  `rule()`, not for a native rule), and a value outside `values` are events
+  not parse, a mandatory attribute left out (`None` counts as left out, for a
+  native rule too: `alias(actual = None)` is missing its `actual`), and a
+  value outside `values` are events
   and the file goes on. A list-typed attribute takes a list, tuple, range,
   dict (its keys), set or depset; a label is a string read in the BUILD
   file's package and through its repo's mapping, or a `Label`; a dict-typed
@@ -551,12 +552,62 @@ are replayed in `rule_tests.rs`.
   `provider(init = struct)`-style crate differences and the crate's generic
   wording are as for `attr.*` (buildfiji-v32).
 
+## `select()` (implemented 2026-09-30, buildfiji-mum.3.6)
+
+`select.rs`. Read off about 1,800 probes of Bazel 9.2.0 and replayed in
+`select_matrix.rs`.
+
+- **The value.** `select(x, no_match_error = "")` takes a non-empty dict (`x`
+  is positional-only) whose keys are label strings or `Label`s, and copies
+  it; keys are not read as labels until an attribute takes the value. It has
+  type `select`, prints `select({"a": 1})`, is always true, and is neither
+  hashable nor iterable. It is a global of BUILD files and `.bzl` files and
+  not of `native`.
+- **`+` and `|`** make a list of elements: a `select()` and a plain value are
+  one each, and `[1] + select(..) + [2]` prints as written (two plain values
+  in a row are added first). Each element has a type (a plain value's, or the
+  type of a `select`'s first value, which is what "select of T" in a message
+  means), and `combine` refuses in Bazel's order. `+`: a plain dict is
+  unsupported; two types that differ are incompatible (list, tuple and range
+  are one type); a dict type is unsupported again. `|`: a plain value that is
+  not a dict is unsupported; neither type a dict is unsupported; exactly one
+  is incompatible. Equality is Java's: dicts ignore order, `1` is not `1.0`,
+  and `no_match_error` counts.
+- **Attributes.** A select is converted branch by branch as the attribute's
+  type, with the error wording `... for each branch in select expression of
+  attribute 'a' of 'r' (including '//:k')`. A key is read like a label
+  attribute's string (`//conditions:default`, written or resolved, is the
+  default condition), two spellings of one label are one branch with the later
+  value, and a `None` branch is the type's zero (a label's stays `None`).
+  Only the attributes Bazel fixes (`visibility`, `tags`, `testonly`,
+  `deprecation`, `compatible_with`, `restricted_to`, `exec_compatible_with`,
+  `package_metadata` (also as `applicable_licenses`), `transitive_configs`,
+  `generator_name`, `exec_group_compatible_with`, a test's `size`, `timeout`,
+  `flaky` and `local`, and every output) refuse one:
+  `attribute "x" is not configurable`. A bool or label attribute cannot be
+  concatenated (`type 'boolean' doesn't support select concatenation`); ints
+  add. `configurable =` of `attr.*` is refused in `rule()`.
+- **What is kept.** `AttrValue::Select(SelectorList)` in `fjfj-graph`: each
+  selector has its branches (labels, in the order written), its
+  `no_match_error` and whether it was *unconditional*, which a plain value and
+  a `select()` written with only the default are. A list that is all
+  unconditional is joined and stored as the plain value, and that is what
+  `existing_rule` shows; any other shows `select({Label("//:a"): ("x",)})`,
+  with a plain value in it as a `select()` of only the default.
+  Duplicate labels are checked in each branch, and a label or a condition that
+  enters a subpackage is an event. Resolving a select against a configuration
+  is buildfiji-136.5's.
+- **Known differences.** A plain dict on the left of `|` (`{} | select(..)`)
+  fails in the crate's words: the dict's `|` has no hook for the right operand.
+  Bazel's `print(select)` and `type(select)` are `<built-in function select>`
+  and `builtin_function_or_method` (buildfiji-v32).
+
 ## Bazel 9.2.0's builtin namespaces, and who owns each name (buildfiji-mum.3)
 
 Read off Bazel 9.2.0 by asking `type(name)` in a BUILD file and in a `.bzl`
 loaded by one, and `dir()` of each namespace. `B` is visible in BUILD files,
 `Z` in `.bzl` files. fjfj has, so far, `depset` (B, Z), `set`, `json`, `proto` (B, Z),
-`struct`, `Label`, `attr`, `provider` and `rule` (Z), `print` and the standard Starlark library, and the natives of
+`struct`, `Label`, `attr`, `provider` and `rule` (Z), `select` (B, Z), `print` and the standard Starlark library, and the natives of
 buildfiji-mum.4.
 
 | Names | Where | Owner |
@@ -569,7 +620,7 @@ buildfiji-mum.4.
 | `attr` (`bool int int_list label label_keyed_string_dict label_list label_list_dict output output_list string string_dict string_keyed_label_dict string_list string_list_dict`) | Z only | buildfiji-mum.3.3, done |
 | `provider` | Z only | buildfiji-mum.3.4, done |
 | `rule` | Z only | buildfiji-mum.3.5, done |
-| `select` | B Z | buildfiji-mum.3.6 |
+| `select` | B Z | buildfiji-mum.3.6, done |
 | `aspect transition exec_group configuration_field subrule analysis_test_transition` | Z only | buildfiji-mum.3.7 |
 | `macro` | Z only | buildfiji-mum.3.8 |
 | `visibility` | Z only | buildfiji-ps4 |

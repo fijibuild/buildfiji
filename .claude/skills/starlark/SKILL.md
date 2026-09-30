@@ -136,3 +136,14 @@ last (`BuildContext::late_event`), and the conversion wording is Bazel's per
 attribute type: add a probe row to `rule_tests.rs` (`rbuild`-style: a `.bzl`
 and a BUILD file, with prints, events and fatal) before changing one.
 Design and known gaps: `docs/design/starlark-and-loading.md`.
+
+## select
+
+`select()` (`select.rs`) is a value holding elements (plain values and `select()`
+dicts), and `+`/`|` between them follow `combine`'s order, which is a table
+read off Bazel, not a rule to reason out: add a row to `select_matrix.rs`'s
+source probes before changing it. An attribute takes one in
+`instantiate::convert_select`, which stores `AttrValue::Select` unless every
+element is unconditional (then the joined plain value). Which attributes refuse
+one is `SchemaAttr::configurable`. Design and known gaps:
+`docs/design/starlark-and-loading.md`.

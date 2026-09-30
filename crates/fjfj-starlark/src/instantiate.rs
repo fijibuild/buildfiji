@@ -27,10 +27,14 @@
 
 use crate::args::{describe, fatal};
 use crate::depset::{depset_to_list, is_depset};
-use crate::label::{display_label, label_of_value};
+use crate::label::{StarlarkLabel, display_label, label_of_value};
 use crate::native::{BuildContext, context_for, location};
+use crate::select;
 use fjfj_graph::package::{PackageError, check_subpackage_crossing};
-use fjfj_graph::rule::{ALIAS, AttrType, AttrValue, FILEGROUP, RuleClass, label_relative_to};
+use fjfj_graph::rule::{
+    ALIAS, AttrType, AttrValue, FILEGROUP, RuleClass, Selector, SelectorList, default_condition,
+    label_relative_to,
+};
 use fjfj_graph::schema::{RuleSchema, SchemaAttr, TEST_SIZES, TEST_TIMEOUTS};
 use fjfj_graph::visibility::Visibility;
 use fjfj_graph::{Label, LabelParseError};
@@ -128,19 +132,15 @@ pub(crate) fn call_rule<'v>(
         };
         match convert(ctx, class, attr, *value, heap) {
             Ok(Some(v)) => {
-                if let Some(message) = check_values(attr, &v) {
+                for message in check_values(attr, &v) {
                     ctx.event(&at, format!("{me}: {message}"));
                 }
                 provided.push(&attr.name);
                 attrs.push((key.to_owned(), v));
             }
-            // `None` says "as if unset". A native rule counts it as given; a
-            // `rule()`'s mandatory attribute does not.
-            Ok(None) => {
-                if !schema.starlark {
-                    provided.push(&attr.name)
-                }
-            }
+            // `None` says "as if unset", which a mandatory attribute does not
+            // forgive.
+            Ok(None) => {}
             Err(message) => event(message),
         }
     }
@@ -338,8 +338,32 @@ fn label_groups(value: &AttrValue) -> Vec<Vec<Label>> {
             vec![entries.iter().map(|(_, l)| l.clone()).collect()]
         }
         AttrValue::LabelListDict(entries) => entries.iter().map(|(_, ls)| ls.clone()).collect(),
+        AttrValue::Select(list) => {
+            let mut groups = conditions(list);
+            groups.extend(in_branches(list, label_groups));
+            groups
+        }
         _ => Vec::new(),
     }
+}
+
+/// `f` of every value a select may give, in order.
+fn in_branches(list: &SelectorList, f: fn(&AttrValue) -> Vec<Vec<Label>>) -> Vec<Vec<Label>> {
+    list.elements
+        .iter()
+        .flat_map(|e| &e.branches)
+        .filter_map(|(_, v)| v.as_ref())
+        .flat_map(f)
+        .collect()
+}
+
+/// The conditions a select names, which reaching into a subpackage is as much
+/// an error for as a value is.
+fn conditions(list: &SelectorList) -> Vec<Vec<Label>> {
+    list.elements
+        .iter()
+        .map(|e| e.branches.iter().map(|(l, _)| l.clone()).collect())
+        .collect()
 }
 
 /// The lists of labels in which a label given twice is an event: a list, and
@@ -349,12 +373,26 @@ fn duplicate_groups(value: &AttrValue) -> Vec<Vec<Label>> {
     match value {
         AttrValue::LabelList(ls) => vec![ls.clone()],
         AttrValue::LabelListDict(entries) => entries.iter().map(|(_, ls)| ls.clone()).collect(),
+        AttrValue::Select(list) => in_branches(list, duplicate_groups),
         _ => Vec::new(),
     }
 }
 
 /// `values = [...]`: the event for a value the attribute may not take.
-fn check_values(attr: &SchemaAttr, value: &AttrValue) -> Option<String> {
+fn check_values(attr: &SchemaAttr, value: &AttrValue) -> Vec<String> {
+    if let AttrValue::Select(list) = value {
+        return list
+            .elements
+            .iter()
+            .flat_map(|e| &e.branches)
+            .filter_map(|(_, v)| v.as_ref())
+            .flat_map(|v| check_values(attr, v))
+            .collect();
+    }
+    check_value(attr, value).into_iter().collect()
+}
+
+fn check_value(attr: &SchemaAttr, value: &AttrValue) -> Option<String> {
     if attr.values.is_empty() {
         return None;
     }
@@ -492,11 +530,117 @@ pub(crate) fn convert<'v>(
     value: Value<'v>,
     heap: Heap<'v>,
 ) -> Result<Option<AttrValue>, String> {
+    let at = format!("attribute '{}' of '{rule}'", attr.name);
+    if let Some((elements, pipe)) = select::view(value) {
+        return convert_select(ctx, attr, &at, &elements, pipe, heap);
+    }
+    convert_at(ctx, attr, &at, value, heap)
+}
+
+/// The key of a `select()`'s branch as a label: the default condition when it
+/// is written as that, else read in the BUILD file's package and repo.
+fn condition<'v>(ctx: &BuildContext<'_>, key: Value<'v>, at: &str) -> Result<Label, String> {
+    if key.unpack_str() == Some("//conditions:default") {
+        return Ok(default_condition());
+    }
+    let label = label_from(ctx, key, at).map_err(|e| e.unwrap_or_else(String::new))?;
+    Ok(if label == default_condition() {
+        default_condition()
+    } else {
+        label
+    })
+}
+
+/// A `select()`, or plain values joined with some: each branch is converted
+/// as the attribute's type, and what no configuration can change is the value
+/// itself.
+fn convert_select<'v>(
+    ctx: &BuildContext<'_>,
+    attr: &SchemaAttr,
+    at: &str,
+    elements: &[select::Element<'v>],
+    pipe: bool,
+    heap: Heap<'v>,
+) -> Result<Option<AttrValue>, String> {
+    if !attr.configurable {
+        // The alias of `package_metadata` goes by that name.
+        let name = if attr.hidden && attr.name == "applicable_licenses" {
+            "package_metadata"
+        } else {
+            &attr.name
+        };
+        return Err(format!("attribute \"{name}\" is not configurable"));
+    }
+    let ty = attr.def.ty;
+    if elements.len() > 1 && matches!(ty, AttrType::Bool | AttrType::Label) {
+        let name = if ty == AttrType::Bool {
+            "boolean"
+        } else {
+            "label"
+        };
+        return Err(format!(
+            "type '{name}' doesn't support select concatenation"
+        ));
+    }
+    let mut selectors: Vec<Selector> = Vec::new();
+    for element in elements {
+        if !element.select {
+            let value = convert_at(ctx, attr, at, element.value, heap)?.or_else(|| ty.zero());
+            selectors.push(Selector {
+                branches: vec![(default_condition(), value)],
+                no_match_error: String::new(),
+                unconditional: true,
+            });
+            continue;
+        }
+        let dict = DictRef::from_value(element.value).expect("a select holds a dict");
+        let mut branches: Vec<(Label, Option<AttrValue>)> = Vec::new();
+        for (key, value) in dict.iter() {
+            let label = condition(ctx, key, at)?;
+            let within = format!(
+                "each branch in select expression of {at} (including '{}')",
+                display_label(&label)
+            );
+            let converted = convert_at(ctx, attr, &within, value, heap)?.or_else(|| ty.zero());
+            match branches.iter_mut().find(|(l, _)| *l == label) {
+                Some(branch) => branch.1 = converted,
+                None => branches.push((label, converted)),
+            }
+        }
+        // Whether it is unconditional is as written, before two spellings of
+        // a label become one.
+        let unconditional = dict.len() == 1
+            && branches
+                .first()
+                .is_some_and(|(l, _)| *l == default_condition());
+        selectors.push(Selector {
+            branches,
+            no_match_error: element.no_match_error.clone(),
+            unconditional,
+        });
+    }
+    let list = SelectorList {
+        elements: selectors,
+        pipe,
+    };
+    if list.elements.iter().all(|s| s.unconditional) {
+        return Ok(list.flatten());
+    }
+    Ok(Some(AttrValue::Select(list)))
+}
+
+/// [`convert`] of a value that is not a select; `at` says where it is, for
+/// the errors (`attribute 'a' of 'r'`, or a branch of a select in it).
+fn convert_at<'v>(
+    ctx: &BuildContext<'_>,
+    attr: &SchemaAttr,
+    at: &str,
+    value: Value<'v>,
+    heap: Heap<'v>,
+) -> Result<Option<AttrValue>, String> {
     if value.is_none() {
         return Ok(None);
     }
-    let name = &attr.name;
-    let at = format!("attribute '{name}' of '{rule}'");
     let wrong_type = |expected: &str| {
         format!(
             "expected value of type '{expected}' for {at}, but got {}",
@@ -547,7 +691,7 @@ pub(crate) fn convert<'v>(
                 .ok_or_else(|| wrong_type("string"))?,
         ),
         AttrType::Label | AttrType::Output => {
-            let label = label_from(ctx, value, &at)
+            let label = label_from(ctx, value, at)
                 .map_err(|e| e.unwrap_or_else(|| wrong_type("string")))?;
             if ty == AttrType::Output {
                 let written = value
@@ -612,7 +756,7 @@ pub(crate) fn convert<'v>(
         | AttrType::StringKeyedLabelDict
         | AttrType::LabelListDict => {
             let dict = DictRef::from_value(value).ok_or_else(|| wrong_type(ty.name()))?;
-            convert_dict(ctx, ty, &at, &dict, heap)?
+            convert_dict(ctx, ty, at, &dict, heap)?
         }
     }))
 }
@@ -1008,5 +1152,30 @@ pub(crate) fn attr_to_value<'v>(
                 heap.alloc(AllocTuple(v.iter().map(|l| heap.alloc(relative(l))))),
             )
         }))),
+        // Each selector is a `select()` of its branches, labelled as the
+        // conditions are, and a value that was written plain is one with
+        // only the default.
+        AttrValue::Select(list) => select::alloc(
+            heap,
+            list.elements
+                .iter()
+                .map(|selector| {
+                    let branches = selector.branches.iter().map(|(label, value)| {
+                        (
+                            heap.alloc(StarlarkLabel::from(label.clone())),
+                            value
+                                .as_ref()
+                                .map_or(Value::new_none(), |v| attr_to_value(ctx, v, heap)),
+                        )
+                    });
+                    select::Element {
+                        select: true,
+                        value: heap.alloc(AllocDict(branches)),
+                        no_match_error: selector.no_match_error.clone(),
+                    }
+                })
+                .collect(),
+            list.pipe,
+        ),
     }
 }

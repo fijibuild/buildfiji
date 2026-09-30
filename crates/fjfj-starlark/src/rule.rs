@@ -404,11 +404,20 @@ fn make_rule<'v>(
     if let Some(attrs) = arg("attrs").and_then(DictRef::from_value) {
         for (name, descriptor) in attrs.iter() {
             let view = attribute_view(descriptor).expect("checked as bound");
+            let name = name.unpack_str().expect("checked as bound");
+            // `configurable` is for the attributes of built-in rules only.
+            if view.def.configurable.is_some() {
+                return Err(fatal(format!(
+                    "attribute '{name}' has the 'configurable' argument set, which is not \
+                     allowed in rule definitions"
+                )));
+            }
             own.push(SchemaAttr {
-                name: name.unpack_str().expect("checked as bound").to_owned(),
+                name: name.to_owned(),
                 def: view.def.clone(),
                 values: value_strings(view.def.ty, &view.values),
                 hidden: false,
+                configurable: !matches!(view.def.ty, AttrType::Output | AttrType::OutputList),
             });
             descriptors.push(descriptor);
         }

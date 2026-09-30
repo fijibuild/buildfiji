@@ -32,15 +32,20 @@ pub struct SchemaAttr {
     pub values: Vec<String>,
     /// `native.existing_rule` never lists it, even when it is set.
     pub hidden: bool,
+    /// Whether a `select()` may be its value. Outputs never can, and
+    /// Bazel fixes a few of the attributes every rule has (`visibility`,
+    /// `tags`, ...); all others can.
+    pub configurable: bool,
 }
 
 impl SchemaAttr {
     fn new(name: &str, def: AttrDef) -> SchemaAttr {
         SchemaAttr {
             name: name.to_owned(),
-            def,
             values: Vec::new(),
             hidden: false,
+            configurable: !matches!(def.ty, AttrType::Output | AttrType::OutputList),
+            def,
         }
     }
 
@@ -114,6 +119,7 @@ impl RuleSchema {
                 .iter()
                 .map(|spec| SchemaAttr::new(spec.name, AttrDef::from(spec))),
         );
+        fixed(&mut attrs, FIXED_UNIVERSAL);
         RuleSchema {
             attrs,
             test: false,
@@ -131,8 +137,11 @@ impl RuleSchema {
         outputs: Vec<(String, String)>,
     ) -> Result<RuleSchema, SchemaError> {
         let mut attrs = universal(test);
+        fixed(&mut attrs, FIXED_UNIVERSAL);
         if test {
-            attrs.extend(test_attrs());
+            let mut own_test = test_attrs();
+            fixed(&mut own_test, FIXED_TEST);
+            attrs.extend(own_test);
         } else if executable {
             attrs.extend(executable_attrs());
         }
@@ -150,6 +159,7 @@ impl RuleSchema {
         if !declares_licenses {
             let mut applicable = without("applicable_licenses", AttrType::LabelList);
             applicable.hidden = true;
+            applicable.configurable = false;
             attrs.push(applicable);
         }
         Ok(RuleSchema {
@@ -159,6 +169,36 @@ impl RuleSchema {
             starlark: true,
             outputs,
         })
+    }
+}
+
+/// The attributes every rule has that a `select()` may not set.
+const FIXED_UNIVERSAL: &[&str] = &[
+    "name",
+    "visibility",
+    "transitive_configs",
+    "deprecation",
+    "tags",
+    "generator_name",
+    "generator_function",
+    "generator_location",
+    "testonly",
+    "compatible_with",
+    "restricted_to",
+    "package_metadata",
+    "applicable_licenses",
+    "exec_compatible_with",
+    "exec_group_compatible_with",
+];
+
+/// The same for a test's own.
+const FIXED_TEST: &[&str] = &["size", "timeout", "flaky", "local"];
+
+fn fixed(attrs: &mut [SchemaAttr], names: &[&str]) {
+    for attr in attrs {
+        if names.contains(&attr.name.as_str()) {
+            attr.configurable = false;
+        }
     }
 }
 
@@ -345,5 +385,56 @@ mod tests {
         let x = schema.attr("_x").unwrap();
         assert!(!x.settable() && !x.shown());
         assert!(schema.attr("name").unwrap().settable());
+    }
+
+    #[test]
+    fn outputs_and_a_few_of_the_universal_attributes_are_not_configurable() {
+        let plain = RuleSchema::starlark(vec![], false, false, vec![]).unwrap();
+        let fixed: Vec<&str> = plain
+            .attrs
+            .iter()
+            .filter(|a| !a.configurable)
+            .map(|a| a.name.as_str())
+            .collect();
+        assert_eq!(
+            fixed,
+            [
+                "name",
+                "visibility",
+                "transitive_configs",
+                "deprecation",
+                "tags",
+                "generator_name",
+                "generator_function",
+                "generator_location",
+                "testonly",
+                "compatible_with",
+                "restricted_to",
+                "package_metadata",
+                "exec_compatible_with",
+                "exec_group_compatible_with",
+                "applicable_licenses",
+            ]
+        );
+        let test = RuleSchema::starlark(vec![], true, false, vec![]).unwrap();
+        for name in ["size", "timeout", "flaky", "local"] {
+            assert!(!test.attr(name).unwrap().configurable, "{name}");
+        }
+        for name in ["shard_count", "args", "features", "target_compatible_with"] {
+            assert!(test.attr(name).unwrap().configurable, "{name}");
+        }
+        let own = vec![
+            SchemaAttr::new("o", AttrDef::new(AttrType::Output)),
+            SchemaAttr::new("s", AttrDef::new(AttrType::String)),
+            // Only a test's own `size` is fixed.
+            SchemaAttr::new("size", AttrDef::new(AttrType::String)),
+        ];
+        let schema = RuleSchema::starlark(own, false, false, vec![]).unwrap();
+        assert!(!schema.attr("o").unwrap().configurable);
+        assert!(schema.attr("s").unwrap().configurable);
+        assert!(schema.attr("size").unwrap().configurable);
+        let filegroup = RuleSchema::native(&FILEGROUP);
+        assert!(filegroup.attr("srcs").unwrap().configurable);
+        assert!(!filegroup.attr("visibility").unwrap().configurable);
     }
 }

@@ -41,7 +41,6 @@ const SKIPPED: &[&str] = &[
     "OutputGroupInfo",
     "transition(",
     "analysis_test_transition",
-    "select(",
     "print(attr.string)",
     "print(attr.label_list)",
     "repr(attr.label)",

@@ -32,6 +32,11 @@ mod provider_tests;
 mod rule;
 #[cfg(test)]
 mod rule_tests;
+mod select;
+#[cfg(test)]
+mod select_matrix;
+#[cfg(test)]
+mod select_tests;
 mod set;
 mod structs;
 #[cfg(test)]

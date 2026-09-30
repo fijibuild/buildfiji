@@ -199,6 +199,10 @@ where
     }
 
     fn add(&self, rhs: Value<'v>, heap: Heap<'v>) -> Option<starlark::Result<Value<'v>>> {
+        // A select takes the sum over (`select`'s `radd`).
+        if crate::select::is_select(rhs) {
+            return None;
+        }
         let Some(theirs) = fields_of(rhs) else {
             return Some(Err(unsupported_binary("+", "struct", rhs.get_type())));
         };
