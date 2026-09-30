@@ -58,6 +58,15 @@ Suspicious pairs worth a second look: `haiku+high` or above (under-modelled), `f
 
 A bead is ready to route only if its description states: the Bazel behaviour being matched (flag, builtin, doc link), the crate(s) it lands in, how it will be verified (test, conformance fixture, benchmark number), and what is explicitly out of scope. Spikes must name the question and the form of the answer. Decisions must list options considered.
 
+## Acceptance criteria are enforced
+
+`validation.on-create` is `error` (in `.beads/config.yaml`): `bd create` of a
+task, feature or bug is refused without an `## Acceptance Criteria` section.
+Pass `--acceptance "..."` (or `--validate`-style description sections) at
+creation. Criteria are observable checks, not a restatement of the title:
+the probe table that matches Bazel, the test that must pass, the flag or
+message that must appear. `bd lint` reports beads that predate the rule.
+
 ## Labels and `--parent`
 
 `bd create --parent=<X>` copies X's labels onto the child. Epics have none,
