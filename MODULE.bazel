@@ -61,6 +61,9 @@ crate.from_cargo(
 crate.annotation(
     crate = "starlark",
     patch_args = ["-p1"],
-    patches = ["//third_party/starlark:0001-percent-s-is-str.patch"],
+    patches = [
+        "//third_party/starlark:0001-percent-s-is-str.patch",
+        "//third_party/starlark:0002-no-recursion.patch",
+    ],
 )
 use_repo(crate, "crates")

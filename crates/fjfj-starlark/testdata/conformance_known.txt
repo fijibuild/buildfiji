@@ -2,8 +2,6 @@
 # The test fails if a chunk is missing from this list and fails, or is here and passes.
 
 # buildfiji-2r5: recursion is an error in Bazel
-function.star:131
-function.star:138
 
 # buildfiji-gpj: a huge repeat panics the crate
 list.star:1

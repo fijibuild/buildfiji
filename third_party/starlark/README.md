@@ -16,7 +16,9 @@ cp -r "$R" /tmp/a && cp -r "$R" /tmp/b
 (cd /tmp && diff -u a/src/... b/src/... | sed 's|^--- a/|--- a/|') > third_party/starlark/NNNN-what.patch
 ```
 
-Number them in the order they apply, say in the patch's first lines which bead needs
+A patch that changes more than one file needs a `diff --git a/x b/x` line before
+each file's `---`/`+++` lines: Bazel's patch applies only the last file of a plain
+multi-file diff. Number them in the order they apply, say in the patch's first lines which bead needs
 it and whether it went upstream, add it to the annotation in `MODULE.bazel`, and
 replay the probe row that was skipped for it. When the crate is upgraded, a patch
 that no longer applies fails the build, which is the reminder.
@@ -24,3 +26,4 @@ that no longer applies fails the build, which is the reminder.
 | patch | bead | what |
 |---|---|---|
 | 0001-percent-s-is-str | buildfiji-b9c | `"%s" % x` formats a non-string with `str()`, not `repr()` |
+| 0002-no-recursion | buildfiji-2r5 | a `def` called while it is already being called is `function 'f' called recursively` |
