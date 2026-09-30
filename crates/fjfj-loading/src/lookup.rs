@@ -200,7 +200,7 @@ impl PackageLookup {
     }
 
     /// Is `package` at or below a `.bazelignore` directory?
-    fn is_ignored(&self, package: &str) -> bool {
+    pub fn is_ignored(&self, package: &str) -> bool {
         if self.ignored.is_empty() {
             return false;
         }

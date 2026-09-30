@@ -25,20 +25,29 @@ pub enum LabelParseError {
     NotAbsolute(String),
     #[error("invalid label '{0}': package name cannot contain '...'")]
     PackageWildcard(String),
-    #[error("invalid package name '{package}': {source}{}", package_hint(source))]
-    Package { package: String, source: LabelError },
+    #[error(
+        "invalid package name '{package}': {source}{}",
+        package_hint(suggestion)
+    )]
+    Package {
+        package: String,
+        source: LabelError,
+        /// For a label written with no `:`, the last `/`-segment of its
+        /// package, which is most likely what was meant as the target.
+        suggestion: Option<String>,
+    },
     #[error("invalid target name '{name}': {source}")]
     Target { name: String, source: LabelError },
     #[error("invalid repository name '{repo}': {source}")]
     Repo { repo: String, source: LabelError },
 }
 
-/// Bazel suggests `:` when a package name ends in `/`, because that is what
-/// `//p/q/` almost always means.
-fn package_hint(source: &LabelError) -> &'static str {
-    match source {
-        LabelError::PackageEndsWithSlash => " (perhaps you meant \":\"?)",
-        _ => "",
+/// A package name that is wrong in a label with no `:` is probably a target
+/// name that lost its colon, so Bazel suggests where the colon might go.
+fn package_hint(suggestion: &Option<String>) -> String {
+    match suggestion {
+        Some(target) => format!(" (perhaps you meant \":{target}\"?)"),
+        None => String::new(),
     }
 }
 
@@ -73,6 +82,7 @@ impl Label {
         }
         let repo = repo.unwrap_or(ctx.repo);
 
+        let mut colonless_package = None;
         let (package, name) = if repo_only {
             // `@r` is shorthand for `@r//:r`.
             ("", repo)
@@ -80,7 +90,11 @@ impl Label {
             match absolute.split_once(':') {
                 Some((package, name)) => (package, name),
                 // `//p/q` is `//p/q:q`.
-                None => (absolute, absolute.rsplit('/').next().unwrap_or("")),
+                None => {
+                    let last = absolute.rsplit('/').next().unwrap_or("");
+                    colonless_package = Some(last);
+                    (absolute, last)
+                }
             }
         } else if let Some(name) = rest.strip_prefix(':') {
             (ctx.package, name)
@@ -96,6 +110,7 @@ impl Label {
         label::validate_package_name(package).map_err(|source| LabelParseError::Package {
             package: package.to_owned(),
             source,
+            suggestion: colonless_package.map(str::to_owned),
         })?;
         label::validate_target_name(name).map_err(|source| LabelParseError::Target {
             name: name.to_owned(),
@@ -190,6 +205,44 @@ mod tests {
                 "//p/q/",
                 "invalid package name 'p/q/': package names may not end with '/' \
                  (perhaps you meant \":\"?)",
+            ),
+            (
+                "//p/q/:x",
+                "invalid package name 'p/q/': package names may not end with '/'",
+            ),
+            (
+                "//a//b",
+                "invalid package name 'a//b': package names may not contain '//' path separators \
+                 (perhaps you meant \":b\"?)",
+            ),
+            (
+                "//a///b",
+                "invalid package name 'a///b': package names may not contain '//' path separators \
+                 (perhaps you meant \":b\"?)",
+            ),
+            (
+                "//a//b//c",
+                "invalid package name 'a//b//c': package names may not contain '//' path \
+                 separators (perhaps you meant \":c\"?)",
+            ),
+            (
+                "//a/b//",
+                "invalid package name 'a/b//': package names may not end with '/' \
+                 (perhaps you meant \":\"?)",
+            ),
+            (
+                "//a/./b",
+                "invalid package name 'a/./b': package name component contains only '.' \
+                 characters (perhaps you meant \":b\"?)",
+            ),
+            (
+                "//a/./b:x",
+                "invalid package name 'a/./b': package name component contains only '.' characters",
+            ),
+            (
+                "//a/b/.",
+                "invalid package name 'a/b/.': package name component contains only '.' \
+                 characters (perhaps you meant \":.\"?)",
             ),
             ("//p:", "invalid target name '': empty target name"),
             ("//", "invalid target name '': empty target name"),

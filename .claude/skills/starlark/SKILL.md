@@ -46,6 +46,16 @@ those must be complete enough to express the native modules in Starlark.
 
 When a corpus file fails to parse, check the dialect before the parser.
 
+## BUILD evaluation and `native.*`
+
+`fjfj_starlark::evaluate_build_file` turns a BUILD file into a
+`fjfj_graph::package::Package`. `build_globals()` puts `glob`, `package`,
+`filegroup` and the rest directly in scope; a loader that evaluates `.bzl`
+files must use `bzl_globals()`, which has them only under `native`. Fatal
+errors stop the file; *events* (attribute errors) are recorded and fail the
+package at the end. Every message is copied from Bazel 9.2.0 — probe before
+changing one. Design: `docs/design/starlark-and-loading.md`.
+
 ## Memory: never retain an AST
 
 A retained `AstModule` costs 6-7x its source text — 870 MB for a

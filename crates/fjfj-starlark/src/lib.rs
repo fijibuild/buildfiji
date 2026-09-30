@@ -6,8 +6,12 @@
 //! `native.*`, `select`, ...) are supplied by this crate as globals.
 
 mod dialect;
+mod native;
 
 pub use dialect::{FileKind, build_dialect, bzl_dialect, parse};
+pub use native::{
+    BuildFile, BuildFileError, BuildFileOutput, build_globals, bzl_globals, evaluate_build_file,
+};
 
 use starlark::environment::{FrozenModule, Globals, Module};
 use starlark::eval::{Evaluator, FileLoader};

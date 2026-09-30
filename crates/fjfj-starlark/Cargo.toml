@@ -6,8 +6,13 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+fjfj-graph.workspace = true
+fjfj-loading.workspace = true
 starlark.workspace = true
 starlark_syntax.workspace = true
 anyhow.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

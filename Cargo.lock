@@ -1089,8 +1089,11 @@ name = "fjfj-starlark"
 version = "0.0.1"
 dependencies = [
  "anyhow",
+ "fjfj-graph",
+ "fjfj-loading",
  "starlark",
  "starlark_syntax",
+ "tempfile",
  "thiserror",
  "tracing",
 ]

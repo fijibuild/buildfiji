@@ -36,9 +36,9 @@ and remote executors with Bazel.
 | `fjfj-cli` | Command dispatch, server mode, output formatting. |
 | `fjfj-bazel-compat` | Bazel flag parsing, `.bazelrc`, target patterns, unknown-flag policy. |
 | `fjfj-bzlmod` | `MODULE.bazel` evaluation, module discovery, Minimal Version Selection, registry (BCR) client. |
-| `fjfj-starlark` | Starlark evaluation, Bazel builtins (`rule`, `aspect`, `provider`, `native`, `select`, `ctx`). |
+| `fjfj-starlark` | Starlark evaluation, Bazel builtins (`rule`, `aspect`, `provider`, `native`, `select`, `ctx`); `native.*` and `evaluate_build_file` (a BUILD file into a `Package`) are here. |
 | `fjfj-graph` | Labels, packages, targets, configured targets, aspects, actions, digests. Pure data. |
-| `fjfj-loading` | The loading phase's view of the filesystem: which directories are packages (BUILD lookup, `.bazelignore`, `--deleted_packages`, the `//...` walk). |
+| `fjfj-loading` | The loading phase's view of the filesystem: which directories are packages (BUILD lookup, `.bazelignore`, `--deleted_packages`, the `//...` walk) and `glob`. |
 | `fjfj-exec` | Action scheduler: strategy selection, action cache lookup, local vs remote. |
 | `fjfj-sandbox` | Local execution strategies (`local`, linux namespaces, darwin seatbelt, OCI). |
 | `fjfj-remote` | REAPI client: CAS, action cache, execution, capabilities. Disk cache. |

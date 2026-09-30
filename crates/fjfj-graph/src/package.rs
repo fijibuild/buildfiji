@@ -2,12 +2,13 @@
 //! file must follow while declaring them (buildfiji-mum.5).
 //!
 //! Pure data. What is on disk (which directories are packages) reaches this
-//! module as a predicate, so `fjfj-graph` stays free of I/O. Native rules
-//! and the Starlark bindings that call [`PackageBuilder`] belong to
-//! buildfiji-mum.4.
+//! module as a predicate, so `fjfj-graph` stays free of I/O. The Starlark
+//! bindings that call [`PackageBuilder`] are in `fjfj-starlark`
+//! (buildfiji-mum.4).
 
 use crate::Label;
 use crate::label::{self, LabelError};
+use crate::rule::AttrValue;
 use crate::visibility::{PackageGroup, Visibility};
 use std::collections::BTreeMap;
 
@@ -16,6 +17,10 @@ use std::collections::BTreeMap;
 pub enum TargetKind {
     Rule {
         rule_class: String,
+        /// The attributes the BUILD file set, in the order it wrote them,
+        /// `name` and `visibility` excluded. What it did not set is the rule
+        /// class's default, which the class knows.
+        attrs: Vec<(String, AttrValue)>,
     },
     /// A source file exported with `exports_files`. Other files in the
     /// package are not targets.
@@ -38,11 +43,35 @@ impl Target {
     /// How Bazel names this target in a conflict message.
     fn describe(&self) -> String {
         match &self.kind {
-            TargetKind::Rule { rule_class } => format!("{rule_class} rule"),
+            TargetKind::Rule { rule_class, .. } => format!("{rule_class} rule"),
             TargetKind::SourceFile => "source file".to_owned(),
             TargetKind::PackageGroup(_) => "package group".to_owned(),
         }
     }
+}
+
+/// What `package()` sets besides `default_visibility`. Rules do not see
+/// these until analysis: `native.existing_rule` shows only what a rule set
+/// itself.
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+pub struct PackageDefaults {
+    pub testonly: bool,
+    pub deprecation: Option<String>,
+    pub compatible_with: Vec<Label>,
+    pub restricted_to: Vec<Label>,
+    pub features: Vec<String>,
+    pub hdrs_check: Option<String>,
+    pub licenses: Vec<String>,
+    /// `default_package_metadata`, or the deprecated
+    /// `default_applicable_licenses`; giving both is an error.
+    pub package_metadata: Vec<Label>,
+}
+
+/// Every argument of one `package()` call.
+#[derive(Debug, Clone, Default)]
+pub struct PackageSettings {
+    pub default_visibility: Option<Visibility>,
+    pub defaults: PackageDefaults,
 }
 
 /// A package, once its BUILD file has been evaluated.
@@ -52,6 +81,8 @@ pub struct Package {
     pub name: String,
     /// From `package(default_visibility = ...)`; private if never given.
     pub default_visibility: Visibility,
+    /// The other `package()` settings; empty if it was never called.
+    pub defaults: PackageDefaults,
     targets: Vec<Target>,
     index: BTreeMap<String, usize>,
 }
@@ -167,6 +198,7 @@ pub struct PackageBuilder<'a> {
     is_package: &'a dyn Fn(&str) -> bool,
     package_called: bool,
     default_visibility: Visibility,
+    defaults: PackageDefaults,
     targets: Vec<Target>,
     index: BTreeMap<String, usize>,
 }
@@ -185,31 +217,44 @@ impl<'a> PackageBuilder<'a> {
             is_package,
             package_called: false,
             default_visibility: Visibility::private(),
+            defaults: PackageDefaults::default(),
             targets: Vec::new(),
             index: BTreeMap::new(),
         }
     }
 
     /// `package(...)`: allowed once, before or after any target.
-    pub fn call_package(
-        &mut self,
-        default_visibility: Option<Visibility>,
-    ) -> Result<(), PackageError> {
+    pub fn call_package(&mut self, settings: PackageSettings) -> Result<(), PackageError> {
         if self.package_called {
             return Err(PackageError::PackageCalledTwice);
         }
         self.package_called = true;
-        if let Some(v) = default_visibility {
+        if let Some(v) = settings.default_visibility {
             self.default_visibility = v;
         }
+        self.defaults = settings.defaults;
         Ok(())
     }
 
-    /// Declare a rule instance. `location` is `file:line:col`.
+    /// Declare a rule instance whose attributes the caller does not record.
+    /// `location` is `file:line:col`.
     pub fn add_rule(
         &mut self,
         name: &str,
         rule_class: &str,
+        visibility: Option<Visibility>,
+        location: &str,
+    ) -> Result<(), PackageError> {
+        self.add_rule_with(name, rule_class, Vec::new(), visibility, location)
+    }
+
+    /// [`add_rule`](Self::add_rule), recording the attributes the BUILD file
+    /// set (see [`TargetKind::Rule`]).
+    pub fn add_rule_with(
+        &mut self,
+        name: &str,
+        rule_class: &str,
+        attrs: Vec<(String, AttrValue)>,
         visibility: Option<Visibility>,
         location: &str,
     ) -> Result<(), PackageError> {
@@ -223,6 +268,7 @@ impl<'a> PackageBuilder<'a> {
             name: name.to_owned(),
             kind: TargetKind::Rule {
                 rule_class: rule_class.to_owned(),
+                attrs,
             },
             visibility,
             location: location.to_owned(),
@@ -282,11 +328,28 @@ impl<'a> PackageBuilder<'a> {
         Ok(())
     }
 
+    /// The rule called `name`, if one has been declared. Exported files and
+    /// package groups are targets but not rules.
+    pub fn rule(&self, name: &str) -> Option<&Target> {
+        self.index
+            .get(name)
+            .map(|&i| &self.targets[i])
+            .filter(|t| matches!(t.kind, TargetKind::Rule { .. }))
+    }
+
+    /// The rules declared so far, in declaration order.
+    pub fn rules(&self) -> impl Iterator<Item = &Target> {
+        self.targets
+            .iter()
+            .filter(|t| matches!(t.kind, TargetKind::Rule { .. }))
+    }
+
     pub fn build(self) -> Package {
         Package {
             repo: self.repo,
             name: self.name,
             default_visibility: self.default_visibility,
+            defaults: self.defaults,
             targets: self.targets,
             index: self.index,
         }
@@ -444,10 +507,14 @@ mod tests {
         let is_pkg = packages(&[]);
         let mut b = PackageBuilder::new("", "a", &is_pkg);
         b.add_rule("before", "filegroup", None, "l").unwrap();
-        b.call_package(Some(Visibility::public())).unwrap();
+        b.call_package(PackageSettings {
+            default_visibility: Some(Visibility::public()),
+            ..PackageSettings::default()
+        })
+        .unwrap();
         b.add_rule("after", "filegroup", None, "l").unwrap();
         assert_eq!(
-            message(b.call_package(None)),
+            message(b.call_package(PackageSettings::default())),
             "'package' can only be used once per BUILD file"
         );
         let p = b.build();

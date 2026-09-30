@@ -166,6 +166,81 @@ names the behaviour it copies.
 - **Not here.** Enforcing visibility on a dependency edge is an analysis
   step (buildfiji-8sq); load visibility reuses these types (buildfiji-ps4).
 
+## `native.*` for BUILD files (implemented 2026-09-30, buildfiji-mum.4)
+
+Three crates, split by I/O again. `fjfj-loading::glob` walks the tree;
+`fjfj-graph::rule` holds the attribute schema of the two rules Bazel builds
+in that need no Starlark (`filegroup`, `alias`) and `AttrValue`;
+`fjfj-starlark::native` binds all of it to Starlark and drives
+`PackageBuilder`. `evaluate_build_file` is the entry point: it returns the
+`Package` and what `print()` wrote, or the events that failed the package.
+Every rule below was read off Bazel 9.2.0, and each test names what it copies.
+
+- **Where the functions live.** A BUILD file has `glob`, `package`,
+  `package_group`, `exports_files`, `existing_rule(s)`, `filegroup`, `alias`,
+  `package_name`, `repository_name` and `repo_name` as globals and has no
+  `native`. A `.bzl` has them only as `native.x` (`bzl_globals()`), and
+  calling one while a `.bzl` *loads* is an error ("can only be used while
+  evaluating a BUILD file or a legacy macro"), while calling one from a macro
+  a BUILD file invokes works. The mechanism is `Evaluator::extra`: the BUILD
+  file's evaluator carries the context and a loading `.bzl`'s does not.
+- **Two kinds of error.** A *fatal* error stops the file with a traceback:
+  bad arguments to `glob`, `package`, `package_group`, `exports_files`, a
+  name conflict, an illegal rule name. An *event* is recorded and the file
+  goes on, so one run reports several: unknown or mistyped rule attributes, a
+  missing mandatory one, a duplicate label, a bad `package_group` spec. Events
+  fail the package at the end. A rule with attribute errors is still declared
+  (a later rule of the same name conflicts with it), with the bad attributes
+  taken as unset.
+- **glob.** Sorted by bytes, no duplicates. `*` matches within a segment,
+  `**` is a whole segment of zero or more directories, `?` is an error, and
+  `[a]` and `{a,b}` are literal. A dot-file is matched by a segment that is
+  exactly `*` or starts with a literal `.`, and by no other that starts with
+  a wildcard, so `*` finds `.hidden.txt` and `*.txt` does not. Directories
+  are dropped by default (`exclude_directories = 1`; any int counts, a bool is
+  a type error), and `sub/**` lists `sub` itself only when they are kept. A
+  directory that is a package is invisible: not listed, not entered. A
+  `.bazelignore`d one is listed but not entered, and a `--deleted_packages`
+  one is ordinary. Symlinks are followed; a dangling one is absent; one that
+  leads back to a directory being walked fails the package, and `ELOOP` from
+  a two-link cycle is an I/O error. With `allow_empty = False` (the default in
+  Bazel 9) each `include` pattern must match something, naming the first that
+  does not, and something must survive `exclude`. `exclude` is looser: a
+  pattern without `*` or `?` is compared to whole paths as a string (so `sub`
+  does not exclude `sub/x`), one with a wildcard is matched segment-wise with
+  `?` as any character and is checked for empty segments and misplaced `**`.
+- **Arguments.** Bazel's natives do not word argument errors alike, so
+  `bind` takes the wording per function: `glob`, `exports_files` and
+  `existing_rule` use a declared signature ("accepts no more than 4 positional
+  arguments", "got unexpected keyword argument"), `package` its own
+  ("unexpected keyword argument: x"), `package_group` a third. Sequence
+  parameters take a list or tuple and reject a string. `package()` accepts
+  `default_visibility`, `default_testonly`, `default_deprecation`,
+  `default_compatible_with`, `default_restricted_to`, `default_hdrs_check`,
+  `licenses`, `default_applicable_licenses`, `default_package_metadata` and
+  `features`, and setting both metadata spellings is an error.
+- **Rule attributes.** `filegroup` takes `srcs`, `data`, `output_group`,
+  `output_licenses`, `licenses`, `distribs` and the common ones; `alias`
+  takes `actual` (mandatory, one label) and the common ones but not `srcs`,
+  `data`, `licenses` or `distribs`. `None` means "as if unset" for every
+  attribute, even `actual`. Every label list except `visibility` rejects a
+  duplicate, however it was spelled. An unknown attribute gets Bazel's "did
+  you mean" when an attribute is within a third of its length in edit distance
+  (`rule::suggest`, fitted to two dozen probed spellings).
+- **existing_rule(s).** A dict of what the rule set plus its class's
+  defaults, in Bazel's attribute order: lists as tuples, labels relative to
+  the package (`:x`, `//p:x`, `@@r//p:x`). Attributes whose default is unset
+  (`testonly`, `deprecation`, ...) are absent until set, and `package()`'s
+  defaults never appear. Only rules are listed: not exported files, not
+  package groups. **Deviation:** Bazel returns a live read-only `Map` view;
+  fjfj returns a snapshot dict (buildfiji-ie2).
+- **Locations.** `file:line:col` where the column is the call's `(`, which is
+  what Bazel prints, and conflict messages quote it.
+- **Not here.** `select` and `Label` (buildfiji-mum.3), the native rules other
+  than `filegroup` and `alias` (buildfiji-136.10), and `subpackages`,
+  `package_default_visibility`, `module_name`, `module_version` and
+  `package_relative_label` (buildfiji-hrx).
+
 ## bzlmod: module resolution (implemented 2026-09-03, buildfiji-mum.6)
 
 `crates/fjfj-bzlmod` evaluates `MODULE.bazel`, walks out to the whole

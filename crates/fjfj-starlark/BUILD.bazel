@@ -8,10 +8,19 @@ rust_library(
     crate_name = "fjfj_starlark",
     edition = "2024",
     version = "0.0.1",
-    deps = ["@crates//:anyhow", "@crates//:starlark_syntax", "@crates//:starlark", "@crates//:thiserror", "@crates//:tracing", ],
+    deps = [
+        "//crates/fjfj-graph",
+        "//crates/fjfj-loading",
+        "@crates//:anyhow",
+        "@crates//:starlark",
+        "@crates//:starlark_syntax",
+        "@crates//:thiserror",
+        "@crates//:tracing",
+    ],
 )
 
 rust_test(
     name = "fjfj-starlark_test",
     crate = ":fjfj-starlark",
+    deps = ["@crates//:tempfile"],
 )

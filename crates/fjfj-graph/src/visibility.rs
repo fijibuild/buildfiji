@@ -68,6 +68,13 @@ pub enum SpecError {
     NotAPackageSpec(String),
     #[error("invalid package name '{0}'")]
     Malformed(String),
+    /// `//p:q`: a target, where a package was wanted. Bazel builds
+    /// `//p:q:__pkg__` from it and reports that name.
+    #[error(
+        "invalid package name '{spec}': invalid target name '{name}:__pkg__': \
+         target names may not contain ':'"
+    )]
+    NamedTarget { spec: String, name: String },
     #[error(transparent)]
     Label(#[from] LabelParseError),
 }
@@ -117,21 +124,38 @@ fn parse_scope(body: &str, repo: &str) -> Option<Result<PackageScope, SpecError>
         }));
     }
     let named_a_target = body.contains(':');
-    Some(parse(body).and_then(|l| match l.name.as_str() {
-        "__subpackages__" => Ok(PackageScope::Subpackages {
-            repo: l.repo,
-            package: l.package,
-        }),
-        // `//p` is `//p:p`, and `//p:__pkg__` names the same package.
-        "__pkg__" => Ok(PackageScope::Package {
-            repo: l.repo,
-            package: l.package,
-        }),
-        _ if !named_a_target => Ok(PackageScope::Package {
-            repo: l.repo,
-            package: l.package,
-        }),
-        _ => Err(SpecError::Malformed(body.to_owned())),
+    // `//p:q:r` never gets as far as being a label: Bazel has already
+    // appended `:__pkg__` and found a `:` in the name.
+    if let Some((_, name)) = body.split_once(':')
+        && name.contains(':')
+    {
+        return Some(Err(SpecError::NamedTarget {
+            spec: body.to_owned(),
+            name: name.to_owned(),
+        }));
+    }
+    Some(parse(body).and_then(|l| {
+        match l.name.as_str() {
+            "__subpackages__" => Ok(PackageScope::Subpackages {
+                repo: l.repo,
+                package: l.package,
+            }),
+            // `//p` is `//p:p`, and `//p:__pkg__` names the same package.
+            "__pkg__" => Ok(PackageScope::Package {
+                repo: l.repo,
+                package: l.package,
+            }),
+            _ if !named_a_target => Ok(PackageScope::Package {
+                repo: l.repo,
+                package: l.package,
+            }),
+            _ => Err(SpecError::NamedTarget {
+                spec: body.to_owned(),
+                name: body
+                    .split_once(':')
+                    .map_or_else(String::new, |(_, name)| name.to_owned()),
+            }),
+        }
     }))
 }
 
@@ -297,6 +321,22 @@ mod tests {
             PackageSpec::parse("c", "").unwrap_err().to_string(),
             "invalid package name 'c': must start with '//', '@', or be 'public' or 'private'"
         );
+    }
+
+    /// Bazel reads `//p:q` as `//p:q:__pkg__` and complains about that name.
+    #[test]
+    fn a_target_is_not_a_package_spec() {
+        for (input, name) in [("//a:b", "b"), ("//a:b:c", "b:c"), ("-//a:b", "b")] {
+            let shown = input.trim_start_matches('-');
+            assert_eq!(
+                PackageSpec::parse(input, "").unwrap_err().to_string(),
+                format!(
+                    "invalid package name '{shown}': invalid target name '{name}:__pkg__': \
+                     target names may not contain ':'"
+                ),
+                "{input}"
+            );
+        }
     }
 
     #[test]
