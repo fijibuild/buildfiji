@@ -18,6 +18,7 @@ use crate::eval::{
 use crate::extension_repos::ExtensionInstance;
 use crate::module::{Module, ModuleKey};
 use crate::overrides::{ModuleOverride, NonRegistryOverride, RepoRule, RepoSpec};
+use crate::registry::Registry;
 use crate::selection::{self, Overrides, Selection};
 use crate::version::Version;
 
@@ -151,6 +152,45 @@ pub struct Resolution {
 }
 
 impl Resolution {
+    /// The resolution of a workspace whose root module depends on nothing
+    /// that needs fetching: just the root, for tests and tools that run
+    /// extensions and repository rules of the main repository.
+    pub fn root_only(root: Module) -> Resolution {
+        Resolution {
+            selection: Selection {
+                resolved: vec![(ModuleKey::root(), root.clone())],
+                unpruned: Vec::new(),
+            },
+            root,
+            overrides: Overrides::new(),
+            warnings: Vec::new(),
+            selected_yanked: Vec::new(),
+        }
+    }
+
+    /// How to make the repository of a selected module: its non-registry
+    /// override's rule, or what its registry's `source.json` says.
+    pub fn module_repo_spec(&self, key: &ModuleKey, registries: &[Registry]) -> Result<RepoSpec> {
+        if let Some(ModuleOverride::NonRegistry(o)) = self.overrides.get(&key.name) {
+            return Ok(o.repo_spec.clone());
+        }
+        let module = self
+            .selection
+            .resolved
+            .iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, m)| m)
+            .ok_or_else(|| BzlmodError::bad_module(key, "not a selected module"))?;
+        let url = module.registry.as_deref().ok_or_else(|| {
+            BzlmodError::bad_module(key, "the module did not come from a registry")
+        })?;
+        registries
+            .iter()
+            .find(|r| r.url() == url)
+            .ok_or_else(|| BzlmodError::bad_module(key, format!("no registry {url}")))?
+            .repo_spec(key)
+    }
+
     /// The mapping from canonical repo name to the module that backs it —
     /// the half of repo mapping that module resolution owns (the apparent
     /// side is buildfiji-mum.15).

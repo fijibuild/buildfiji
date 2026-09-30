@@ -30,6 +30,7 @@ fn repos(module: &str) -> (tempfile::TempDir, Repos) {
             environ: BTreeMap::new(),
             downloader: None,
             repository_cache: None,
+            registries: Vec::new(),
         },
         file.module,
     )
@@ -49,7 +50,10 @@ fn an_extension_makes_every_repository_its_implementation_calls_and_imports_name
         ["+ext+one", "+ext+two"]
     );
     assert_eq!(repos.imports(), [("one".to_owned(), "+ext+one".to_owned())]);
-    assert_eq!(repos.extension_of("+ext+two"), Some("@@//:ext.bzl%ext"));
+    assert_eq!(
+        repos.extension_of("+ext+two").as_deref(),
+        Some("@@//:ext.bzl%ext")
+    );
 }
 
 #[test]
@@ -133,6 +137,7 @@ mod http_archive {
                 environ: BTreeMap::new(),
                 downloader: Some(Arc::new(One(url.to_owned(), bytes, Mutex::new(Vec::new())))),
                 repository_cache: Some(dir.path().join("cache")),
+                registries: Vec::new(),
             },
             file.module,
         )

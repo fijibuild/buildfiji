@@ -14,3 +14,11 @@ How `crates/fjfj-repo/src/replay_matrix.rs` was made (buildfiji-mum.8.4).
   leaves out rows whose answer depends on the machine (the OS, parallel
   fetch order), experimental flags, Bazel's Java object names, or wording the
   Starlark runtime owns (buildfiji-v32).
+
+## Several modules (buildfiji-lfe)
+
+How `src/multi_matrix.rs` was made: `multi_cases.py` writes `multi_cases.json`
+(a registry of local-path modules, the root's files, the canonical repos to
+build), `python3 multi_runcase.py multi_cases.json multi_out.json` runs each in
+real Bazel 9.2.0 with `bazel build @@<repo>//:f` (the prints, the errors, the
+`BUILD.bazel` of each repo made), and `multi_matrix.py` writes the table.

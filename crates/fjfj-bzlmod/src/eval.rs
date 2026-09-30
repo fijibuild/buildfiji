@@ -542,6 +542,10 @@ struct ExtensionProxy {
     usage_index: usize,
     dev_dependency: bool,
 }
+
+/// The `usage_index` of a proxy whose usage was left out: a dependency's
+/// `dev_dependency = True` usage, which Bazel ignores whole.
+const IGNORED_USAGE: usize = usize::MAX;
 starlark_simple_value!(ExtensionProxy);
 
 impl std::fmt::Display for ExtensionProxy {
@@ -603,6 +607,9 @@ impl<'v> StarlarkValue<'v> for TagCallable {
         let location = call_location(eval);
         let ctx = ModuleContext::from_eval(eval).map_err(|e| err(e.to_string()))?;
         ctx.set_non_module_called();
+        if self.usage_index == IGNORED_USAGE {
+            return Ok(Value::new_none());
+        }
         ctx.state.borrow_mut().extension_usages[self.usage_index]
             .tags
             .push(Tag {
@@ -717,6 +724,9 @@ fn add_repo_overrides<'v>(
             overriding_repo_name: overriding,
             must_exist,
         });
+    if proxy.usage_index == IGNORED_USAGE {
+        return Ok(NoneType);
+    }
     ctx.state.borrow_mut().extension_usages[proxy.usage_index]
         .repo_overrides
         .extend(overrides);
@@ -889,6 +899,12 @@ fn module_file_globals(builder: &mut GlobalsBuilder) {
                 "extension name is not a valid identifier: {extension_name}"
             )));
         }
+        if ctx.options.ignore_dev_deps && dev_dependency {
+            return Ok(eval.heap().alloc(ExtensionProxy {
+                usage_index: IGNORED_USAGE,
+                dev_dependency,
+            }));
+        }
         let location = call_location(eval);
         let usage_index = {
             let mut state = ctx.state.borrow_mut();
@@ -946,6 +962,9 @@ fn module_file_globals(builder: &mut GlobalsBuilder) {
         // A kwarg's value may template the importing module's own
         // identity, so that a module can import a repo an extension named
         // after it (`use_repo(ext, deps = "{name}_{version}_deps")`).
+        if proxy.usage_index == IGNORED_USAGE {
+            return Ok(NoneType);
+        }
         let (module_name, module_version) = {
             let state = ctx.state.borrow();
             (state.name.clone(), state.version.to_string())

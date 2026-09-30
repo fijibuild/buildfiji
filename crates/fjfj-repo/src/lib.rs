@@ -5,10 +5,10 @@
 //! This is the driver that joins the module graph (`fjfj-bzlmod`) to the
 //! Starlark that runs ([`fjfj_starlark::run_module_extension`],
 //! [`fjfj_starlark::run_repository_rule`]). It handles extensions defined in
-//! the main repository and used by the root module: the `.bzl` files of any
-//! other module need that module's repository fetched first
-//! (buildfiji-mum.12), and what several modules' tags do to one extension
-//! waits for the same.
+//! the main repository and in the other modules of the graph, whose
+//! repositories are made on demand (buildfiji-mum.8.4, buildfiji-lfe): a
+//! repository is made when something first needs a file of it, which for
+//! one an extension generates means running the extension first.
 //!
 //! What Bazel 9.2.0 does, all read off probes of `bazel fetch`:
 //!
@@ -33,6 +33,10 @@ mod http_archive_matrix;
 #[cfg(test)]
 mod http_archive_tests;
 #[cfg(test)]
+mod multi_matrix;
+#[cfg(test)]
+mod multi_tests;
+#[cfg(test)]
 mod replay_matrix;
 #[cfg(test)]
 mod replay_tests;
@@ -41,19 +45,22 @@ mod tools;
 pub use http::HttpDownloader;
 pub use tools::{BAZEL_TOOLS_FILES, materialize_bazel_tools};
 
-use fjfj_bzlmod::Module;
-use fjfj_graph::{Label, LabelContext};
+use fjfj_bzlmod::extension_repos::ExtensionInstance;
+use fjfj_bzlmod::overrides::RepoRule;
+use fjfj_bzlmod::registry::Registry;
+use fjfj_bzlmod::{Module, ModuleKey, Resolution};
+use fjfj_graph::Label;
 use fjfj_loading::PackageLookup;
 use fjfj_starlark::{
     BzlLoader, Downloader, ExtensionInput, GeneratedRepo, ModuleUse, RepoAttr, RepoEnv,
-    RepoMappings, TagUse, TagValue, convert_repo_attrs, has_module_extension, has_repository_rule,
-    repository_rule_defaults, run_module_extension, run_repository_rule,
+    RepoMappings, RepoProvider, TagUse, TagValue, convert_repo_attrs, has_module_extension,
+    has_repository_rule, repository_rule_defaults, run_module_extension, run_repository_rule,
 };
 use starlark::PrintHandler;
 use starlark::eval::FileLoader;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock, Weak};
 
 /// Why a repository could not be made: Bazel's message for it.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -81,37 +88,117 @@ pub struct Options {
     pub downloader: Option<Arc<dyn Downloader>>,
     /// The repository cache directory, which holds `content_addressable/`.
     pub repository_cache: Option<PathBuf>,
+    /// The registries the modules of the graph came from: how a module's
+    /// repository is made is in its `source.json`.
+    pub registries: Vec<Registry>,
 }
 
-/// A repository an extension generated, by the name it is fetched under.
+/// A repository to make: a rule and what it is called with.
 struct Generated {
     repo: GeneratedRepo,
-    /// What a `use_repo_rule` call gave, not yet read as the rule's types:
-    /// that needs the rule's `.bzl` loaded.
+    /// What a `use_repo_rule` call or a module's source gave, not yet read as
+    /// the rule's types: that needs the rule's `.bzl` loaded.
     raw_attrs: Option<Vec<(String, TagValue)>>,
-    /// The extension that made it, `@@//:ext.bzl%ext`.
+    /// The extension that made it, `@@//:ext.bzl%ext`; empty for a module's
+    /// own repository and for a `use_repo_rule`.
     extension: String,
+}
+
+#[derive(Default)]
+struct State {
+    /// What each repo calls the others; grows as extensions run.
+    mappings: Arc<RepoMappings>,
+    /// The repositories that have been made, by canonical name.
+    lookups: HashMap<String, Arc<PackageLookup>>,
+    /// Repositories extensions generated, by canonical name.
+    generated: BTreeMap<String, Generated>,
+    /// The extensions that have run, and those running now.
+    ran: BTreeSet<usize>,
+    running: BTreeSet<usize>,
+    /// Repositories being made now.
+    making: BTreeSet<String>,
+}
+
+struct Inner {
+    options: Options,
+    resolution: Resolution,
+    extensions: Vec<ExtensionInstance>,
+    loader: OnceLock<BzlLoader>,
+    state: Mutex<State>,
+    /// What extensions and rules print, in order, until the call that made
+    /// them hands it on.
+    prints: Prints,
+}
+
+/// What was printed, kept for whoever asked for the work: an extension may
+/// run because a file was loaded, far from the call that has a print handler.
+#[derive(Default)]
+struct Prints(Mutex<Vec<String>>);
+
+impl PrintHandler for Prints {
+    fn println(&self, text: &str) -> starlark::Result<()> {
+        self.0.lock().unwrap().push(text.to_owned());
+        Ok(())
+    }
+}
+
+impl Prints {
+    /// Hand everything printed so far to `print`.
+    fn hand_on(&self, print: Option<&dyn PrintHandler>) {
+        let printed = std::mem::take(&mut *self.0.lock().unwrap());
+        if let Some(print) = print {
+            for text in printed {
+                let _ = print.println(&text);
+            }
+        }
+    }
+}
+
+struct Provider(Weak<Inner>);
+
+impl RepoProvider for Provider {
+    fn lookup(&self, repo: &str) -> Result<Option<Arc<PackageLookup>>, String> {
+        let inner = self.0.upgrade().ok_or("the repositories are gone")?;
+        inner.lookup(repo).map_err(|e| e.message)
+    }
+
+    fn mappings(&self) -> Arc<RepoMappings> {
+        match self.0.upgrade() {
+            Some(inner) => inner.state.lock().unwrap().mappings.clone(),
+            None => Arc::default(),
+        }
+    }
 }
 
 /// The repositories of a workspace.
 pub struct Repos {
-    options: Options,
-    loader: BzlLoader,
-    mappings: RepoMappings,
-    root: Module,
-    /// Repositories extensions generated, by canonical name.
-    generated: BTreeMap<String, Generated>,
-    /// What the root module imported, as `(name it uses, canonical name)`.
-    imports: Vec<(String, String)>,
+    inner: Arc<Inner>,
 }
 
 fn label_text(label: &Label) -> String {
     format!("@@{}//{}:{}", label.repo, label.package, label.name)
 }
 
+/// The label of `//pkg:file.bzl` in `repo`.
+fn bzl_label(repo: &str, rest: &str) -> Label {
+    let rest = rest.strip_prefix("//").unwrap_or(rest);
+    let (package, name) = rest.split_once(':').unwrap_or(("", rest));
+    Label {
+        repo: repo.to_owned(),
+        package: package.to_owned(),
+        name: name.to_owned(),
+    }
+}
+
 impl Repos {
-    /// The repositories of the workspace whose root module is `root`.
+    /// The repositories of the workspace whose root module is `root`, and
+    /// which has no other module.
     pub fn new(options: Options, root: Module) -> Result<Repos, FetchError> {
+        Repos::from_resolution(options, Resolution::root_only(root))
+    }
+
+    /// The repositories of the workspace whose module graph is `resolution`.
+    pub fn from_resolution(options: Options, resolution: Resolution) -> Result<Repos, FetchError> {
         let lookup = PackageLookup::new(&options.workspace_root).map_err(|e| FetchError {
             message: e.to_string(),
         })?;
@@ -123,269 +210,92 @@ impl Repos {
         let tools_lookup = PackageLookup::new(&tools_dir).map_err(|e| FetchError {
             message: e.to_string(),
         })?;
-        let mut rows = vec![
-            (String::new(), String::new()),
-            (root.repo_name.clone(), String::new()),
-        ];
-        for dep in &root.deps {
-            rows.push((dep.repo_name.clone(), dep.spec.name.clone()));
-        }
-        rows.push(("bazel_tools".to_owned(), "bazel_tools".to_owned()));
-        let mappings = RepoMappings::from_repos([
-            (String::new(), rows),
-            (
-                "bazel_tools".to_owned(),
-                vec![("bazel_tools".to_owned(), "bazel_tools".to_owned())],
-            ),
-        ]);
-        let loader = BzlLoader::new(
-            HashMap::from([
-                (String::new(), lookup),
-                ("bazel_tools".to_owned(), tools_lookup),
-            ]),
-            mappings.clone(),
-            true,
-        );
-        Ok(Repos {
-            options,
-            loader,
-            mappings,
-            root,
-            generated: BTreeMap::new(),
-            imports: Vec::new(),
-        })
-    }
-
-    /// The `.bzl` file as a label, written in the root module.
-    fn label_of(&self, text: &str) -> Result<Label, FetchError> {
-        Label::parse_mapped(
-            text,
-            LabelContext {
-                repo: "",
-                package: "",
-            },
-            &mut |apparent| self.mappings.resolve_apparent("", apparent),
-        )
-        .map_err(|e| FetchError {
-            message: e.to_string(),
-        })
-    }
-
-    fn load(&self, text: &str) -> Result<starlark::environment::FrozenModule, FetchError> {
-        let importer = Label {
-            repo: String::new(),
-            package: String::new(),
-            name: "MODULE.bazel".to_owned(),
-        };
-        self.loader
-            .importing(importer)
-            .load(text)
-            .map_err(|e| FetchError {
-                message: e.to_string(),
-            })
-    }
-
-    fn env(
-        &self,
-        name: &str,
-        original: &str,
-        output: PathBuf,
-        attrs: Vec<(String, RepoAttr)>,
-    ) -> RepoEnv {
-        let workspace = self.options.workspace_root.clone();
-        RepoEnv {
-            name: name.to_owned(),
-            original_name: original.to_owned(),
-            output,
-            workspace_root: self.options.workspace_root.clone(),
-            environ: self.options.environ.clone(),
-            labels: Box::new(move |label: &Label| {
-                label
-                    .repo
-                    .is_empty()
-                    .then(|| workspace.join(&label.package).join(&label.name))
-            }),
-            attrs,
-            downloader: self.options.downloader.clone(),
-            repository_cache: self.options.repository_cache.clone(),
-        }
-    }
-
-    /// Run every extension the root module uses, in the order it first uses
-    /// them. `print` gets what they print.
-    pub fn run_extensions(&mut self, print: Option<&dyn PrintHandler>) -> Result<(), FetchError> {
-        // The usages, merged by extension: a module's dev and non-dev uses of
-        // one extension are the same extension's input.
-        let mut order: Vec<(String, String)> = Vec::new();
-        for usage in &self.root.extension_usages {
-            let key = (usage.bzl_file.clone(), usage.extension_name.clone());
-            if !order.contains(&key) {
-                order.push(key);
-            }
-        }
-        for (bzl, name) in order {
-            let usages: Vec<_> = self
-                .root
-                .extension_usages
-                .iter()
-                .filter(|u| u.bzl_file == bzl && u.extension_name == name)
-                .cloned()
-                .collect();
-            // `use_repo_rule` is an extension of its own, named `<bzl> <rule>`.
-            if bzl == fjfj_bzlmod::eval::INNATE_EXTENSION_FILE {
-                let (rule_bzl, rule) = name.split_once(' ').unwrap_or((&name, ""));
-                let at = usages
-                    .iter()
-                    .flat_map(|u| u.tags.first())
-                    .map(|t| t.location.clone())
-                    .next()
-                    .unwrap_or_default();
-                let file = self.label_of(rule_bzl)?;
-                let module = self.load(rule_bzl)?;
-                if !has_repository_rule(&module, rule) {
-                    return failed(format!(
-                        "{rule_bzl} does not export a repository_rule called {rule}, yet its \
-                         use is requested at {at}"
-                    ));
-                }
-                self.note_repo_rules(&file, rule, &usages);
-                continue;
-            }
-            let file = self.label_of(&bzl)?;
-            let location = usages
-                .first()
-                .map(|u| u.location.clone())
-                .unwrap_or_default();
-            let module = self.load(&bzl).map_err(|e| FetchError {
-                message: format!(
-                    "Error loading '{bzl}' for module extensions, requested by {location}: {}: {}",
-                    e.message, e.message
-                ),
-            })?;
-            if !has_module_extension(&module, &name) {
-                return failed(format!(
-                    "{bzl} does not export a module extension called {name}, yet its use is \
-                     requested at {location}"
-                ));
-            }
-            let tags: Vec<TagUse> = usages
-                .iter()
-                .flat_map(|u| u.tags.iter())
-                .map(|t| TagUse {
-                    class: t.tag_class.clone(),
-                    attrs: t
-                        .attrs
-                        .iter()
-                        .map(|(k, v)| (k.clone(), tag_value(v)))
-                        .collect(),
-                    dev_dependency: t.dev_dependency,
-                    location: t.location.clone(),
-                })
-                .collect();
-            let input = ExtensionInput {
-                modules: vec![ModuleUse {
-                    name: self.root.name.clone(),
-                    version: self.root.version.to_string(),
-                    is_root: true,
-                    repo: String::new(),
-                    tags,
-                }],
-                root_has_non_dev_dependency: usages.iter().any(|u| !u.dev_dependency),
-            };
-            let prefix = format!("{}+{name}", file.repo);
-            let extension_id = format!("{}%{name}", label_text(&file));
-            let env = self.env(
-                &prefix,
-                &name,
-                self.options.output_base.join("modextwd").join(&prefix),
-                Vec::new(),
+        let mut mappings = RepoMappings::from_repos(resolution.repo_mappings());
+        if !resolution.selection.keys().any(|k| k.name == "bazel_tools") {
+            mappings.insert(
+                "bazel_tools",
+                [("bazel_tools".to_owned(), "bazel_tools".to_owned())],
             );
-            let made = run_module_extension(
-                &module,
-                &name,
-                &extension_id,
-                input,
-                env,
-                &self.mappings,
-                print,
-            )
-            .map_err(|e| FetchError { message: e.message })?;
-            for usage in &usages {
-                for (local, exported) in &usage.imports {
-                    if !made.repos.iter().any(|r| &r.name == exported) {
-                        return failed(format!(
-                            "module extension {extension_id} does not generate repository \
-                             \"{exported}\", yet it is imported as \"{local}\" in the usage at {}",
-                            usage.location
-                        ));
-                    }
-                    self.imports
-                        .push((local.clone(), format!("{prefix}+{exported}")));
-                }
-            }
-            for repo in made.repos {
-                self.generated.insert(
-                    format!("{prefix}+{}", repo.name),
-                    Generated {
-                        repo,
-                        extension: extension_id.clone(),
-                        raw_attrs: None,
-                    },
-                );
-            }
         }
-        Ok(())
+        let extensions = resolution.extensions();
+        let mut state = State {
+            mappings: Arc::new(mappings),
+            ..State::default()
+        };
+        state.lookups.insert(String::new(), Arc::new(lookup));
+        state
+            .lookups
+            .insert("bazel_tools".to_owned(), Arc::new(tools_lookup));
+        let inner = Arc::new(Inner {
+            options,
+            resolution,
+            extensions,
+            loader: OnceLock::new(),
+            state: Mutex::new(state),
+            prints: Prints::default(),
+        });
+        let loader = BzlLoader::with_provider(Box::new(Provider(Arc::downgrade(&inner))), true);
+        let _ = inner.loader.set(loader);
+        inner.note_repo_rules();
+        Ok(Repos { inner })
     }
 
-    /// `use_repo_rule` calls: each is a repository of its own, named
-    /// `+<rule>+<name>`.
-    fn note_repo_rules(
-        &mut self,
-        file: &Label,
-        rule: &str,
-        usages: &[fjfj_bzlmod::module::ExtensionUsage],
-    ) {
-        for usage in usages {
-            for tag in &usage.tags {
-                let Some((_, fjfj_bzlmod::attrs::AttrValue::String(name))) =
-                    tag.attrs.iter().find(|(k, _)| k == "name")
-                else {
-                    continue;
-                };
-                let prefix = format!("+{rule}");
-                let raw: Vec<(String, TagValue)> = tag
-                    .attrs
-                    .iter()
-                    .filter(|(k, _)| k != "name")
-                    .map(|(k, v)| (k.clone(), tag_value(v)))
-                    .collect();
-                self.generated.insert(
-                    format!("{prefix}+{name}"),
-                    Generated {
-                        repo: GeneratedRepo {
-                            name: name.clone(),
-                            rule: format!("{}%{rule}", label_text(file)),
-                            attrs: Vec::new(),
-                            location: tag.location.clone(),
-                        },
-                        extension: String::new(),
-                        raw_attrs: Some(raw),
-                    },
-                );
-                self.imports
-                    .push((name.clone(), format!("{prefix}+{name}")));
+    /// Run every extension of the graph, in the order it is first used.
+    /// `print` gets what they print.
+    pub fn run_extensions(&mut self, print: Option<&dyn PrintHandler>) -> Result<(), FetchError> {
+        let mut result = Ok(());
+        for at in 0..self.inner.extensions.len() {
+            result = self.inner.ensure_ran(at);
+            if result.is_err() {
+                break;
             }
         }
+        self.inner.prints.hand_on(print);
+        result
     }
 
     /// What the root module's `use_repo`s name, and the repository each is.
-    pub fn imports(&self) -> &[(String, String)] {
-        &self.imports
+    pub fn imports(&self) -> Vec<(String, String)> {
+        let inner = &self.inner;
+        let root = &inner.resolution.root;
+        let state = inner.state.lock().unwrap();
+        let mapping = inner
+            .resolution
+            .repo_mappings()
+            .into_iter()
+            .find(|(repo, _)| repo.is_empty())
+            .map(|(_, rows)| rows)
+            .unwrap_or_default();
+        drop(state);
+        let mut found = Vec::new();
+        for extension in &inner.extensions {
+            for (key, index) in &extension.usages {
+                if !key.is_root() {
+                    continue;
+                }
+                for (local, _) in &root.extension_usages[*index].imports {
+                    if let Some((_, canonical)) = mapping.iter().find(|(n, _)| n == local) {
+                        found.push((local.clone(), canonical.clone()));
+                    }
+                }
+            }
+        }
+        found
     }
 
     /// The canonical names of the repositories extensions generated.
-    pub fn generated(&self) -> impl Iterator<Item = &str> {
-        self.generated.keys().map(String::as_str)
+    pub fn generated(&self) -> impl Iterator<Item = String> {
+        let names: Vec<String> = self
+            .inner
+            .state
+            .lock()
+            .unwrap()
+            .generated
+            .iter()
+            .filter(|(_, g)| !g.repo.rule.is_empty())
+            .map(|(name, _)| name.clone())
+            .collect();
+        names.into_iter()
     }
 
     /// Make the repository `name` (a canonical name), running its rule, and
@@ -395,51 +305,501 @@ impl Repos {
         name: &str,
         print: Option<&dyn PrintHandler>,
     ) -> Result<PathBuf, FetchError> {
-        let Some(generated) = self.generated.get(name) else {
-            return failed(format!("no repository named '@@{name}'"));
+        let inner = &self.inner;
+        let result = (|| {
+            if !inner.is_repo(name)
+                && let Some(at) = inner.extension_of_repo(name)
+            {
+                inner.ensure_ran(at)?;
+            }
+            inner.make(name)
+        })();
+        inner.prints.hand_on(print);
+        result?;
+        Ok(inner.options.output_base.join("external").join(name))
+    }
+
+    /// The extension that generated `name`, `@@//:ext.bzl%ext`.
+    pub fn extension_of(&self, name: &str) -> Option<String> {
+        let state = self.inner.state.lock().unwrap();
+        state.generated.get(name).map(|g| g.extension.clone())
+    }
+
+    /// The directory of the main repository.
+    pub fn workspace_root(&self) -> &Path {
+        &self.inner.options.workspace_root
+    }
+
+    /// The loader the repositories are read through.
+    pub fn loader(&self) -> &BzlLoader {
+        self.inner.loader()
+    }
+}
+
+impl Inner {
+    fn loader(&self) -> &BzlLoader {
+        self.loader.get().expect("set when made")
+    }
+
+    fn load(&self, label: &Label) -> Result<starlark::environment::FrozenModule, FetchError> {
+        let importer = Label {
+            repo: String::new(),
+            package: String::new(),
+            name: "MODULE.bazel".to_owned(),
         };
-        let (file, rule) = generated
-            .repo
-            .rule
-            .rsplit_once('%')
-            .expect("a rule is FILE%NAME");
-        let module = self.load(file)?;
-        let mut attrs = repository_rule_defaults(&module, rule);
-        let given = match &generated.raw_attrs {
+        self.loader()
+            .importing(importer)
+            .load(&label_text(label))
+            .map_err(|e| FetchError {
+                message: e.to_string(),
+            })
+    }
+
+    fn mappings(&self) -> Arc<RepoMappings> {
+        self.state.lock().unwrap().mappings.clone()
+    }
+
+    fn env(
+        self: &Arc<Self>,
+        name: &str,
+        original: &str,
+        output: PathBuf,
+        attrs: Vec<(String, RepoAttr)>,
+    ) -> RepoEnv {
+        let weak = Arc::downgrade(self);
+        let own = name.to_owned();
+        let here = output.clone();
+        RepoEnv {
+            name: name.to_owned(),
+            original_name: original.to_owned(),
+            output,
+            workspace_root: self.options.workspace_root.clone(),
+            environ: self.options.environ.clone(),
+            labels: Box::new(move |label: &Label| {
+                if label.repo == own {
+                    return Some(here.join(&label.package).join(&label.name));
+                }
+                let inner = weak.upgrade()?;
+                let lookup = inner.lookup(&label.repo).ok()??;
+                Some(lookup.package_dir(&label.package).join(&label.name))
+            }),
+            attrs,
+            downloader: self.options.downloader.clone(),
+            repository_cache: self.options.repository_cache.clone(),
+        }
+    }
+
+    /// The files of the repository `repo`, made if need be.
+    fn lookup(self: &Arc<Self>, repo: &str) -> Result<Option<Arc<PackageLookup>>, FetchError> {
+        if let Some(lookup) = self.state.lock().unwrap().lookups.get(repo) {
+            return Ok(Some(lookup.clone()));
+        }
+        if !self.is_repo(repo) {
+            // An extension's repos are known once it has run.
+            let Some(at) = self.extension_of_repo(repo) else {
+                return Ok(None);
+            };
+            self.ensure_ran(at)?;
+            if !self.state.lock().unwrap().generated.contains_key(repo) {
+                return Ok(None);
+            }
+        }
+        self.make(repo)?;
+        Ok(self.state.lock().unwrap().lookups.get(repo).cloned())
+    }
+
+    /// Whether `repo` is a repository of a module of the graph, or one that
+    /// an extension is already known to generate.
+    fn is_repo(&self, repo: &str) -> bool {
+        self.resolution
+            .selection
+            .keys()
+            .any(|key| self.resolution.canonical_name_of(key) == repo)
+            || self.state.lock().unwrap().generated.contains_key(repo)
+    }
+
+    /// The extension whose repositories `repo` would be one of.
+    fn extension_of_repo(&self, repo: &str) -> Option<usize> {
+        self.extensions
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| repo.starts_with(&e.repo_name("")))
+            .max_by_key(|(_, e)| e.repo_name("").len())
+            .map(|(at, _)| at)
+    }
+
+    /// Make the repository `name`, running its rule, unless it has been made.
+    fn make(self: &Arc<Self>, name: &str) -> Result<(), FetchError> {
+        if self.state.lock().unwrap().lookups.contains_key(name) {
+            return Ok(());
+        }
+        if !self.state.lock().unwrap().making.insert(name.to_owned()) {
+            return failed(format!(
+                "Circular definition of repository '@@{name}': it is needed to make itself"
+            ));
+        }
+        let made = self.make_unguarded(name);
+        self.state.lock().unwrap().making.remove(name);
+        made
+    }
+
+    fn make_unguarded(self: &Arc<Self>, name: &str) -> Result<(), FetchError> {
+        let known = self.state.lock().unwrap().generated.contains_key(name);
+        if !known {
+            // A module's own repository, made by the rule its source names.
+            let Some((key, _)) = self
+                .resolution
+                .selection
+                .resolved
+                .iter()
+                .find(|(key, _)| self.resolution.canonical_name_of(key) == name)
+            else {
+                return failed(format!("no repository named '@@{name}'"));
+            };
+            let spec = self
+                .resolution
+                .module_repo_spec(key, &self.options.registries)
+                .map_err(|e| FetchError {
+                    message: e.to_string(),
+                })?;
+            let (file, rule) = match spec.rule {
+                RepoRule::HttpArchive => ("http.bzl", "http_archive"),
+                RepoRule::GitRepository => ("git.bzl", "git_repository"),
+                RepoRule::LocalRepository => ("local.bzl", "local_repository"),
+            };
+            let raw: Vec<(String, TagValue)> = spec
+                .attrs
+                .iter()
+                .map(|(k, v)| (k.clone(), tag_value(v)))
+                .collect();
+            let generated = Generated {
+                repo: GeneratedRepo {
+                    name: key.name.clone(),
+                    rule: format!("@@bazel_tools//tools/build_defs/repo:{file}%{rule}"),
+                    attrs: Vec::new(),
+                    location: String::new(),
+                },
+                raw_attrs: Some(raw),
+                extension: String::new(),
+            };
+            self.state
+                .lock()
+                .unwrap()
+                .generated
+                .insert(name.to_owned(), generated);
+        }
+        let (repo_name, rule_id, raw, given) = {
+            let state = self.state.lock().unwrap();
+            let g = &state.generated[name];
+            (
+                g.repo.name.clone(),
+                g.repo.rule.clone(),
+                g.raw_attrs.clone(),
+                g.repo.attrs.clone(),
+            )
+        };
+        let (file, rule) = rule_id.rsplit_once('%').expect("a rule is FILE%NAME");
+        let file = file.to_owned();
+        let rule = rule.to_owned();
+        let module = self.load(&self.parse_label(&file))?;
+        let mut attrs = repository_rule_defaults(&module, &rule);
+        let given = match raw {
             Some(raw) => {
-                convert_repo_attrs(&module, rule, &generated.repo.name, raw, "", &self.mappings)
+                let mappings = self.mappings();
+                convert_repo_attrs(&module, &rule, &repo_name, &raw, "", &mappings)
                     .map_err(|message| FetchError { message })?
             }
-            None => generated.repo.attrs.clone(),
+            None => given,
         };
         for (key, value) in &given {
             attrs.retain(|(k, _)| k != key);
             attrs.push((key.clone(), value.clone()));
         }
         let output = self.options.output_base.join("external").join(name);
-        let env = self.env(name, &generated.repo.name, output.clone(), attrs);
-        run_repository_rule(&module, rule, env, &self.mappings, print)
+        let env = self.env(name, &repo_name, output.clone(), attrs);
+        let mappings = self.mappings();
+        run_repository_rule(&module, &rule, env, &mappings, Some(&self.prints))
             .map_err(|e| FetchError { message: e.message })?;
         let repo_file = output.join("REPO.bazel");
         if !repo_file.exists() {
             let _ = std::fs::write(&repo_file, "");
         }
-        Ok(output)
+        let lookup = PackageLookup::new(&output).map_err(|e| FetchError {
+            message: e.to_string(),
+        })?;
+        self.state
+            .lock()
+            .unwrap()
+            .lookups
+            .insert(name.to_owned(), Arc::new(lookup));
+        Ok(())
     }
 
-    /// The extension that generated `name`, `@@//:ext.bzl%ext`.
-    pub fn extension_of(&self, name: &str) -> Option<&str> {
-        self.generated.get(name).map(|g| g.extension.as_str())
+    /// Where a `MODULE.bazel` call of module `key` was, as Bazel says it: a
+    /// dependency's file is named by the registry's URL.
+    fn located(&self, key: &ModuleKey, location: &str) -> String {
+        let module = self
+            .resolution
+            .selection
+            .resolved
+            .iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, m)| m);
+        match module.and_then(|m| m.registry.as_deref()) {
+            Some(url) if !key.is_root() => {
+                format!("{url}/modules/{}/{}/{location}", key.name, key.version)
+            }
+            _ => location.to_owned(),
+        }
     }
 
-    /// The directory of the main repository.
-    pub fn workspace_root(&self) -> &Path {
-        &self.options.workspace_root
+    /// A canonical label written `@@repo//pkg:name`.
+    fn parse_label(&self, text: &str) -> Label {
+        let rest = text.strip_prefix("@@").unwrap_or(text);
+        let (repo, rest) = rest.split_once("//").unwrap_or((rest, ""));
+        bzl_label(repo, rest)
     }
 
-    /// Keep the loader alive for callers that want to share it.
-    pub fn loader(&self) -> &BzlLoader {
-        &self.loader
+    /// `use_repo_rule` calls: each is a repository of its own, named
+    /// `<module repo>+<rule>+<name>`.
+    fn note_repo_rules(&self) {
+        let mut state = self.state.lock().unwrap();
+        let mut updates = Vec::new();
+        for extension in &self.extensions {
+            let Some((_, rule_id)) = extension.id.rsplit_once('%') else {
+                continue;
+            };
+            let Some(rule_bzl) = extension.id.strip_prefix("@@") else {
+                continue;
+            };
+            let (label, _) = rule_bzl.rsplit_once('%').unwrap_or((rule_bzl, ""));
+            let file = self.parse_label(&format!("@@{label}"));
+            let mut names = Vec::new();
+            for (key, index) in &extension.usages {
+                let module = &self
+                    .resolution
+                    .selection
+                    .resolved
+                    .iter()
+                    .find(|(k, _)| k == key)
+                    .expect("a selected module")
+                    .1;
+                for tag in &module.extension_usages[*index].tags {
+                    let Some((_, fjfj_bzlmod::attrs::AttrValue::String(name))) =
+                        tag.attrs.iter().find(|(k, _)| k == "name")
+                    else {
+                        continue;
+                    };
+                    let raw: Vec<(String, TagValue)> = tag
+                        .attrs
+                        .iter()
+                        .filter(|(k, _)| k != "name")
+                        .map(|(k, v)| (k.clone(), tag_value(v)))
+                        .collect();
+                    state.generated.insert(
+                        extension.repo_name(name),
+                        Generated {
+                            repo: GeneratedRepo {
+                                name: name.clone(),
+                                rule: format!("{}%{rule_id}", label_text(&file)),
+                                attrs: Vec::new(),
+                                location: tag.location.clone(),
+                            },
+                            extension: String::new(),
+                            raw_attrs: Some(raw),
+                        },
+                    );
+                    names.push(name.clone());
+                }
+            }
+            updates.push((extension.clone(), names));
+        }
+        let mut mappings = (*state.mappings).clone();
+        for (extension, names) in updates {
+            let rows = self.resolution.extension_repo_mapping(&extension, &names);
+            for name in &names {
+                mappings.insert(extension.repo_name(name), rows.clone());
+            }
+        }
+        state.mappings = Arc::new(mappings);
+    }
+
+    /// Run extension `at` if it has not been, over every usage of it.
+    fn ensure_ran(self: &Arc<Self>, at: usize) -> Result<(), FetchError> {
+        let extension = &self.extensions[at];
+        {
+            let mut state = self.state.lock().unwrap();
+            if state.ran.contains(&at) {
+                return Ok(());
+            }
+            if !state.running.insert(at) {
+                return failed(format!(
+                    "Circular definition of module extension {}: it is needed to run itself",
+                    extension.id
+                ));
+            }
+        }
+        let result = self.run_extension(at);
+        let mut state = self.state.lock().unwrap();
+        state.running.remove(&at);
+        if result.is_ok() {
+            state.ran.insert(at);
+        }
+        result
+    }
+
+    fn run_extension(self: &Arc<Self>, at: usize) -> Result<(), FetchError> {
+        let extension = &self.extensions[at];
+        let resolved = &self.resolution.selection.resolved;
+        let module_of = |key: &ModuleKey| &resolved.iter().find(|(k, _)| k == key).unwrap().1;
+        // A `use_repo_rule`'s repositories are noted already; what is left is
+        // to see the rule is there.
+        if let Some(label) = extension.id.strip_prefix("@@") {
+            let (label, rule) = label.rsplit_once('%').expect("an id is FILE%NAME");
+            let (first_key, first_index) = &extension.usages[0];
+            let usage = &module_of(first_key).extension_usages[*first_index];
+            let written = usage
+                .extension_name
+                .split_once(' ')
+                .map_or(usage.extension_name.as_str(), |(bzl, _)| bzl);
+            let at = usage
+                .tags
+                .first()
+                .map(|t| t.location.clone())
+                .unwrap_or_default();
+            let module = self.load(&self.parse_label(&format!("@@{label}")))?;
+            if !has_repository_rule(&module, rule) {
+                return failed(format!(
+                    "{written} does not export a repository_rule called {rule}, yet its use is \
+                     requested at {at}"
+                ));
+            }
+            return Ok(());
+        }
+        let (rest, name) = extension.id.rsplit_once('%').expect("an id is FILE%NAME");
+        let file = bzl_label(&extension.bzl_repo, rest);
+        let extension_id = format!("{}%{name}", label_text(&file));
+        let (first_key, first_index) = &extension.usages[0];
+        let location = self.located(
+            first_key,
+            &module_of(first_key).extension_usages[*first_index].location,
+        );
+        let written = &module_of(first_key).extension_usages[*first_index].bzl_file;
+        let module = self.load(&file).map_err(|e| FetchError {
+            message: format!(
+                "Error loading '{written}' for module extensions, requested by {location}: {}: {}",
+                e.message, e.message
+            ),
+        })?;
+        if !has_module_extension(&module, name) {
+            return failed(format!(
+                "{written} does not export a module extension called {name}, yet its use is \
+                 requested at {location}"
+            ));
+        }
+        // One entry per module that uses it, the root first: its usages'
+        // tags in the order written.
+        let mut uses: Vec<(ModuleUse, bool)> = Vec::new();
+        for (key, index) in &extension.usages {
+            let owner = module_of(key);
+            let usage = &owner.extension_usages[*index];
+            let entry = match uses.iter().position(|(m, _)| m.name == owner.name) {
+                Some(at) => at,
+                None => {
+                    uses.push((
+                        ModuleUse {
+                            name: owner.name.clone(),
+                            version: owner.version.to_string(),
+                            is_root: key.is_root(),
+                            repo: self.resolution.canonical_name_of(key),
+                            tags: Vec::new(),
+                        },
+                        false,
+                    ));
+                    uses.len() - 1
+                }
+            };
+            uses[entry].0.tags.extend(usage.tags.iter().map(|t| {
+                TagUse {
+                    class: t.tag_class.clone(),
+                    attrs: t
+                        .attrs
+                        .iter()
+                        .map(|(k, v)| (k.clone(), tag_value(v)))
+                        .collect(),
+                    dev_dependency: t.dev_dependency,
+                    location: t.location.clone(),
+                }
+            }));
+            if key.is_root() && !usage.dev_dependency {
+                uses[entry].1 = true;
+            }
+        }
+        let root_has_non_dev_dependency = uses.iter().any(|(_, non_dev)| *non_dev);
+        let input = ExtensionInput {
+            modules: uses.into_iter().map(|(m, _)| m).collect(),
+            root_has_non_dev_dependency,
+        };
+        let prefix = extension.repo_name("");
+        let prefix = prefix.trim_end_matches('+').to_owned();
+        let env = self.env(
+            &prefix,
+            name,
+            self.options.output_base.join("modextwd").join(&prefix),
+            Vec::new(),
+        );
+        let mappings = self.mappings();
+        let made = run_module_extension(
+            &module,
+            name,
+            &extension_id,
+            input,
+            env,
+            &mappings,
+            Some(&self.prints),
+        )
+        .map_err(|e| FetchError { message: e.message })?;
+        // What each module imported has to exist, unless the root replaced it.
+        let replaced: Vec<&str> = module_of(&ModuleKey::root())
+            .extension_usages
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| extension.usages.iter().any(|(k, j)| k.is_root() && j == i))
+            .flat_map(|(_, u)| u.repo_overrides.iter())
+            .map(|o| o.overridden_repo_name.as_str())
+            .collect();
+        for (key, index) in &extension.usages {
+            let usage = &module_of(key).extension_usages[*index];
+            for (local, exported) in &usage.imports {
+                if !made.repos.iter().any(|r| &r.name == exported)
+                    && !replaced.contains(&exported.as_str())
+                {
+                    return failed(format!(
+                        "module extension {extension_id} does not generate repository \
+                         \"{exported}\", yet it is imported as \"{local}\" in the usage at {}",
+                        self.located(key, &usage.location)
+                    ));
+                }
+            }
+        }
+        let names: Vec<String> = made.repos.iter().map(|r| r.name.clone()).collect();
+        let rows = self.resolution.extension_repo_mapping(extension, &names);
+        let mut state = self.state.lock().unwrap();
+        let mut mappings = (*state.mappings).clone();
+        for repo in made.repos {
+            let canonical = extension.repo_name(&repo.name);
+            mappings.insert(canonical.clone(), rows.clone());
+            state.generated.insert(
+                canonical,
+                Generated {
+                    repo,
+                    extension: extension_id.clone(),
+                    raw_attrs: None,
+                },
+            );
+        }
+        state.mappings = Arc::new(mappings);
+        Ok(())
     }
 }
 

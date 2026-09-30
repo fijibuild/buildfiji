@@ -1001,6 +1001,41 @@ overlap; the `--distdir`, `--repository_cache` flag and the cache's `canonical_i
 behaviour are buildfiji-mum.9's, and credentials (`.netrc`, `--credential_helper`)
 buildfiji-mum.12's.
 
+## Extensions of every module, and repositories made on demand (implemented 2026-09-30, buildfiji-lfe)
+
+`fjfj-repo`'s `Repos::from_resolution(options, resolution)` serves every
+repository of a workspace: the main one, `@bazel_tools`, each selected module
+and what extensions generate. The `BzlLoader` asks a `RepoProvider` (in
+`fjfj-starlark`) for a repo's files when a load first needs one, and the
+provider makes it then: a module's repo by running the rule its `source.json`
+(or non-registry override) names (`http_archive`, `git_repository`,
+`local_repository`, Bazel's own Starlark), a generated repo by running its
+extension first, and then its rule. So an extension's `.bzl` may load from
+`@helper` (another module) or from `@gen` (made by a different extension), as
+Bazel's does; both are replay rows.
+
+Read off probes of `bazel build` against a local registry of local-path modules
+(`src/multi_matrix.rs`, 8 rows):
+
+- An extension runs once over every module that uses it: `mctx.modules` is the
+  root first, then the others in breadth-first order (the order of the root's
+  `bazel_dep`s), with each module's tags in the order written. A dependency's
+  `dev_dependency = True` usage is dropped whole (tags and `use_repo`); the
+  root's dev tags are in its list. `root_module_has_non_dev_dependency` is
+  false if the root has no usage or only dev ones.
+- Every module's `use_repo` is checked against what the extension generated
+  (unless the root overrides the name), and the message names the usage by the
+  file it is in: a dependency's is `<registry url>/modules/<name>/<version>/MODULE.bazel:3:18`.
+- A `use_repo_rule` of a dependency makes `<module repo>+<rule>+<name>`
+  (`a++made+mine`) with `ctx.original_name` the name given.
+- What a lazily run extension prints is kept and handed to whoever asked for
+  the repo that needed it, in order (`Repos::fetch`, `run_extensions`).
+
+Not covered: a module whose source is an archive or git repository
+(`Resolution::module_repo_spec` gives the attributes; the rules are the ones
+`http_archive_matrix` replays), `archive_override` and friends, and several
+threads asking for repos at once (a repo may then be made twice).
+
 ## Bazel's own `http_archive` and `git_repository` (implemented 2026-09-30, buildfiji-mum.12)
 
 `@bazel_tools`' repository rules are Starlark, and they run as Bazel ships
