@@ -56,6 +56,14 @@ errors stop the file; *events* (attribute errors) are recorded and fail the
 package at the end. Every message is copied from Bazel 9.2.0 — probe before
 changing one. Design: `docs/design/starlark-and-loading.md`.
 
+## depset
+
+`fjfj_starlark::depset` implements Bazel's `NestedSet` semantics: each set
+lays out its children by its own order, and `to_list` is one uniform walk with
+the result reversed for a topological root. Do not "fix" an order by
+reasoning about the docs; the model is in `docs/design/starlark-and-loading.md`
+and `depset_tests.rs` replays Bazel 9.2.0's probes. Keep walks iterative.
+
 ## Memory: never retain an AST
 
 A retained `AstModule` costs 6-7x its source text — 870 MB for a

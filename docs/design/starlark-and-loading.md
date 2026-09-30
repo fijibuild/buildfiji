@@ -241,6 +241,60 @@ Every rule below was read off Bazel 9.2.0, and each test names what it copies.
   `package_default_visibility`, `module_name`, `module_version` and
   `package_relative_label` (buildfiji-hrx).
 
+## `depset` (implemented 2026-09-30, buildfiji-mum.14)
+
+`fjfj-starlark::depset`: a `StarlarkValue` in both heaps (`Depset` and
+`FrozenDepset`, one generic `DepsetGen<V>`), and the `depset()` global in BUILD
+and `.bzl` files. The flattening rules are Bazel's `NestedSet`, read off Bazel
+9.2.0 by fitting a model to about 150 probes (`depset_tests.rs` replays them
+all, generated from the probe runs). The docs are loose about them, and the
+model is not obvious:
+
+- **Layout.** Building a set lays out its children once, by *its own* order:
+  `default` and `postorder` put transitive sets before direct items,
+  `preorder` puts direct items first, `topological` is the reverse of the
+  `preorder` layout (transitive sets last-to-first, then items last-to-first).
+  Direct items are de-duplicated (first wins) at that point.
+- **Flattening.** `to_list` is one depth-first walk over those layouts,
+  whatever the orders of the sets it passes through: first occurrence of each
+  element wins, a set already entered is never entered again, and the result
+  is reversed if the *root* is topological. That single rule reproduces all
+  four orders, including the odd mixed cases: a `default` set holding a
+  `topological` one shows that one's own layout (its items reversed), and a
+  `topological` root holding `default` sets reverses them.
+- **Orders.** `default` is compatible with anything and with itself; two
+  other orders only with themselves ("Order 'postorder' is incompatible with
+  order 'preorder'"), checked between a set and each transitive set, not
+  between siblings. The result keeps the set's own order, so a `default` set
+  over `postorder` ones is `default`. `stable`, `compile`, `link` and
+  `naive_link` are gone in Bazel 9.
+- **Identity.** A set with no direct items and exactly one non-empty
+  transitive set of the same order *is* that set (`depset(transitive = [a])
+  == a`); empty transitive sets are ignored. Otherwise `==` is identity,
+  except that all empty depsets of one order are equal. Depsets hash (so they
+  key dicts) but do not order, add, iterate, index, or have a length.
+- **Elements.** Hashable, all of one type (`bool` is not `int`), `==` decides
+  duplicates. Hashable stands in for Bazel's "not mutable"; builtin functions
+  pass here and not there (buildfiji-ahp). A depset may hold depsets.
+- **Errors.** Bazel's wording for the constructor (`depset elements must not
+  be mutable values`, `cannot add an item of type 'string' to a depset of
+  'int'`, `at index 0 of transitive, got element of type int, want depset`,
+  parameter type errors, `Invalid order: x`), the operator errors
+  (`unsupported binary operation: depset + depset`, `unsupported comparison`),
+  and `len()`. How iterating, indexing, attributes and method arity fail is
+  the Starlark runtime's own wording, listed in buildfiji-v32.
+- **Cost.** A node is two vectors and three flags; building is
+  O(direct + number of transitive sets), never the size below. Flattening and
+  `repr` walk with an explicit stack and a visited set, so depth costs no
+  stack and a DAG with 2^60 paths is walked once (both tested, at 100,000
+  levels and 60). Freezing recurses through the `starlark` crate at about 3 KiB
+  a level, so `Freeze` grows the stack (`stacker`) instead of capping a chain:
+  a 50,000-level chain freezes.
+- **Not here.** `ctx.actions` and providers that carry depsets (buildfiji-136),
+  `Args` and `depset.to_list` on values from `.bzl` builtins overlays
+  (buildfiji-136.15), and a memory benchmark against a real tree
+  (buildfiji-mum.19).
+
 ## bzlmod: module resolution (implemented 2026-09-03, buildfiji-mum.6)
 
 `crates/fjfj-bzlmod` evaluates `MODULE.bazel`, walks out to the whole

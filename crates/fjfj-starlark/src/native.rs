@@ -29,12 +29,13 @@ use starlark::environment::{Globals, GlobalsBuilder, LibraryExtension, Module};
 use starlark::eval::{Arguments, Evaluator, FileLoader};
 use starlark::starlark_module;
 use starlark::values::dict::AllocDict;
-use starlark::values::list::ListRef;
 use starlark::values::none::NoneType;
-use starlark::values::tuple::{AllocTuple, TupleRef};
+use starlark::values::tuple::AllocTuple;
 use starlark::values::{ProvidesStaticType, StringValue, Value};
 use std::cell::RefCell;
 
+use crate::args::{Wording, bind, describe, fatal, param, sequence, want_sequence};
+use crate::depset::depset_globals;
 use crate::{FileKind, parse};
 
 /// Everything one BUILD file evaluation hands back.
@@ -74,6 +75,7 @@ pub struct BuildFile<'a> {
 pub fn build_globals() -> Globals {
     GlobalsBuilder::extended_by(&[LibraryExtension::Print])
         .with(native_functions)
+        .with(depset_globals)
         .build()
 }
 
@@ -82,7 +84,7 @@ pub fn build_globals() -> Globals {
 pub fn bzl_globals() -> Globals {
     let mut builder = GlobalsBuilder::extended_by(&[LibraryExtension::Print]);
     builder.namespace("native", native_functions);
-    builder.build()
+    builder.with(depset_globals).build()
 }
 
 /// Evaluate a BUILD file into the package it declares.
@@ -162,10 +164,6 @@ impl BuildContext<'_> {
     }
 }
 
-fn fatal(message: impl Into<String>) -> starlark::Error {
-    starlark::Error::new_other(anyhow::anyhow!(message.into()))
-}
-
 /// The context of the BUILD file being evaluated, or the error a native
 /// function gives when there is none: a `.bzl` loading, not a macro called
 /// from a BUILD file.
@@ -207,128 +205,6 @@ fn location(eval: &Evaluator<'_, '_, '_>) -> String {
 }
 
 // ---- argument handling ----------------------------------------------------
-
-/// Whose wording an argument error takes: Bazel's natives are not uniform.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Wording {
-    /// A function with a declared signature: `glob`, `exports_files`,
-    /// `existing_rule`.
-    Signature,
-    /// `package()`, which does its own checking.
-    Package,
-    /// `package_group()`.
-    Group,
-}
-
-#[derive(Clone, Copy)]
-struct Param {
-    name: &'static str,
-    /// Can be given by position (in the order listed).
-    positional: bool,
-    required: bool,
-}
-
-const fn param(name: &'static str, positional: bool, required: bool) -> Param {
-    Param {
-        name,
-        positional,
-        required,
-    }
-}
-
-/// Match `args` to `params` the way Bazel does, with its errors.
-fn bind<'v>(
-    function: &str,
-    wording: Wording,
-    params: &[Param],
-    args: &Arguments<'v, '_>,
-    eval: &Evaluator<'v, '_, '_>,
-) -> starlark::Result<Vec<Option<Value<'v>>>> {
-    let mut bound: Vec<Option<Value<'v>>> = vec![None; params.len()];
-    let slots: Vec<usize> = (0..params.len())
-        .filter(|&i| params[i].positional)
-        .collect();
-    let positions: Vec<Value<'v>> = args.positions(eval.heap())?.collect();
-    if positions.len() > slots.len() {
-        return Err(fatal(match wording {
-            Wording::Signature => format!(
-                "{function}() accepts no more than {} positional arguments but got {}",
-                slots.len(),
-                positions.len()
-            ),
-            Wording::Package | Wording::Group => {
-                format!("{function}() got unexpected positional argument")
-            }
-        }));
-    }
-    for (value, &slot) in positions.iter().zip(&slots) {
-        bound[slot] = Some(*value);
-    }
-    for (key, value) in args.names_map()?.iter() {
-        let Some(slot) = params.iter().position(|p| p.name == key.as_str()) else {
-            return Err(fatal(match wording {
-                Wording::Package => format!("unexpected keyword argument: {}", key.as_str()),
-                _ => format!(
-                    "{function}() got unexpected keyword argument '{}'",
-                    key.as_str()
-                ),
-            }));
-        };
-        if bound[slot].is_some() {
-            return Err(fatal(format!(
-                "{function}() got multiple values for argument '{}'",
-                key.as_str()
-            )));
-        }
-        bound[slot] = Some(*value);
-    }
-    for (p, value) in params.iter().zip(&bound) {
-        if p.required && value.is_none() {
-            return Err(fatal(format!(
-                "{function}() missing 1 required {} argument: {}",
-                if p.positional { "positional" } else { "named" },
-                p.name
-            )));
-        }
-    }
-    Ok(bound)
-}
-
-fn describe(value: Value<'_>) -> String {
-    format!("{} ({})", value.to_repr(), value.get_type())
-}
-
-/// The items of a list or tuple.
-fn sequence<'v>(value: Value<'v>) -> Option<Vec<Value<'v>>> {
-    if let Some(list) = ListRef::from_value(value) {
-        Some(list.iter().collect())
-    } else {
-        TupleRef::from_value(value).map(|tuple| tuple.iter().collect())
-    }
-}
-
-/// A signature-checked sequence parameter.
-fn want_sequence<'v>(
-    function: &str,
-    param: &str,
-    value: Value<'v>,
-    allow_none: bool,
-) -> starlark::Result<Option<Vec<Value<'v>>>> {
-    if allow_none && value.is_none() {
-        return Ok(None);
-    }
-    sequence(value).map(Some).ok_or_else(|| {
-        fatal(format!(
-            "in call to {function}(), parameter '{param}' got value of type '{}', want '{}'",
-            value.get_type(),
-            if allow_none {
-                "sequence or NoneType"
-            } else {
-                "sequence"
-            }
-        ))
-    })
-}
 
 /// The strings of a sequence, each element checked. `noun` is how Bazel
 /// names the argument in the message: `'glob' argument`.

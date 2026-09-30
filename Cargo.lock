@@ -1088,10 +1088,13 @@ dependencies = [
 name = "fjfj-starlark"
 version = "0.0.1"
 dependencies = [
+ "allocative",
  "anyhow",
  "fjfj-graph",
  "fjfj-loading",
+ "stacker",
  "starlark",
+ "starlark_derive",
  "starlark_syntax",
  "tempfile",
  "thiserror",

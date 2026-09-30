@@ -11,12 +11,15 @@ rust_library(
     deps = [
         "//crates/fjfj-graph",
         "//crates/fjfj-loading",
+        "@crates//:allocative",
         "@crates//:anyhow",
+        "@crates//:stacker",
         "@crates//:starlark",
         "@crates//:starlark_syntax",
         "@crates//:thiserror",
         "@crates//:tracing",
     ],
+    proc_macro_deps = ["@crates//:starlark_derive"],
 )
 
 rust_test(
