@@ -1092,6 +1092,7 @@ dependencies = [
  "anyhow",
  "fjfj-graph",
  "fjfj-loading",
+ "num-bigint",
  "stacker",
  "starlark",
  "starlark_derive",

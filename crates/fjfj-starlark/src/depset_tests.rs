@@ -2,33 +2,11 @@
 //! and reported for the same BUILD files (buildfiji-mum.14), generated from
 //! probe runs, so a disagreement is fjfj's to explain.
 
+use crate::test_support::{Capture, run};
 use crate::{FileKind, bzl_globals, parse};
 use starlark::environment::Module;
 use starlark::eval::Evaluator;
 use std::cell::RefCell;
-
-struct Capture(RefCell<Vec<String>>);
-
-impl starlark::PrintHandler for Capture {
-    fn println(&self, text: &str) -> starlark::Result<()> {
-        self.0.borrow_mut().push(text.to_owned());
-        Ok(())
-    }
-}
-
-/// Run `src` as a `.bzl` body, returning what it printed or its error.
-fn run(src: &str) -> Result<Vec<String>, String> {
-    let ast = parse("t.bzl", src, FileKind::Bzl).map_err(|e| format!("{e:#}"))?;
-    let capture = Capture(RefCell::new(Vec::new()));
-    let result = Module::with_temp_heap(|module| {
-        let mut eval = Evaluator::new(&module);
-        eval.set_print_handler(&capture);
-        eval.eval_module(ast, &bzl_globals())
-            .map(|_| ())
-            .map_err(|e| format!("{:#}", e.into_anyhow()))
-    });
-    result.map(|()| capture.0.into_inner())
-}
 
 /// Probes whose answer is the Starlark runtime's wording, not the depset's:
 /// how iterating, indexing, `hash()`, attribute lookup and a method's arity

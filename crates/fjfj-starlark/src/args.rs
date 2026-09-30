@@ -14,6 +14,11 @@ pub(crate) fn fatal(message: impl Into<String>) -> starlark::Error {
     starlark::Error::new_other(anyhow::anyhow!(message.into()))
 }
 
+/// Bazel's error for an operator its operand types do not have.
+pub(crate) fn unsupported_binary(op: &str, lhs: &str, rhs: &str) -> starlark::Error {
+    fatal(format!("unsupported binary operation: {lhs} {op} {rhs}"))
+}
+
 /// Whose wording an argument error takes: Bazel's natives are not uniform.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Wording {
@@ -31,6 +36,8 @@ pub(crate) struct Param {
     pub(crate) name: &'static str,
     /// Can be given by position (in the order listed).
     pub(crate) positional: bool,
+    /// Can be given by name.
+    pub(crate) named: bool,
     pub(crate) required: bool,
 }
 
@@ -38,6 +45,17 @@ pub(crate) const fn param(name: &'static str, positional: bool, required: bool) 
     Param {
         name,
         positional,
+        named: true,
+        required,
+    }
+}
+
+/// A parameter that can only be given by position: naming it is an error.
+pub(crate) const fn positional_only(name: &'static str, required: bool) -> Param {
+    Param {
+        name,
+        positional: true,
+        named: false,
         required,
     }
 }
@@ -57,12 +75,13 @@ pub(crate) fn bind<'v>(
     let positions: Vec<Value<'v>> = args.positions(eval.heap())?.collect();
     if positions.len() > slots.len() {
         return Err(fatal(match wording {
-            Wording::Signature => format!(
-                "{function}() accepts no more than {} positional arguments but got {}",
+            Wording::Signature if !slots.is_empty() => format!(
+                "{function}() accepts no more than {} positional argument{} but got {}",
                 slots.len(),
+                if slots.len() == 1 { "" } else { "s" },
                 positions.len()
             ),
-            Wording::Package | Wording::Group => {
+            Wording::Signature | Wording::Package | Wording::Group => {
                 format!("{function}() got unexpected positional argument")
             }
         }));
@@ -71,6 +90,12 @@ pub(crate) fn bind<'v>(
         bound[slot] = Some(*value);
     }
     for (key, value) in args.names_map()?.iter() {
+        if let Some(p) = params.iter().find(|p| p.name == key.as_str() && !p.named) {
+            return Err(fatal(format!(
+                "{function}() got named argument for positional-only parameter '{}'",
+                p.name
+            )));
+        }
         let Some(slot) = params.iter().position(|p| p.name == key.as_str()) else {
             return Err(fatal(match wording {
                 Wording::Package => format!("unexpected keyword argument: {}", key.as_str()),

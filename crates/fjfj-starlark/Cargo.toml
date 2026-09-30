@@ -8,6 +8,7 @@ repository.workspace = true
 [dependencies]
 allocative.workspace = true
 stacker.workspace = true
+num-bigint.workspace = true
 starlark_derive.workspace = true
 fjfj-graph.workspace = true
 fjfj-loading.workspace = true

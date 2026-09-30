@@ -295,19 +295,48 @@ model is not obvious:
   (buildfiji-136.15), and a memory benchmark against a real tree
   (buildfiji-mum.19).
 
+## `struct`, `json`, `proto` and `set` (implemented 2026-09-30, buildfiji-mum.3.1)
+
+Each was replayed against Bazel 9.2.0 (~570 probes, tables in
+`builtins_tests.rs`), and the `starlark` crate's own `set` and `struct` were
+not close enough to keep:
+
+- **struct**: fields are sorted, repr is `struct(a = 1)`, `+` joins two and
+  refuses a shared field, and it is hashable only if every field is.
+- **json**: the messages carry a path (`in struct field .a: at list index 0:
+  ...`); `decode` reports byte offsets and takes any value as a candidate
+  object key. `indent` is a lenient reformatter, not a validator (it stops
+  after the first complete value and copies `true`/`false`/`null` by length);
+  where Bazel crashes on it (`json.indent("t")`) fjfj reports an error.
+- **proto.encode_text** takes only a struct; dicts are repeated `key`/`value`
+  messages; only `"`, `\` and newline are escaped.
+- **set**: `pop()` takes the first element, the variadic methods
+  (`update union intersection difference` and the `_update` forms) take any
+  number of collections, and a frozen or iterated set refuses every mutator,
+  even a no-op one.
+
+Known differences, each with its bead: floats and non-ASCII strings print
+as the `starlark` crate does in `repr` (buildfiji-s9u; `json` and `proto`
+format floats the Bazel way themselves); `s |= t` and its siblings rebind
+rather than mutate (buildfiji-tg2); the generic runtime wording for
+operators, iteration, attribute lookup and `hash()` on these types
+(buildfiji-v32); `\u`, `\U` and `\x` string escapes are accepted where
+Bazel rejects them (buildfiji-8q5).
+
 ## Bazel 9.2.0's builtin namespaces, and who owns each name (buildfiji-mum.3)
 
 Read off Bazel 9.2.0 by asking `type(name)` in a BUILD file and in a `.bzl`
 loaded by one, and `dir()` of each namespace. `B` is visible in BUILD files,
-`Z` in `.bzl` files. fjfj has, so far, `depset` (B, Z), `print` and the
-standard Starlark library, and the natives of buildfiji-mum.4.
+`Z` in `.bzl` files. fjfj has, so far, `depset` (B, Z), `set`, `json`, `proto` (B, Z),
+`struct` (Z), `print` and the standard Starlark library, and the natives of
+buildfiji-mum.4.
 
 | Names | Where | Owner |
 |---|---|---|
 | `abs all any bool dict dir enumerate fail float getattr hasattr hash int len list max min print range repr reversed sorted str tuple type zip` | B Z | the `starlark` crate; wording gaps in buildfiji-v32 |
-| `set` (with `add clear difference ... update`) | B Z | buildfiji-mum.3.1 |
-| `struct` | Z only | buildfiji-mum.3.1 |
-| `json` (`encode decode encode_indent indent`), `proto` (`encode_text`) | B Z | buildfiji-mum.3.1 |
+| `set` (with `add clear difference ... update`) | B Z | buildfiji-mum.3.1, done |
+| `struct` | Z only | buildfiji-mum.3.1, done |
+| `json` (`encode decode encode_indent indent`), `proto` (`encode_text`) | B Z | buildfiji-mum.3.1, done |
 | `Label` (`name package relative repo_name same_package_label workspace_name workspace_root`) | Z only | buildfiji-mum.3.2 |
 | `attr` (`bool int int_list label label_keyed_string_dict label_list label_list_dict output output_list string string_dict string_keyed_label_dict string_list string_list_dict`) | Z only | buildfiji-mum.3.3 |
 | `provider` | Z only | buildfiji-mum.3.4 |

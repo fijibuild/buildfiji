@@ -13,6 +13,7 @@ rust_library(
         "//crates/fjfj-loading",
         "@crates//:allocative",
         "@crates//:anyhow",
+        "@crates//:num-bigint",
         "@crates//:stacker",
         "@crates//:starlark",
         "@crates//:starlark_syntax",

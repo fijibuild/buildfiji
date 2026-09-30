@@ -76,3 +76,11 @@ tree (`buildfiji-mum.20`).
 Bazel 9.2.0 observable behaviour is the spec: dialect quirks, builtins,
 `load()` semantics, `native.*`, bzlmod (`MODULE.bazel`, module extensions,
 repository rules). Legacy `WORKSPACE` is out of scope — Bazel 9 removes it.
+
+## struct, json, proto, set
+
+`struct` (bzl only), `json`, `proto` and `set` are fjfj's own, not the
+`starlark` crate's: `structs.rs`, `json.rs`, `proto.rs`, `set.rs`, replayed
+against Bazel 9.2.0 in `builtins_tests.rs`. `json` and `proto` are values with
+methods, so `type(json)` is `json`. Float text for them comes from
+`floats::format_float`. Known crate-level gaps are in the design doc.

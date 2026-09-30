@@ -6,17 +6,27 @@
 //! `native.*`, `select`, ...) are supplied by this crate as globals.
 
 mod args;
+#[cfg(test)]
+mod builtins_tests;
 mod depset;
 #[cfg(test)]
 mod depset_tests;
 mod dialect;
+mod floats;
+mod json;
 mod native;
+mod proto;
+mod set;
+mod structs;
+#[cfg(test)]
+mod test_support;
 
 pub use depset::{Depset, DepsetGen, FrozenDepset, Order, depset_to_list, is_depset, new_depset};
 pub use dialect::{FileKind, build_dialect, bzl_dialect, parse};
 pub use native::{
     BuildFile, BuildFileError, BuildFileOutput, build_globals, bzl_globals, evaluate_build_file,
 };
+pub use structs::{FrozenStruct, Struct, StructGen};
 
 use starlark::environment::{FrozenModule, Globals, Module};
 use starlark::eval::{Evaluator, FileLoader};

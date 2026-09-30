@@ -36,6 +36,10 @@ use std::cell::RefCell;
 
 use crate::args::{Wording, bind, describe, fatal, param, sequence, want_sequence};
 use crate::depset::depset_globals;
+use crate::json::JsonModule;
+use crate::proto::ProtoModule;
+use crate::set::set_globals;
+use crate::structs::struct_globals;
 use crate::{FileKind, parse};
 
 /// Everything one BUILD file evaluation hands back.
@@ -70,12 +74,20 @@ pub struct BuildFile<'a> {
     pub loader: &'a dyn FileLoader,
 }
 
+/// `json` and `proto`, which BUILD and `.bzl` files both see.
+fn module_globals(builder: &mut GlobalsBuilder) {
+    builder.set("json", JsonModule);
+    builder.set("proto", ProtoModule);
+}
+
 /// The globals of a BUILD file: the standard ones, `print`, and the native
 /// functions.
 pub fn build_globals() -> Globals {
     GlobalsBuilder::extended_by(&[LibraryExtension::Print])
         .with(native_functions)
         .with(depset_globals)
+        .with(module_globals)
+        .with(set_globals)
         .build()
 }
 
@@ -84,7 +96,12 @@ pub fn build_globals() -> Globals {
 pub fn bzl_globals() -> Globals {
     let mut builder = GlobalsBuilder::extended_by(&[LibraryExtension::Print]);
     builder.namespace("native", native_functions);
-    builder.with(depset_globals).build()
+    builder
+        .with(depset_globals)
+        .with(struct_globals)
+        .with(module_globals)
+        .with(set_globals)
+        .build()
 }
 
 /// Evaluate a BUILD file into the package it declares.
