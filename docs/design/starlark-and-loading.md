@@ -807,6 +807,83 @@ beads that run them (`repository_rule_arg`, `module_extension_arg`,
   positional arguments` if given any). A module extension and a tag class
   are not callable.
 
+## `repository_ctx`, local operations (implemented 2026-09-30, buildfiji-mum.8.2)
+
+`crates/fjfj-starlark/src/repo_ctx.rs` is what a repository rule's
+implementation is given, and `run_repository_rule(module, rule_name, env,
+mappings, print)` runs one: it finds the `implementation` the
+`repository_rule()` (buildfiji-mum.8.1) was made with, calls it with a
+`repository_ctx`, removes the repository directory if it failed, and fails a
+rule that finished without the directory existing. Everything is replayed
+from `bazel fetch` runs of the same rules (`repo_ctx_matrix.rs`: about 215
+rows of what each printed, the error it stopped with and the tree it left),
+captured by a harness that writes a workspace with a `use_repo_rule` call and
+reads the repository out of the output base.
+
+The caller says everything about the world through `RepoEnv`: the canonical
+name (`+r+x` for `use_repo_rule` from the root module: `<module repo>+<rule
+name>+<repo name>`), the directory, the workspace root, the client
+environment, a function from a `Label` to the file it names, and the
+attributes the rule was called with (`repository_rule_defaults` supplies the
+ones the call left out). The filesystem and process work is in the same file.
+
+What Bazel does, read off those probes:
+
+- **The directory** does not exist when the implementation starts
+  (`ctx.path(".").exists` is false). Writing a file, making a symlink, renaming
+  into it or running `execute` creates it; a rule that ends without it has
+  failed (`+r+x must create a directory`), and so has a rule that deleted it.
+  A failed rule leaves no directory behind. (`REPO.bazel` is written by the
+  caller's fetch, not here.)
+- **Paths.** A string is relative to the directory unless absolute; `..` is
+  resolved by text. A `Label` is its file (`ctx.path(Label(...))`, `read`,
+  `template`, `symlink`, `execute` take one; `delete` does not). Writes
+  (`file`, `template`, `symlink`'s link, `rename`'s destination) must be under
+  the directory (`Cannot write outside of the repository directory for path
+  <path>`, naming a label's file by its package-relative path). Files are
+  executable unless `executable = False`; the directories above a file are
+  made; writing over a file replaces it; a file in the way is `<path> (File
+  exists)`.
+- **Parameters.** The first parameter of each method is positional-only
+  (`file(path=...)` is `got named argument for positional-only parameter
+  'path'`), the rest of `file`, `template` and `execute` take either form,
+  `read`'s `watch`, `readdir`'s `watch` and all of `repo_metadata` are
+  keyword-only. The wordings are Bazel's (`in call to file(), parameter
+  'content' got value of type 'int', want 'string'`).
+- **System errors** are the Java ones: `java.io.FileNotFoundException: <path>
+  (No such file or directory)`, `attempting to read() a directory: <path>`,
+  `Could not rename <from> to <to>: already exists`, `Could not create symlink
+  from <target> to <link>: [unix_jni.cc:297] <link> (File exists)`,
+  `[unix_jni.cc:382] <first missing path> (No such file or directory)` for
+  `realpath`.
+- **`execute`** runs with the client environment plus `environment` (`None`
+  removes), in the directory or `working_directory` (made if need be), for 600
+  seconds unless `timeout` says. Its result has `return_code`, `stdout` and
+  `stderr`: 256 and `Timed out` (and no output) after the timeout, 128 plus the
+  signal for a killed process, and 1 with `src/main/tools/process-wrapper-legacy.cc:80:
+  "execvp(<program>, ...)": No such file or directory` for a program that cannot
+  be started. `which` looks in the environment's `PATH` and refuses a name with
+  a slash; `getenv` and `os.environ` read the same environment.
+- **Values.** `ctx` and `ctx.attr` print as unknown Java objects; `dir(ctx.attr)`
+  is `["name"]` though every attribute reads (an unknown one is an error) and
+  `ctx.attr.name` is the canonical name; `path` prints as its string, is
+  `"<string>"` inside a container, compares by path, and has `basename`,
+  `dirname`, `exists`, `is_dir`, `realpath`, `readdir()` and `get_child()`;
+  `os` has `name` (`linux`), `arch` (`amd64`) and `environ`.
+- `watch`, `watch_tree` and `read(watch = "yes")` of a path under the directory
+  are an error (`attempted to watch path under working directory`); `repo_metadata`
+  returns an inert object.
+
+Not here: `download`, `download_and_extract`, `extract` and `patch`
+(buildfiji-mum.8.3), the canonical-name and `use_repo` mapping work
+(buildfiji-mum.8.5), and what calls the rule from a module extension
+(buildfiji-mum.8.4). Known differences: a string is bytes in Bazel and
+Unicode here (`ctx.read` of a file with non-ASCII content; that is the bug
+filed with this bead), a process is killed, not its group, on timeout,
+`readdir` returns the directory's own order (as Bazel does, so a test
+cannot compare it), and a repository rule that deletes a file of the
+workspace crashes Bazel 9.2.0 (exit 37) where this deletes it.
+
 ## Bazel 9.2.0's builtin namespaces, and who owns each name (buildfiji-mum.3)
 
 Read off Bazel 9.2.0 by asking `type(name)` in a BUILD file and in a `.bzl`

@@ -206,7 +206,6 @@ fn repository_rule_identity<'v>(value: Value<'v>) -> Option<(u64, &'v OnceLock<S
 }
 
 /// What the repository rule `value` was made with for the parameter `name`.
-#[allow(dead_code)]
 pub(crate) fn repository_rule_arg<'v>(value: Value<'v>, name: &str) -> Option<Value<'v>> {
     fn of<'v, V: ValueLike<'v>>(a: &RepositoryRuleGen<V>, name: &str) -> Option<Value<'v>> {
         let at = a.names.iter().position(|n| *n == name)?;

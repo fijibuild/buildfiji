@@ -54,6 +54,11 @@ mod proto;
 mod provider;
 #[cfg(test)]
 mod provider_tests;
+mod repo_ctx;
+#[cfg(test)]
+mod repo_ctx_matrix;
+#[cfg(test)]
+mod repo_ctx_tests;
 mod rule;
 #[cfg(test)]
 mod rule_tests;
@@ -75,6 +80,7 @@ pub use loader::{BzlLoader, Importing};
 pub use native::{
     BuildFile, BuildFileError, BuildFileOutput, build_globals, bzl_globals, evaluate_build_file,
 };
+pub use repo_ctx::{RepoAttr, RepoEnv, RepoError, repository_rule_defaults, run_repository_rule};
 pub use structs::{FrozenStruct, Struct, StructGen};
 
 use starlark::environment::{FrozenModule, Globals, Module};

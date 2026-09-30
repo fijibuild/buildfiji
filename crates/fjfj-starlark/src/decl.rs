@@ -31,7 +31,7 @@
 //!   any other, and so does a `config.none()`; nothing else is equal but
 //!   itself.
 
-use crate::args::{Param, Wording, bind, fatal, param};
+use crate::args::{Param, Wording, bind, fatal, param, positional_only};
 use crate::attr::{provider_alternatives, sequence, view as attribute_view};
 use crate::exports::{Kind, Named, name_at_assignment, next_id, resolve_name};
 use crate::label::{display_label, evaluating_bzl, label_of_value, parse_in_caller};
@@ -69,9 +69,17 @@ pub(crate) struct P {
     /// The flag that turns an experimental parameter on; while it is off
     /// the parameter is refused whatever it is given.
     pub(crate) experimental: Option<&'static str>,
+    /// Can only be given by position.
+    pub(crate) positional_only: bool,
 }
 
 impl P {
+    /// This parameter can only be given by position.
+    pub(crate) const fn positional_only(mut self) -> P {
+        self.positional_only = true;
+        self
+    }
+
     /// This parameter is experimental, behind `flag`.
     pub(crate) const fn experimental(mut self, flag: &'static str) -> P {
         self.experimental = Some(flag);
@@ -93,6 +101,7 @@ pub(crate) const fn p(
         want,
         ok,
         experimental: None,
+        positional_only: false,
     }
 }
 
@@ -171,7 +180,13 @@ pub(crate) fn bind_checked<'v>(
     }
     let bind_params: Vec<Param> = params
         .iter()
-        .map(|p| param(p.name, p.positional, p.required))
+        .map(|p| {
+            if p.positional_only {
+                positional_only(p.name, p.required)
+            } else {
+                param(p.name, p.positional, p.required)
+            }
+        })
         .collect();
     bind(function, Wording::Signature, &bind_params, args, eval)
 }

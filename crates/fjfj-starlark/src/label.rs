@@ -131,10 +131,22 @@ pub struct BzlFile<'a> {
 
 /// The state a `.bzl` evaluation hands `Label`.
 #[derive(ProvidesStaticType)]
-struct BzlEval<'a> {
+pub(crate) struct BzlEval<'a> {
     mappings: &'a RepoMappings,
     /// The names the file assigns at its top level, in order.
     assigned: Vec<String>,
+}
+
+impl<'a> BzlEval<'a> {
+    /// The state for running code of a `.bzl` file that has already been
+    /// evaluated (a repository rule's implementation), which can make
+    /// `Label`s.
+    pub(crate) fn running(mappings: &'a RepoMappings) -> BzlEval<'a> {
+        BzlEval {
+            mappings,
+            assigned: Vec::new(),
+        }
+    }
 }
 
 /// Evaluate a `.bzl` file and freeze what it defines.
