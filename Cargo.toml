@@ -16,6 +16,7 @@ fjfj-bzlmod = { path = "crates/fjfj-bzlmod" }
 fjfj-cli = { path = "crates/fjfj-cli" }
 fjfj-exec = { path = "crates/fjfj-exec" }
 fjfj-graph = { path = "crates/fjfj-graph" }
+fjfj-loading = { path = "crates/fjfj-loading" }
 fjfj-models = { path = "crates/fjfj-models" }
 fjfj-proto = { path = "crates/fjfj-proto" }
 fjfj-remote = { path = "crates/fjfj-remote" }
@@ -47,6 +48,7 @@ starlark = "0.14"
 starlark_derive = "0.14"
 starlark_syntax = "0.14"
 stateright = "0.31"
+tempfile = "3"
 thiserror = "2"
 tokio = { version = "1", features = ["full"] }
 tonic = "0.14"

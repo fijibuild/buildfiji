@@ -118,6 +118,54 @@ encoding. Label validation (above) stays on `&str`, since labels are
 Bazel-language identifiers with a defined character set, not filesystem
 paths.
 
+## Packages, boundaries and visibility (implemented 2026-09-30, buildfiji-mum.5)
+
+Split by I/O. `fjfj-graph` holds the pure part (`Label::parse`,
+`package::{Package, PackageBuilder}`, `visibility::*`); `fjfj-loading`
+holds `PackageLookup`, the only code that asks the filesystem what a package
+is. The builder takes "is this a package?" as a predicate, which is how the
+two meet. Every rule below was read off Bazel 9.2.0, and each unit test
+names the behaviour it copies.
+
+- **What is a package.** A directory with a `BUILD.bazel` or `BUILD` *file*;
+  `BUILD.bazel` wins. A directory of either name does not count and the
+  search falls through; a symlink to a file counts, a dangling one does not.
+- **What removes one.** `--deleted_packages` removes exactly the packages
+  named. `.bazelignore` removes a directory's whole subtree: no wildcards, no
+  trimming, `c/` and `./c` normalise, `..` entries match nothing, an absolute
+  path is an error. Both report "Package is considered deleted due to
+  --deleted_packages", which is what Bazel says for `.bazelignore` too.
+  `REPO.bazel`'s `ignore_directories()` is a third source and is not done
+  (buildfiji-e4r).
+- **Subpackage crossing.** A target name inside package `a` may not walk into
+  a subpackage: `//a:sub/f.txt` fails when `a/sub` is a package, naming the
+  *deepest* such package and suggesting `//a/sub:f.txt`. Only names in the
+  package being loaded are checked; `//a:sub/f.txt` written in package `b`
+  loads and fails later as a missing target. The check applies to rule,
+  `exports_files` and `package_group` names alike.
+- **Declaring names.** Two targets of one name conflict, and the message
+  names both kinds and the first's location. `package()` may be called once,
+  anywhere in the file, and its `default_visibility` covers targets declared
+  before it. `exports_files` of an already exported file is fine unless it
+  gives `visibility`, which is "declared twice"; an exported file with no
+  `visibility` is public. Source files that are not exported are not targets.
+- **Label parsing.** `Label::parse` takes a string as a BUILD file writes it,
+  in a package context: `:x`, `x`, `//p`, `//p:q`, `@r`, `@r//p:q`, `@@r//p`,
+  `@//p`. `//p` is `//p:p`, `@r` is `@r//:r`, whitespace is kept, and a
+  relative `p:q` is an error. Error text is Bazel's, minus the "in element 0
+  of attribute" context the caller adds. `@r` is taken as a canonical name
+  until repository mapping lands (buildfiji-mum.15).
+- **Visibility.** A target is visible to its own package always, to others
+  through its `visibility` else the package's `default_visibility`, else not
+  at all. Entries are `//visibility:public`, `//visibility:private` (grants
+  nothing, may sit beside others), `//p:__pkg__`, `//p:__subpackages__` and
+  `package_group` labels. A group's specs come from its `packages` and,
+  transitively, its `includes`; a `-` spec denies wherever it is written,
+  including from an included group; `//p:__pkg__` and `//p` are the same;
+  `public` and `//...` match everything (every repo, and one repo).
+- **Not here.** Enforcing visibility on a dependency edge is an analysis
+  step (buildfiji-8sq); load visibility reuses these types (buildfiji-ps4).
+
 ## bzlmod: module resolution (implemented 2026-09-03, buildfiji-mum.6)
 
 `crates/fjfj-bzlmod` evaluates `MODULE.bazel`, walks out to the whole

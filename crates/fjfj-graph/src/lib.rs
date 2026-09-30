@@ -7,7 +7,12 @@
 use std::fmt;
 
 pub mod label;
+pub mod package;
+pub mod parse;
+pub mod visibility;
+
 pub use label::LabelError;
+pub use parse::{LabelContext, LabelParseError};
 
 /// A Bazel label, e.g. `@repo//pkg/sub:name`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]

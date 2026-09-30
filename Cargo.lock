@@ -1032,6 +1032,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "fjfj-loading"
+version = "0.0.1"
+dependencies = [
+ "fjfj-graph",
+ "tempfile",
+ "thiserror",
+ "tracing",
+]
+
+[[package]]
 name = "fjfj-models"
 version = "0.0.1"
 dependencies = [

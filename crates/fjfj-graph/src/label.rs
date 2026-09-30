@@ -49,10 +49,9 @@ pub enum LabelError {
     TargetNonPrintable(u8),
     #[error("target names may not contain {0:?}")]
     TargetInvalidChar(char),
-    #[error(
-        "invalid repository name '{0}': valid names may contain only A-Z, a-z, 0-9, '-', '_', \
-         '.' and '+'"
-    )]
+    /// Bazel's wording. The name is not in the message: a caller that has the
+    /// label in hand says "invalid repository name 'x': " itself.
+    #[error("repo names may contain only A-Z, a-z, 0-9, '-', '_', '.' and '+'")]
     RepoInvalidChar(String),
     #[error(
         "invalid user-provided repo name '{0}': valid names may contain only A-Z, a-z, 0-9, '-', \
