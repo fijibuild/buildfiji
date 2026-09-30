@@ -369,6 +369,10 @@ pub struct LockSession {
     extensions: Mutex<Option<(Json, Vec<String>)>>,
     /// The facts extensions kept this run.
     facts: Mutex<Vec<(String, Json)>>,
+    /// The repository cache (`--repository_cache`): a registry file whose hash the
+    /// lockfile records is read from `content_addressable/sha256/<hash>/file`
+    /// there before the network is asked, and what is fetched is put there.
+    repository_cache: Mutex<Option<std::path::PathBuf>>,
 }
 
 impl LockSession {
@@ -395,6 +399,7 @@ impl LockSession {
             touched: Mutex::new(BTreeMap::new()),
             extensions: Mutex::new(None),
             facts: Mutex::new(Vec::new()),
+            repository_cache: Mutex::new(None),
         }))
     }
 
@@ -403,6 +408,37 @@ impl LockSession {
     /// ran under), and the ids of all the extensions the module graph uses: an
     /// extension the graph no longer uses leaves the file, one it still uses
     /// but this run did not evaluate keeps what the file had.
+    /// Serve registry files whose hash the lockfile has from this repository
+    /// cache, and put what is fetched in it.
+    pub fn set_repository_cache(&self, dir: std::path::PathBuf) {
+        *self.repository_cache.lock().expect("lock") = Some(dir);
+    }
+
+    /// Keep `bytes` in the cache under their hash, unless it has them.
+    fn cache_put(&self, hex: &str, bytes: Option<&[u8]>) {
+        let (Some(file), Some(bytes)) = (self.cache_file(hex), bytes) else {
+            return;
+        };
+        if file.exists() {
+            return;
+        }
+        if let Some(dir) = file.parent()
+            && std::fs::create_dir_all(dir).is_ok()
+        {
+            let _ = std::fs::write(&file, bytes);
+        }
+    }
+
+    fn cache_file(&self, hex: &str) -> Option<std::path::PathBuf> {
+        let dir = self.repository_cache.lock().expect("lock").clone()?;
+        Some(
+            dir.join("content_addressable")
+                .join("sha256")
+                .join(hex)
+                .join("file"),
+        )
+    }
+
     /// The `facts` the extensions kept this run, each under its extension's id:
     /// they replace what the file had for those extensions (the file's for the
     /// extensions the graph no longer uses go, as `moduleExtensions`' do).
@@ -574,7 +610,14 @@ impl Fetcher for LockedFetcher {
                 return Ok(None);
             }
             Some(FileHash::Sha256(wanted)) => {
-                let fetched = self.inner.fetch(url)?;
+                // The cache has it, or the network does.
+                let cached = session
+                    .cache_file(wanted)
+                    .and_then(|file| std::fs::read(file).ok());
+                let fetched = match cached {
+                    Some(bytes) => Some(bytes),
+                    None => self.inner.fetch(url)?,
+                };
                 let actual = fetched.as_deref().map(sha256_hex);
                 if actual.as_deref() != Some(wanted.as_str()) {
                     return Err(BzlmodError::Registry {
@@ -587,6 +630,7 @@ impl Fetcher for LockedFetcher {
                     });
                 }
                 record(FileHash::Sha256(wanted.clone()));
+                session.cache_put(wanted, fetched.as_deref());
                 return Ok(fetched);
             }
             _ => {}
@@ -603,6 +647,9 @@ impl Fetcher for LockedFetcher {
             Some(bytes) => FileHash::Sha256(sha256_hex(bytes)),
             None => FileHash::NotFound,
         });
+        if let Some(bytes) = &fetched {
+            session.cache_put(&sha256_hex(bytes), Some(bytes));
+        }
         Ok(fetched)
     }
 }

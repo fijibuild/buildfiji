@@ -1576,9 +1576,10 @@ in one bucket go by unsigned hash. The same order decides which yanked version
 Bazel names first when it refuses one. Checked by `yanked_many` (12 yanked
 modules) and by unit tests of the collisions found by probes.
 
-Known differences, each with a bead: registry files are always fetched rather than served from the repository
-cache by their recorded hash (buildfiji-g1z); the `moduleExtensions` of a
-lockfile are kept as they were, not pruned or refreshed (buildfiji-mum.8);
-and what
-`--lockfile_mode=error` does about stale extension or yanked entries is not
-probed yet (buildfiji-cob).
+A registry file whose hash the lockfile records is read from the repository cache
+(`content_addressable/sha256/<hash>/file`, with no id file: `LockSession::set_repository_cache`)
+before the network is asked, and refused if what is there hashes otherwise (`Checksum was X
+but wanted Y`); what is fetched is put there (buildfiji-g1z). Known differences, each with a
+bead: what `--lockfile_mode=error` does about stale extension or yanked entries is not
+probed yet (buildfiji-cob), and the locked extension results are not yet reused
+(buildfiji-mum.8.8).

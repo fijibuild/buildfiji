@@ -1066,6 +1066,7 @@ dependencies = [
  "sha2",
  "starlark",
  "starlark_derive",
+ "tempfile",
  "thiserror",
  "tracing",
 ]

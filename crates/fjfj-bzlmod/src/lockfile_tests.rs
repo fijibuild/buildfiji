@@ -334,3 +334,56 @@ fn module_extensions_this_run_evaluated_replace_the_files_and_the_unused_are_dro
     assert_eq!(ids[2].1, entry("new"));
     assert_eq!(ids[1].1, entry("b"));
 }
+
+#[test]
+fn a_registry_file_with_a_recorded_hash_comes_from_the_repository_cache() {
+    let dir = tempfile::tempdir().unwrap();
+    let body = "module(name = 'a')";
+    let hex = sha256_hex(body.as_bytes());
+    let lock = Lockfile {
+        registry_file_hashes: BTreeMap::from([(
+            format!("{REG}/modules/a/1.0/MODULE.bazel"),
+            FileHash::Sha256(hex.clone()),
+        )]),
+        ..Lockfile::default()
+    }
+    .to_text();
+    let entry = dir
+        .path()
+        .join("content_addressable/sha256")
+        .join(&hex)
+        .join("file");
+    std::fs::create_dir_all(entry.parent().unwrap()).unwrap();
+    std::fs::write(&entry, body).unwrap();
+    let (inner, asked) = served(&[]);
+    let s = session(LockfileMode::Update, Some(&lock));
+    s.set_repository_cache(dir.path().to_owned());
+    let fetcher = s.fetcher(REG, inner);
+    let url = format!("{REG}/modules/a/1.0/MODULE.bazel");
+    assert_eq!(
+        fetcher.fetch(&url).unwrap().as_deref(),
+        Some(body.as_bytes())
+    );
+    assert_eq!(asked.load(Ordering::SeqCst), 0, "no request for it");
+
+    // An entry that hashes to something else is refused.
+    std::fs::write(&entry, "tampered").unwrap();
+    let err = fetcher.fetch(&url).unwrap_err().to_string();
+    assert!(
+        err.contains("Checksum was") && err.contains(&format!("but wanted {hex}")),
+        "{err}"
+    );
+
+    // What the network gives is kept for next time.
+    let other = format!("{REG}/modules/b/1.0/MODULE.bazel");
+    let (inner, _) = served(&[("modules/b/1.0/MODULE.bazel", "module(name = 'b')")]);
+    let s = session(LockfileMode::Update, None);
+    s.set_repository_cache(dir.path().to_owned());
+    assert!(s.fetcher(REG, inner).fetch(&other).unwrap().is_some());
+    let kept = dir
+        .path()
+        .join("content_addressable/sha256")
+        .join(sha256_hex(b"module(name = 'b')"))
+        .join("file");
+    assert_eq!(std::fs::read_to_string(kept).unwrap(), "module(name = 'b')");
+}

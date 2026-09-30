@@ -30,6 +30,7 @@ rust_library(
 rust_test(
     name = "fjfj-bzlmod_test",
     crate = ":fjfj-bzlmod",
+    deps = ["@crates//:tempfile"],
 )
 
 # Resolution conformance against real Bazel: the goldens under
