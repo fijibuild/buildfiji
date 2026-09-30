@@ -26,6 +26,10 @@
 
 use crate::args::fatal;
 use crate::attr::{sequence, view as attribute_view};
+use crate::decl::{
+    all_of_type, build_setting_attrs, build_setting_of, check_exec_groups, check_subrules_exported,
+    is_transition,
+};
 use crate::exports::{Kind, Named, is_exported, next_id, resolve_name};
 use crate::instantiate::call_rule;
 use crate::label::{evaluating_bzl, label_of_value, parse_in_caller};
@@ -71,6 +75,14 @@ pub(crate) struct RuleGen<V> {
     /// `provides`, as given.
     #[allow(dead_code)]
     provides: Vec<V>,
+    /// `cfg`, `build_setting`, `exec_groups` and `subrules`, as given, for
+    /// the parameters that were.
+    #[trace(static)]
+    #[allocative(skip)]
+    #[allow(dead_code)]
+    declared_names: Vec<&'static str>,
+    #[allow(dead_code)]
+    declared: Vec<V>,
     #[trace(static)]
     #[allocative(skip)]
     #[allow(dead_code)]
@@ -97,6 +109,8 @@ impl<'v> Freeze for Rule<'v> {
             attrs: all(self.attrs)?,
             outputs: all(self.outputs)?,
             provides: all(self.provides)?,
+            declared_names: self.declared_names,
+            declared: all(self.declared)?,
             doc: self.doc,
             name: self.name,
         })
@@ -272,7 +286,7 @@ fn check_argument<'v>(keyword: &str, value: Value<'v>, heap: Heap<'v>) -> starla
             }
         }
         "build_setting" => {
-            if !value.is_none() {
+            if !value.is_none() && value.get_type() != "BuildSetting" {
                 return Err(wrong(keyword, value, "BuildSetting or NoneType"));
             }
         }
@@ -395,7 +409,8 @@ fn make_rule<'v>(
         ));
     };
     let flag = |keyword: &str| arg(keyword).and_then(|v| v.unpack_bool());
-    let test = flag("test").unwrap_or(false);
+    // An analysis test is a test: its class name must say so.
+    let test = flag("test").unwrap_or(false) || flag("analysis_test").unwrap_or(false);
     let executable = flag("executable").unwrap_or(false);
 
     // The rule's own attributes.
@@ -418,6 +433,7 @@ fn make_rule<'v>(
                 values: value_strings(view.def.ty, &view.values),
                 hidden: false,
                 configurable: !matches!(view.def.ty, AttrType::Output | AttrType::OutputList),
+                set: false,
             });
             descriptors.push(descriptor);
         }
@@ -446,6 +462,16 @@ fn make_rule<'v>(
             }
         }
         None => {}
+    }
+    if let Some(setting) = arg("build_setting").and_then(build_setting_of) {
+        for reserved in ["build_setting_default", "help"] {
+            if own.iter().any(|a| a.name == reserved) {
+                return Err(fatal(format!(
+                    "There is already a built-in attribute '{reserved}' which cannot be overridden."
+                )));
+            }
+        }
+        own.extend(build_setting_attrs(&setting));
     }
     let schema =
         RuleSchema::starlark(own, test, executable, templates).map_err(|e| fatal(e.to_string()))?;
@@ -497,28 +523,31 @@ fn make_rule<'v>(
             }
         }
     }
-    if let Some(subrules) = arg("subrules")
-        && let Some(item) = sequence(subrules, heap).unwrap_or_default().first()
-    {
-        // There is no `subrule()` yet, so no element can be one.
-        return Err(fatal(format!(
-            "at index 0 of subrules, got element of type {}, want Subrule",
-            item.get_type()
-        )));
+    let mut declared: Vec<(&'static str, Value<'v>)> = Vec::new();
+    if let Some(subrules) = arg("subrules") {
+        let items = all_of_type("subrules", subrules, heap, "Subrule", "Subrule")?;
+        check_subrules_exported(&items, eval)?;
+        declared.push(("subrules", subrules));
     }
-    if let Some(groups) = arg("exec_groups").and_then(DictRef::from_value)
-        && let Some((k, v)) = first_wrong_entry(&groups, |_| false)
-    {
-        return Err(fatal(format!(
-            "got dict<{}, {}> for 'exec_group', want dict<string, exec_group>",
-            k.get_type(),
-            v.get_type()
-        )));
+    if let Some(groups) = arg("exec_groups").and_then(DictRef::from_value) {
+        check_exec_groups(&groups)?;
+        declared.push(("exec_groups", arg("exec_groups").expect("given")));
     }
-    if arg("cfg").is_some() {
-        return Err(fatal(
-            "`cfg` must be set to a transition object initialized by the transition() function.",
-        ));
+    if let Some(cfg) = arg("cfg") {
+        if !is_transition(cfg) {
+            return Err(fatal(
+                "`cfg` must be set to a transition object initialized by the transition() function.",
+            ));
+        }
+        if arg("build_setting").is_some() {
+            return Err(fatal(
+                "Build setting rules cannot use the `cfg` param to apply transitions to themselves.",
+            ));
+        }
+        declared.push(("cfg", cfg));
+    }
+    if let Some(setting) = arg("build_setting") {
+        declared.push(("build_setting", setting));
     }
     if let Some(parent) = arg("parent") {
         return Err(fatal(format!(
@@ -540,6 +569,8 @@ fn make_rule<'v>(
         attrs: descriptors,
         outputs: outputs_fn,
         provides,
+        declared_names: declared.iter().map(|(n, _)| *n).collect(),
+        declared: declared.iter().map(|(_, v)| *v).collect(),
         doc,
         name: OnceLock::new(),
     }))

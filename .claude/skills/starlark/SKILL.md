@@ -147,3 +147,15 @@ source probes before changing it. An attribute takes one in
 element is unconditional (then the joined plain value). Which attributes refuse
 one is `SchemaAttr::configurable`. Design and known gaps:
 `docs/design/starlark-and-loading.md`.
+
+## Declaration values
+
+`aspect()`, `transition()`, `exec_group()`, `subrule()`, `configuration_field()`,
+`analysis_test_transition()` and `config.*` live in `decl.rs`. A new check goes
+where Bazel makes it: the order (signature types in the order written, then
+contents, in the order documented in the design doc) is part of the behaviour,
+so add a probe row to `decl_matrix.rs`'s source before moving a check.
+`bind_checked` is the one way to bind their arguments; it also gives Bazel's
+plural "missing 2 required named arguments: a, b". An aspect's or subrule's
+arguments are read with `aspect_arg` / `subrule_arg`, not parsed again.
+

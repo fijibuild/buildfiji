@@ -641,6 +641,12 @@ fn convert_at<'v>(
     if value.is_none() {
         return Ok(None);
     }
+    if attr.set && value.get_type() != "set" {
+        return Err(format!(
+            "expected value of type 'set(string)' for {at}, but got {}",
+            describe(value)
+        ));
+    }
     let wrong_type = |expected: &str| {
         format!(
             "expected value of type '{expected}' for {at}, but got {}",

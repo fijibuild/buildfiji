@@ -596,11 +596,13 @@ fn same_attribute<'v>(
     a: &AttributeView<'_, 'v>,
     b: &AttributeView<'_, 'v>,
 ) -> starlark::Result<bool> {
+    // A transition is compared by `same_transition_in_attribute`, and a
+    // late-bound default by value.
     let opaque = |v: &AttributeView<'_, 'v>| {
         !v.values.is_empty()
             || matches!(v.def.files, FileTypes::Suffixes(_))
-            || v.def.computed_default
-            || v.def.cfg != Config::Target
+            || (v.def.computed_default && !v.computed.is_some_and(is_late_bound))
+            || matches!(v.def.cfg, Config::Exec | Config::Host)
     };
     if opaque(a) || opaque(b) {
         return Ok(false);
@@ -662,12 +664,22 @@ fn same_attribute<'v>(
     if !same_list(&a.aspects, &b.aspects)? {
         return Ok(false);
     }
+    if let (Some(x), Some(y)) = (a.computed, b.computed)
+        && !x.equals(y)?
+    {
+        return Ok(false);
+    }
     let same_option = |x: Option<Value<'v>>, y: Option<Value<'v>>| match (x, y) {
         (None, None) => Ok(true),
         (Some(x), Some(y)) => x.equals(y),
         _ => Ok(false),
     };
-    Ok(same_option(a.transition, b.transition)?
+    let same_transition = |x: Option<Value<'v>>, y: Option<Value<'v>>| match (x, y) {
+        (None, None) => Ok(true),
+        (Some(x), Some(y)) => crate::decl::same_transition_in_attribute(x, y),
+        _ => Ok(false),
+    };
+    Ok(same_transition(a.transition, b.transition)?
         && same_option(a.for_dependency_resolution, b.for_dependency_resolution)?)
 }
 
@@ -1155,7 +1167,7 @@ fn constrain_labels<'v>(
     }
 
     if let Some(providers) = given.get(Providers) {
-        kept.providers = provider_alternatives(providers, eval)?;
+        kept.providers = provider_alternatives("providers", providers, eval)?;
     }
 
     if let Some(cfg) = cfg {
@@ -1164,6 +1176,8 @@ fn constrain_labels<'v>(
             Some("exec") => def.cfg = Config::Exec,
             Some("host") => def.cfg = Config::Host,
             Some(_) => return Err(bad_cfg()),
+            // `config.target()` is the target configuration by another name.
+            None if crate::decl::is_target_transition(cfg) => def.cfg = Config::Target,
             None if matches!(cfg.get_type(), "transition" | "ExecTransitionFactory") => {
                 def.cfg = Config::Transition;
                 kept.transition = Some(cfg);
@@ -1173,16 +1187,20 @@ fn constrain_labels<'v>(
     }
 
     if let Some(aspects) = given.get(Aspects) {
-        for (i, item) in sequence(aspects, heap)
-            .unwrap_or_default()
-            .iter()
-            .enumerate()
-        {
+        let items = sequence(aspects, heap).unwrap_or_default();
+        for (i, item) in items.iter().enumerate() {
             if item.get_type() != "Aspect" {
                 return Err(fatal(format!(
                     "at index {i} of aspects, got element of type {}, want Aspect",
                     item.get_type()
                 )));
+            }
+        }
+        for item in &items {
+            if !is_exported(*item, eval) {
+                return Err(fatal(
+                    "Aspects should be top-level values in extension files that define them.",
+                ));
             }
             kept.aspects.push(*item);
         }
@@ -1223,7 +1241,7 @@ fn file_types<'v>(value: Value<'v>, heap: Heap<'v>, single: bool) -> starlark::R
 }
 
 /// A provider can only be required by a name a `.bzl` gave it.
-fn check_exported<'v>(
+pub(crate) fn check_exported<'v>(
     providers: &[Value<'v>],
     eval: &Evaluator<'v, '_, '_>,
 ) -> starlark::Result<()> {
@@ -1239,7 +1257,8 @@ fn check_exported<'v>(
 
 /// `providers`: a list of providers is one alternative, and a list of lists
 /// is several.
-fn provider_alternatives<'v>(
+pub(crate) fn provider_alternatives<'v>(
+    keyword: &str,
     value: Value<'v>,
     eval: &Evaluator<'v, '_, '_>,
 ) -> starlark::Result<Vec<Vec<Value<'v>>>> {
@@ -1253,7 +1272,7 @@ fn provider_alternatives<'v>(
     for (i, item) in items.iter().enumerate() {
         let Some(list) = sequence(*item, heap) else {
             return Err(fatal(format!(
-                "at index {i} of providers, got element of type {}, want sequence",
+                "at index {i} of {keyword}, got element of type {}, want sequence",
                 item.get_type()
             )));
         };
@@ -1263,7 +1282,7 @@ fn provider_alternatives<'v>(
         for (j, provider) in list.iter().enumerate() {
             if provider.get_type() != "Provider" {
                 return Err(fatal(format!(
-                    "at index {j} of providers, got element of type {}, want Provider",
+                    "at index {j} of {keyword}, got element of type {}, want Provider",
                     provider.get_type()
                 )));
             }

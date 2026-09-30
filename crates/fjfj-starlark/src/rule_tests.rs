@@ -35,11 +35,6 @@ const GENERIC: &[&str] = &[
 /// crate.
 const SKIPPED: &[&str] = &[
     "DefaultInfo",
-    "aspect(",
-    "transition(",
-    "config.",
-    "exec_group(",
-    "subrule(",
     "macro(",
     // `print(R)` right after `R = rule(...)` says `<rule R>` in Bazel, which
     // names a rule at the assignment (buildfiji-10f).
@@ -64,7 +59,6 @@ const SKIPPED: &[&str] = &[
     "return 5",
     // `visibility()` and `configuration_field()` are other beads'
     // (buildfiji-mum.3.7, buildfiji-mum.3.8).
-    "configuration_field(",
     "visibility(",
 ];
 

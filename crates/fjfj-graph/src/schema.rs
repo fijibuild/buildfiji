@@ -36,15 +36,19 @@ pub struct SchemaAttr {
     /// Bazel fixes a few of the attributes every rule has (`visibility`,
     /// `tags`, ...); all others can.
     pub configurable: bool,
+    /// A list of strings written as a `set` (the default of a string-set
+    /// build setting); a value that is not a set is refused.
+    pub set: bool,
 }
 
 impl SchemaAttr {
-    fn new(name: &str, def: AttrDef) -> SchemaAttr {
+    pub fn new(name: &str, def: AttrDef) -> SchemaAttr {
         SchemaAttr {
             name: name.to_owned(),
             values: Vec::new(),
             hidden: false,
             configurable: !matches!(def.ty, AttrType::Output | AttrType::OutputList),
+            set: false,
             def,
         }
     }

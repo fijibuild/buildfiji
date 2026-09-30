@@ -412,9 +412,7 @@ equalities (`attr_tests.rs`).
   and the alternatives of `providers` compare as sets of sets in order.
 - **Known differences.** `attr.label(default=print)` is accepted, as the crate
   calls a builtin a `function` (buildfiji-v32); `1<<31` wraps in the crate
-  (buildfiji-sbj); `aspects`, `cfg = <transition>` and the "should be
-  top-level values" check for an aspect wait for `aspect()`
-  (buildfiji-mum.3.7). The did-you-mean for a misspelt keyword is a fit, not
+  (buildfiji-sbj). The did-you-mean for a misspelt keyword is a fit, not
   a known rule (`suggest_keyword`, buildfiji-2cb).
 
 ## `provider()` (implemented 2026-09-30, buildfiji-mum.3.4)
@@ -514,10 +512,14 @@ are replayed in `rule_tests.rs`.
   `implementation`, each keyword as bound, a surplus positional last) with
   the signature's wording; what is checked afterwards is Bazel's own: the
   names of `attrs`, `provides` (an element must be an exported provider),
-  `toolchains`, `exec_compatible_with` and `fragments`. `cfg`,
-  `build_setting`, `exec_groups`, `parent` and `subrules` only take their
-  empty values until the beads that build what they take do
-  (buildfiji-mum.3.7).
+  `toolchains`, `exec_compatible_with` and `fragments`. `cfg` takes a
+  transition (not a string, not `config.exec()`), `build_setting` a
+  `config.*` setting (which adds the mandatory `build_setting_default` and
+  `help` after the rule's own attributes, and refuses `cfg`),
+  `exec_groups` a dict of `exec_group()`s with identifier names, and
+  `subrules` exported subrules (buildfiji-mum.3.7); `analysis_test = True`
+  makes a test (its class name must end in `_test`); `parent` only takes its
+  empty value.
 - **A call** takes keywords only (`Unexpected positional arguments` for a
   Starlark rule, `unexpected positional arguments` for a native one). An
   unknown or private attribute, a value of the wrong type, a label that does
@@ -602,6 +604,54 @@ are replayed in `rule_tests.rs`.
   Bazel's `print(select)` and `type(select)` are `<built-in function select>`
   and `builtin_function_or_method` (buildfiji-v32).
 
+## Declaration values (implemented 2026-09-30, buildfiji-mum.3.7)
+
+`decl.rs`. `aspect()`, `transition()`, `analysis_test_transition()`,
+`exec_group()`, `configuration_field()`, `subrule()` and the `config`
+namespace check their arguments with Bazel 9.2.0's words and return inert
+values that freeze and keep what a later bead reads: an aspect or subrule
+keeps the validated arguments by parameter name (`aspect_arg`,
+`subrule_arg`), a transition its implementation and settings, an
+`exec_group` its constraint and toolchain labels. About 1,100 probe rows
+replay in `decl_matrix.rs`.
+
+- **Binding and order.** Each argument is converted to its parameter's type as
+  it is read (positional ones first, then in the order written), before a
+  duplicate or surplus argument is found; then `aspect()` checks the shape of
+  `attrs` and its names, `subrules` (and that each is exported), what `attrs`
+  says of each attribute (a private one needs a default, a public one must be
+  a bool, int or string), `exec_compatible_with`, `exec_groups`,
+  `toolchains`, `attr_aspects`, `toolchains_aspects`, `required_providers`,
+  `required_aspect_providers`, `provides` (exported providers), `requires`
+  and `fragments`. A missing required argument is reported with all the names
+  (`missing 3 required named arguments: a, b, c`).
+- **Names.** An aspect and a subrule are named by the top-level name they are
+  bound to, as rules are (`exports.rs`), and an aspect used in
+  `attr.*(aspects = ...)` must have one. An aspect always prints `<aspect>`; a
+  subrule prints `<subrule NAME>`, which fjfj knows once its module is done
+  (buildfiji-10f). Only `aspect()` and `configuration_field()` refuse to run
+  outside `.bzl` initialization.
+- **Transitions.** A setting is `//command_line_option:x` or an absolute
+  label, with Bazel's words for each way it can be wrong; none may repeat
+  (as written, or as two spellings of one label). `and_then` joins two. All
+  have type `transition`, except `config.exec()`, whose type is
+  `ExecTransitionFactory`. Equality: two `transition()`s of one implementation
+  and one set of settings are equal, `config.target()` equals any other one,
+  and so does `config.none()`; nothing else is. An attribute whose `cfg` is one
+  of the `.bzl`'s own is never equal to another, `config.target()` is
+  `cfg = "target"`, and `config.exec()` is equal to itself only.
+- **`configuration_field`** accepts the twelve fragments Bazel 9.2.0 knows and
+  the late-bound fields found on them (`cpp.zipper`, `proto.proto_compiler`,
+  ...); the list was found by probing candidate names, and may miss a rare
+  one.
+- **Build settings.** `config.bool(flag)`, `int(flag)`, `string(flag,
+  allow_multiple)`, `string_list(flag, repeatable)` and `string_set(flag,
+  repeatable)` print `<build_setting.boolean>` and so on; a `string_set`'s
+  default must be a `set` and `existing_rule` does not show it.
+- **Known differences.** The crate prints a builtin or a bound method by its
+  name and gives it type `function` (buildfiji-v32), and `print(config)` is a
+  namespace's.
+
 ## Bazel 9.2.0's builtin namespaces, and who owns each name (buildfiji-mum.3)
 
 Read off Bazel 9.2.0 by asking `type(name)` in a BUILD file and in a `.bzl`
@@ -621,7 +671,8 @@ buildfiji-mum.4.
 | `provider` | Z only | buildfiji-mum.3.4, done |
 | `rule` | Z only | buildfiji-mum.3.5, done |
 | `select` | B Z | buildfiji-mum.3.6, done |
-| `aspect transition exec_group configuration_field subrule analysis_test_transition` | Z only | buildfiji-mum.3.7 |
+| `aspect transition exec_group configuration_field subrule analysis_test_transition` | Z only | buildfiji-mum.3.7, done |
+| `config` (`bool exec int none string string_list string_set target`) | Z only | buildfiji-mum.3.7, done |
 | `macro` | Z only | buildfiji-mum.3.8 |
 | `visibility` | Z only | buildfiji-ps4 |
 | `module_extension repository_rule tag_class` | Z only | buildfiji-mum.8 |

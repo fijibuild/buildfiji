@@ -116,14 +116,25 @@ pub(crate) fn bind<'v>(
         }
         bound[slot] = Some(*value);
     }
-    for (p, value) in params.iter().zip(&bound) {
-        if p.required && value.is_none() {
-            return Err(fatal(format!(
-                "{function}() missing 1 required {} argument: {}",
-                if p.positional { "positional" } else { "named" },
-                p.name
-            )));
-        }
+    let missing: Vec<&Param> = params
+        .iter()
+        .zip(&bound)
+        .filter(|(p, value)| p.required && value.is_none())
+        .map(|(p, _)| p)
+        .collect();
+    if let Some(first) = missing.first() {
+        let names: Vec<&str> = missing.iter().map(|p| p.name).collect();
+        return Err(fatal(format!(
+            "{function}() missing {} required {} argument{}: {}",
+            missing.len(),
+            if first.positional {
+                "positional"
+            } else {
+                "named"
+            },
+            if missing.len() == 1 { "" } else { "s" },
+            names.join(", ")
+        )));
     }
     Ok(bound)
 }

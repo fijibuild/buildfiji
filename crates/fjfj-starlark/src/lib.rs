@@ -13,6 +13,11 @@ mod attr_matrix;
 mod attr_tests;
 #[cfg(test)]
 mod builtins_tests;
+mod decl;
+#[cfg(test)]
+mod decl_matrix;
+#[cfg(test)]
+mod decl_tests;
 mod depset;
 #[cfg(test)]
 mod depset_tests;

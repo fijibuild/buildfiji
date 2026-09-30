@@ -38,6 +38,7 @@ use crate::args::{
     Wording, bind, describe, fatal, param, positional_only, sequence, want_sequence,
 };
 use crate::attr::attr_globals;
+use crate::decl::decl_globals;
 use crate::depset::depset_globals;
 use crate::json::JsonModule;
 use crate::label::{RepoMappings, label_globals, relative_to_package};
@@ -113,6 +114,7 @@ pub fn bzl_globals() -> Globals {
     builder
         .with(depset_globals)
         .with(attr_globals)
+        .with(decl_globals)
         .with(provider_globals)
         .with(rule_globals)
         .with(label_globals)

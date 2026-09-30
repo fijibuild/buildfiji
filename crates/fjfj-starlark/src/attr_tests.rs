@@ -35,12 +35,8 @@ const GENERIC: &[&str] = &[
 /// Probes that need something no bead has built yet, or print a builtin
 /// (Bazel writes `<built-in method string of attr value>`, buildfiji-v32).
 const SKIPPED: &[&str] = &[
-    "config.",
-    "aspect(",
     "DefaultInfo",
     "OutputGroupInfo",
-    "transition(",
-    "analysis_test_transition",
     "print(attr.string)",
     "print(attr.label_list)",
     "repr(attr.label)",

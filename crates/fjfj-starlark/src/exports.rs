@@ -39,6 +39,8 @@ pub(crate) fn next_id() -> u64 {
 pub(crate) enum Kind {
     Provider,
     Rule { test: bool },
+    Aspect,
+    Subrule,
 }
 
 impl Kind {
@@ -64,7 +66,9 @@ pub(crate) struct Named<'v> {
 
 /// `value`, if it is something a file names.
 pub(crate) fn named<'v>(value: Value<'v>) -> Option<Named<'v>> {
-    provider::named(value).or_else(|| rule::named(value))
+    provider::named(value)
+        .or_else(|| rule::named(value))
+        .or_else(|| crate::decl::named(value))
 }
 
 /// The name of `value` if it is bound to one, looking for it in the module
