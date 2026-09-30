@@ -173,3 +173,13 @@ checks `ctx.macros` (`glob`, `package`, `existing_rule(s)`); a probe row in
 `macros_matrix.rs`'s source comes before any change to an order or a message.
 Design and known gaps: `docs/design/starlark-and-loading.md`.
 
+## Load visibility
+
+`visibility()` (`load_visibility.rs`) stores the file's declaration as the
+module's extra value; a loader must call `check_load_visibility(importer, file,
+&load_visibility(&module), check)` for every `load()` it serves, with the
+file that is loading (a `.bzl`'s own loads are checked against its package,
+not the BUILD file's): `fjfj-starlark` does no loading itself, so a loader that
+skips the call enforces nothing. Specs share `PackageSpec::parse` with
+`package_group`.
+

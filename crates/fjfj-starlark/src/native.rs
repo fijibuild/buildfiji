@@ -42,6 +42,7 @@ use crate::decl::decl_globals;
 use crate::depset::depset_globals;
 use crate::json::JsonModule;
 use crate::label::{RepoMappings, label_globals, relative_to_package};
+use crate::load_visibility::visibility_globals;
 use crate::macros::{MacroState, macro_globals, run_finalizers};
 use crate::proto::ProtoModule;
 use crate::provider::provider_globals;
@@ -117,6 +118,7 @@ pub fn bzl_globals() -> Globals {
         .with(attr_globals)
         .with(decl_globals)
         .with(macro_globals)
+        .with(visibility_globals)
         .with(provider_globals)
         .with(rule_globals)
         .with(label_globals)

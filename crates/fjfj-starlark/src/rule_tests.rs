@@ -54,9 +54,6 @@ const SKIPPED: &[&str] = &[
     "range(",
     // A `return` outside a function is a parse error, worded differently.
     "return 5",
-    // `visibility()` and `configuration_field()` are other beads'
-    // (buildfiji-mum.3.7, buildfiji-mum.3.8).
-    "visibility(",
 ];
 
 fn assert_replays(wrong: Vec<String>) {

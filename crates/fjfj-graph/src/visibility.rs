@@ -104,6 +104,13 @@ impl PackageSpec {
 fn parse_scope(body: &str, repo: &str) -> Option<Result<PackageScope, SpecError>> {
     let ctx = LabelContext { repo, package: "" };
     let parse = |s: &str| Label::parse(s, ctx).map_err(SpecError::from);
+    // `//` and `@r//` are the root package of a repo.
+    if body.ends_with("//") {
+        return Some(parse(&format!("{body}:x")).map(|l| PackageScope::Package {
+            repo: l.repo,
+            package: String::new(),
+        }));
+    }
     // `//...` and `//p/...` are not labels: peel the wildcard off, then read
     // what is left as the package it roots.
     if let Some(prefix) = body.strip_suffix("...") {
@@ -310,6 +317,16 @@ mod tests {
         assert_eq!(scope("@//..."), PackageScope::Repo("".into()));
         assert_eq!(scope("@r//..."), PackageScope::Repo("r".into()));
         assert_eq!(scope("//c"), pkg("c"));
+        // The root package, probed in a package_group and in load visibility.
+        assert_eq!(scope("//"), pkg(""));
+        assert_eq!(scope("@//"), pkg(""));
+        assert_eq!(
+            scope("@r//"),
+            PackageScope::Package {
+                repo: "r".into(),
+                package: "".into()
+            }
+        );
         assert_eq!(scope("//c/n"), pkg("c/n"));
         assert_eq!(scope("//c:__pkg__"), pkg("c"));
         assert_eq!(scope("//c/..."), sub("c"));

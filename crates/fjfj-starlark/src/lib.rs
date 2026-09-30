@@ -31,6 +31,11 @@ mod json;
 mod label;
 #[cfg(test)]
 mod label_tests;
+mod load_visibility;
+#[cfg(test)]
+mod load_visibility_matrix;
+#[cfg(test)]
+mod load_visibility_tests;
 mod macros;
 #[cfg(test)]
 mod macros_matrix;
@@ -57,6 +62,7 @@ mod test_support;
 pub use depset::{Depset, DepsetGen, FrozenDepset, Order, depset_to_list, is_depset, new_depset};
 pub use dialect::{FileKind, build_dialect, bzl_dialect, parse};
 pub use label::{BzlFile, RepoMappings, bzl_name, evaluate_bzl};
+pub use load_visibility::{LoadVisibility, check_load_visibility, load_visibility};
 pub use native::{
     BuildFile, BuildFileError, BuildFileOutput, build_globals, bzl_globals, evaluate_build_file,
 };

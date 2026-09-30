@@ -707,6 +707,31 @@ replay in `decl_matrix.rs`.
   `@@//a:b` (buildfiji-v32); an event inside a macro is at the call in the
   BUILD file (`native::location` reads the whole call stack).
 
+## Load visibility (implemented 2026-09-30, buildfiji-ps4)
+
+`load_visibility.rs`. A `.bzl` may call `visibility(value)` once at its top
+level (`value` positional-only): `"public"`, `"private"`, or a list of
+`public`, `private` and package specs (`//pkg`, `//pkg/...`, `//...`, `//`,
+`@repo//pkg`, `@@repo//pkg`; parsed by `PackageSpec::parse`, the same as a
+`package_group`'s, with `@repo` read through the file's repo mapping and an
+unknown repo reaching nobody; a `-` spec is refused). No call means public;
+`private` and `[]` let no other package load it, `public` in a list wins, a
+package always loads its own files, and `//a` does not reach `//a/sub`.
+`load visibility may not be set more than once`, `... may only be set at the
+top level, not inside a function`, and outside `.bzl` initialization
+`visibility() can only be used during .bzl initialization (top-level
+evaluation)`. The declaration is the module's extra value, so a loader reads
+it from the frozen module with `load_visibility(&module)` and asks
+`check_load_visibility(importer, file, &visibility, check)` (`check` is
+`--check_bzl_visibility`) for Bazel's error: `Starlark file //a:lib.bzl is
+not visible for loading from package //b. Check the file's `visibility()`
+declaration.`, in which the importer is the file doing the load (a `.bzl`
+too, not only a BUILD file) and the main repo's root package is `//`.
+Nothing in this crate loads files, so the loader of buildfiji-mum.19 makes
+the call; `load_visibility_tests.rs` has a loader that does, and replays the
+probes. The error is reported at the load statement's string, and every
+refused load of a file is reported; here a loader fails at the first.
+
 ## Bazel 9.2.0's builtin namespaces, and who owns each name (buildfiji-mum.3)
 
 Read off Bazel 9.2.0 by asking `type(name)` in a BUILD file and in a `.bzl`
@@ -729,7 +754,7 @@ buildfiji-mum.4.
 | `aspect transition exec_group configuration_field subrule analysis_test_transition` | Z only | buildfiji-mum.3.7, done |
 | `config` (`bool exec int none string string_list string_set target`) | Z only | buildfiji-mum.3.7, done |
 | `macro` | Z only | buildfiji-mum.3.8, done |
-| `visibility` | Z only | buildfiji-ps4 |
+| `visibility` | Z only | buildfiji-ps4, done |
 | `module_extension repository_rule tag_class` | Z only | buildfiji-mum.8 |
 | `DefaultInfo OutputGroupInfo RunEnvironmentInfo InstrumentedFilesInfo PackageSpecificationInfo` | Z only | buildfiji-136.4 |
 | `platform_common` (`ConstraintSettingInfo ConstraintValueInfo PlatformInfo TemplateVariableInfo ToolchainInfo`), `config_common` (`FeatureFlagInfo config_feature_flag_transition toolchain_type`), `coverage_common` (`instrumented_files_info`), `testing` (`ExecutionInfo TestEnvironment analysis_test`), `cc_common java_common apple_common android_common` | Z only | Starlark or absent by decision (buildfiji-136.14): buildfiji-136.16, buildfiji-136.17, buildfiji-136.15 |
