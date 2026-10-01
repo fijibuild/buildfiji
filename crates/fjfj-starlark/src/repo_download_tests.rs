@@ -327,6 +327,26 @@ impl Downloader for Refusing {
 }
 
 #[test]
+fn download_and_extract_takes_the_deprecated_strip_prefix_spelling() {
+    let dir = tempfile::tempdir().unwrap();
+    let archive: &'static [u8] =
+        Box::leak(build_spec("tar.gz", &[("kotlinc/a.txt", "f", "hi")]).into_boxed_slice());
+    let bzl = "def _impl(ctx):\n    ctx.download_and_extract('https://h/k.tar.gz', 'out', stripPrefix = 'kotlinc')\nr = repository_rule(_impl)\n";
+    let counting = Arc::new(Counting(Mutex::new(0), archive));
+    run_with(
+        bzl,
+        counting,
+        &dir.path().join("cache"),
+        &dir.path().join("one"),
+    )
+    .unwrap();
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("one/out/a.txt")).unwrap(),
+        "hi"
+    );
+}
+
+#[test]
 fn a_download_that_names_its_sha256_is_kept_and_served_from_the_cache() {
     let dir = tempfile::tempdir().unwrap();
     let cache = dir.path().join("cache");

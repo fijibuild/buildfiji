@@ -562,6 +562,8 @@ const EXTRACT_AND_DOWNLOAD_PARAMS: &[P] = &[
     p("integrity", false, false, "string", is_str),
     p("rename_files", false, false, "dict", is_dict),
     p("strip_components", false, false, "int", is_int),
+    // The deprecated spelling of `strip_prefix` (rules_kotlin still passes it).
+    p("stripPrefix", false, false, "string", is_str),
 ];
 
 const EXTRACT_PARAMS: &[P] = &[
@@ -790,9 +792,13 @@ pub(crate) fn op_download_and_extract<'v>(
     };
     writable(env, &output)?;
     let rename = renames_of(arg(params, &bound, "rename_files"))?;
+    let strip_prefix = match string_arg(params, &bound, "strip_prefix") {
+        "" => string_arg(params, &bound, "stripPrefix"),
+        given => given,
+    };
     let components = strip_components_of(
         "download_and_extract",
-        string_arg(params, &bound, "strip_prefix"),
+        strip_prefix,
         arg(params, &bound, "strip_components"),
     )?;
     let allow_fail = flag(arg(params, &bound, "allow_fail"), false);
@@ -830,7 +836,7 @@ pub(crate) fn op_download_and_extract<'v>(
         &archive.path,
         &output.path,
         &temp,
-        string_arg(params, &bound, "strip_prefix"),
+        strip_prefix,
         components,
         &rename,
     )?;
