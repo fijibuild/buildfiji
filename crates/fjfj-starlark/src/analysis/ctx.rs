@@ -125,6 +125,35 @@ impl CtxState {
             .collect()
     }
 
+    /// What the builtins make `ctx.fragments` and `ctx.configuration` of.
+    fn configuration_options(&self) -> Vec<(&'static str, String)> {
+        let config = &self.configuration;
+        // The OS of the target platform, which `cc_common` asks for the exec one.
+        let has = |os: &str| {
+            config
+                .constraints
+                .iter()
+                .any(|c| c.repo == "platforms" && c.package == "os" && c.name == os)
+        };
+        let os = if has("osx") {
+            "macos"
+        } else if has("windows") {
+            "windows"
+        } else {
+            "linux"
+        };
+        vec![
+            ("cpu", config.cpu.clone()),
+            (
+                "compilation_mode",
+                config.compilation_mode.name().to_owned(),
+            ),
+            ("os", os.to_owned()),
+            ("short_id", config.mnemonic()),
+            ("exec", if config.exec { "1" } else { "" }.to_owned()),
+        ]
+    }
+
     fn file<'v>(&self, heap: Heap<'v>, artifact: Artifact) -> Value<'v> {
         let owner = self.label.clone();
         alloc_file(heap, artifact, owner)
@@ -190,8 +219,19 @@ fn ctx_members(builder: &mut MethodsBuilder) {
     /// The configuration fragments.
     #[starlark(attribute)]
     fn fragments<'v>(this: Value<'v>) -> starlark::Result<Value<'v>> {
-        let config = &state(this).configuration;
-        super::fragments::fragments_of(&config.cpu, config.compilation_mode.name())
+        let options = state(this).configuration_options();
+        let options: Vec<(&str, &str)> = options.iter().map(|(k, v)| (*k, v.as_str())).collect();
+        super::fragments::made_by("_make_fragments", &options)
+            .map(|made| made.to_value())
+            .map_err(fatal)
+    }
+
+    /// The configuration: `ctx.configuration`.
+    #[starlark(attribute)]
+    fn configuration<'v>(this: Value<'v>) -> starlark::Result<Value<'v>> {
+        let options = state(this).configuration_options();
+        let options: Vec<(&str, &str)> = options.iter().map(|(k, v)| (*k, v.as_str())).collect();
+        super::fragments::made_by("_make_configuration", &options)
             .map(|made| made.to_value())
             .map_err(fatal)
     }
@@ -282,9 +322,14 @@ fn ctx_members(builder: &mut MethodsBuilder) {
     fn files<'v>(this: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
         let s = state(this);
         let mut fields = Vec::new();
-        for (name, value) in &s.attrs {
+        for name in s.schema.attrs.iter().map(|a| &a.name) {
             if s.takes_files(name) {
-                let files = s.files_of(value);
+                // An attribute with no value is an empty list.
+                let files = s
+                    .attrs
+                    .iter()
+                    .find(|(n, _)| n == name)
+                    .map_or_else(Vec::new, |(_, value)| s.files_of(value));
                 fields.push((
                     name.clone(),
                     heap.alloc(AllocList(files.into_iter().map(|a| s.file(heap, a)))),
@@ -298,9 +343,14 @@ fn ctx_members(builder: &mut MethodsBuilder) {
     fn file<'v>(this: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
         let s = state(this);
         let mut fields = Vec::new();
-        for (name, value) in &s.attrs {
+        for name in s.schema.attrs.iter().map(|a| &a.name) {
             if s.takes_single_file(name) {
-                let files = s.files_of(value);
+                // An attribute with no value is None.
+                let files = s
+                    .attrs
+                    .iter()
+                    .find(|(n, _)| n == name)
+                    .map_or_else(Vec::new, |(_, value)| s.files_of(value));
                 let one = match files.as_slice() {
                     [one] => s.file(heap, one.clone()),
                     [] => Value::new_none(),
@@ -321,10 +371,11 @@ fn ctx_members(builder: &mut MethodsBuilder) {
     fn executable<'v>(this: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
         let s = state(this);
         let mut fields = Vec::new();
-        for (name, value) in &s.attrs {
+        for name in s.schema.attrs.iter().map(|a| &a.name) {
             if s.is_executable(name) {
+                let value = s.attrs.iter().find(|(n, _)| n == name).map(|(_, v)| v);
                 let exe = match value {
-                    AttrValue::Label(l) => s
+                    Some(AttrValue::Label(l)) => s
                         .deps
                         .get(l)
                         .and_then(|d| d.executable.clone().or_else(|| d.files.first().cloned()))

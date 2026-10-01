@@ -153,7 +153,15 @@ impl Key for ConfiguredTargetKey {
                     .await
                 }
                 TargetKind::SourceFile => Ok(source_file(self, target)),
-                TargetKind::PackageGroup(_) => Ok(target),
+                TargetKind::PackageGroup(_) => {
+                    // What a rule that takes an allowlist reads; `contains` is
+                    // not answered yet.
+                    let info =
+                        fjfj_starlark::native_provider("PackageSpecificationInfo", Vec::new())
+                            .map_err(Error::msg)?;
+                    target.providers.push(info);
+                    Ok(target)
+                }
                 TargetKind::GeneratedFile { rule } => {
                     let producer = ConfiguredTargetKey {
                         label: Label {

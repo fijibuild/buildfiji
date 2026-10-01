@@ -54,6 +54,11 @@ def _unavailable(name, bead):
 # (rules_cc, rules_java, ...), which read it while loading. It has no members
 # yet; the few that rules_cc calls while loading return placeholders, the rest
 # fail where they are used, not where they are loaded.
+# The OS of the execution platform, which is the target platform until the two
+# are modelled apart (buildfiji-3wf).
+def _exec_os(ctx):
+    return ctx.fragments.platform._os
+
 def _cc_internals():
     return struct(
         check_private_api = lambda *args, **kwargs: None,
@@ -79,7 +84,7 @@ def _cc_internals():
         get_link_args = _unavailable("cc_common.internal_DO_NOT_USE().get_link_args", "buildfiji-136.15"),
         get_artifact_name_extension_for_category = _unavailable("cc_common.internal_DO_NOT_USE().get_artifact_name_extension_for_category", "buildfiji-136.15"),
         expand_and_tokenize = _unavailable("cc_common.internal_DO_NOT_USE().expand_and_tokenize", "buildfiji-136.15"),
-        exec_os = _unavailable("cc_common.internal_DO_NOT_USE().exec_os", "buildfiji-136.15"),
+        exec_os = _exec_os,
         declare_compile_output_file = _unavailable("cc_common.internal_DO_NOT_USE().declare_compile_output_file", "buildfiji-136.15"),
         create_lto_backend_action_template = _unavailable("cc_common.internal_DO_NOT_USE().create_lto_backend_action_template", "buildfiji-136.15"),
         create_lto_backend_action = _unavailable("cc_common.internal_DO_NOT_USE().create_lto_backend_action", "buildfiji-136.15"),
@@ -325,9 +330,24 @@ def _make_fragments(options):
     return struct(
         apple = apple,
         cpp = cpp,
-        platform = struct(),
+        platform = struct(_os = options["os"]),
         java = struct(),
         proto = struct(),
         py = struct(),
         coverage = struct(),
+    )
+
+# `ctx.configuration`.
+def _make_configuration(options):
+    return struct(
+        coverage_enabled = False,
+        default_shell_env = {},
+        host_path_separator = ":",
+        short_id = options["short_id"],
+        test_env = {},
+        is_tool_configuration = lambda: bool(options["exec"]),
+        stamp_binaries = lambda: False,
+        is_sibling_repository_layout = lambda: False,
+        has_separate_genfiles_directory = lambda: False,
+        runfiles_enabled = lambda: True,
     )

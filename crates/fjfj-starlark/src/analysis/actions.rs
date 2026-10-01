@@ -22,7 +22,7 @@ use starlark::environment::{Methods, MethodsBuilder, MethodsStatic};
 use starlark::eval::{Arguments, Evaluator};
 use starlark::starlark_module;
 use starlark::starlark_simple_value;
-use starlark::values::dict::DictRef;
+use starlark::values::dict::{AllocDict, DictRef};
 use starlark::values::none::NoneType;
 use starlark::values::{NoSerialize, ProvidesStaticType, StarlarkValue, Value, ValueLike};
 use starlark_derive::starlark_value;
@@ -263,6 +263,42 @@ fn actions_members(builder: &mut MethodsBuilder) {
         Ok(alloc_file(eval.heap(), artifact, s.label.clone()))
     }
 
+    /// `ctx.actions.transform_version_file(*, transform_func, template, output_file_name)`
+    /// and `transform_info_file`: the template with the substitutions
+    /// `transform_func` makes of the workspace status. Stamping is not
+    /// implemented (buildfiji-wiq), so the status is Bazel's unstamped one.
+    fn transform_version_file<'v>(
+        this: Value<'v>,
+        args: &Arguments<'v, '_>,
+        eval: &mut Evaluator<'v, '_, '_>,
+    ) -> starlark::Result<Value<'v>> {
+        transform_status_file(
+            this,
+            args,
+            eval,
+            "transform_version_file",
+            &[("BUILD_TIMESTAMP", "0"), ("BUILD_SCM_REVISION", "0")],
+        )
+    }
+
+    fn transform_info_file<'v>(
+        this: Value<'v>,
+        args: &Arguments<'v, '_>,
+        eval: &mut Evaluator<'v, '_, '_>,
+    ) -> starlark::Result<Value<'v>> {
+        transform_status_file(
+            this,
+            args,
+            eval,
+            "transform_info_file",
+            &[
+                ("BUILD_EMBED_LABEL", ""),
+                ("BUILD_HOST", "hostname"),
+                ("BUILD_USER", "username"),
+            ],
+        )
+    }
+
     /// `ctx.actions.args()`.
     fn args<'v>(this: Value<'v>, heap: starlark::values::Heap<'v>) -> starlark::Result<Value<'v>> {
         let _ = this;
@@ -421,6 +457,63 @@ fn actions_members(builder: &mut MethodsBuilder) {
         );
         Ok(NoneType)
     }
+}
+
+fn transform_status_file<'v>(
+    this: Value<'v>,
+    args: &Arguments<'v, '_>,
+    eval: &mut Evaluator<'v, '_, '_>,
+    function: &str,
+    status: &[(&str, &str)],
+) -> starlark::Result<Value<'v>> {
+    let s = state(this);
+    let bound = bind(
+        function,
+        Wording::Signature,
+        &[
+            param("transform_func", false, true),
+            param("template", false, true),
+            param("output_file_name", false, true),
+        ],
+        args,
+        eval,
+    )?;
+    let template = bound[1].and_then(artifact_of).ok_or_else(|| {
+        fatal(format!(
+            "in call to {function}(), parameter 'template' got value of type that is not 'File'"
+        ))
+    })?;
+    let name = bound[2]
+        .and_then(|v| v.unpack_str())
+        .ok_or_else(|| fatal(format!("in call to {function}(), parameter 'output_file_name' got value of type that is not 'string'")))?;
+    let heap = eval.heap();
+    let status = heap.alloc(AllocDict(
+        status.iter().map(|(k, v)| (heap.alloc(*k), heap.alloc(*v))),
+    ));
+    let transform = bound[0].expect("required");
+    let made = eval.eval_function(transform, &[status], &[])?;
+    let substitutions: Vec<(String, String)> = string_dict(function, "transform_func", Some(made))?
+        .into_iter()
+        .collect();
+    let output = s.derived(name);
+    if !s.declared.lock().unwrap().insert(output.exec_path()) {
+        return Err(fatal(format!(
+            "'{}' was already declared",
+            output.exec_path()
+        )));
+    }
+    s.register(
+        "TemplateExpand",
+        Some(format!("Expanding template {}", basename(&template))),
+        ActionKind::Template {
+            template: template.exec_path(),
+            substitutions,
+            executable: false,
+        },
+        vec![template],
+        vec![output.clone()],
+    );
+    Ok(alloc_file(eval.heap(), output, s.label.clone()))
 }
 
 fn basename(artifact: &Artifact) -> String {

@@ -448,3 +448,39 @@ r = rule(
         )]
     );
 }
+
+/// `ctx.configuration`, an unset file attribute as `None` in `ctx.file`, and
+/// the stamping templates, as rules_cc and bazel_tools read them.
+#[test]
+fn configuration_unset_files_and_status_templates() {
+    let src = r#"
+def _impl(ctx):
+    c = ctx.configuration
+    print(c.short_id, c.is_tool_configuration(), c.host_path_separator, c.coverage_enabled)
+    print(ctx.file._zipper, ctx.files._zipper, ctx.executable._tool)
+    template = ctx.actions.declare_file("t.template")
+    ctx.actions.write(template, "{A}")
+    out = ctx.actions.transform_info_file(
+        transform_func = lambda status: {"{A}": status["BUILD_USER"]},
+        template = template,
+        output_file_name = "info.h",
+    )
+    return [DefaultInfo(files = depset([out]))]
+r = rule(
+    implementation = _impl,
+    attrs = {
+        "_zipper": attr.label(allow_single_file = True),
+        "_tool": attr.label(executable = True, cfg = "exec"),
+    },
+)
+"#;
+    let out = run_rule(&request(src, "r", Vec::new(), Vec::new())).unwrap();
+    assert_eq!(out.printed, ["k8-fastbuild False : False", "None [] None"]);
+    let [_, expand] = &out.actions[..] else {
+        panic!("{:?}", out.actions)
+    };
+    let ActionKind::Template { substitutions, .. } = &expand.kind else {
+        panic!()
+    };
+    assert_eq!(substitutions, &[("{A}".to_owned(), "username".to_owned())]);
+}
