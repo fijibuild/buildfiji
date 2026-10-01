@@ -17,6 +17,69 @@ pub(crate) struct Options {
     pub configuration: Configuration,
     pub keep_going: bool,
     pub symlink_prefix: String,
+    /// `--jobs`; the number of CPUs if unset.
+    pub jobs: Option<usize>,
+    /// `--show_result`: say where the results are for this many targets or fewer.
+    pub show_result: usize,
+}
+
+/// The configuration the build flags ask for.
+pub(crate) fn configuration_from(
+    flags: &fjfj_bazel_compat::build_flags::BuildFlags,
+) -> Result<Configuration, String> {
+    let mut configuration = Configuration::default();
+    if let Some(mode) = &flags.compilation_mode {
+        configuration.compilation_mode = fjfj_graph::CompilationMode::parse(mode).ok_or_else(|| {
+            format!(
+                "While parsing option --compilation_mode={mode}: Invalid value '{mode}'; must be one of fastbuild, dbg, opt"
+            )
+        })?;
+    }
+    if let Some(cpu) = &flags.cpu {
+        configuration.cpu = cpu.clone();
+    }
+    configuration.defines = flags.defines.iter().cloned().collect();
+    for (name, value) in &flags.options {
+        let entry = configuration.options.entry(name.clone()).or_default();
+        if !entry.is_empty() {
+            entry.push(' ');
+        }
+        entry.push_str(value);
+    }
+    for (flag, value) in &flags.starlark_flags {
+        configuration.options.insert(flag.clone(), value.clone());
+    }
+    Ok(configuration)
+}
+
+/// `--jobs`: a number, `auto`, or `HOST_CPUS` with `*factor` or `-n`.
+pub(crate) fn jobs_from(text: Option<&str>) -> Result<Option<usize>, String> {
+    let Some(text) = text else { return Ok(None) };
+    let cpus = std::thread::available_parallelism().map_or(1, |n| n.get());
+    let bad = || {
+        format!(
+            "While parsing option --jobs={text}: '{text}' is not an integer or \"auto\" or HOST_CPUS[*factor|-n]"
+        )
+    };
+    let jobs = if text == "auto" {
+        cpus
+    } else if let Some(rest) = text.strip_prefix("HOST_CPUS") {
+        match rest {
+            "" => cpus,
+            r if r.starts_with('*') => {
+                let factor: f64 = r[1..].parse().map_err(|_| bad())?;
+                ((cpus as f64 * factor).floor() as usize).max(1)
+            }
+            r if r.starts_with('-') => {
+                let n: usize = r[1..].parse().map_err(|_| bad())?;
+                cpus.saturating_sub(n).max(1)
+            }
+            _ => return Err(bad()),
+        }
+    } else {
+        text.parse().map_err(|_| bad())?
+    };
+    Ok(Some(jobs))
 }
 
 /// Where, and what.
@@ -160,7 +223,10 @@ pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> R
         &wanted,
         &fjfj_exec::run::Options {
             keep_going: request.options.keep_going,
-            ..fjfj_exec::run::Options::default()
+            jobs: request
+                .options
+                .jobs
+                .unwrap_or_else(|| fjfj_exec::run::Options::default().jobs),
         },
         collector.clone(),
     ));
@@ -254,6 +320,7 @@ fn plural(n: usize, one: &str, many: &str) -> String {
 pub(crate) fn print(
     report: &Report,
     requested: usize,
+    show_result: usize,
     keep_going: bool,
     layout: &Layout,
     verbose_failures: bool,
@@ -323,10 +390,19 @@ pub(crate) fn print(
         }
         eprintln!("INFO: Found {}...", plural(requested, "target", "targets"));
         // `--show_result=1`: say where the result is when there is one target.
-        if let ([only], 1) = (&built[..], report.results.len()) {
-            eprintln!("Target {} up-to-date:", label_text(&only.label));
-            for file in &only.files {
-                eprintln!("  {file}");
+        if report.results.len() <= show_result {
+            for result in &built {
+                if result.files.is_empty() {
+                    eprintln!(
+                        "Target {} up-to-date (nothing to build)",
+                        label_text(&result.label)
+                    );
+                    continue;
+                }
+                eprintln!("Target {} up-to-date:", label_text(&result.label));
+                for file in &result.files {
+                    eprintln!("  {file}");
+                }
             }
         }
     }

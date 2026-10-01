@@ -14,9 +14,9 @@ use fjfj_bazel_compat::bzlmod_flags::BzlmodFlags;
 use fjfj_bazel_compat::console::ProgressUpdate;
 use fjfj_bazel_compat::exit_code::{ExitCode, messages};
 use fjfj_bazel_compat::{
-    Cli, Command, bes_flags, bzlmod_flags, canonicalize_flags, clap_flags, console_flags,
-    diagnostics_flags, execution_log_flags, flag_alias, misc_flags, output_filter, remote_flags,
-    workspace_status_flags,
+    Cli, Command, bes_flags, build_flags, bzlmod_flags, canonicalize_flags, clap_flags,
+    console_flags, diagnostics_flags, execution_log_flags, flag_alias, misc_flags, output_filter,
+    remote_flags, workspace_status_flags,
 };
 use fjfj_bzlmod::attrs::AttrValue;
 use fjfj_bzlmod::discovery::RegistrySource;
@@ -396,6 +396,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
             // typo.
             const BUILD_IMPLEMENTED: &[&[&str]] = &[
                 flag_alias::IMPLEMENTED,
+                build_flags::IMPLEMENTED,
                 diagnostics_flags::IMPLEMENTED,
                 workspace_status_flags::IMPLEMENTED,
                 misc_flags::IMPLEMENTED,
@@ -413,6 +414,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
                 .collect();
             clap_flags::validate(&rest, "build", &implemented)
                 .map_err(|e| CliError::CommandLine(anyhow::Error::from(e)))?;
+            let (build_flags, rest) = build_flags::extract(&rest, "build");
             let (diagnostics, rest) = diagnostics_flags::extract(&rest, "build");
             let (workspace_status, rest) = workspace_status_flags::extract(&rest, "build");
             let (misc, rest) = misc_flags::extract(&rest, "build");
@@ -545,10 +547,25 @@ async fn run(cli: Cli) -> Result<(), CliError> {
                 .map_err(|e| CliError::Internal(anyhow::anyhow!("console write failed: {e}")))?;
             let texts: Vec<String> = rest.iter().chain(after_marker).cloned().collect();
             let build = build_command::Options {
-                configuration: fjfj_graph::Configuration::default(),
+                configuration: build_command::configuration_from(&build_flags)
+                    .map_err(|e| CliError::CommandLine(anyhow::anyhow!(e)))?,
                 keep_going: diagnostics.keep_going,
-                symlink_prefix: "bazel-".to_owned(),
+                symlink_prefix: build_flags
+                    .symlink_prefix
+                    .clone()
+                    .unwrap_or_else(|| "bazel-".to_owned()),
+                jobs: build_command::jobs_from(build_flags.jobs.as_deref())
+                    .map_err(|e| CliError::CommandLine(anyhow::anyhow!(e)))?,
+                show_result: match build_flags.show_result.as_deref() {
+                    None => 1,
+                    Some(n) => n.parse().map_err(|_| {
+                        CliError::CommandLine(anyhow::anyhow!(
+                            "--show_result: '{n}' is not a non-negative integer"
+                        ))
+                    })?,
+                },
             };
+            let build_show_result = build.show_result;
             let loaded =
                 fetch_repositories_for_build(repo_flags, &bzlmod, texts, offset, build).await?;
             let resolution = loaded.resolution;
@@ -581,6 +598,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
             let succeeded = build_command::print(
                 &report,
                 targets.targets.len(),
+                build_show_result,
                 diagnostics.keep_going,
                 &layout,
                 diagnostics.verbose_failures,
@@ -1005,6 +1023,8 @@ mod tests {
             },
             keep_going: true,
             symlink_prefix: "bazel-".into(),
+            jobs: None,
+            show_result: 1,
         };
         let patterns = ["//:g".to_owned(), "//:bad".to_owned()];
         // The build is blocking work that needs a runtime to be current.

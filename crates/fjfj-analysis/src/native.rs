@@ -391,7 +391,10 @@ async fn config_setting(
     }
     if let Some(AttrValue::LabelKeyedStringDict(flags)) = attr(attrs, "flag_values") {
         for (flag, wanted) in flags {
-            let current = flag_value(ctx, flag).await?;
+            let current = match config.options.get(&label_text(flag)) {
+                Some(set) => set.clone(),
+                None => flag_value(ctx, flag).await?,
+            };
             check(
                 format!("flag:{}={wanted}", label_text(flag)),
                 current.eq_ignore_ascii_case(wanted),
