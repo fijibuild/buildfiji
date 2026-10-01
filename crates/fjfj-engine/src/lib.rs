@@ -91,10 +91,15 @@ trait ErasedKey: Send + Sync + Debug {
 
 impl<K: Key> ErasedKey for K {
     fn compute<'a>(&'a self, ctx: &'a Ctx) -> BoxFuture<'a, Outcome> {
-        Box::pin(async move {
-            let value = Key::compute(self, ctx).await?;
-            Ok(Arc::new(value) as AnyValue)
-        })
+        use tracing::Instrument as _;
+        let span = tracing::debug_span!("key", kind = std::any::type_name::<K>(), key = ?self);
+        Box::pin(
+            async move {
+                let value = Key::compute(self, ctx).await?;
+                Ok(Arc::new(value) as AnyValue)
+            }
+            .instrument(span),
+        )
     }
 
     fn values_equal(&self, a: &AnyValue, b: &AnyValue) -> bool {
