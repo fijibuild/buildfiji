@@ -1356,26 +1356,35 @@ fn arch_factor() -> &'static str {
     }
 }
 
+/// A string the lockfile reads back as itself: one that would pass for a
+/// canonical label (`@@...`) or is already wrapped in `'` is wrapped in `'`
+/// (Bazel's `AttributeValuesAdapter`, probed 9.2.0).
+pub(crate) fn quoted(s: &str) -> String {
+    if s.starts_with("@@") || (s.len() > 1 && s.starts_with('\'') && s.ends_with('\'')) {
+        format!("'{s}'")
+    } else {
+        s.to_owned()
+    }
+}
+
 /// An attribute of a generated repository as the lockfile writes it (what
 /// `AttributeValuesAdapter` does): `None` is left out, a label is its
 /// canonical form.
 fn repo_attr_json(value: &RepoAttr) -> Option<Json> {
+    let text = |s: &str| Json::String(quoted(s));
     let label = |l: &Label| Json::String(label_text(l));
-    let strings = |items: &[String]| Json::Array(items.iter().cloned().map(Json::String).collect());
+    let strings = |items: &[String]| Json::Array(items.iter().map(|s| text(s)).collect());
     Some(match value {
         RepoAttr::None => return None,
         RepoAttr::Bool(b) => Json::Bool(*b),
         RepoAttr::Int(i) => Json::Number((*i).into()),
-        RepoAttr::String(s) => Json::String(s.clone()),
+        RepoAttr::String(s) => text(s),
         RepoAttr::StringList(items) => strings(items),
-        RepoAttr::StringDict(items) => Json::Object(
-            items
-                .iter()
-                .map(|(k, v)| (k.clone(), Json::String(v.clone())))
-                .collect(),
-        ),
+        RepoAttr::StringDict(items) => {
+            Json::Object(items.iter().map(|(k, v)| (quoted(k), text(v))).collect())
+        }
         RepoAttr::StringListDict(items) => {
-            Json::Object(items.iter().map(|(k, v)| (k.clone(), strings(v))).collect())
+            Json::Object(items.iter().map(|(k, v)| (quoted(k), strings(v))).collect())
         }
         RepoAttr::IntList(items) => {
             Json::Array(items.iter().map(|i| Json::Number((*i).into())).collect())
@@ -1383,18 +1392,18 @@ fn repo_attr_json(value: &RepoAttr) -> Option<Json> {
         RepoAttr::Label(l) => label(l),
         RepoAttr::LabelList(items) => Json::Array(items.iter().map(label).collect()),
         RepoAttr::StringKeyedLabelDict(items) => {
-            Json::Object(items.iter().map(|(k, v)| (k.clone(), label(v))).collect())
+            Json::Object(items.iter().map(|(k, v)| (quoted(k), label(v))).collect())
         }
         RepoAttr::LabelKeyedStringDict(items) => Json::Object(
             items
                 .iter()
-                .map(|(k, v)| (label_text(k), Json::String(v.clone())))
+                .map(|(k, v)| (label_text(k), text(v)))
                 .collect(),
         ),
         RepoAttr::LabelListDict(items) => Json::Object(
             items
                 .iter()
-                .map(|(k, v)| (k.clone(), Json::Array(v.iter().map(label).collect())))
+                .map(|(k, v)| (quoted(k), Json::Array(v.iter().map(label).collect())))
                 .collect(),
         ),
     })

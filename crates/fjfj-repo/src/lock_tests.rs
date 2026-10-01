@@ -136,3 +136,14 @@ fn what_extensions_leave_in_the_lockfile_is_what_bazel_writes() {
         wrong.join("\n")
     );
 }
+
+#[test]
+fn a_string_that_looks_like_a_label_is_quoted_as_bazel_writes_it() {
+    use crate::quoted;
+    // Probed on Bazel 9.2.0: the lockfile quotes what it would otherwise read back as a label.
+    assert_eq!(quoted("@@x+//a:b"), "'@@x+//a:b'");
+    assert_eq!(quoted("'q'"), "''q''");
+    for plain in ["//a:b", "@x//a", "abc", "a'b", "'y", "x@@y", ""] {
+        assert_eq!(quoted(plain), plain);
+    }
+}
