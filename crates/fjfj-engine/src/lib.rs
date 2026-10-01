@@ -23,9 +23,13 @@
 //! Errors are values: a failed computation is memoised like any other, and a
 //! dependent that propagates it fails the same way.
 //!
-//! Not here yet: persistence, a bound on memory, and cancelling a
-//! computation that nothing waits on any more (it stops being polled, and
-//! resumes if someone asks again).
+//! A computation runs as a task of its own, and stops when the last request
+//! waiting on it is dropped: the task is aborted, which drops the requests it
+//! was making in turn, and the node goes back to what it was (so a later
+//! request computes it again). Work handed to `spawn_blocking` is not
+//! interrupted.
+//!
+//! Not here yet: persistence and a bound on memory.
 
 use futures::future::{BoxFuture, FutureExt, Shared};
 use std::any::{Any, TypeId};
@@ -33,8 +37,9 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::future::Future;
 use std::hash::{Hash, Hasher};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+use tokio::task::AbortHandle;
 
 /// A point in the graph's history. Moves forward when inputs may have changed.
 pub type Version = u64;
@@ -155,7 +160,64 @@ type Running = Shared<BoxFuture<'static, Result<Arc<Evaluated>, Error>>>;
 enum State {
     Empty,
     Done(Arc<Evaluated>),
-    Running { version: Version, future: Running },
+    Running(Arc<Computation>),
+}
+
+/// A computation in flight, and how many requests are waiting for it.
+struct Computation {
+    version: Version,
+    future: Running,
+    waiters: AtomicUsize,
+    abort: AbortHandle,
+    /// What the node held before, to go back to if this is abandoned.
+    previous: Option<Arc<Evaluated>>,
+    /// The node was marked dirty when this started.
+    dirty: bool,
+}
+
+/// One request waiting for a [`Computation`]; the last to go stops it.
+struct Waiter {
+    node: Arc<Node>,
+    computation: Arc<Computation>,
+}
+
+impl Waiter {
+    /// Join `computation`; call with the node's state lock held.
+    fn join(node: &Arc<Node>, computation: &Arc<Computation>) -> Waiter {
+        computation.waiters.fetch_add(1, Ordering::AcqRel);
+        Waiter {
+            node: node.clone(),
+            computation: computation.clone(),
+        }
+    }
+}
+
+impl Drop for Waiter {
+    fn drop(&mut self) {
+        if self.computation.waiters.fetch_sub(1, Ordering::AcqRel) != 1 {
+            return;
+        }
+        let abandoned = {
+            let mut state = self.node.state.lock().unwrap();
+            // Someone may have joined, or the computation finished, since.
+            let ours = matches!(&*state, State::Running(c) if Arc::ptr_eq(c, &self.computation))
+                && self.computation.waiters.load(Ordering::Acquire) == 0;
+            if !ours {
+                return;
+            }
+            self.computation.abort.abort();
+            if self.computation.dirty {
+                self.node.dirty.store(true, Ordering::Release);
+            }
+            let back = match &self.computation.previous {
+                Some(previous) => State::Done(previous.clone()),
+                None => State::Empty,
+            };
+            std::mem::replace(&mut *state, back)
+        };
+        // Dropped with no lock held.
+        drop(abandoned);
+    }
 }
 
 struct Node {
@@ -307,7 +369,7 @@ async fn evaluate_now(
     /// What the state of the node says to do, decided with its lock held.
     enum Step {
         Done(Arc<Evaluated>),
-        Await(Running),
+        Await(Waiter),
         /// Another version is being worked out; let it finish, then look again.
         Other(Running),
     }
@@ -320,14 +382,11 @@ async fn evaluate_now(
                 {
                     Step::Done(done.clone())
                 }
-                State::Running {
-                    version: running,
-                    future,
-                } => {
-                    if *running == version {
-                        Step::Await(future.clone())
+                State::Running(computation) => {
+                    if computation.version == version {
+                        Step::Await(Waiter::join(node, computation))
                     } else {
-                        Step::Other(future.clone())
+                        Step::Other(computation.future.clone())
                     }
                 }
                 State::Empty | State::Done(_) => {
@@ -339,25 +398,41 @@ async fn evaluate_now(
                     // A task of its own, so that independent keys run on
                     // different workers instead of inside whichever poll
                     // first asked for them.
-                    let task =
-                        tokio::spawn(run(inner.clone(), node.clone(), previous, dirty, version));
+                    let task = tokio::spawn(run(
+                        inner.clone(),
+                        node.clone(),
+                        previous.clone(),
+                        dirty,
+                        version,
+                    ));
+                    let abort = task.abort_handle();
                     let future: Running = async move {
                         task.await
                             .map_err(|e| Error::msg(format!("a computation panicked: {e}")))?
                     }
                     .boxed()
                     .shared();
-                    *state = State::Running {
+                    let computation = Arc::new(Computation {
                         version,
-                        future: future.clone(),
-                    };
-                    Step::Await(future)
+                        future,
+                        waiters: AtomicUsize::new(0),
+                        abort,
+                        previous,
+                        dirty,
+                    });
+                    let waiter = Waiter::join(node, &computation);
+                    *state = State::Running(computation);
+                    Step::Await(waiter)
                 }
             }
         };
         match step {
             Step::Done(done) => return Ok(done),
-            Step::Await(future) => return future.await,
+            Step::Await(waiter) => {
+                let result = waiter.computation.future.clone().await;
+                drop(waiter);
+                return result;
+            }
             Step::Other(future) => {
                 let _ = future.await;
             }

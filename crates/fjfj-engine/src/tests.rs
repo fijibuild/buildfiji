@@ -402,15 +402,93 @@ async fn keys_are_asked_for_in_parallel() {
 async fn a_request_given_up_on_does_not_wedge_the_node() {
     let engine = Engine::new();
     let first = engine.get(Slow(7, &ABANDONED_RUNS));
-    // Poll it a little, then drop it.
+    // Poll it until the computation has started, then drop it.
     let mut first = Box::pin(first);
-    for _ in 0..3 {
+    while ABANDONED_RUNS.load(Ordering::SeqCst) == 0 {
         let _ = futures::poll!(first.as_mut());
+        tokio::task::yield_now().await;
     }
     drop(first);
     assert_eq!(*engine.get(Slow(7, &ABANDONED_RUNS)).await.unwrap(), 14);
-    // The abandoned computation was picked up, not started again.
-    assert_eq!(ABANDONED_RUNS.load(Ordering::SeqCst), 1);
+    // The abandoned computation was stopped, and the new request computed it again.
+    assert_eq!(ABANDONED_RUNS.load(Ordering::SeqCst), 2);
+}
+
+/// A tree of keys that never finish by themselves, counting those running.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+struct Forever(u32);
+
+static FOREVER_STARTED: AtomicUsize = AtomicUsize::new(0);
+static FOREVER_LIVE: AtomicUsize = AtomicUsize::new(0);
+
+struct Live;
+
+impl Live {
+    fn enter() -> Live {
+        FOREVER_STARTED.fetch_add(1, Ordering::SeqCst);
+        FOREVER_LIVE.fetch_add(1, Ordering::SeqCst);
+        Live
+    }
+}
+
+impl Drop for Live {
+    fn drop(&mut self) {
+        FOREVER_LIVE.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+impl Key for Forever {
+    type Value = u32;
+    async fn compute(&self, ctx: &Ctx) -> Result<u32, Error> {
+        let _live = Live::enter();
+        if self.0 < 3 {
+            let kids = ctx
+                .get_all(vec![Forever(self.0 + 1), Forever(self.0 + 1 + 10)])
+                .await;
+            return Ok(kids.len() as u32);
+        }
+        std::future::pending().await
+    }
+}
+
+#[tokio::test]
+async fn dropping_the_root_request_stops_every_task_beneath_it() {
+    let engine = Engine::new();
+    let mut root = Box::pin(engine.get(Forever(0)));
+    while FOREVER_LIVE.load(Ordering::SeqCst) < 7 {
+        let _ = futures::poll!(root.as_mut());
+        tokio::task::yield_now().await;
+    }
+    drop(root);
+    for _ in 0..100 {
+        if FOREVER_LIVE.load(Ordering::SeqCst) == 0 {
+            break;
+        }
+        tokio::task::yield_now().await;
+    }
+    assert_eq!(FOREVER_LIVE.load(Ordering::SeqCst), 0);
+    // The nodes can be asked for again: nothing is wedged in `Running`.
+    let started = FOREVER_STARTED.load(Ordering::SeqCst);
+    let mut again = Box::pin(engine.get(Forever(0)));
+    while FOREVER_STARTED.load(Ordering::SeqCst) == started {
+        let _ = futures::poll!(again.as_mut());
+        tokio::task::yield_now().await;
+    }
+}
+
+#[tokio::test]
+async fn a_computation_another_request_still_waits_on_keeps_running() {
+    static RUNS: AtomicUsize = AtomicUsize::new(0);
+    let engine = Engine::new();
+    let first = engine.get(Slow(9, &RUNS));
+    let other = engine.clone();
+    let mut first = Box::pin(first);
+    let _ = futures::poll!(first.as_mut());
+    let second = tokio::spawn(async move { other.get(Slow(9, &RUNS)).await });
+    tokio::task::yield_now().await;
+    drop(first);
+    assert_eq!(*second.await.unwrap().unwrap(), 18);
+    assert_eq!(RUNS.load(Ordering::SeqCst), 1);
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
