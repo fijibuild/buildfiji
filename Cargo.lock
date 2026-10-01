@@ -1029,6 +1029,8 @@ dependencies = [
  "fjfj-loading",
  "fjfj-repo",
  "fjfj-starlark",
+ "hex",
+ "sha2",
  "tempfile",
  "thiserror",
  "tokio",

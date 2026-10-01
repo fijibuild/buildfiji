@@ -123,7 +123,7 @@ pub(crate) async fn analyze(
         build_file,
         configuration: key.configuration.clone(),
         main_repo_name: env.main_repo_name.clone(),
-        attrs: set,
+        attrs: set.clone(),
         deps,
         outputs,
         mappings: rules.mappings(),
@@ -161,5 +161,9 @@ pub(crate) async fn analyze(
     crate::runfiles_tree::register(&mut target, &env.main_repo_name, &mappings, &|r| {
         r.to_owned()
     });
+    if schema.test {
+        let resolved = resolved_attrs(&schema, &set);
+        crate::test_action::register(ctx, key, &resolved, &mut target).await?;
+    }
     Ok(target)
 }

@@ -65,6 +65,11 @@ pub struct Configuration {
     /// Other flags, by name, for `config_setting(values = ...)`: `copt`,
     /// `linkopt`, ...
     pub options: BTreeMap<String, String>,
+    /// `--test_env`: set for every test, a name inherited from the client
+    /// already given its value.
+    pub test_env: BTreeMap<String, String>,
+    /// `--test_arg`: appended to the arguments of every test.
+    pub test_args: Vec<String>,
     /// Built to run on the execution platform: a tool, not a target.
     pub exec: bool,
 }
@@ -106,6 +111,8 @@ impl Default for Configuration {
             defines: BTreeMap::new(),
             constraints: std::collections::BTreeSet::new(),
             options: BTreeMap::new(),
+            test_env: BTreeMap::new(),
+            test_args: Vec::new(),
             exec: false,
         }
     }
@@ -155,6 +162,8 @@ mod tests {
             defines: BTreeMap::new(),
             constraints: std::collections::BTreeSet::new(),
             options: BTreeMap::new(),
+            test_env: BTreeMap::new(),
+            test_args: Vec::new(),
             exec: true,
         };
         assert_eq!(config.mnemonic(), "k8-opt-exec");

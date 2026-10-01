@@ -52,6 +52,10 @@ pub struct Failure {
     pub message: String,
     /// More errors Bazel reports first, each its own `ERROR:` line.
     pub details: Vec<String>,
+    /// How the command ended, if it ran and exited.
+    pub exit_code: Option<i32>,
+    /// It was killed for taking longer than its `timeout`.
+    pub timed_out: bool,
     /// What the command printed.
     pub output: String,
 }
@@ -67,6 +71,11 @@ pub struct Outcome {
     /// had them and their outputs were still there.
     pub cached: usize,
     pub failures: Vec<Failure>,
+    /// How long each action that ran took, by its first output; an action that
+    /// did not run has the time it took when it did.
+    pub durations: Vec<(String, std::time::Duration)>,
+    /// The first outputs of the actions that did not run.
+    pub cached_outputs: Vec<String>,
 }
 
 /// What the console is told as actions run.
@@ -99,6 +108,8 @@ struct Scheduler {
     cached: AtomicUsize,
     cache: ActionCache,
     failures: Mutex<Vec<Failure>>,
+    durations: Mutex<Vec<(String, std::time::Duration)>>,
+    cached_outputs: Mutex<Vec<String>>,
     progress: Arc<dyn Progress>,
 }
 
@@ -129,6 +140,8 @@ pub async fn execute(
         cached: AtomicUsize::new(0),
         cache: ActionCache::load(layout.output_base.join("fjfj-action-cache.json")),
         failures: Mutex::new(Vec::new()),
+        durations: Mutex::new(Vec::new()),
+        cached_outputs: Mutex::new(Vec::new()),
         progress,
     });
     let mut wanted: Vec<usize> = requested
@@ -144,6 +157,8 @@ pub async fn execute(
         ran: scheduler.ran.load(Ordering::Relaxed),
         cached: scheduler.cached.load(Ordering::Relaxed),
         failures: std::mem::take(&mut *scheduler.failures.lock().unwrap()),
+        durations: std::mem::take(&mut *scheduler.durations.lock().unwrap()),
+        cached_outputs: std::mem::take(&mut *scheduler.cached_outputs.lock().unwrap()),
     }
 }
 
@@ -187,6 +202,8 @@ impl Scheduler {
                 mnemonic: action.mnemonic.clone(),
                 message: "skipped after a failure".to_owned(),
                 details: Vec::new(),
+                exit_code: None,
+                timed_out: false,
                 output: String::new(),
             }));
         }
@@ -196,19 +213,39 @@ impl Scheduler {
             && self.cache.is_current(&execroot, &action, key)
         {
             self.cached.fetch_add(1, Ordering::Relaxed);
+            if let Some(first) = action.outputs.first() {
+                let took = self.cache.duration(&action).unwrap_or_default();
+                self.durations
+                    .lock()
+                    .unwrap()
+                    .push((first.exec_path(), took));
+                self.cached_outputs.lock().unwrap().push(first.exec_path());
+            }
             return Ok(());
         }
         self.progress.started(&action);
-        match self.execute_one(&action).await {
+        let started = std::time::Instant::now();
+        let outcome = self.execute_one(&action).await;
+        if let Some(first) = action.outputs.first() {
+            self.durations
+                .lock()
+                .unwrap()
+                .push((first.exec_path(), started.elapsed()));
+        }
+        match outcome {
             Ok(()) => {
                 if let Some(key) = key {
-                    self.cache.record(&execroot, &action, key);
+                    self.cache
+                        .record(&execroot, &action, key, started.elapsed());
                 }
                 self.ran.fetch_add(1, Ordering::Relaxed);
                 Ok(())
             }
             Err(failure) => {
-                self.stopped.store(true, Ordering::Release);
+                // A test that fails is a result, not a reason to stop.
+                if action.mnemonic != "TestRunner" {
+                    self.stopped.store(true, Ordering::Release);
+                }
                 self.failures.lock().unwrap().push(failure.clone());
                 Err(Arc::new(failure))
             }
@@ -227,6 +264,8 @@ impl Scheduler {
             mnemonic: action.mnemonic.clone(),
             message,
             details: Vec::new(),
+            exit_code: None,
+            timed_out: false,
             output: String::new(),
         };
         let execroot = self.layout.execroot();
@@ -319,12 +358,18 @@ impl Scheduler {
                 std::os::unix::fs::symlink(execroot.join(target), &at)
                     .map_err(|e| fail(format!("cannot link {}: {e}", at.display())))?;
             }
-            ActionKind::Spawn { argv, env, .. } => {
+            ActionKind::Spawn {
+                argv,
+                env,
+                execution_requirements,
+            } => {
                 self.spawned.fetch_add(1, Ordering::Relaxed);
                 let Some((program, args)) = argv.split_first() else {
                     return Err(fail("the command is empty".to_owned()));
                 };
-                let output = tokio::process::Command::new(program)
+                let started = std::time::Instant::now();
+                let mut command = tokio::process::Command::new(program);
+                command
                     .args(args)
                     .current_dir(&execroot)
                     .env_clear()
@@ -332,18 +377,65 @@ impl Scheduler {
                     .stdin(Stdio::null())
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped())
-                    .kill_on_drop(true)
-                    .output()
-                    .await
-                    .map_err(|e| fail(format!("cannot run {program}: {e}")))?;
+                    .kill_on_drop(true);
+                let limit = execution_requirements
+                    .get("timeout")
+                    .and_then(|s| s.parse::<u64>().ok())
+                    .map(std::time::Duration::from_secs);
+                let output = match limit {
+                    Some(limit) => match tokio::time::timeout(limit, command.output()).await {
+                        Ok(done) => done,
+                        Err(_) => {
+                            return Err(Failure {
+                                timed_out: true,
+                                ..fail(format!(
+                                    "(Timeout): killed after {} seconds",
+                                    limit.as_secs()
+                                ))
+                            });
+                        }
+                    },
+                    None => command.output().await,
+                }
+                .map_err(|e| fail(format!("cannot run {program}: {e}")))?;
                 let mut text = String::from_utf8_lossy(&output.stdout).into_owned();
                 text.push_str(&String::from_utf8_lossy(&output.stderr));
+                // A test's output is its log, whatever became of it.
+                if action.mnemonic == "TestRunner" {
+                    let log = execroot.join(action.outputs[0].exec_path());
+                    std::fs::write(&log, &text)
+                        .map_err(|e| fail(format!("cannot write {}: {e}", log.display())))?;
+                    text.clear();
+                    // Bazel writes the XML of a test that did not.
+                    let xml = execroot.join(action.outputs[1].exec_path());
+                    let missing =
+                        !xml.is_file() || std::fs::metadata(&xml).is_ok_and(|m| m.len() == 0);
+                    if missing
+                        && let Some(tool) = action
+                            .inputs
+                            .iter()
+                            .find(|i| i.path.ends_with("tools/test/generate-xml.sh"))
+                    {
+                        let _ = tokio::process::Command::new("/bin/bash")
+                            .arg(execroot.join(tool.exec_path()))
+                            .arg(&log)
+                            .arg(&xml)
+                            .arg(started.elapsed().as_secs().to_string())
+                            .arg(output.status.code().unwrap_or(1).to_string())
+                            .current_dir(&execroot)
+                            .env_clear()
+                            .envs(env)
+                            .output()
+                            .await;
+                    }
+                }
                 if !output.status.success() {
                     let how = match output.status.code() {
                         Some(code) => format!("(Exit {code})"),
                         None => "(Killed by a signal)".to_owned(),
                     };
                     return Err(Failure {
+                        exit_code: output.status.code(),
                         message: format!(
                             "{how}: {} failed: error executing {} command (from {} rule target {}) {}",
                             program.rsplit('/').next().unwrap_or(program),

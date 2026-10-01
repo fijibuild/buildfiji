@@ -27,6 +27,9 @@ struct FileDigest {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct Entry {
     key: String,
+    /// How long the action took, for the console to say again when it does not run.
+    #[serde(default)]
+    duration_ms: u64,
     /// Each output's exec path and digest after the action ran.
     outputs: Vec<(String, String)>,
 }
@@ -43,6 +46,9 @@ const VERSION: u32 = 1;
 pub struct ActionCache {
     path: PathBuf,
     state: Mutex<State>,
+    /// Directories an action made, by the key it ran with: a directory
+    /// stands for what made it.
+    dirs: Mutex<HashMap<String, String>>,
 }
 
 impl ActionCache {
@@ -60,6 +66,7 @@ impl ActionCache {
         ActionCache {
             path,
             state: Mutex::new(state),
+            dirs: Mutex::new(HashMap::new()),
         }
     }
 
@@ -76,6 +83,9 @@ impl ActionCache {
     pub fn digest(&self, root: &Path, exec_path: &str) -> Option<String> {
         let path = root.join(exec_path);
         let meta = std::fs::metadata(&path).ok()?;
+        if meta.is_dir() {
+            return self.dirs.lock().unwrap().get(exec_path).cloned();
+        }
         if !meta.is_file() {
             return None;
         }
@@ -217,24 +227,53 @@ impl ActionCache {
             .get(&first.exec_path())
             .cloned();
         let Some(entry) = entry else { return false };
-        entry.key == key
+        let current = entry.key == key
             && entry.outputs.len() == action.outputs.len()
             && entry.outputs.iter().all(|(path, digest)| {
                 // A symlink output is current while it is a link.
                 match std::fs::symlink_metadata(root.join(path)) {
                     Ok(meta) if meta.file_type().is_symlink() => digest == "symlink",
-                    Ok(meta) if meta.is_dir() => digest == "directory",
+                    Ok(meta) if meta.is_dir() => digest == &format!("directory:{key}"),
                     Ok(_) => self.digest(root, path).as_deref() == Some(digest.as_str()),
                     Err(_) => false,
                 }
-            })
+            });
+        if current {
+            self.note_dirs(root, action, key);
+        }
+        current
     }
 
-    /// Remember that `action` ran with `key` and left its outputs.
-    pub fn record(&self, root: &Path, action: &Action, key: String) {
+    /// Remember what made the directories among `action`'s outputs.
+    fn note_dirs(&self, root: &Path, action: &Action, key: &str) {
+        for out in &action.outputs {
+            let path = out.exec_path();
+            if std::fs::metadata(root.join(&path)).is_ok_and(|m| m.is_dir()) {
+                self.dirs
+                    .lock()
+                    .unwrap()
+                    .insert(path, format!("directory:{key}"));
+            }
+        }
+    }
+
+    /// How long `action` took the last time it ran.
+    pub fn duration(&self, action: &Action) -> Option<std::time::Duration> {
+        let first = action.outputs.first()?;
+        self.state
+            .lock()
+            .unwrap()
+            .actions
+            .get(&first.exec_path())
+            .map(|e| std::time::Duration::from_millis(e.duration_ms))
+    }
+
+    /// Remember that `action` ran with `key`, took `took`, and left its outputs.
+    pub fn record(&self, root: &Path, action: &Action, key: String, took: std::time::Duration) {
         let Some(first) = action.outputs.first() else {
             return;
         };
+        self.note_dirs(root, action, &key);
         let outputs = action
             .outputs
             .iter()
@@ -242,16 +281,19 @@ impl ActionCache {
                 let path = out.exec_path();
                 let digest = match std::fs::symlink_metadata(root.join(&path)) {
                     Ok(meta) if meta.file_type().is_symlink() => "symlink".to_owned(),
-                    Ok(meta) if meta.is_dir() => "directory".to_owned(),
+                    Ok(meta) if meta.is_dir() => format!("directory:{key}"),
                     _ => self.digest(root, &path).unwrap_or_default(),
                 };
                 (path, digest)
             })
             .collect();
-        self.state
-            .lock()
-            .unwrap()
-            .actions
-            .insert(first.exec_path(), Entry { key, outputs });
+        self.state.lock().unwrap().actions.insert(
+            first.exec_path(),
+            Entry {
+                key,
+                duration_ms: took.as_millis() as u64,
+                outputs,
+            },
+        );
     }
 }

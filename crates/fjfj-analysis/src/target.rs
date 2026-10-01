@@ -73,6 +73,8 @@ pub struct ConfiguredTarget {
     /// Files built with the target that its results do not list: the
     /// runfiles tree of an executable.
     pub extra_outputs: Vec<Artifact>,
+    /// For a test: how to run it.
+    pub test: Option<fjfj_graph::TestInfo>,
     /// The providers it gave besides `DefaultInfo`.
     pub providers: Vec<StoredProvider>,
     /// What its rule printed.
@@ -96,6 +98,7 @@ impl ConfiguredTarget {
             runfiles: fjfj_graph::Runfiles::default(),
             outputs: BTreeMap::new(),
             extra_outputs: Vec::new(),
+            test: None,
             providers: Vec::new(),
             printed: Vec::new(),
             config_matching: None,

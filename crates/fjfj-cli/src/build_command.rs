@@ -21,6 +21,8 @@ pub(crate) struct Options {
     pub jobs: Option<usize>,
     /// `--show_result`: say where the results are for this many targets or fewer.
     pub show_result: usize,
+    /// `test`: run the tests among the targets, and how much of their logs to show.
+    pub test: Option<fjfj_bazel_compat::test_flags::TestOutput>,
 }
 
 /// The configuration the build flags ask for.
@@ -50,6 +52,29 @@ pub(crate) fn configuration_from(
         configuration.options.insert(flag.clone(), value.clone());
     }
     Ok(configuration)
+}
+
+/// `--test_env` and `--test_arg` into the configuration. `--test_env=NAME`
+/// takes the value `NAME` has here.
+pub(crate) fn apply_test_flags(
+    configuration: &mut Configuration,
+    flags: &fjfj_bazel_compat::test_flags::TestFlags,
+) {
+    for entry in &flags.env {
+        match entry.split_once('=') {
+            Some((name, value)) => {
+                configuration
+                    .test_env
+                    .insert(name.to_owned(), value.to_owned());
+            }
+            None => {
+                if let Ok(value) = std::env::var(entry) {
+                    configuration.test_env.insert(entry.clone(), value);
+                }
+            }
+        }
+    }
+    configuration.test_args = flags.args.clone();
 }
 
 /// `--jobs`: a number, `auto`, or `HOST_CPUS` with `*factor` or `-n`.
@@ -99,9 +124,33 @@ pub(crate) struct TargetResult {
     pub built: bool,
 }
 
+/// How a test ended.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum TestStatus {
+    Passed,
+    Failed(i32),
+    Timeout,
+    /// It did not run: something it needs failed to build.
+    NoStatus,
+}
+
+/// A test that was run.
+#[derive(Debug, Clone)]
+pub(crate) struct TestResult {
+    pub label: Label,
+    pub status: TestStatus,
+    pub took: Duration,
+    /// The action did not run again: the last result still holds.
+    pub cached: bool,
+    /// Where `test.log` is on disk.
+    pub log: std::path::PathBuf,
+    pub size: String,
+}
+
 #[derive(Debug)]
 pub(crate) struct Report {
     pub layout: Layout,
+    pub tests: Vec<TestResult>,
     /// What successful commands printed, with what each was doing.
     pub outputs: Vec<(String, String)>,
     /// What rules `print()`ed while they were analysed.
@@ -122,6 +171,7 @@ impl Report {
     fn new(layout: Layout) -> Report {
         Report {
             layout,
+            tests: Vec::new(),
             outputs: Vec::new(),
             printed: Vec::new(),
             results: Vec::new(),
@@ -221,12 +271,23 @@ pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> R
         return report;
     }
 
-    let actions: Vec<Action> = all.iter().flat_map(|t| t.actions.clone()).collect();
-    report.total_actions = actions.len();
-    let wanted: Vec<Artifact> = roots
+    let mut actions: Vec<Action> = all.iter().flat_map(|t| t.actions.clone()).collect();
+    let mut wanted: Vec<Artifact> = roots
         .iter()
         .flat_map(|(_, t)| t.files.to_vec().into_iter().chain(t.extra_outputs.clone()))
         .collect();
+    // The tests among the roots run too, with their logs among the results.
+    let mut tests_to_run: Vec<(Label, fjfj_graph::TestInfo)> = Vec::new();
+    if request.options.test.is_some() {
+        for (label, target) in &roots {
+            if let Some(test) = &target.test {
+                actions.push(test.action.clone());
+                wanted.extend(test.action.outputs.iter().cloned());
+                tests_to_run.push((label.clone(), test.clone()));
+            }
+        }
+    }
+    report.total_actions = actions.len();
     if let Err(e) = request.layout.prepare() {
         report.analysis_errors.push((
             Label {
@@ -256,7 +317,42 @@ pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> R
     report.execution = execution_started.elapsed();
     report.outputs = std::mem::take(&mut *collector.outputs.lock().unwrap());
     report.spawned = outcome.spawned;
-    report.failures = outcome.failures;
+    // A test that fails is a result; everything else that failed is an error.
+    let (test_failures, failures): (Vec<_>, Vec<_>) = outcome
+        .failures
+        .into_iter()
+        .partition(|f| f.mnemonic == "TestRunner");
+    report.failures = failures;
+    for (label, test) in &tests_to_run {
+        let log = test.log.exec_path();
+        let took = outcome
+            .durations
+            .iter()
+            .find(|(path, _)| *path == log)
+            .map(|(_, d)| *d)
+            .unwrap_or_default();
+        let cached = outcome.cached_outputs.contains(&log);
+        let failure = test_failures.iter().find(|f| f.owner == label_text(label));
+        let status = match failure {
+            Some(f) if f.timed_out => TestStatus::Timeout,
+            Some(f) => match f.exit_code {
+                Some(code) => TestStatus::Failed(code),
+                // It could not run; the build error says why.
+                None => TestStatus::NoStatus,
+            },
+            None if request.layout.execroot().join(&log).exists() => TestStatus::Passed,
+            None => TestStatus::NoStatus,
+        };
+        report.tests.push(TestResult {
+            label: label.clone(),
+            status,
+            took,
+            cached,
+            log: request.layout.execroot().join(&log),
+            size: test.size.clone(),
+        });
+    }
+    report.tests.sort_by_key(|t| label_text(&t.label));
     let prefix = &request.options.symlink_prefix;
     let _ = request
         .layout
@@ -364,6 +460,7 @@ pub(crate) fn print(
     keep_going: bool,
     layout: &Layout,
     verbose_failures: bool,
+    test_output: Option<fjfj_bazel_compat::test_flags::TestOutput>,
 ) -> bool {
     for text in &report.printed {
         eprintln!("DEBUG: {text}");
@@ -391,6 +488,9 @@ pub(crate) fn print(
     }
     for (what, text) in &report.outputs {
         eprintln!("INFO: From {what}:\n{}", text.trim_end());
+    }
+    if let Some(mode) = test_output {
+        print_test_output(report, mode);
     }
     let mut failed_owners: Vec<&str> = Vec::new();
     for failure in &report.failures {
@@ -428,7 +528,17 @@ pub(crate) fn print(
                 requested
             );
         }
-        eprintln!("INFO: Found {}...", plural(requested, "target", "targets"));
+        let tests = report.tests.len();
+        let found = match (requested - tests.min(requested), tests) {
+            (_, 0) => plural(requested, "target", "targets"),
+            (0, t) => plural(t, "test target", "test targets"),
+            (n, t) => format!(
+                "{} and {}",
+                plural(n, "target", "targets"),
+                plural(t, "test target", "test targets")
+            ),
+        };
+        eprintln!("INFO: Found {found}...");
         // `--show_result=1`: say where the result is when there is one target.
         if report.results.len() <= show_result {
             for result in &built {
@@ -460,7 +570,23 @@ pub(crate) fn print(
             report.spawned
         );
     }
-    if ok {
+    let tests_failed = report
+        .tests
+        .iter()
+        .filter(|t| t.status != TestStatus::Passed)
+        .count();
+    if ok && tests_failed > 0 {
+        eprintln!(
+            "INFO: Build completed, {} {}, {}",
+            tests_failed,
+            if tests_failed == 1 {
+                "test FAILED"
+            } else {
+                "tests FAILED"
+            },
+            plural(report.total_actions, "total action", "total actions")
+        );
+    } else if ok {
         eprintln!(
             "INFO: Build completed successfully, {}",
             plural(report.total_actions, "total action", "total actions")
@@ -468,7 +594,144 @@ pub(crate) fn print(
     } else {
         eprintln!("ERROR: Build did NOT complete successfully");
     }
+    if ok && test_output.is_some() {
+        print_test_summary(report);
+    }
     ok
+}
+
+/// What a failed test, and with `--test_output` a finished one, tells.
+fn print_test_output(report: &Report, mode: fjfj_bazel_compat::test_flags::TestOutput) {
+    use fjfj_bazel_compat::test_flags::TestOutput;
+    for test in &report.tests {
+        let failed = match &test.status {
+            TestStatus::Passed => false,
+            TestStatus::Failed(code) => {
+                eprintln!(
+                    "FAIL: {} (Exit {code}) (see {})",
+                    label_text(&test.label),
+                    test.log.display()
+                );
+                true
+            }
+            TestStatus::Timeout => {
+                eprintln!(
+                    "TIMEOUT: {} (see {})",
+                    label_text(&test.label),
+                    test.log.display()
+                );
+                true
+            }
+            TestStatus::NoStatus => continue,
+        };
+        let show = match mode {
+            TestOutput::Summary => false,
+            TestOutput::Errors => failed,
+            TestOutput::All | TestOutput::Streamed => true,
+        };
+        if !show {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(&test.log) else {
+            continue;
+        };
+        // After the header test-setup.sh writes: the PAGER line, the test's
+        // name, and a line of dashes.
+        let body = match text.split_once(
+            "-----------------------------------------------------------------------------\n",
+        ) {
+            Some((_, rest)) => rest,
+            None => &text,
+        };
+        let label = label_text(&test.label);
+        eprintln!("INFO: From Testing {label}:");
+        eprintln!("==================== Test output for {label}:");
+        eprint!("{body}");
+        if !body.ends_with('\n') {
+            eprintln!();
+        }
+        eprintln!(
+            "================================================================================"
+        );
+    }
+}
+
+/// The table of results and the count under it.
+fn print_test_summary(report: &Report) {
+    let mut too_big = false;
+    for test in &report.tests {
+        let (status, cached) = match &test.status {
+            TestStatus::Passed => ("PASSED", test.cached),
+            TestStatus::Failed(_) => ("FAILED", false),
+            TestStatus::Timeout => ("TIMEOUT", false),
+            TestStatus::NoStatus => ("NO STATUS", false),
+        };
+        let label = label_text(&test.label);
+        let prefix = if cached { "(cached) " } else { "" };
+        let width = 73 - prefix.len();
+        let took = if matches!(test.status, TestStatus::NoStatus) {
+            String::new()
+        } else {
+            format!(" in {:.1}s", test.took.as_secs_f64())
+        };
+        eprintln!("{label:<width$}{prefix}{status}{took}");
+        if !matches!(test.status, TestStatus::Passed | TestStatus::NoStatus) {
+            eprintln!("  {}", test.log.display());
+        }
+        if test.status == TestStatus::Passed && is_too_big(test) {
+            too_big = true;
+        }
+    }
+    let ran = report.tests.iter().filter(|t| !t.cached).count();
+    let total = report.tests.len();
+    let passed = report
+        .tests
+        .iter()
+        .filter(|t| t.status == TestStatus::Passed)
+        .count();
+    let failed = report
+        .tests
+        .iter()
+        .filter(|t| !matches!(t.status, TestStatus::Passed | TestStatus::NoStatus))
+        .count();
+    let mut parts = Vec::new();
+    if passed > 0 {
+        parts.push(if passed == 1 {
+            "1 test passes".to_owned()
+        } else {
+            format!("{passed} tests pass")
+        });
+    }
+    if failed > 0 {
+        parts.push(if failed == 1 {
+            "1 fails locally".to_owned()
+        } else {
+            format!("{failed} fail locally")
+        });
+    }
+    eprintln!();
+    eprintln!(
+        "Executed {ran} out of {}: {}.",
+        plural(total, "test", "tests"),
+        parts.join(" and ")
+    );
+    if too_big {
+        eprintln!(
+            "There were tests whose specified size is too big. Use the --test_verbose_timeout_warnings command line option to see which ones these are."
+        );
+    }
+}
+
+/// Whether a test that passed asked for more time than it needed: it would
+/// have done within half the timeout of a smaller size.
+fn is_too_big(test: &TestResult) -> bool {
+    let smaller = match test.size.as_str() {
+        "medium" => 60,
+        "large" => 300,
+        "enormous" => 900,
+        _ => return false,
+    };
+    test.took.as_secs_f64() * 2.0 <= smaller as f64
 }
 
 /// A location as `bazel` prints it: the BUILD file's absolute path, then the

@@ -17,6 +17,7 @@ pub mod parse;
 pub mod pattern;
 pub mod rule;
 pub mod schema;
+pub mod test_info;
 pub mod visibility;
 
 pub use action::{Action, ActionKind};
@@ -24,6 +25,7 @@ pub use artifact::{Artifact, NestedSet, Root, Runfiles};
 pub use config::{CompilationMode, Configuration};
 pub use label::LabelError;
 pub use parse::{LabelContext, LabelParseError};
+pub use test_info::TestInfo;
 
 /// A Bazel label, e.g. `@repo//pkg/sub:name`.
 #[derive(

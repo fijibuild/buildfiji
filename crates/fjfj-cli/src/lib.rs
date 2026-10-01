@@ -16,7 +16,7 @@ use fjfj_bazel_compat::exit_code::{ExitCode, messages};
 use fjfj_bazel_compat::{
     Cli, Command, bes_flags, build_flags, bzlmod_flags, canonicalize_flags, clap_flags,
     console_flags, diagnostics_flags, execution_log_flags, flag_alias, misc_flags, output_filter,
-    remote_flags, workspace_status_flags,
+    remote_flags, test_flags, workspace_status_flags,
 };
 use fjfj_bzlmod::attrs::AttrValue;
 use fjfj_bzlmod::discovery::RegistrySource;
@@ -34,6 +34,7 @@ mod build_command;
 mod fetch_command;
 mod mod_command;
 mod run_command;
+mod test_command;
 mod workspace;
 
 /// `fjfj license`'s output. Bazel's own prints an equivalent short notice
@@ -77,6 +78,12 @@ pub enum CliError {
     /// The build failed and has said why: only the exit code is left.
     #[error("the build failed")]
     Reported,
+    /// The build worked and some tests did not.
+    #[error("tests failed")]
+    TestsFailed,
+    /// `test` was asked for and no target was a test.
+    #[error("no tests")]
+    NoTests,
     /// The program `run` ran exited with this code.
     #[error("the program exited with {0}")]
     Program(u8),
@@ -87,6 +94,8 @@ impl CliError {
         match self {
             CliError::CommandLine(_) => ExitCode::CommandLineProblem,
             CliError::Build(_) | CliError::Reported | CliError::Program(_) => ExitCode::BuildFailed,
+            CliError::TestsFailed => ExitCode::TestsFailed,
+            CliError::NoTests => ExitCode::NoTestsFound,
             CliError::Fetch(_) => ExitCode::Interrupted,
             CliError::Internal(_) => ExitCode::InternalError,
         }
@@ -100,7 +109,10 @@ impl CliError {
                 messages::error(e)
             }
             CliError::Internal(e) => messages::fatal(e),
-            CliError::Reported | CliError::Program(_) => String::new(),
+            CliError::Reported
+            | CliError::Program(_)
+            | CliError::TestsFailed
+            | CliError::NoTests => String::new(),
         }
     }
 }
@@ -375,6 +387,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
         }
         Command::Build(args) => build_main(args, "build", false).await.map(|_| ()),
         Command::Run(args) => run_command::run(args).await,
+        Command::Test(args) => test_command::run(args).await,
         Command::Mod(args) => {
             let (subcommand, rest) = args.expr.split_first().ok_or_else(|| {
                 CliError::CommandLine(anyhow::anyhow!(
@@ -499,6 +512,7 @@ async fn build_main(
     const BUILD_IMPLEMENTED: &[&[&str]] = &[
         flag_alias::IMPLEMENTED,
         build_flags::IMPLEMENTED,
+        test_flags::IMPLEMENTED,
         diagnostics_flags::IMPLEMENTED,
         workspace_status_flags::IMPLEMENTED,
         misc_flags::IMPLEMENTED,
@@ -517,6 +531,15 @@ async fn build_main(
     clap_flags::validate(&rest, command, &implemented)
         .map_err(|e| CliError::CommandLine(anyhow::Error::from(e)))?;
     let (build_flags, rest) = build_flags::extract(&rest, command);
+    // Only `test` has test flags; for it, `--test_env` and `--test_arg` shape
+    // the configuration.
+    let (test_flags, rest) = if command == "test" {
+        let (flags, rest) = test_flags::extract(&rest, command)
+            .map_err(|e| CliError::CommandLine(anyhow::anyhow!(e)))?;
+        (Some(flags), rest)
+    } else {
+        (None, rest)
+    };
     let (diagnostics, rest) = diagnostics_flags::extract(&rest, command);
     let (workspace_status, rest) = workspace_status_flags::extract(&rest, command);
     let (misc, rest) = misc_flags::extract(&rest, command);
@@ -656,9 +679,13 @@ async fn build_main(
             Vec::new(),
         )
     };
+    let mut configuration = build_command::configuration_from(&build_flags)
+        .map_err(|e| CliError::CommandLine(anyhow::anyhow!(e)))?;
+    if let Some(flags) = &test_flags {
+        build_command::apply_test_flags(&mut configuration, flags);
+    }
     let build = build_command::Options {
-        configuration: build_command::configuration_from(&build_flags)
-            .map_err(|e| CliError::CommandLine(anyhow::anyhow!(e)))?,
+        configuration,
         keep_going: diagnostics.keep_going,
         symlink_prefix: build_flags
             .symlink_prefix
@@ -674,9 +701,11 @@ async fn build_main(
                 ))
             })?,
         },
+        test: test_flags.as_ref().map(|t| t.output),
     };
     let build_show_result = build.show_result;
     let build_options = build.clone();
+    let build_options_test_output = build.test;
     let loaded = fetch_repositories_for_build(repo_flags, &bzlmod, texts, offset, build).await?;
     let resolution = loaded.resolution;
     let targets = loaded.targets;
@@ -709,6 +738,7 @@ async fn build_main(
         diagnostics.keep_going,
         &layout,
         diagnostics.verbose_failures,
+        build_options_test_output,
     );
     if !succeeded {
         return Err(CliError::Reported);
@@ -1060,6 +1090,7 @@ mod tests {
             symlink_prefix: "bazel-".into(),
             jobs: None,
             show_result: 1,
+            test: None,
         };
         let patterns = ["//:g".to_owned(), "//:bad".to_owned()];
         // The build is blocking work that needs a runtime to be current.
@@ -1101,6 +1132,122 @@ mod tests {
                 .find(|r| r.label.name == "bad")
                 .unwrap()
                 .built
+        );
+    }
+
+    #[test]
+    fn test_runs_the_tests_among_its_targets_and_remembers_the_ones_that_passed() {
+        use build_command::TestStatus;
+        let dir = Scratch::new("test-run");
+        // @bazel_tools' tools/test/BUILD loads rules_shell, which the offline
+        // fixture registry cannot serve: a stand-in for its `sh_binary`.
+        let shell = dir.0.join("rules_shell");
+        std::fs::create_dir_all(shell.join("shell")).unwrap();
+        std::fs::write(shell.join("MODULE.bazel"), "module(name = 'rules_shell')\n").unwrap();
+        std::fs::write(shell.join("BUILD.bazel"), "").unwrap();
+        std::fs::write(shell.join("shell/BUILD.bazel"), "").unwrap();
+        std::fs::write(
+            shell.join("shell/sh_binary.bzl"),
+            "def sh_binary(**kwargs):\n    pass\n",
+        )
+        .unwrap();
+        let module = "module(name = 'root', version = '0')\nbazel_dep(name = 'rules_shell', version = '0.6.1')\n";
+        std::fs::write(
+            dir.0.join("defs.bzl"),
+            r#"
+def _impl(ctx):
+    exe = ctx.actions.declare_file(ctx.label.name)
+    ctx.actions.write(exe, "echo testing $TEST_TARGET args=$@\nexit " + str(ctx.attr.exit) + "\n", is_executable = True)
+    return [DefaultInfo(executable = exe)]
+
+my_test = rule(implementation = _impl, test = True, attrs = {"exit": attr.int()})
+"#,
+        )
+        .unwrap();
+        std::fs::write(
+            dir.0.join("BUILD.bazel"),
+            "load(':defs.bzl', 'my_test')\nmy_test(name = 'good', size = 'small', args = ['a', 'b c'])\nmy_test(name = 'bad', exit = 3)\n",
+        )
+        .unwrap();
+        let mut args = fixture_registry_flags();
+        args.push("--lockfile_mode=update".to_owned());
+        let (bzlmod, _) = bzlmod_flags::extract(&args, "test");
+        let flags = fetch_command::FetchFlags {
+            output_base: Some(dir.0.join("ob")),
+            repository_cache: Some(None),
+            repo_overrides: vec![("rules_shell".to_owned(), shell)],
+            ..fetch_command::FetchFlags::default()
+        };
+        let options = build_command::Options {
+            configuration: fjfj_graph::Configuration {
+                cpu: "k8".into(),
+                ..fjfj_graph::Configuration::default()
+            },
+            keep_going: true,
+            symlink_prefix: "bazel-".into(),
+            jobs: None,
+            show_result: 1,
+            test: Some(fjfj_bazel_compat::test_flags::TestOutput::Summary),
+        };
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let run_once = || {
+            let (flags, bzlmod, root, options) = (
+                flags.clone(),
+                bzlmod.clone(),
+                dir.0.clone(),
+                options.clone(),
+            );
+            runtime
+                .block_on(async move {
+                    tokio::task::spawn_blocking(move || {
+                        fetch_command::run_for_build(
+                            &flags,
+                            &bzlmod,
+                            &root,
+                            module,
+                            &["//:good".to_owned(), "//:bad".to_owned()],
+                            "",
+                            Some(&options),
+                        )
+                    })
+                    .await
+                })
+                .unwrap()
+                .unwrap()
+                .report
+                .expect("built")
+        };
+        let first = run_once();
+        assert!(
+            first.analysis_errors.is_empty(),
+            "{:?}",
+            first.analysis_errors
+        );
+        let statuses: Vec<(String, TestStatus, bool)> = first
+            .tests
+            .iter()
+            .map(|t| (t.label.name.clone(), t.status.clone(), t.cached))
+            .collect();
+        assert_eq!(
+            statuses,
+            [
+                ("bad".to_owned(), TestStatus::Failed(3), false),
+                ("good".to_owned(), TestStatus::Passed, false)
+            ]
+        );
+        let log = std::fs::read_to_string(dir.0.join("bazel-testlogs/good/test.log")).unwrap();
+        assert!(log.contains("testing //:good args=a b c"), "{log}");
+        assert!(dir.0.join("bazel-testlogs/good/test.xml").is_file());
+        // The test that passed is not run again; the one that failed is.
+        let second = run_once();
+        let again: Vec<(String, bool)> = second
+            .tests
+            .iter()
+            .map(|t| (t.label.name.clone(), t.cached))
+            .collect();
+        assert_eq!(
+            again,
+            [("bad".to_owned(), false), ("good".to_owned(), true)]
         );
     }
 }

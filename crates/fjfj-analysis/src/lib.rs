@@ -12,6 +12,7 @@ mod runfiles_tree;
 mod select;
 mod starlark_rule;
 mod target;
+mod test_action;
 
 pub use select::ConfigMatching;
 pub use target::{ConfiguredTarget, ConfiguredTargetKey, Env, PackageKey, engine};
