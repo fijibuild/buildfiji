@@ -424,3 +424,20 @@ fn a_patch_with_a_rule_line_before_its_headers_applies() {
         file.replace("0.0.0", "7.1.0")
     );
 }
+
+/// rules_rust's release tarball names its members `./extensions/prost/...`;
+/// Bazel normalises the names, so `extensions/prost` is a prefix of them.
+#[test]
+fn a_dot_slash_before_member_names_does_not_hide_the_prefix() {
+    let dotted = vec![
+        ("./extensions/prost/BUILD", Member::file("B")),
+        ("./extensions/prost/src/lib.rs", Member::file("L")),
+        ("./other/x", Member::file("X")),
+    ];
+    let (dir, result) = unpack("a.tar", &build("tar", &dotted), "extensions/prost", &[]);
+    assert_eq!(result, Ok(()));
+    assert_eq!(
+        listing(&dir.path().join("out")),
+        ["BUILD = B", "src/", "src/lib.rs = L"]
+    );
+}

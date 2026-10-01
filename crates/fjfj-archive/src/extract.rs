@@ -292,7 +292,7 @@ pub fn extract(request: &ExtractRequest<'_>) -> Result<(), String> {
     let prefix: Vec<&str> = request
         .strip_prefix
         .split('/')
-        .filter(|c| !c.is_empty())
+        .filter(|c| !c.is_empty() && *c != ".")
         .collect();
     let mut seen_names: Vec<String> = Vec::new();
     let mut matched = 0usize;
@@ -308,7 +308,11 @@ pub fn extract(request: &ExtractRequest<'_>) -> Result<(), String> {
             .iter()
             .find(|(from, _)| from.trim_end_matches('/') == original.trim_end_matches('/'))
             .map_or(original.clone(), |(_, to)| to.clone());
-        let components: Vec<&str> = name.split('/').filter(|c| !c.is_empty()).collect();
+        // Bazel normalises the name, which drops a `./` before it.
+        let components: Vec<&str> = name
+            .split('/')
+            .filter(|c| !c.is_empty() && *c != ".")
+            .collect();
         if components.len() < prefix.len() || components[..prefix.len()] != prefix[..] {
             return Ok(());
         }
@@ -355,7 +359,13 @@ pub fn extract(request: &ExtractRequest<'_>) -> Result<(), String> {
     if !prefix.is_empty() && matched == 0 && !seen_names.is_empty() {
         let mut firsts: Vec<String> = Vec::new();
         for name in &seen_names {
-            let parts: Vec<&str> = name.split('/').filter(|c| !c.is_empty()).collect();
+            let parts: Vec<&str> = name
+                .split('/')
+                .filter(|c| !c.is_empty() && *c != ".")
+                .collect();
+            if parts.is_empty() {
+                continue;
+            }
             if (parts.len() > 1 || name.ends_with('/')) && !firsts.contains(&parts[0].to_owned()) {
                 firsts.push(parts[0].to_owned());
             }
