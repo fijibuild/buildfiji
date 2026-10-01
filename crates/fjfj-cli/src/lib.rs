@@ -745,6 +745,7 @@ async fn build_main(
         aspects: build_flags.aspects.clone(),
         output_groups: build_flags.output_groups.clone(),
         keep_going: diagnostics.keep_going,
+        build: build_flags.build.unwrap_or(true),
         symlink_prefix: build_flags
             .symlink_prefix
             .clone()
@@ -1149,6 +1150,7 @@ mod tests {
             aspects: Vec::new(),
             output_groups: Vec::new(),
             keep_going: true,
+            build: true,
             symlink_prefix: "bazel-".into(),
             jobs: None,
             show_result: 1,
@@ -1250,6 +1252,7 @@ my_test = rule(implementation = _impl, test = True, attrs = {"exit": attr.int()}
             aspects: Vec::new(),
             output_groups: Vec::new(),
             keep_going: true,
+            build: true,
             symlink_prefix: "bazel-".into(),
             jobs: None,
             show_result: 1,

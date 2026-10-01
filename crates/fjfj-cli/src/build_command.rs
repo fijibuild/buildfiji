@@ -25,6 +25,8 @@ pub(crate) struct Options {
     /// `--output_groups`.
     pub output_groups: Vec<String>,
     pub keep_going: bool,
+    /// `--nobuild`: stop after analysis, running no actions.
+    pub build: bool,
     pub symlink_prefix: String,
     /// `--jobs`; the number of CPUs if unset.
     pub jobs: Option<usize>,
@@ -461,6 +463,11 @@ pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> R
             }
         }
     }
+    if !request.options.build {
+        actions.clear();
+        wanted.clear();
+        tests_to_run.clear();
+    }
     report.total_actions = actions.len();
     if let Err(e) = request.layout.prepare() {
         report.analysis_errors.push((
@@ -560,7 +567,9 @@ pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> R
                 pending.extend(t.deps.iter().cloned());
             }
         }
-        let built = report.failures.iter().all(|f| !needed.contains(&f.owner));
+        // With `--nobuild` nothing was built, so nothing is listed as up to date.
+        let built =
+            request.options.build && report.failures.iter().all(|f| !needed.contains(&f.owner));
         // Only what was built is listed, not the sources among a target's files.
         let files = target
             .files

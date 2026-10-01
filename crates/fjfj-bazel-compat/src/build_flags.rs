@@ -18,6 +18,7 @@ pub const IMPLEMENTED: &[&str] = &[
     "jobs",
     "symlink_prefix",
     "show_result",
+    "build",
     "copt",
     "cxxopt",
     "conlyopt",
@@ -56,6 +57,8 @@ pub struct BuildFlags {
     /// `--output_groups`: the groups to build, each as written (`+name`, `-name`).
     pub output_groups: Vec<String>,
     pub show_result: Option<String>,
+    /// `--build` (default true): `--nobuild` stops after analysis.
+    pub build: Option<bool>,
     /// `--copt` and the like, by flag name, each value in order.
     pub options: Vec<(String, String)>,
     /// `--//pkg:flag=value`, in order.
@@ -106,6 +109,10 @@ pub fn extract(args: &[String], command: &str) -> (BuildFlags, Vec<String>) {
         let name = m.flag.name;
         if !IMPLEMENTED.contains(&name) {
             rest.push(arg.clone());
+            continue;
+        }
+        if name == "build" {
+            flags.build = Some(!m.negated);
             continue;
         }
         let Some(value) = m.value.map(str::to_string).or_else(|| iter.next().cloned()) else {
