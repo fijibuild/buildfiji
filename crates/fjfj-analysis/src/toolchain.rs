@@ -39,6 +39,8 @@ impl Key for RegisteredToolchains {
         let mappings = env.rules.mappings();
         tokio::task::spawn_blocking(move || {
             let mut labels: Vec<Label> = Vec::new();
+            // A package's BUILD file is evaluated once, however many toolchains it declares.
+            let mut packages = std::collections::HashMap::new();
             for (module_repo, text) in &patterns {
                 let context = PatternContext {
                     repo: module_repo,
@@ -61,9 +63,11 @@ impl Key for RegisteredToolchains {
                     // Only the `toolchain` rules: a wildcard names everything,
                     // and a rule that itself needs a toolchain must not be
                     // analysed to find out which there are.
-                    let is_toolchain = source
-                        .package(&label.repo, &label.package)
-                        .ok()
+                    let package = packages
+                        .entry((label.repo.clone(), label.package.clone()))
+                        .or_insert_with(|| source.package(&label.repo, &label.package).ok());
+                    let is_toolchain = package
+                        .as_ref()
                         .and_then(|p| {
                             p.target(&label.name).map(|t| {
                                 matches!(
