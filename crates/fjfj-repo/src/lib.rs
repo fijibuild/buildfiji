@@ -285,7 +285,8 @@ impl Repos {
                 "bazel-testlogs".to_owned(),
                 "bazel-genfiles".to_owned(),
                 format!("bazel-{workspace_dir}"),
-            ]);
+            ])
+            .with_skipped_root_dirs(links_into(&options.workspace_root, &options.output_base));
         // `@bazel_tools` is served from the output base, where its files are put.
         let tools_dir = options.output_base.join("external").join("bazel_tools");
         materialize_bazel_tools(&tools_dir).map_err(|e| FetchError {
@@ -2022,4 +2023,17 @@ fn tag_value(value: &fjfj_bzlmod::attrs::AttrValue) -> TagValue {
                 .collect(),
         ),
     }
+}
+
+/// The top-level symlinks of `root` that lead into `output_base`: the
+/// convenience links, whatever `--symlink_prefix` named them.
+fn links_into(root: &Path, output_base: &Path) -> Vec<String> {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return Vec::new();
+    };
+    entries
+        .flatten()
+        .filter(|e| std::fs::read_link(e.path()).is_ok_and(|t| t.starts_with(output_base)))
+        .filter_map(|e| e.file_name().into_string().ok())
+        .collect()
 }
