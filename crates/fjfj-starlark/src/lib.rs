@@ -81,8 +81,8 @@ mod structs;
 mod test_support;
 
 pub use analysis::{
-    DepInfo, RuleRequest, RuleResult, RuleSource, StoredProvider, labels_of_attrs, resolved_attrs,
-    rule_schema, run_rule,
+    DepInfo, Field, RuleRequest, RuleResult, RuleSource, StoredProvider, labels_of_attrs,
+    native_provider, resolved_attrs, rule_schema, run_rule,
 };
 pub use depset::{Depset, DepsetGen, FrozenDepset, Order, depset_to_list, is_depset, new_depset};
 pub use dialect::{FileKind, build_dialect, bzl_dialect, parse};

@@ -3,7 +3,7 @@
 use super::actions::ActionsValue;
 use super::file::alloc_file;
 use super::target::{DepInfo, alloc_target};
-use crate::args::fatal;
+use crate::args::{Wording, bind, fatal, param};
 use crate::label::StarlarkLabel;
 use crate::structs::new_struct;
 use allocative::Allocative;
@@ -12,6 +12,7 @@ use fjfj_graph::rule::{AttrType, AttrValue};
 use fjfj_graph::schema::RuleSchema;
 use fjfj_graph::{Action, Artifact, Configuration, Label, LabelContext};
 use starlark::environment::{Methods, MethodsBuilder, MethodsStatic};
+use starlark::eval::{Arguments, Evaluator};
 use starlark::starlark_module;
 use starlark::starlark_simple_value;
 use starlark::values::dict::AllocDict;
@@ -300,6 +301,105 @@ fn ctx_members(builder: &mut MethodsBuilder) {
             .map(|(name, artifact)| (name.clone(), s.file(heap, artifact.clone())))
             .collect();
         Ok(new_struct(heap, fields))
+    }
+
+    /// `ctx.runfiles(files, transitive_files, collect_data, collect_default,
+    /// symlinks, root_symlinks)`.
+    fn runfiles<'v>(
+        this: Value<'v>,
+        args: &Arguments<'v, '_>,
+        eval: &mut Evaluator<'v, '_, '_>,
+    ) -> starlark::Result<Value<'v>> {
+        let s = state(this);
+        let bound = bind(
+            "runfiles",
+            Wording::Signature,
+            &[
+                param("files", true, false),
+                param("transitive_files", true, false),
+                param("collect_data", true, false),
+                param("collect_default", true, false),
+                param("symlinks", true, false),
+                param("root_symlinks", true, false),
+            ],
+            args,
+            eval,
+        )?;
+        let mut runfiles = fjfj_graph::Runfiles::default();
+        if let Some(v) = bound[0].filter(|v| !v.is_none()) {
+            runfiles.files = super::runfiles::files_in(v, "files")?;
+        }
+        if let Some(v) = bound[1].filter(|v| !v.is_none()) {
+            for f in super::runfiles::files_in(v, "transitive_files")? {
+                if !runfiles.files.contains(&f) {
+                    runfiles.files.push(f);
+                }
+            }
+        }
+        let flag = |i: usize| bound[i].and_then(|v| v.unpack_bool()).unwrap_or(false);
+        if flag(2) || flag(3) {
+            // The files and runfiles of what the rule reads in srcs, deps and data.
+            for (name, value) in &s.attrs {
+                if !matches!(name.as_str(), "srcs" | "deps" | "data") {
+                    continue;
+                }
+                let mut labels = Vec::new();
+                value.labels(&mut labels);
+                for dep in labels.into_iter().filter_map(|l| s.deps.get(l)) {
+                    let mut contributed = fjfj_graph::Runfiles {
+                        files: dep.files.clone(),
+                        ..fjfj_graph::Runfiles::default()
+                    };
+                    contributed = contributed.merge(&dep.runfiles);
+                    runfiles = runfiles.merge(&contributed);
+                }
+            }
+        }
+        let entries = |i: usize| -> starlark::Result<Vec<(String, Artifact)>> {
+            let Some(dict) = bound[i].and_then(starlark::values::dict::DictRef::from_value) else {
+                return Ok(Vec::new());
+            };
+            dict.iter()
+                .map(|(k, v)| {
+                    Ok((
+                        k.unpack_str()
+                            .ok_or_else(|| fatal("runfiles symlink paths must be strings"))?
+                            .to_owned(),
+                        super::file::artifact_of(v)
+                            .ok_or_else(|| fatal("runfiles symlink targets must be Files"))?,
+                    ))
+                })
+                .collect()
+        };
+        runfiles.symlinks = entries(4)?;
+        runfiles.root_symlinks = entries(5)?;
+        Ok(super::runfiles::alloc_runfiles(
+            eval.heap(),
+            runfiles,
+            s.label.clone(),
+        ))
+    }
+
+    /// `ctx.target_platform_has_constraint(constraint_value)`.
+    fn target_platform_has_constraint<'v>(
+        this: Value<'v>,
+        constraint_value: Value<'v>,
+    ) -> starlark::Result<bool> {
+        let s = state(this);
+        let label = crate::structs::fields_of(constraint_value)
+            .and_then(|fields| {
+                fields
+                    .into_iter()
+                    .find(|(n, _)| *n == "label")
+                    .and_then(|(_, v)| crate::label::label_of_value(v))
+            })
+            .ok_or_else(|| {
+                fatal(format!(
+                    "in call to target_platform_has_constraint(), parameter 'constraint_value' got value of type '{}', want 'ConstraintValueInfo'",
+                    constraint_value.get_type()
+                ))
+            })?;
+        Ok(s.configuration.constraints.contains(&label))
     }
 
     /// `ctx.expand_location(input, targets = [])`.

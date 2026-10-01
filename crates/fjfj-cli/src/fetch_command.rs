@@ -228,6 +228,16 @@ pub(crate) fn run_for_build(
     let repos = Arc::new(repos);
     let report = match build {
         Some(options) if targets.failures.is_empty() || options.keep_going => {
+            let mut options = options.clone();
+            if let Some(platforms) = repos.module_repo("platforms") {
+                for (setting, value) in fjfj_graph::config::host_constraints() {
+                    options.configuration.constraints.insert(fjfj_graph::Label {
+                        repo: platforms.clone(),
+                        package: setting.to_owned(),
+                        name: value.to_owned(),
+                    });
+                }
+            }
             let request = crate::build_command::Request {
                 layout: fjfj_exec::execroot::Layout {
                     workspace: workspace_root.to_path_buf(),
@@ -236,7 +246,7 @@ pub(crate) fn run_for_build(
                         .clone()
                         .unwrap_or_else(|| default_output_base(workspace_root)),
                 },
-                options: options.clone(),
+                options,
             };
             Some(crate::build_command::run(
                 &repos,

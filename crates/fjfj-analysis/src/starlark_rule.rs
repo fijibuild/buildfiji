@@ -22,6 +22,7 @@ fn dep_info(target: &ConfiguredTarget, generated: bool) -> DepInfo {
         generated,
         files: target.files.to_vec(),
         executable: target.executable.clone(),
+        runfiles: target.runfiles.clone(),
         providers: target.providers.clone(),
     }
 }
@@ -139,6 +140,7 @@ pub(crate) async fn analyze(
         })?;
     target.files = NestedSet::of(result.files);
     target.executable = result.executable;
+    target.runfiles = result.runfiles;
     target.actions = result.actions;
     target.providers = result.providers;
     target.printed = result.printed;

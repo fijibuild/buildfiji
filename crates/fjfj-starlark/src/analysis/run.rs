@@ -48,6 +48,8 @@ pub struct RuleResult {
     /// `DefaultInfo.files`.
     pub files: Vec<Artifact>,
     pub executable: Option<Artifact>,
+    /// `DefaultInfo.default_runfiles` (or `runfiles`).
+    pub runfiles: fjfj_graph::Runfiles,
     pub actions: Vec<Action>,
     /// Every provider but `DefaultInfo`.
     pub providers: Vec<StoredProvider>,
@@ -83,12 +85,30 @@ pub fn resolved_attrs(
     out
 }
 
+/// Attributes every rule has that name labels which are not targets the rule
+/// reads: who may see it, where it may be built, what it is licensed under.
+const NOT_DEPENDENCIES: [&str; 10] = [
+    "visibility",
+    "compatible_with",
+    "restricted_to",
+    "target_compatible_with",
+    "exec_compatible_with",
+    "exec_group_compatible_with",
+    "package_metadata",
+    "applicable_licenses",
+    "aspect_hints",
+    "transitive_configs",
+];
+
 /// Every label the rule's attributes name, set or defaulted: the targets its
 /// code can see.
 pub fn labels_of_attrs(schema: &RuleSchema, set: &[(String, AttrValue)]) -> Vec<Label> {
     let mut seen = BTreeSet::new();
     let mut out = Vec::new();
     for (name, value) in resolved_attrs(schema, set) {
+        if NOT_DEPENDENCIES.contains(&name.as_str()) {
+            continue;
+        }
         let is_dep = schema
             .attrs
             .iter()
@@ -197,6 +217,7 @@ pub fn run_rule(req: &RuleRequest) -> Result<RuleResult, String> {
         };
         let mut default_files: Option<Vec<Artifact>> = None;
         let mut executable = None;
+        let mut runfiles = fjfj_graph::Runfiles::default();
         let mut others: Vec<Value<'_>> = Vec::new();
         let default_info = builtin("DefaultInfo");
         for instance in instances(returned, heap)? {
@@ -208,18 +229,19 @@ pub fn run_rule(req: &RuleRequest) -> Result<RuleResult, String> {
                 ));
             };
             if same_provider(default_info, provider) {
-                let (files, exe) = read_default_info(instance, &req.rule_name)?;
+                let (files, exe, rf) = read_default_info(instance, &req.rule_name)?;
                 default_files = Some(files);
                 executable = exe;
+                runfiles = rf;
             } else {
                 others.push(instance);
             }
         }
         module.set("providers", heap.alloc(others));
         let frozen = module.freeze().map_err(|e| format!("{e:?}"))?;
-        Ok((frozen, default_files, executable))
+        Ok((frozen, default_files, executable, runfiles))
     })?;
-    let (frozen, default_files, executable) = frozen;
+    let (frozen, default_files, executable, runfiles) = frozen;
     let providers = match frozen.get_any_visibility("providers") {
         Ok((list, _)) => frozen_items(&list),
         Err(_) => Vec::new(),
@@ -228,6 +250,7 @@ pub fn run_rule(req: &RuleRequest) -> Result<RuleResult, String> {
     Ok(RuleResult {
         files,
         executable,
+        runfiles,
         actions: state.actions.lock().unwrap().clone(),
         providers,
         outputs: outputs.into_iter().collect(),
@@ -235,7 +258,7 @@ pub fn run_rule(req: &RuleRequest) -> Result<RuleResult, String> {
     })
 }
 
-fn builtins_owner() -> &'static starlark::values::FrozenHeapRef {
+pub(crate) fn builtins_owner() -> &'static starlark::values::FrozenHeapRef {
     let (_, _) = builtins()
         .get_any_visibility("DefaultInfo")
         .expect("builtin");
@@ -266,7 +289,7 @@ fn instances<'v>(returned: Value<'v>, heap: Heap<'v>) -> Result<Vec<Value<'v>>, 
 fn read_default_info(
     instance: Value<'_>,
     rule: &str,
-) -> Result<(Vec<Artifact>, Option<Artifact>), String> {
+) -> Result<(Vec<Artifact>, Option<Artifact>, fjfj_graph::Runfiles), String> {
     let fields = fields_of(instance).unwrap_or_default();
     let field = |name: &str| fields.iter().find(|(n, _)| *n == name).map(|(_, v)| *v);
     let mut files = Vec::new();
@@ -290,7 +313,17 @@ fn read_default_info(
     let executable = field("executable")
         .filter(|v| !v.is_none())
         .and_then(artifact_of);
-    Ok((files, executable))
+    // `default_runfiles`, or the older `runfiles` that means the same.
+    let mut runfiles = fjfj_graph::Runfiles::default();
+    for name in ["runfiles", "default_runfiles"] {
+        if let Some(found) = field(name)
+            .filter(|v| !v.is_none())
+            .and_then(super::runfiles::runfiles_of)
+        {
+            runfiles = runfiles.merge(&found);
+        }
+    }
+    Ok((files, executable, runfiles))
 }
 
 /// Each item of a frozen list as a value of its own.

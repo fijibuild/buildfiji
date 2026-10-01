@@ -66,6 +66,8 @@ pub struct ConfiguredTarget {
     pub files: NestedSet<Artifact>,
     /// `DefaultInfo.executable`.
     pub executable: Option<Artifact>,
+    /// `DefaultInfo.default_runfiles`.
+    pub runfiles: fjfj_graph::Runfiles,
     /// The files the rule declares it creates, by target name.
     pub outputs: BTreeMap<String, Artifact>,
     /// The providers it gave besides `DefaultInfo`.
@@ -86,6 +88,7 @@ impl ConfiguredTarget {
             rule_class: None,
             files: NestedSet::empty(),
             executable: None,
+            runfiles: fjfj_graph::Runfiles::default(),
             outputs: BTreeMap::new(),
             providers: Vec::new(),
             printed: Vec::new(),

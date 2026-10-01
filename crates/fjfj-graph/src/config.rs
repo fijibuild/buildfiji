@@ -59,8 +59,27 @@ pub struct Configuration {
     pub compilation_mode: CompilationMode,
     /// `--define`s, by name.
     pub defines: BTreeMap<String, String>,
+    /// The `constraint_value`s the target platform has, as canonical labels:
+    /// what `ctx.target_platform_has_constraint` and `select()` ask.
+    pub constraints: std::collections::BTreeSet<crate::Label>,
     /// Built to run on the execution platform: a tool, not a target.
     pub exec: bool,
+}
+
+/// The `@platforms` constraint values of the machine fjfj runs on, as
+/// `(constraint setting, value)` names: `("os", "linux")`, `("cpu", "x86_64")`.
+pub fn host_constraints() -> [(&'static str, &'static str); 2] {
+    let os = match std::env::consts::OS {
+        "macos" => "osx",
+        "windows" => "windows",
+        _ => "linux",
+    };
+    let cpu = match std::env::consts::ARCH {
+        "aarch64" => "aarch64",
+        "x86" => "x86_32",
+        _ => "x86_64",
+    };
+    [("os", os), ("cpu", cpu)]
 }
 
 /// The `--cpu` of the machine fjfj runs on, as Bazel names it.
@@ -82,6 +101,7 @@ impl Default for Configuration {
             cpu: host_cpu().to_owned(),
             compilation_mode: CompilationMode::default(),
             defines: BTreeMap::new(),
+            constraints: std::collections::BTreeSet::new(),
             exec: false,
         }
     }
@@ -129,6 +149,7 @@ mod tests {
             cpu: "k8".into(),
             compilation_mode: CompilationMode::Opt,
             defines: BTreeMap::new(),
+            constraints: std::collections::BTreeSet::new(),
             exec: true,
         };
         assert_eq!(config.mnemonic(), "k8-opt-exec");

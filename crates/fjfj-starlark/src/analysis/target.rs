@@ -46,6 +46,8 @@ pub struct DepInfo {
     pub files: Vec<Artifact>,
     /// `DefaultInfo.executable`.
     pub executable: Option<Artifact>,
+    /// `DefaultInfo.default_runfiles`.
+    pub runfiles: fjfj_graph::Runfiles,
     /// The other providers it gave.
     pub providers: Vec<StoredProvider>,
 }
@@ -91,6 +93,7 @@ pub(crate) fn default_info<'v>(
     heap: Heap<'v>,
     files: &[Artifact],
     executable: Option<&Artifact>,
+    runfiles: &fjfj_graph::Runfiles,
     owner: &Label,
 ) -> Value<'v> {
     let provider = builtin("DefaultInfo").expect("the builtins define DefaultInfo");
@@ -102,15 +105,16 @@ pub(crate) fn default_info<'v>(
     let exe = executable
         .map(|a| alloc_file(heap, a.clone(), owner.clone()))
         .unwrap_or_else(Value::new_none);
+    let runfiles = super::runfiles::alloc_runfiles(heap, runfiles.clone(), owner.clone());
     new_instance(
         heap,
         provider,
         vec![
             ("files".to_owned(), depset),
-            ("runfiles".to_owned(), Value::new_none()),
+            ("runfiles".to_owned(), runfiles),
             ("executable".to_owned(), exe),
-            ("data_runfiles".to_owned(), Value::new_none()),
-            ("default_runfiles".to_owned(), Value::new_none()),
+            ("data_runfiles".to_owned(), runfiles),
+            ("default_runfiles".to_owned(), runfiles),
             ("files_to_run".to_owned(), Value::new_none()),
         ],
     )
@@ -153,6 +157,7 @@ impl TargetValue {
                 heap,
                 &self.info.files,
                 self.info.executable.as_ref(),
+                &self.info.runfiles,
                 &self.info.label,
             ));
         }
@@ -174,6 +179,26 @@ fn target_members(builder: &mut MethodsBuilder) {
     #[starlark(attribute)]
     fn label<'v>(this: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
         Ok(heap.alloc(StarlarkLabel::from(target(this).info.label.clone())))
+    }
+
+    #[starlark(attribute)]
+    fn default_runfiles<'v>(this: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
+        let info = &target(this).info;
+        Ok(super::runfiles::alloc_runfiles(
+            heap,
+            info.runfiles.clone(),
+            info.label.clone(),
+        ))
+    }
+
+    #[starlark(attribute)]
+    fn data_runfiles<'v>(this: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
+        let info = &target(this).info;
+        Ok(super::runfiles::alloc_runfiles(
+            heap,
+            info.runfiles.clone(),
+            info.label.clone(),
+        ))
     }
 
     #[starlark(attribute)]

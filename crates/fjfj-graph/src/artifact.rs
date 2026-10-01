@@ -98,6 +98,40 @@ fn join(dir: &str, name: &str) -> String {
     }
 }
 
+/// The files a binary needs when it runs, besides itself (buildfiji-136.9).
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize)]
+pub struct Runfiles {
+    pub files: Vec<Artifact>,
+    /// Extra entries `(path under the repository directory, file)`.
+    pub symlinks: Vec<(String, Artifact)>,
+    /// Entries `(path under the runfiles root, file)`.
+    pub root_symlinks: Vec<(String, Artifact)>,
+}
+
+impl Runfiles {
+    pub fn is_empty(&self) -> bool {
+        self.files.is_empty() && self.symlinks.is_empty() && self.root_symlinks.is_empty()
+    }
+
+    /// `self` then `other`, each file once.
+    pub fn merge(&self, other: &Runfiles) -> Runfiles {
+        fn union<T: Clone + PartialEq>(a: &[T], b: &[T]) -> Vec<T> {
+            let mut out = a.to_vec();
+            for item in b {
+                if !out.contains(item) {
+                    out.push(item.clone());
+                }
+            }
+            out
+        }
+        Runfiles {
+            files: union(&self.files, &other.files),
+            symlinks: union(&self.symlinks, &other.symlinks),
+            root_symlinks: union(&self.root_symlinks, &other.root_symlinks),
+        }
+    }
+}
+
 /// Files in the order a rule gave them, without repeats, sharing what its
 /// dependencies already hold: Bazel's `NestedSet` and Starlark's `depset`.
 /// Immutable, so a dependent shares a dependency's set instead of copying it.

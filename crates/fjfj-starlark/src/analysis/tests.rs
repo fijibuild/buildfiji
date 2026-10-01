@@ -210,6 +210,7 @@ r = rule(implementation = _impl, attrs = {"srcs": attr.label_list(allow_files = 
         generated: false,
         files: vec![Artifact::source("", package, "s.txt")],
         executable: None,
+        runfiles: fjfj_graph::Runfiles::default(),
         providers: Vec::new(),
     };
     let req = request(
@@ -266,6 +267,7 @@ r = rule(implementation = _impl, attrs = {"deps": attr.label_list()})
         generated: false,
         files: vec![Artifact::source("", "", "f")],
         executable: None,
+        runfiles: fjfj_graph::Runfiles::default(),
         providers: first.providers,
     };
     let second = run_rule(&request_in(

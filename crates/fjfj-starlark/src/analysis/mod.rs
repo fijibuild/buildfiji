@@ -10,7 +10,9 @@
 mod actions;
 mod ctx;
 mod file;
-mod run;
+mod native_providers;
+pub(crate) mod run;
+mod runfiles;
 mod target;
 
 use crate::label::RepoMappings;
@@ -27,6 +29,7 @@ pub trait RuleSource: Send + Sync {
     fn mappings(&self) -> Arc<RepoMappings>;
 }
 
+pub use native_providers::{Field, native_provider};
 pub use run::{RuleRequest, RuleResult, labels_of_attrs, resolved_attrs, rule_schema, run_rule};
 pub use target::{DepInfo, StoredProvider};
 

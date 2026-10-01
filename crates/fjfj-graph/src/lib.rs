@@ -20,7 +20,7 @@ pub mod schema;
 pub mod visibility;
 
 pub use action::{Action, ActionKind};
-pub use artifact::{Artifact, NestedSet, Root};
+pub use artifact::{Artifact, NestedSet, Root, Runfiles};
 pub use config::{CompilationMode, Configuration};
 pub use label::LabelError;
 pub use parse::{LabelContext, LabelParseError};

@@ -347,6 +347,16 @@ impl Repos {
             .find_apparent("", apparent)
     }
 
+    /// The canonical name of the repository of the selected module `name`.
+    pub fn module_repo(&self, name: &str) -> Option<String> {
+        let resolution = &self.inner.resolution;
+        resolution
+            .selection
+            .keys()
+            .find(|key| key.name == name && !key.is_root())
+            .map(|key| resolution.canonical_name_of(key))
+    }
+
     /// Every repository a fetch of everything makes, in the order modules and
     /// extensions come: the selected modules' (not the main repository nor
     /// `bazel_tools`, which is served from the output base), then what the

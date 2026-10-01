@@ -6,6 +6,7 @@ use fjfj_graph::expand::{Expander, Prerequisite, label_text};
 use fjfj_graph::package::Package;
 use fjfj_graph::rule::{AttrValue, native_rule};
 use fjfj_graph::{Action, ActionKind, Artifact, Label, LabelContext, NestedSet};
+use fjfj_starlark::{Field, native_provider};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -83,6 +84,8 @@ pub(crate) async fn analyze(
         "filegroup" => filegroup(ctx, key, attrs, target).await,
         "alias" => alias(ctx, key, attrs, target).await,
         "genrule" => genrule(ctx, key, package, attrs, target).await,
+        "constraint_setting" => constraint_setting(key, target),
+        "constraint_value" => constraint_value(ctx, key, attrs, target).await,
         // Rules that give providers for other rules to read and no files.
         other if native_rule(other).is_some() => Ok(target),
         other => Err(Error::msg(format!(
@@ -291,4 +294,55 @@ fn target_cpu(cpu: &str) -> &str {
         "k8" => "x86_64",
         other => other,
     }
+}
+
+/// `constraint_setting`: its `ConstraintSettingInfo`.
+fn constraint_setting(
+    key: &ConfiguredTargetKey,
+    mut target: ConfiguredTarget,
+) -> Result<ConfiguredTarget, Error> {
+    let info = native_provider(
+        "platform_common.ConstraintSettingInfo",
+        vec![
+            ("label".to_owned(), Field::Label(key.label.clone())),
+            ("default_constraint_value".to_owned(), Field::None),
+        ],
+    )
+    .map_err(Error::msg)?;
+    target.providers.push(info);
+    Ok(target)
+}
+
+/// `constraint_value`: its `ConstraintValueInfo`, which holds its setting's.
+async fn constraint_value(
+    ctx: &Ctx,
+    key: &ConfiguredTargetKey,
+    attrs: &Attrs,
+    mut target: ConfiguredTarget,
+) -> Result<ConfiguredTarget, Error> {
+    let setting = labels(&key.label, attrs, "constraint_setting")?;
+    let [(k, setting)] = targets(ctx, key, setting).await?.try_into().map_err(|_| {
+        Error::msg(format!(
+            "{}: constraint_value needs a constraint_setting",
+            label_text(&key.label)
+        ))
+    })?;
+    let Some(setting_info) = setting.providers.first().cloned() else {
+        return Err(Error::msg(format!(
+            "{}: '{}' is not a constraint_setting",
+            label_text(&key.label),
+            label_text(&k.label)
+        )));
+    };
+    let info = native_provider(
+        "platform_common.ConstraintValueInfo",
+        vec![
+            ("constraint".to_owned(), Field::Provider(setting_info)),
+            ("label".to_owned(), Field::Label(key.label.clone())),
+        ],
+    )
+    .map_err(Error::msg)?;
+    target.providers.push(info);
+    target.deps.push(k);
+    Ok(target)
 }
