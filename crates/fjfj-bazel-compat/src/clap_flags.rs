@@ -17,7 +17,7 @@
 //! all use a permissive string parser here, and negatable ones register
 //! both spellings, purely so `clap` can tell "real Bazel flag, presented
 //! correctly" apart from "not a flag at all" or "malformed value" and let
-//! [`crate::TargetPattern`] parsing see only genuine positionals.
+//! `fjfj_graph::pattern::TargetPattern` parsing see only genuine positionals.
 
 use std::collections::{HashMap, HashSet};
 
@@ -128,7 +128,7 @@ fn build(bazel_command: &'static str) -> (Command, HashMap<&'static str, &'stati
     (cmd, negated_id_of)
 }
 
-/// Whether `token` has the one shape [`TargetPattern::from_str`] accepts
+/// Whether `token` has the one shape `TargetPattern::parse` accepts
 /// starting with `-` that isn't a flag: a negative target pattern
 /// (`-@repo//pkg:target` or `-//pkg:target`).
 fn looks_like_negative_pattern(token: &str) -> bool {
@@ -163,7 +163,7 @@ pub fn validate(
     // Negative target patterns are the one legitimate hyphen-prefixed
     // positional; pull them out before `clap` sees them (order doesn't
     // matter — this is a pass/fail gate, not the positional extraction
-    // itself, which `TargetPattern::from_str` still does on the original
+    // itself, which `TargetPattern::parse` still does on the original
     // `args` afterward) so a genuinely unrecognized `--flag` still hits
     // clap's own strict, no-`allow_hyphen_values` rejection.
     let flag_tokens: Vec<&String> = args

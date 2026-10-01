@@ -1038,12 +1038,10 @@ dependencies = [
 name = "fjfj-bazel-compat"
 version = "0.0.1"
 dependencies = [
- "anyhow",
  "ariadne",
  "base64 0.23.1",
  "chumsky",
  "clap",
- "fjfj-graph",
  "regex",
  "serde",
  "serde_json",
@@ -1089,6 +1087,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "starlark",
+ "tempfile",
  "thiserror",
  "tokio",
  "tracing",

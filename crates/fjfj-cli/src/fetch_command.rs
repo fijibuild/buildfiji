@@ -200,13 +200,14 @@ pub(crate) fn run_for_build(
     run_inner(flags, bzlmod, workspace_root, module_bazel_text)
 }
 
-/// The repositories external target patterns name, as `fetch --repo` writes them.
-pub(crate) fn repos_named_by<'a>(repos: impl Iterator<Item = &'a str>) -> Vec<String> {
+/// The repositories external target patterns name, as `fetch --repo` writes
+/// them: each as the pattern wrote it (`@m`, `@@m+`), the main repo (`@`)
+/// left out.
+pub(crate) fn repos_named_by<'a>(written: impl Iterator<Item = &'a str>) -> Vec<String> {
     let mut named: Vec<String> = Vec::new();
-    for repo in repos.filter(|r| !r.is_empty()) {
-        let asked = format!("@{repo}");
-        if !named.contains(&asked) {
-            named.push(asked);
+    for repo in written.filter(|r| !matches!(*r, "@" | "@@")) {
+        if !named.iter().any(|n| n == repo) {
+            named.push(repo.to_owned());
         }
     }
     named

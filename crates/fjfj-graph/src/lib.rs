@@ -9,6 +9,7 @@ use std::fmt;
 pub mod label;
 pub mod package;
 pub mod parse;
+pub mod pattern;
 pub mod rule;
 pub mod schema;
 pub mod visibility;
@@ -28,9 +29,8 @@ impl Label {
     /// Build a `Label`, validating `package` and `name` against Bazel's
     /// own character rules (see [`label`]'s module doc for why they
     /// differ). Does not parse a `@repo//pkg:name` string — that's
-    /// `fjfj_bazel_compat::TargetPattern`'s job, one layer up, which also
-    /// handles the wildcard/negation syntax a concrete `Label` doesn't
-    /// have.
+    /// [`pattern::TargetPattern`]'s job, which also handles the
+    /// wildcard/negation syntax a concrete `Label` doesn't have.
     pub fn new(
         repo: impl Into<String>,
         package: impl Into<String>,

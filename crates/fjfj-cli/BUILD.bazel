@@ -15,4 +15,5 @@ rust_test(
     name = "fjfj-cli_test",
     crate = ":fjfj-cli",
     data = ["//crates/fjfj-bzlmod/tests/fixtures"],
+    deps = ["@crates//:tempfile"],
 )

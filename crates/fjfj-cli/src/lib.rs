@@ -14,9 +14,9 @@ use fjfj_bazel_compat::bzlmod_flags::BzlmodFlags;
 use fjfj_bazel_compat::console::ProgressUpdate;
 use fjfj_bazel_compat::exit_code::{ExitCode, messages};
 use fjfj_bazel_compat::{
-    Cli, Command, TargetPattern, bes_flags, bzlmod_flags, canonicalize_flags, clap_flags,
-    console_flags, diagnostics_flags, execution_log_flags, flag_alias, misc_flags, output_filter,
-    remote_flags, workspace_status_flags,
+    Cli, Command, bes_flags, bzlmod_flags, canonicalize_flags, clap_flags, console_flags,
+    diagnostics_flags, execution_log_flags, flag_alias, misc_flags, output_filter, remote_flags,
+    workspace_status_flags,
 };
 use fjfj_bzlmod::attrs::AttrValue;
 use fjfj_bzlmod::discovery::RegistrySource;
@@ -27,10 +27,12 @@ use fjfj_bzlmod::{
     YankedPolicy,
 };
 use fjfj_exec::console::ConsoleUi;
+use fjfj_graph::pattern::{PatternContext, TargetPattern};
 use fjfj_remote::execution_log::{CompactExecutionLogWriter, EntryType, ExecLogEntry, Invocation};
 
 mod fetch_command;
 mod mod_command;
+mod workspace;
 
 /// `fjfj license`'s output. Bazel's own prints an equivalent short notice
 /// (not the full license text — that's `LICENSE` in the repository root).
@@ -243,8 +245,7 @@ fn resolve_bzlmod(
 /// `rt.block_on` — exactly where this would otherwise run — panics
 /// (buildfiji-k62.16).
 async fn resolve_workspace_bzlmod(flags: &BzlmodFlags) -> Result<Resolution, CliError> {
-    let workspace_root = std::env::current_dir()
-        .map_err(|e| CliError::Internal(anyhow::anyhow!("couldn't get current directory: {e}")))?;
+    let workspace_root = locate_workspace_root("mod")?;
     let module_bazel_text =
         std::fs::read_to_string(workspace_root.join("MODULE.bazel")).map_err(|e| {
             CliError::CommandLine(anyhow::anyhow!(
@@ -258,6 +259,17 @@ async fn resolve_workspace_bzlmod(flags: &BzlmodFlags) -> Result<Resolution, Cli
         .map_err(|e| CliError::Internal(anyhow::anyhow!("bzlmod resolution task panicked: {e}")))?
 }
 
+/// The workspace root above the current directory, or Bazel's refusal.
+fn locate_workspace_root(command: &str) -> Result<std::path::PathBuf, CliError> {
+    let cwd = std::env::current_dir()
+        .map_err(|e| CliError::Internal(anyhow::anyhow!("couldn't get current directory: {e}")))?;
+    workspace::locate(&cwd)
+        .map(|(root, _)| root)
+        .ok_or_else(|| {
+            CliError::CommandLine(anyhow::anyhow!(workspace::not_in_a_workspace(command)))
+        })
+}
+
 /// Resolves the module graph and makes the repositories `build`'s patterns
 /// name; blocking work, run where `reqwest::blocking` can start (see
 /// [`resolve_workspace_bzlmod`]).
@@ -265,8 +277,7 @@ async fn fetch_repositories_for_build(
     repo_flags: fetch_command::FetchFlags,
     bzlmod: &BzlmodFlags,
 ) -> Result<Resolution, CliError> {
-    let workspace_root = std::env::current_dir()
-        .map_err(|e| CliError::Internal(anyhow::anyhow!("couldn't get current directory: {e}")))?;
+    let workspace_root = locate_workspace_root("build")?;
     let module_bazel_text =
         std::fs::read_to_string(workspace_root.join("MODULE.bazel")).map_err(|e| {
             CliError::CommandLine(anyhow::anyhow!(
@@ -283,7 +294,10 @@ async fn fetch_repositories_for_build(
 }
 
 pub fn main() -> std::process::ExitCode {
-    let cli = Cli::parse(); // exits 2 itself on a flag-syntax error
+    // exits 2 itself on a flag-syntax error
+    let cli = Cli::parse_from(workspace::keep_end_of_options(
+        std::env::args_os().collect(),
+    ));
     let rt = match tokio::runtime::Runtime::new() {
         Ok(rt) => rt,
         Err(e) => {
@@ -334,7 +348,19 @@ async fn run(cli: Cli) -> Result<(), CliError> {
             Ok(())
         }
         Command::Build(args) => {
-            let (aliases, rest) = flag_alias::extract(&args.patterns)
+            // Only what follows `--` is a pattern that may start with `-`.
+            let (before, after_marker) = workspace::split_end_of_options(&args.patterns);
+            if let Some(negative) = before
+                .iter()
+                .find(|a| a.starts_with("-@") || a.starts_with("-//"))
+            {
+                return Err(CliError::CommandLine(anyhow::anyhow!(
+                    "Invalid options syntax: {negative}\nNote: Negative target patterns can only \
+                     appear after the end of options marker ('--'). Flags corresponding to \
+                     Starlark-defined build settings always start with '--', not '-'."
+                )));
+            }
+            let (aliases, rest) = flag_alias::extract(before)
                 .map_err(|e| CliError::CommandLine(anyhow::Error::from(e)))?;
             let rest = flag_alias::apply(&aliases, &rest);
             // buildfiji-gwl.15/gwl.16: validate every flag token against
@@ -380,12 +406,26 @@ async fn run(cli: Cli) -> Result<(), CliError> {
             let (console_flags, rest) = console_flags::extract(&rest, "build");
             // Everything left is a bare positional now that `validate`
             // above has ruled out any unimplemented or unrecognized flag.
+            let cwd = std::env::current_dir().map_err(|e| {
+                CliError::Internal(anyhow::anyhow!("couldn't get current directory: {e}"))
+            })?;
+            let (_, offset) = workspace::locate(&cwd).ok_or_else(|| {
+                CliError::CommandLine(anyhow::anyhow!(workspace::not_in_a_workspace("build")))
+            })?;
+            let context = PatternContext {
+                repo: "",
+                offset: &offset,
+            };
+            // The main module's repo mapping is not known until the module
+            // graph is resolved, so an apparent name stays as written; what
+            // the pattern wrote is what `fetch --repo` takes.
             let patterns = rest
                 .iter()
-                .map(|p| p.parse::<TargetPattern>())
+                .chain(after_marker)
+                .map(|p| TargetPattern::parse(p, context, &mut |apparent| apparent.to_owned()))
                 .collect::<Result<Vec<_>, _>>()
-                .map_err(CliError::CommandLine)?;
-            let command_line_packages = patterns.iter().map(|p| p.package.clone());
+                .map_err(|e| CliError::CommandLine(anyhow::Error::from(e)))?;
+            let command_line_packages = patterns.iter().map(|p| p.pattern.package().to_owned());
             let _output_filter =
                 output_filter::OutputFilter::compile(&output_filter_flags, command_line_packages)
                     .map_err(|e| CliError::CommandLine(anyhow::Error::from(e)))?;
@@ -488,7 +528,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
                 patterns
                     .iter()
                     .filter(|p| !p.negative)
-                    .filter_map(|p| p.repo.as_deref()),
+                    .filter_map(|p| p.repo_written.as_deref()),
             );
             let resolution = fetch_repositories_for_build(repo_flags, &bzlmod).await?;
             tracing::info!(
@@ -561,9 +601,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
                     .collect();
             clap_flags::validate(&rest, "fetch", &implemented)
                 .map_err(|e| CliError::CommandLine(anyhow::Error::from(e)))?;
-            let workspace_root = std::env::current_dir().map_err(|e| {
-                CliError::Internal(anyhow::anyhow!("couldn't get current directory: {e}"))
-            })?;
+            let workspace_root = locate_workspace_root("fetch")?;
             let module_bazel_text = std::fs::read_to_string(workspace_root.join("MODULE.bazel"))
                 .map_err(|e| {
                     CliError::CommandLine(anyhow::anyhow!(
@@ -853,7 +891,7 @@ mod tests {
 
     #[test]
     fn build_makes_the_repositories_its_patterns_name_and_writes_the_lock_as_the_mode_says() {
-        let named = fetch_command::repos_named_by(["r1", "", "@ext+gen+r1", "r1"].into_iter());
+        let named = fetch_command::repos_named_by(["@r1", "@", "@@ext+gen+r1", "@r1"].into_iter());
         assert_eq!(named, ["@r1", "@@ext+gen+r1"]);
         let dir = Scratch::new("build-repos");
         let module = "module(name = 'root', version = '0')\n\

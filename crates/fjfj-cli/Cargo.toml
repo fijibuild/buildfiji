@@ -23,3 +23,6 @@ fjfj-graph.workspace = true
 fjfj-exec.workspace = true
 fjfj-remote.workspace = true
 fjfj-telemetry.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

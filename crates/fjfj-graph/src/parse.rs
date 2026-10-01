@@ -64,6 +64,25 @@ fn package_hint(suggestion: &Option<String>) -> String {
     }
 }
 
+/// Splits `@r//p:q` into the repo as written (`None` when there is none),
+/// whether it is apparent (`@r`, not `@@r`), the rest from the `//`, and
+/// whether the input was only a repo (`@r`).
+pub(crate) fn split_repo(input: &str) -> (Option<&str>, bool, &str, bool) {
+    match input.strip_prefix('@') {
+        Some(after) => {
+            let (after, apparent) = match after.strip_prefix('@') {
+                Some(canonical) => (canonical, false),
+                None => (after, true),
+            };
+            match after.find("//") {
+                Some(i) => (Some(&after[..i]), apparent, &after[i..], false),
+                None => (Some(after), apparent, "", true),
+            }
+        }
+        None => (None, false, input, false),
+    }
+}
+
 impl Label {
     /// Parse `input` the way a BUILD file spells a label, resolving it
     /// against `ctx`:
@@ -91,19 +110,7 @@ impl Label {
         ctx: LabelContext<'_>,
         map_repo: &mut dyn FnMut(&str) -> String,
     ) -> Result<Label, LabelParseError> {
-        let (repo, apparent, rest, repo_only) = match input.strip_prefix('@') {
-            Some(after) => {
-                let (after, apparent) = match after.strip_prefix('@') {
-                    Some(canonical) => (canonical, false),
-                    None => (after, true),
-                };
-                match after.find("//") {
-                    Some(i) => (Some(&after[..i]), apparent, &after[i..], false),
-                    None => (Some(after), apparent, "", true),
-                }
-            }
-            None => (None, false, input, false),
-        };
+        let (repo, apparent, rest, repo_only) = split_repo(input);
         if let Some(repo) = repo {
             label::validate_repo_name(repo).map_err(|source| LabelParseError::Repo {
                 repo: repo.to_owned(),
