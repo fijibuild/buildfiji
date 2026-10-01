@@ -738,6 +738,26 @@ fn native_functions(builder: &mut GlobalsBuilder) {
         )
     }
 
+    /// A macro in Bazel 9.2.0 that makes a `filegroup` of the name and nothing
+    /// else, whatever else it is given (probed).
+    fn cc_toolchain_suite<'v>(
+        args: &Arguments<'v, '_>,
+        eval: &mut Evaluator<'v, '_, '_>,
+    ) -> starlark::Result<NoneType> {
+        if args.positions(eval.heap())?.next().is_some() {
+            return Err(fatal("unexpected positional arguments"));
+        }
+        let mut named = args.names_map()?;
+        named.retain(|k, _| k.as_str() == "name");
+        crate::instantiate::instantiate(
+            &native_schema(&rule::FILEGROUP),
+            rule::FILEGROUP.name,
+            None,
+            named,
+            eval,
+        )
+    }
+
     fn alias<'v>(
         args: &Arguments<'v, '_>,
         eval: &mut Evaluator<'v, '_, '_>,

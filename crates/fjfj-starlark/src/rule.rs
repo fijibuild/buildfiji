@@ -165,6 +165,18 @@ pub(crate) fn implementation_of<'v>(value: Value<'v>) -> Option<Value<'v>> {
     }
 }
 
+/// The names of the attributes the rule `value` declares.
+pub(crate) fn declared_attr_names<'v>(value: Value<'v>) -> Vec<String> {
+    if let Some(live) = value.downcast_ref::<Rule<'v>>() {
+        live.attr_names.clone()
+    } else {
+        value
+            .downcast_ref::<FrozenRule>()
+            .map(|frozen| frozen.attr_names.clone())
+            .unwrap_or_default()
+    }
+}
+
 /// The function that computes the default of the attribute `attr` of the rule
 /// `value`, if its default is one.
 pub(crate) fn computed_default_of<'v>(value: Value<'v>, attr: &str) -> Option<Value<'v>> {

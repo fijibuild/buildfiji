@@ -348,7 +348,14 @@ pub fn main() -> std::process::ExitCode {
     let cli = Cli::parse_from(workspace::keep_end_of_options(
         std::env::args_os().collect(),
     ));
-    let rt = match tokio::runtime::Runtime::new() {
+    // Analysis recurses once per level of the dependency graph, on the thread
+    // that polls it: the default 2 MiB is too little for a Rust ruleset's graph.
+    // The stack is address space until a thread touches it.
+    let rt = match tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .thread_stack_size(256 << 20)
+        .build()
+    {
         Ok(rt) => rt,
         Err(e) => {
             eprintln!(

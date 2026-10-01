@@ -87,8 +87,6 @@ pub(crate) fn call_rule<'v>(
     args: &Arguments<'v, '_>,
     eval: &mut Evaluator<'v, '_, '_>,
 ) -> starlark::Result<NoneType> {
-    let ctx = context(eval, class, schema)?;
-    let at = location(eval);
     if args.positions(eval.heap())?.next().is_some() {
         return Err(fatal(if schema.starlark {
             "Unexpected positional arguments"
@@ -97,6 +95,19 @@ pub(crate) fn call_rule<'v>(
         }));
     }
     let named: SmallMap<StringValue<'v>, Value<'v>> = args.names_map()?;
+    instantiate(schema, class, outputs, named, eval)
+}
+
+/// [`call_rule`] for the attributes already collected.
+pub(crate) fn instantiate<'v>(
+    schema: &Arc<RuleSchema>,
+    class: &str,
+    outputs: Option<Value<'v>>,
+    named: SmallMap<StringValue<'v>, Value<'v>>,
+    eval: &mut Evaluator<'v, '_, '_>,
+) -> starlark::Result<NoneType> {
+    let ctx = context(eval, class, schema)?;
+    let at = location(eval);
     let name_value = named
         .iter()
         .find(|(k, _)| k.as_str() == "name")

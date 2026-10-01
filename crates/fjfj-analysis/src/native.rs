@@ -94,7 +94,10 @@ pub(crate) async fn analyze(
         "alias" => alias(ctx, key, attrs, target).await,
         "genrule" => genrule(ctx, key, package, attrs, target).await,
         "config_setting" => config_setting(ctx, key, attrs, target).await,
-        "toolchain" => toolchain_rule(key, attrs, target),
+        "toolchain" => {
+            let mappings = ctx.data::<Env>()?.rules.mappings();
+            toolchain_rule(key, attrs, &mappings, target)
+        }
         "constraint_setting" => constraint_setting(key, target),
         "constraint_value" => constraint_value(ctx, key, attrs, target).await,
         "platform" => platform(ctx, key, attrs, target).await,
@@ -405,6 +408,12 @@ async fn constraint_value(
     .map_err(Error::msg)?;
     target.providers.push(info);
     target.constraint_setting = Some(k.label.clone());
+    // A constraint_value is also a condition of a select(), as the
+    // config_setting that lists only it.
+    target.config_matching = Some(ConfigMatching {
+        matches: key.configuration.constraints.contains(&key.label),
+        conditions: [format!("constraint:{}", label_text(&key.label))].into(),
+    });
     target.deps.push(k);
     Ok(target)
 }
@@ -464,18 +473,22 @@ async fn config_setting(
 fn toolchain_rule(
     key: &ConfiguredTargetKey,
     attrs: &Attrs,
+    mappings: &fjfj_starlark::RepoMappings,
     mut target: ConfiguredTarget,
 ) -> Result<ConfiguredTarget, Error> {
     let one = |name: &str| -> Result<Label, Error> {
         let found = match attr(attrs, name) {
             Some(AttrValue::Label(l)) => Some(l.clone()),
             // `toolchain` is a string in the schema; it names a label.
-            Some(AttrValue::String(text)) => Label::parse(
+            // It is written in the package's repository, so `@name` is as that
+            // repository maps it.
+            Some(AttrValue::String(text)) => Label::parse_mapped(
                 text,
                 LabelContext {
                     repo: &key.label.repo,
                     package: &key.label.package,
                 },
+                &mut |apparent| mappings.resolve_apparent(&key.label.repo, apparent),
             )
             .ok(),
             _ => None,

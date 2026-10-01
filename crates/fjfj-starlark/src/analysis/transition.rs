@@ -170,9 +170,21 @@ pub fn apply_transition(
                 AttrValue::StringList(items) => heap.alloc(starlark::values::list::AllocList(
                     items.iter().map(String::as_str),
                 )),
+                AttrValue::Label(l) => heap.alloc(crate::label::StarlarkLabel::from(l.clone())),
+                AttrValue::LabelList(items) => heap.alloc(starlark::values::list::AllocList(
+                    items
+                        .iter()
+                        .map(|l| heap.alloc(crate::label::StarlarkLabel::from(l.clone()))),
+                )),
                 _ => continue,
             };
             fields.push((name.clone(), value));
+        }
+        // An attribute with no value, a label that defaults to None for one, is None.
+        for name in crate::rule::declared_attr_names(rule_value) {
+            if !fields.iter().any(|(n, _)| *n == name) {
+                fields.push((name, Value::new_none()));
+            }
         }
         let attr = crate::structs::new_struct(heap, fields);
         let running = BzlEval::running(mappings);

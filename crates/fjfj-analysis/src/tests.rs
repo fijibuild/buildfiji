@@ -506,6 +506,80 @@ keep = rule(implementation = _top, attrs = {"deps": attr.label_list(cfg = same)}
     assert_eq!(paths(&k.files), [format!("{BIN}/leaf")]);
 }
 
+/// A transition's `attr` has every attribute of the rule: a label as a `Label`,
+/// and one with no value as `None` (rules_rust reads `attr.platform`).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_transition_sees_label_attributes_and_unset_ones() {
+    let (_dir, repos) = workspace(&[
+        ("MODULE.bazel", ""),
+        (
+            "defs.bzl",
+            r#"
+def _go(settings, attr):
+    if attr.platform:
+        fail("platform should be None")
+    if str(attr.helper) != "@@//:h" or [str(l) for l in attr.more] != ["@@//:h"]:
+        fail("labels: %s %s" % (attr.helper, attr.more))
+    return {"//command_line_option:compilation_mode": "dbg"}
+go = transition(implementation = _go, inputs = [], outputs = ["//command_line_option:compilation_mode"])
+
+def _impl(ctx):
+    return [DefaultInfo()]
+r = rule(
+    implementation = _impl,
+    cfg = go,
+    attrs = {
+        "platform": attr.label(default = None),
+        "helper": attr.label(default = "//:h"),
+        "more": attr.label_list(default = ["//:h"]),
+    },
+)
+"#,
+        ),
+        (
+            "BUILD.bazel",
+            "load(':defs.bzl', 'r')\nfilegroup(name = 'h')\nr(name = 't')\n",
+        ),
+    ]);
+    analyse(&repos, "//:t").await.unwrap();
+}
+
+/// A `constraint_value` is a condition of `select()`, as in Bazel, and
+/// `cc_toolchain_suite` is a macro that makes a bare `filegroup`.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_constraint_value_can_be_a_select_condition() {
+    let (_dir, repos) = workspace(&[
+        ("MODULE.bazel", ""),
+        ("a.txt", ""),
+        ("b.txt", ""),
+        (
+            "BUILD.bazel",
+            r#"
+constraint_setting(name = "os")
+constraint_value(name = "linux", constraint_setting = ":os")
+filegroup(name = "f", srcs = select({":linux": ["a.txt"], "//conditions:default": ["b.txt"]}))
+cc_toolchain_suite(name = "suite", toolchains = {"k8": ":x"}, visibility = ["//visibility:public"])
+"#,
+        ),
+    ]);
+    let mut on_linux = config();
+    on_linux.constraints.insert(Label {
+        repo: String::new(),
+        package: String::new(),
+        name: "linux".into(),
+    });
+    let linux = analyse_registering(&repos, "//:f", on_linux, Vec::new())
+        .await
+        .unwrap();
+    assert_eq!(paths(&linux.files), ["a.txt"]);
+    let other = analyse(&repos, "//:f").await.unwrap();
+    assert_eq!(paths(&other.files), ["b.txt"]);
+    assert_eq!(
+        analyse(&repos, "//:suite").await.unwrap().rule_class,
+        Some("filegroup".to_owned())
+    );
+}
+
 /// Probed with `--platforms` on `bazel build`: a child's value of a setting
 /// replaces its parent's.
 #[tokio::test(flavor = "multi_thread")]
