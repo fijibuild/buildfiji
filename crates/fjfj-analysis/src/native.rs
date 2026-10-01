@@ -166,6 +166,10 @@ async fn genrule(
 ) -> Result<ConfiguredTarget, Error> {
     let label = &key.label;
     let config = &key.configuration;
+    let location = package
+        .target(&label.name)
+        .map(|t| t.location.as_str())
+        .unwrap_or_default();
     let bin_dir = config.bin_dir();
     let env = ctx.data::<Env>()?;
 
@@ -249,6 +253,8 @@ async fn genrule(
     }
     target.actions.push(Action {
         owner: label.clone(),
+        owner_kind: "genrule".to_owned(),
+        location: location.to_owned(),
         configuration: config.mnemonic(),
         mnemonic: "Genrule".to_owned(),
         progress_message: Some(

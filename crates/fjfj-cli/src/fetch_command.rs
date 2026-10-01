@@ -199,6 +199,7 @@ pub(crate) fn run_for_build(
     module_bazel_text: &str,
     patterns: &[String],
     offset: &str,
+    build: Option<&crate::build_command::Options>,
 ) -> Result<BuildLoad, CliError> {
     let (resolved, repos) = begin(flags, bzlmod, workspace_root, module_bazel_text)?;
     let unknown = std::cell::RefCell::new(None);
@@ -222,10 +223,34 @@ pub(crate) fn run_for_build(
         )));
     }
     let targets = fjfj_loading::resolve(&parsed, &repos);
-    let resolution = finish(resolved, repos)?;
+    // The build happens before the lockfile is written, so that it holds the
+    // extensions the analysis ran.
+    let repos = Arc::new(repos);
+    let report = match build {
+        Some(options) if targets.failures.is_empty() || options.keep_going => {
+            let request = crate::build_command::Request {
+                layout: fjfj_exec::execroot::Layout {
+                    workspace: workspace_root.to_path_buf(),
+                    output_base: flags
+                        .output_base
+                        .clone()
+                        .unwrap_or_else(|| default_output_base(workspace_root)),
+                },
+                options: options.clone(),
+            };
+            Some(crate::build_command::run(
+                &repos,
+                &targets.targets,
+                &request,
+            ))
+        }
+        _ => None,
+    };
+    let resolution = finish(resolved, &repos)?;
     Ok(BuildLoad {
         resolution,
         targets,
+        report,
     })
 }
 
@@ -233,6 +258,9 @@ pub(crate) fn run_for_build(
 pub(crate) struct BuildLoad {
     pub resolution: Resolution,
     pub targets: fjfj_loading::Resolved,
+    /// What building the targets did; `None` when a pattern failed and the
+    /// build does not go on.
+    pub report: Option<crate::build_command::Report>,
 }
 
 /// Resolves the module graph, makes the repositories `flags` ask for, and hands
@@ -314,12 +342,12 @@ fn run_inner(
     module_bazel_text: &str,
 ) -> Result<Resolution, CliError> {
     let (resolved, repos) = begin(flags, bzlmod, workspace_root, module_bazel_text)?;
-    finish(resolved, repos)
+    finish(resolved, &repos)
 }
 
 /// Writes the lockfile with what the extensions that have run gave it.
-fn finish(resolved: Resolved, repos: Repos) -> Result<Resolution, CliError> {
-    print_warnings(&repos);
+fn finish(resolved: Resolved, repos: &Repos) -> Result<Resolution, CliError> {
+    print_warnings(repos);
     if let Some(session) = &resolved.session {
         session.set_module_extensions(
             module_extensions_json(&repos.locked_extensions()),

@@ -30,6 +30,7 @@ use fjfj_exec::console::ConsoleUi;
 use fjfj_graph::pattern::{PatternContext, TargetPattern};
 use fjfj_remote::execution_log::{CompactExecutionLogWriter, EntryType, ExecLogEntry, Invocation};
 
+mod build_command;
 mod fetch_command;
 mod mod_command;
 mod workspace;
@@ -72,13 +73,16 @@ pub enum CliError {
     /// build can fix.
     #[error("{0}")]
     Internal(anyhow::Error),
+    /// The build failed and has said why: only the exit code is left.
+    #[error("the build failed")]
+    Reported,
 }
 
 impl CliError {
     fn exit_code(&self) -> ExitCode {
         match self {
             CliError::CommandLine(_) => ExitCode::CommandLineProblem,
-            CliError::Build(_) => ExitCode::BuildFailed,
+            CliError::Build(_) | CliError::Reported => ExitCode::BuildFailed,
             CliError::Fetch(_) => ExitCode::Interrupted,
             CliError::Internal(_) => ExitCode::InternalError,
         }
@@ -92,6 +96,7 @@ impl CliError {
                 messages::error(e)
             }
             CliError::Internal(e) => messages::fatal(e),
+            CliError::Reported => String::new(),
         }
     }
 }
@@ -278,6 +283,7 @@ async fn fetch_repositories_for_build(
     bzlmod: &BzlmodFlags,
     patterns: Vec<String>,
     offset: String,
+    build: build_command::Options,
 ) -> Result<fetch_command::BuildLoad, CliError> {
     let workspace_root = locate_workspace_root("build")?;
     let module_bazel_text =
@@ -296,6 +302,7 @@ async fn fetch_repositories_for_build(
             &module_bazel_text,
             &patterns,
             &offset,
+            Some(&build),
         )
     })
     .await
@@ -333,7 +340,10 @@ pub fn main() -> std::process::ExitCode {
     match rt.block_on(run(cli)) {
         Ok(()) => ExitCode::Success.into(),
         Err(e) => {
-            eprintln!("{}", e.stderr_line());
+            let line = e.stderr_line();
+            if !line.is_empty() {
+                eprintln!("{line}");
+            }
             e.exit_code().into()
         }
     }
@@ -438,7 +448,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
             let _output_filter =
                 output_filter::OutputFilter::compile(&output_filter_flags, command_line_packages)
                     .map_err(|e| CliError::CommandLine(anyhow::Error::from(e)))?;
-            tracing::info!(
+            tracing::debug!(
                 ?patterns,
                 ?diagnostics,
                 ?workspace_status,
@@ -534,9 +544,19 @@ async fn run(cli: Cli) -> Result<(), CliError> {
                 })
                 .map_err(|e| CliError::Internal(anyhow::anyhow!("console write failed: {e}")))?;
             let texts: Vec<String> = rest.iter().chain(after_marker).cloned().collect();
-            let loaded = fetch_repositories_for_build(repo_flags, &bzlmod, texts, offset).await?;
+            let build = build_command::Options {
+                configuration: fjfj_graph::Configuration::default(),
+                keep_going: diagnostics.keep_going,
+                symlink_prefix: "bazel-".to_owned(),
+            };
+            let loaded =
+                fetch_repositories_for_build(repo_flags, &bzlmod, texts, offset, build).await?;
             let resolution = loaded.resolution;
             let targets = loaded.targets;
+            tracing::info!(
+                selected_modules = resolution.selection.keys().count(),
+                "bzlmod module graph resolved"
+            );
             if !targets.failures.is_empty() {
                 eprintln!("WARNING: Target pattern parsing failed.");
                 for failure in &targets.failures {
@@ -549,30 +569,31 @@ async fn run(cli: Cli) -> Result<(), CliError> {
                     )));
                 }
             }
-            tracing::info!(
-                selected_modules = resolution.selection.keys().count(),
-                "bzlmod module graph resolved"
+            let Some(report) = loaded.report else {
+                return Err(CliError::Build(anyhow::anyhow!(
+                    "command succeeded, but there were errors parsing the target pattern"
+                )));
+            };
+            let layout = fjfj_exec::execroot::Layout {
+                workspace: locate_workspace_root("build")?,
+                output_base: std::path::PathBuf::new(),
+            };
+            let succeeded = build_command::print(
+                &report,
+                targets.targets.len(),
+                diagnostics.keep_going,
+                &layout,
+                diagnostics.verbose_failures,
             );
-            console
-                .line(&format!(
-                    "Resolved {} bzlmod module(s)",
-                    resolution.selection.keys().count()
-                ))
-                .map_err(|e| CliError::Internal(anyhow::anyhow!("console write failed: {e}")))?;
-            for label in &targets.targets {
-                tracing::debug!(%label, "target selected");
+            if !succeeded {
+                return Err(CliError::Reported);
             }
-            console
-                .line(&format!("INFO: Found {} targets...", targets.targets.len()))
-                .map_err(|e| CliError::Internal(anyhow::anyhow!("console write failed: {e}")))?;
             if !targets.failures.is_empty() {
                 return Err(CliError::Build(anyhow::anyhow!(
                     "command succeeded, but there were errors parsing the target pattern"
                 )));
             }
-            Err(CliError::Build(anyhow::anyhow!(
-                "fjfj build is not implemented yet; see `bd ready`"
-            )))
+            Ok(())
         }
         Command::Mod(args) => {
             let (subcommand, rest) = args.expr.split_first().ok_or_else(|| {
@@ -936,7 +957,8 @@ mod tests {
         };
         let patterns = ["@r1//:all".to_owned()];
         let loaded =
-            fetch_command::run_for_build(&flags, &bzlmod, &dir.0, module, &patterns, "").unwrap();
+            fetch_command::run_for_build(&flags, &bzlmod, &dir.0, module, &patterns, "", None)
+                .unwrap();
         assert_eq!(loaded.targets.failures, []);
         assert!(loaded.resolution.selection.keys().count() >= 2);
         assert!(dir.0.join("ob/external/ext++gen+r1/BUILD.bazel").is_file());
@@ -951,8 +973,79 @@ mod tests {
             ..fetch_command::FetchFlags::default()
         };
         let patterns = ["//:all".to_owned()];
-        fetch_command::run_for_build(&none, &bzlmod, &other.0, module, &patterns, "").unwrap();
+        fetch_command::run_for_build(&none, &bzlmod, &other.0, module, &patterns, "", None)
+            .unwrap();
         assert!(!other.0.join("ob/external/ext++gen+r1").exists());
         assert!(other.0.join("MODULE.bazel.lock").is_file());
+    }
+
+    #[test]
+    fn build_runs_a_genrule_and_leaves_its_output_where_bazel_does() {
+        let dir = Scratch::new("build-genrule");
+        let module = "module(name = 'root', version = '0')\n";
+        std::fs::write(
+            dir.0.join("BUILD.bazel"),
+            "genrule(name = 'g', srcs = ['in.txt'], outs = ['out.txt'], cmd = 'cat $(SRCS) > $@ && echo $(location in.txt) >> $@')\n\
+             genrule(name = 'bad', outs = ['bad.txt'], cmd = 'exit 3')\n",
+        )
+        .unwrap();
+        std::fs::write(dir.0.join("in.txt"), "hello\n").unwrap();
+        let mut args = fixture_registry_flags();
+        args.push("--lockfile_mode=update".to_owned());
+        let (bzlmod, _) = bzlmod_flags::extract(&args, "build");
+        let flags = fetch_command::FetchFlags {
+            output_base: Some(dir.0.join("ob")),
+            repository_cache: Some(None),
+            ..fetch_command::FetchFlags::default()
+        };
+        let options = build_command::Options {
+            configuration: fjfj_graph::Configuration {
+                cpu: "k8".into(),
+                ..fjfj_graph::Configuration::default()
+            },
+            keep_going: true,
+            symlink_prefix: "bazel-".into(),
+        };
+        let patterns = ["//:g".to_owned(), "//:bad".to_owned()];
+        // The build is blocking work that needs a runtime to be current.
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let root = dir.0.clone();
+        let loaded = runtime
+            .block_on(async move {
+                tokio::task::spawn_blocking(move || {
+                    fetch_command::run_for_build(
+                        &flags,
+                        &bzlmod,
+                        &root,
+                        module,
+                        &patterns,
+                        "",
+                        Some(&options),
+                    )
+                })
+                .await
+            })
+            .unwrap()
+            .unwrap();
+        let report = loaded.report.expect("the targets were built");
+        let made = dir.0.join("bazel-bin/out.txt");
+        assert_eq!(std::fs::read_to_string(made).unwrap(), "hello\n./in.txt\n");
+        assert_eq!(report.failures.len(), 1);
+        assert_eq!(report.failures[0].owner, "//:bad");
+        assert_eq!(
+            report.failures[0].message,
+            "(Exit 3): bash failed: error executing Genrule command (from genrule rule target //:bad) /bin/bash -c 'source external/bazel_tools/tools/genrule/genrule-setup.sh; exit 3'"
+        );
+        let good = report.results.iter().find(|r| r.label.name == "g").unwrap();
+        assert!(good.built);
+        assert_eq!(good.files, ["bazel-bin/out.txt"]);
+        assert!(
+            !report
+                .results
+                .iter()
+                .find(|r| r.label.name == "bad")
+                .unwrap()
+                .built
+        );
     }
 }

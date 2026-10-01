@@ -2,4 +2,6 @@
 //! and remote executors, checking the action cache first.
 
 pub mod console;
+pub mod execroot;
+pub mod run;
 pub mod workspace_status;

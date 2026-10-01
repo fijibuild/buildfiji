@@ -11,7 +11,11 @@ thiserror.workspace = true
 time.workspace = true
 tracing.workspace = true
 tokio.workspace = true
+futures.workspace = true
 fjfj-bazel-compat.workspace = true
 fjfj-graph.workspace = true
 fjfj-sandbox.workspace = true
 fjfj-remote.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

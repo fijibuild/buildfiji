@@ -21,7 +21,10 @@ serde_json.workspace = true
 fjfj-starlark.workspace = true
 fjfj-graph.workspace = true
 fjfj-loading.workspace = true
+fjfj-analysis.workspace = true
+fjfj-engine.workspace = true
 fjfj-exec.workspace = true
+futures.workspace = true
 fjfj-remote.workspace = true
 fjfj-telemetry.workspace = true
 

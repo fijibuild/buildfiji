@@ -29,6 +29,11 @@ pub enum ActionKind {
 pub struct Action {
     /// The target that registered it.
     pub owner: Label,
+    /// The rule class of the owner (`genrule`), for messages.
+    pub owner_kind: String,
+    /// Where the owner is declared, `BUILD.bazel:3:8` from its package's
+    /// repository, for messages.
+    pub location: String,
     /// The configuration of the owner, `k8-fastbuild`.
     pub configuration: String,
     /// `Genrule`, `CppCompile`, `FileWrite`: what is counted by kind.
