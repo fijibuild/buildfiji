@@ -1,5 +1,6 @@
 //! The native rules, analysed in Rust (buildfiji-136.10).
 
+use crate::select::ConfigMatching;
 use crate::target::{ConfiguredTarget, ConfiguredTargetKey, Env};
 use fjfj_engine::{Ctx, Error};
 use fjfj_graph::expand::{Expander, Prerequisite, label_text};
@@ -84,6 +85,7 @@ pub(crate) async fn analyze(
         "filegroup" => filegroup(ctx, key, attrs, target).await,
         "alias" => alias(ctx, key, attrs, target).await,
         "genrule" => genrule(ctx, key, package, attrs, target).await,
+        "config_setting" => config_setting(ctx, key, attrs, target).await,
         "constraint_setting" => constraint_setting(key, target),
         "constraint_value" => constraint_value(ctx, key, attrs, target).await,
         // Rules that give providers for other rules to read and no files.
@@ -149,6 +151,9 @@ async fn alias(
     })?;
     target.files = actual.files.clone();
     target.executable = actual.executable.clone();
+    target.runfiles = actual.runfiles.clone();
+    target.providers = actual.providers.clone();
+    target.config_matching = actual.config_matching.clone();
     target.deps.push(k);
     Ok(target)
 }
@@ -345,4 +350,81 @@ async fn constraint_value(
     target.providers.push(info);
     target.deps.push(k);
     Ok(target)
+}
+
+/// `config_setting`: does this configuration have the flags, defines,
+/// Starlark flags and constraints it lists?
+async fn config_setting(
+    ctx: &Ctx,
+    key: &ConfiguredTargetKey,
+    attrs: &Attrs,
+    mut target: ConfiguredTarget,
+) -> Result<ConfiguredTarget, Error> {
+    let config = &key.configuration;
+    let mut matching = ConfigMatching {
+        matches: true,
+        conditions: Default::default(),
+    };
+    let mut check = |condition: String, holds: bool| {
+        matching.conditions.insert(condition);
+        matching.matches &= holds;
+    };
+    if let Some(AttrValue::StringDict(values)) = attr(attrs, "values") {
+        for (flag, value) in values {
+            check(
+                format!("values:{flag}={value}"),
+                crate::select::flag_matches(config, flag, value),
+            );
+        }
+    }
+    if let Some(AttrValue::StringDict(defines)) = attr(attrs, "define_values") {
+        for (name, value) in defines {
+            check(
+                format!("define:{name}={value}"),
+                config.defines.get(name).is_some_and(|d| d == value),
+            );
+        }
+    }
+    for constraint in labels(&key.label, attrs, "constraint_values")? {
+        let holds = config.constraints.contains(&constraint);
+        check(format!("constraint:{}", label_text(&constraint)), holds);
+    }
+    if let Some(AttrValue::LabelKeyedStringDict(flags)) = attr(attrs, "flag_values") {
+        for (flag, wanted) in flags {
+            let current = flag_value(ctx, flag).await?;
+            check(
+                format!("flag:{}={wanted}", label_text(flag)),
+                current.eq_ignore_ascii_case(wanted),
+            );
+        }
+    }
+    target.config_matching = Some(matching);
+    Ok(target)
+}
+
+/// What a Starlark build setting is set to: its default, as text.
+async fn flag_value(ctx: &Ctx, flag: &Label) -> Result<String, Error> {
+    let package = ctx
+        .get(crate::target::PackageKey {
+            repo: flag.repo.clone(),
+            package: flag.package.clone(),
+        })
+        .await?;
+    let declared = package
+        .target(&flag.name)
+        .ok_or_else(|| Error::msg(format!("no such build setting {}", label_text(flag))))?;
+    let fjfj_graph::package::TargetKind::Rule { attrs, .. } = &declared.kind else {
+        return Err(Error::msg(format!(
+            "{} is not a build setting",
+            label_text(flag)
+        )));
+    };
+    Ok(match attr(attrs, "build_setting_default") {
+        Some(AttrValue::String(s)) => s.clone(),
+        Some(AttrValue::Bool(b)) => b.to_string(),
+        Some(AttrValue::Int(i)) => i.to_string(),
+        Some(AttrValue::Label(l)) => label_text(l),
+        Some(AttrValue::StringList(items)) => items.join(","),
+        _ => String::new(),
+    })
 }

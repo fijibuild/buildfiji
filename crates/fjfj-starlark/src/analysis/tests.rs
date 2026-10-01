@@ -298,3 +298,99 @@ r2 = rule(implementation = _impl2)
     let e = run_rule(&request(src, "r2", Vec::new(), Vec::new())).unwrap_err();
     assert!(e.contains("nope"), "{e}");
 }
+
+/// The rule `bazel aquery` showed the command line of; the parameter file is
+/// what `bazel build` left in `bazel-bin`.
+const ARGS: &str = r#"
+def _dbl(s):
+    return s + s
+
+def _impl(ctx):
+    o = ctx.actions.declare_file("o")
+    a = ctx.actions.args()
+    a.add("-x")
+    a.add("--name", "v")
+    a.add("--fmt", "v", format = "<%s>")
+    a.add_all("--many", ["a", "b"], before_each = "-e", format_each = "[%s]", terminate_with = "END")
+    a.add_all(["c", "d"], map_each = _dbl)
+    a.add_joined("--j", ["p", "q"], join_with = ",", format_joined = "{%s}")
+    a.add_all("--empty", [], omit_if_empty = True)
+    a.add_all(depset(["z", "z"]), uniquify = True)
+    a.add(3)
+    a.add(ctx.file.src)
+    inline = ctx.actions.args()
+    inline.add_all("--inline", ["x", "y"])
+    if ctx.attr.params:
+        a.use_param_file("@%s", use_always = True)
+    ctx.actions.run_shell(outputs = [o], inputs = [ctx.file.src], command = "echo $@ > " + o.path, arguments = [a, inline], mnemonic = "Args")
+    return [DefaultInfo(files = depset([o]))]
+
+r = rule(implementation = _impl, attrs = {"src": attr.label(allow_single_file = True), "params": attr.bool()})
+"#;
+
+#[test]
+fn args_are_expanded_as_bazel_expands_them() {
+    let src_file = DepInfo {
+        label: label("", "s.txt"),
+        rule_class: None,
+        generated: false,
+        files: vec![Artifact::source("", "", "s.txt")],
+        executable: None,
+        runfiles: fjfj_graph::Runfiles::default(),
+        providers: Vec::new(),
+    };
+    let module = module_in("", "", ARGS).unwrap();
+    let attrs = |params: bool| {
+        vec![
+            ("src".to_owned(), AttrValue::Label(label("", "s.txt"))),
+            ("params".to_owned(), AttrValue::Bool(params)),
+        ]
+    };
+    let expanded = [
+        "-x", "--name", "v", "--fmt", "<v>", "--many", "-e", "[a]", "-e", "[b]", "END", "cc", "dd",
+        "--j", "{p,q}", "z", "3", "s.txt",
+    ];
+    let out = run_rule(&request_in(
+        module.clone(),
+        "r",
+        attrs(false),
+        vec![src_file.clone()],
+    ))
+    .unwrap();
+    let ActionKind::Spawn { argv, .. } = &out.actions[0].kind else {
+        panic!()
+    };
+    let mut want: Vec<String> = ["/bin/bash", "-c", &format!("echo $@ > {BIN}/o"), ""]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    want.extend(expanded.iter().map(|s| s.to_string()));
+    want.extend(["--inline", "x", "y"].iter().map(|s| s.to_string()));
+    assert_eq!(argv, &want);
+
+    // With a parameter file, the arguments go to `o-0.params`, quoted for a shell.
+    let out = run_rule(&request_in(module, "r", attrs(true), vec![src_file])).unwrap();
+    let [params, spawn] = &out.actions[..] else {
+        panic!("{:?}", out.actions)
+    };
+    assert_eq!(paths(&params.outputs), [format!("{BIN}/o-0.params")]);
+    let ActionKind::WriteFile { contents, .. } = &params.kind else {
+        panic!()
+    };
+    let mut quoted = String::new();
+    for arg in expanded {
+        quoted.push_str(&match arg {
+            "<v>" | "[a]" | "[b]" | "{p,q}" => format!("'{arg}'\n"),
+            plain => format!("{plain}\n"),
+        });
+    }
+    assert_eq!(String::from_utf8(contents.clone()).unwrap(), quoted);
+    let ActionKind::Spawn { argv, .. } = &spawn.kind else {
+        panic!()
+    };
+    assert_eq!(
+        &argv[3..],
+        &["", &format!("@{BIN}/o-0.params"), "--inline", "x", "y"]
+    );
+    assert!(paths(&spawn.inputs).contains(&format!("{BIN}/o-0.params")));
+}

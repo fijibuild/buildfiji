@@ -62,6 +62,9 @@ pub struct Configuration {
     /// The `constraint_value`s the target platform has, as canonical labels:
     /// what `ctx.target_platform_has_constraint` and `select()` ask.
     pub constraints: std::collections::BTreeSet<crate::Label>,
+    /// Other flags, by name, for `config_setting(values = ...)`: `copt`,
+    /// `linkopt`, ...
+    pub options: BTreeMap<String, String>,
     /// Built to run on the execution platform: a tool, not a target.
     pub exec: bool,
 }
@@ -102,6 +105,7 @@ impl Default for Configuration {
             compilation_mode: CompilationMode::default(),
             defines: BTreeMap::new(),
             constraints: std::collections::BTreeSet::new(),
+            options: BTreeMap::new(),
             exec: false,
         }
     }
@@ -150,6 +154,7 @@ mod tests {
             compilation_mode: CompilationMode::Opt,
             defines: BTreeMap::new(),
             constraints: std::collections::BTreeSet::new(),
+            options: BTreeMap::new(),
             exec: true,
         };
         assert_eq!(config.mnemonic(), "k8-opt-exec");

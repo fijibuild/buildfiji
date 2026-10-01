@@ -157,6 +157,18 @@ fn flag(function: &str, name: &str, value: Option<Value<'_>>) -> starlark::Resul
 }
 
 impl CtxState {
+    /// A file next to `sibling`.
+    fn derived_next_to(&self, sibling: &Artifact, name: &str) -> Artifact {
+        let path = match sibling.path.rsplit_once('/') {
+            Some((dir, _)) => format!("{dir}/{name}"),
+            None => name.to_owned(),
+        };
+        Artifact {
+            root: sibling.root.clone(),
+            path,
+        }
+    }
+
     /// Register an action of this target.
     fn register(
         &self,
@@ -249,6 +261,12 @@ fn actions_members(builder: &mut MethodsBuilder) {
             )));
         }
         Ok(alloc_file(eval.heap(), artifact, s.label.clone()))
+    }
+
+    /// `ctx.actions.args()`.
+    fn args<'v>(this: Value<'v>, heap: starlark::values::Heap<'v>) -> starlark::Result<Value<'v>> {
+        let _ = this;
+        Ok(heap.alloc(super::args_object::ArgsValue::new()))
     }
 
     /// `ctx.actions.write(output, content, is_executable = False)`.
@@ -449,6 +467,7 @@ fn spawn<'v>(
         inputs.extend(files_of(eval, function, "tools", v)?);
     }
     let mut arguments: Vec<String> = Vec::new();
+    let mut param_files = 0;
     if let Some(v) = bound[3].filter(|v| !v.is_none()) {
         for item in sequence(v).ok_or_else(|| {
             fatal(format!(
@@ -460,6 +479,37 @@ fn spawn<'v>(
                 arguments.push(text.to_owned());
             } else if let Some(file) = artifact_of(item) {
                 arguments.push(file.exec_path());
+            } else if let Some(built) = super::args_object::args_value(item) {
+                let state = built.state.lock().unwrap();
+                match &state.param_file {
+                    Some(param) if param.use_always => {
+                        // The arguments go to a file the command is told of.
+                        let first = outputs[0].path.clone();
+                        let file = s.derived_next_to(&outputs[0], &format!(
+                            "{}-{}.params",
+                            first.rsplit('/').next().unwrap_or(&first),
+                            param_files
+                        ));
+                        param_files += 1;
+                        s.register(
+                            "ParameterFileWrite",
+                            Some(format!("Writing file {}", basename(&file))),
+                            ActionKind::WriteFile {
+                                contents: super::args_object::param_file_contents(
+                                    &state.items,
+                                    param.format,
+                                )
+                                .into_bytes(),
+                                executable: false,
+                            },
+                            Vec::new(),
+                            vec![file.clone()],
+                        );
+                        arguments.push(param.pattern.replacen("%s", &file.exec_path(), 1));
+                        inputs.push(file);
+                    }
+                    _ => arguments.extend(state.items.iter().cloned()),
+                }
             } else {
                 return Err(fatal(format!(
                     "ctx.actions.{function}: arguments must be strings or Files (Args is not supported yet), got {}",

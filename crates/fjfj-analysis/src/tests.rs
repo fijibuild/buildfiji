@@ -47,6 +47,14 @@ fn config() -> Configuration {
 }
 
 async fn analyse(repos: &Arc<Repos>, label: &str) -> Result<Arc<ConfiguredTarget>, String> {
+    analyse_in(repos, label, config()).await
+}
+
+async fn analyse_in(
+    repos: &Arc<Repos>,
+    label: &str,
+    configuration: Configuration,
+) -> Result<Arc<ConfiguredTarget>, String> {
     let engine = engine(Env {
         source: repos.clone(),
         rules: repos.clone(),
@@ -60,7 +68,7 @@ async fn analyse(repos: &Arc<Repos>, label: &str) -> Result<Arc<ConfiguredTarget
                 package: package.into(),
                 name: name.into(),
             },
-            configuration: config(),
+            configuration,
         })
         .await
         .map_err(|e| e.to_string())
@@ -207,4 +215,64 @@ r = rule(implementation = _impl, attrs = {"k": attr.int(default = 1), "deps": at
         format!("cat {BIN}/a.txt > {BIN}/b.txt; echo 12 >> {BIN}/b.txt")
     );
     assert_eq!(b.deps.len(), 1);
+}
+
+/// Probed with `bazel cquery` on the same BUILD file.
+#[tokio::test(flavor = "multi_thread")]
+async fn select_chooses_the_branch_bazel_chooses() {
+    let (_dir, repos) = workspace(&[
+        ("MODULE.bazel", ""),
+        (
+            "BUILD.bazel",
+            r#"
+config_setting(name = "opt", values = {"compilation_mode": "opt"})
+config_setting(name = "fast", values = {"compilation_mode": "fastbuild"})
+config_setting(name = "fast_def", values = {"compilation_mode": "fastbuild"}, define_values = {"k": "v"})
+filegroup(name = "a", srcs = select({":opt": ["o.txt"], ":fast": ["f.txt"]}))
+filegroup(name = "b", srcs = select({":opt": ["o.txt"]}))
+filegroup(name = "c", srcs = select({":opt": ["o.txt"]}, no_match_error = "no luck"))
+filegroup(name = "d", srcs = select({":fast": ["f.txt"], ":fast_def": ["fd.txt"], "//conditions:default": []}))
+filegroup(name = "e", srcs = select({":fast": ["f.txt"], ":opt": ["o.txt"]}) + ["x.txt"])
+"#,
+        ),
+        ("o.txt", ""),
+        ("f.txt", ""),
+        ("fd.txt", ""),
+        ("x.txt", ""),
+    ]);
+    assert_eq!(
+        paths(&analyse(&repos, "//:a").await.unwrap().files),
+        ["f.txt"]
+    );
+    assert_eq!(
+        paths(&analyse(&repos, "//:e").await.unwrap().files),
+        ["f.txt", "x.txt"]
+    );
+    let error = analyse(&repos, "//:b").await.unwrap_err();
+    assert!(
+        error.contains("configurable attribute \"srcs\" in //:b doesn't match this configuration. Would a default condition help?"),
+        "{error}"
+    );
+    let error = analyse(&repos, "//:c").await.unwrap_err();
+    assert!(
+        error.contains("doesn't match this configuration: no luck"),
+        "{error}"
+    );
+    // A setting that says more wins over one it contains.
+    assert_eq!(
+        paths(&analyse(&repos, "//:d").await.unwrap().files),
+        ["f.txt"]
+    );
+    let mut with_define = config();
+    with_define.defines.insert("k".into(), "v".into());
+    assert_eq!(
+        paths(&analyse_in(&repos, "//:d", with_define).await.unwrap().files),
+        ["fd.txt"]
+    );
+    let mut opt = config();
+    opt.compilation_mode = fjfj_graph::CompilationMode::Opt;
+    assert_eq!(
+        paths(&analyse_in(&repos, "//:b", opt).await.unwrap().files),
+        ["o.txt"]
+    );
 }

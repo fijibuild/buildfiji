@@ -8,10 +8,17 @@
 //! engine's data.
 
 mod native;
+mod select;
 mod starlark_rule;
 mod target;
 
+pub use select::ConfigMatching;
 pub use target::{ConfiguredTarget, ConfiguredTargetKey, Env, PackageKey, engine};
 
 #[cfg(test)]
 mod tests;
+
+/// `//p:n` for the main repository, `@@repo//p:n` for another.
+pub(crate) fn expand_label_text(label: &fjfj_graph::Label) -> String {
+    fjfj_graph::expand::label_text(label)
+}

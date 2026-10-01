@@ -74,6 +74,8 @@ pub struct ConfiguredTarget {
     pub providers: Vec<StoredProvider>,
     /// What its rule printed.
     pub printed: Vec<String>,
+    /// For a `config_setting`: whether it matches this configuration.
+    pub config_matching: Option<crate::select::ConfigMatching>,
     /// The actions this target registered.
     pub actions: Vec<Action>,
     /// The targets it read, for finding every action a build needs.
@@ -92,6 +94,7 @@ impl ConfiguredTarget {
             outputs: BTreeMap::new(),
             providers: Vec::new(),
             printed: Vec::new(),
+            config_matching: None,
             actions: Vec::new(),
             deps: Vec::new(),
         }
@@ -118,13 +121,14 @@ impl Key for ConfiguredTargetKey {
                     attrs,
                 } => {
                     target.rule_class = Some(rule_class.clone());
+                    let attrs = crate::select::resolve(ctx, self, attrs).await?;
                     native::analyze(
                         ctx,
                         self,
                         &package,
                         rule_class,
                         defined_in.as_ref(),
-                        attrs,
+                        &attrs,
                         target,
                     )
                     .await
