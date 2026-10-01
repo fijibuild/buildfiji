@@ -145,6 +145,11 @@ fn parse_duration(text: &str) -> Option<Duration> {
     }
 }
 
+/// The repository cache when `--repository_cache` is not given.
+pub(crate) fn default_repository_cache() -> PathBuf {
+    output_user_root().join("cache").join("repos").join("v1")
+}
+
 /// `$XDG_CACHE_HOME` or `~/.cache`, then `fjfj/_fjfj_<user>`.
 fn output_user_root() -> PathBuf {
     let cache = std::env::var_os("XDG_CACHE_HOME")
@@ -281,23 +286,21 @@ pub(crate) fn begin(
     workspace_root: &Path,
     module_bazel_text: &str,
 ) -> Result<(Resolved, Repos), CliError> {
+    let repository_cache = match &flags.repository_cache {
+        Some(choice) => choice.clone(),
+        None => Some(default_repository_cache()),
+    };
     let resolved = crate::resolve_bzlmod_session(
         module_bazel_text,
         workspace_root,
         bzlmod,
         flags.isolated_extension_usages,
+        repository_cache.clone(),
     )?;
     let output_base = flags
         .output_base
         .clone()
         .unwrap_or_else(|| default_output_base(workspace_root));
-    let repository_cache = match &flags.repository_cache {
-        Some(choice) => choice.clone(),
-        None => Some(output_user_root().join("cache").join("repos").join("v1")),
-    };
-    if let (Some(session), Some(cache)) = (&resolved.session, &repository_cache) {
-        session.set_repository_cache(cache.clone());
-    }
     let environ: BTreeMap<String, String> = std::env::vars().collect();
     let mut downloader = HttpDownloader::standard()
         .map_err(|e| CliError::Internal(anyhow::anyhow!("cannot make the HTTP client: {e}")))?;

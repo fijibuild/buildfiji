@@ -364,6 +364,9 @@ pub struct LockSession {
     /// What the previous lockfile was like, for the `error` mode refusal.
     unusable: Option<Unusable>,
     touched: Mutex<BTreeMap<String, FileHash>>,
+    /// What this run has already fetched, by URL: resolution asks for a file
+    /// more than once.
+    bodies: Mutex<BTreeMap<String, Option<Vec<u8>>>>,
     /// The module extensions this run evaluated, and those the module graph
     /// uses (what stays of the previous lockfile's).
     extensions: Mutex<Option<(Json, Vec<String>)>>,
@@ -397,6 +400,7 @@ impl LockSession {
             previous,
             unusable,
             touched: Mutex::new(BTreeMap::new()),
+            bodies: Mutex::new(BTreeMap::new()),
             extensions: Mutex::new(None),
             facts: Mutex::new(Vec::new()),
             repository_cache: Mutex::new(None),
@@ -601,7 +605,23 @@ struct LockedFetcher {
 
 impl Fetcher for LockedFetcher {
     fn fetch(&self, url: &str) -> Result<Option<Vec<u8>>> {
+        if let Some(done) = self.session.bodies.lock().expect("lock").get(url) {
+            return Ok(done.clone());
+        }
+        let fetched = self.fetch_once(url)?;
+        self.session
+            .bodies
+            .lock()
+            .expect("lock")
+            .insert(url.to_owned(), fetched.clone());
+        Ok(fetched)
+    }
+}
+
+impl LockedFetcher {
+    fn fetch_once(&self, url: &str) -> Result<Option<Vec<u8>>> {
         let session = &self.session;
+        tracing::debug!(url, "registry file");
         if url.starts_with("file://") || url.starts_with('/') || url.ends_with("/metadata.json") {
             return self.inner.fetch(url);
         }

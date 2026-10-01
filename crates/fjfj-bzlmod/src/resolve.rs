@@ -418,6 +418,26 @@ fn check_yanked(
     if options.yanked == YankedPolicy::AllowAll && !options.for_lockfile {
         return Ok(yanked);
     }
+    // The registry is asked about every selected module; ask for them together.
+    // What fails here fails again, in order, below.
+    let names: BTreeSet<&str> = selection
+        .keys()
+        .filter(|k| !k.version.is_empty())
+        .map(|k| k.name.as_str())
+        .collect();
+    let names: Vec<&str> = names.into_iter().collect();
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    std::thread::scope(|scope| {
+        for _ in 0..names.len().min(16) {
+            scope.spawn(|| {
+                loop {
+                    let at = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    let Some(name) = names.get(at) else { break };
+                    let _ = source.yanked_versions(name);
+                }
+            });
+        }
+    });
     // The order Bazel's map of every selected module iterates in: which one it
     // complains about first, and the order they are written in.
     for key in crate::java_map::hash_map_order(selection.keys(), selection.resolved.len()) {

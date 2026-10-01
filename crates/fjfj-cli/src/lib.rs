@@ -195,6 +195,7 @@ fn resolve_bzlmod_session(
     workspace_root: &std::path::Path,
     flags: &BzlmodFlags,
     isolated_extension_usages: bool,
+    repository_cache: Option<std::path::PathBuf>,
 ) -> Result<fetch_command::Resolved, CliError> {
     let mode = match &flags.lockfile_mode {
         Some(value) => LockfileMode::parse(value)
@@ -214,6 +215,10 @@ fn resolve_bzlmod_session(
                 .map_err(|e| CliError::Build(anyhow::anyhow!(e)))?,
         ),
     };
+    // Registry files whose hash the lockfile has come from here, not the network.
+    if let (Some(session), Some(cache)) = (&session, repository_cache) {
+        session.set_repository_cache(cache);
+    }
     let registries = bzlmod_registries(flags, session.as_ref())?;
     let source =
         RegistrySource::new(registries).with_isolated_extension_usages(isolated_extension_usages);
@@ -255,7 +260,13 @@ fn resolve_bzlmod(
     workspace_root: &std::path::Path,
     flags: &BzlmodFlags,
 ) -> Result<Resolution, CliError> {
-    let resolved = resolve_bzlmod_session(module_bazel_text, workspace_root, flags, false)?;
+    let resolved = resolve_bzlmod_session(
+        module_bazel_text,
+        workspace_root,
+        flags,
+        false,
+        Some(fetch_command::default_repository_cache()),
+    )?;
     write_lockfile(&resolved)?;
     Ok(resolved.resolution)
 }
