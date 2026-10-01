@@ -180,7 +180,21 @@ async fn genrule(
     let env = ctx.data::<Env>()?;
 
     let srcs = targets(ctx, key, labels(label, attrs, "srcs")?).await?;
-    let tools = targets(ctx, key, labels(label, attrs, "tools")?).await?;
+    let tools = {
+        let keys = labels(label, attrs, "tools")?
+            .into_iter()
+            .map(|l| ConfiguredTargetKey {
+                label: l,
+                configuration: config.to_exec(),
+            })
+            .collect::<Vec<_>>();
+        let results = ctx.get_all(keys.clone()).await;
+        let mut out = Vec::with_capacity(keys.len());
+        for (k, result) in keys.into_iter().zip(results) {
+            out.push((k, result?));
+        }
+        out
+    };
     let setup_label = Label {
         repo: "bazel_tools".into(),
         package: "tools/genrule".into(),

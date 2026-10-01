@@ -75,9 +75,13 @@ pub(crate) async fn analyze(
     let dep_labels = labels_of_attrs(&schema, &set);
     let dep_keys: Vec<ConfiguredTargetKey> = dep_labels
         .iter()
-        .map(|l| ConfiguredTargetKey {
+        .map(|(l, exec)| ConfiguredTargetKey {
             label: l.clone(),
-            configuration: key.configuration.clone(),
+            configuration: if *exec {
+                key.configuration.to_exec()
+            } else {
+                key.configuration.clone()
+            },
         })
         .collect();
     let mut deps = BTreeMap::new();

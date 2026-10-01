@@ -413,3 +413,48 @@ r(name = "t")
         .unwrap_err();
     assert!(error.contains("No matching toolchains found"), "{error}");
 }
+
+/// Probed with `bazel build` on the same files: a tool is built in
+/// `k8-opt-exec`, whatever `-c` says.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_tool_attribute_is_built_in_the_exec_configuration() {
+    let (_dir, repos) = workspace(&[
+        ("MODULE.bazel", ""),
+        (
+            "defs.bzl",
+            r#"
+def _tool(ctx):
+    out = ctx.actions.declare_file(ctx.label.name + ".sh")
+    ctx.actions.write(out, "x", is_executable = True)
+    return [DefaultInfo(executable = out)]
+tool = rule(implementation = _tool, executable = True)
+
+def _use(ctx):
+    out = ctx.actions.declare_file(ctx.label.name + ".txt")
+    ctx.actions.run_shell(outputs = [out], tools = [ctx.executable.t], command = ctx.executable.t.path + " > " + out.path)
+    return [DefaultInfo(files = depset([out]))]
+use = rule(implementation = _use, attrs = {"t": attr.label(cfg = "exec", executable = True, default = "//:tool")})
+"#,
+        ),
+        (
+            "BUILD.bazel",
+            "load(':defs.bzl', 'tool', 'use')\ntool(name = 'tool')\nuse(name = 'u')\ngenrule(name = 'g', outs = ['g.txt'], tools = [':tool'], cmd = '$(location :tool) > $@')\n",
+        ),
+    ]);
+    let u = analyse(&repos, "//:u").await.unwrap();
+    let ActionKind::Spawn { argv, .. } = &u.actions[0].kind else {
+        panic!()
+    };
+    assert!(
+        argv[2].starts_with("bazel-out/k8-opt-exec/bin/tool.sh"),
+        "{argv:?}"
+    );
+    let g = analyse(&repos, "//:g").await.unwrap();
+    let ActionKind::Spawn { argv, .. } = &g.actions[0].kind else {
+        panic!()
+    };
+    assert!(
+        argv[2].contains("bazel-out/k8-opt-exec/bin/tool.sh"),
+        "{argv:?}"
+    );
+}

@@ -119,6 +119,19 @@ impl Default for Configuration {
 }
 
 impl Configuration {
+    /// The configuration a tool is built in (`cfg = "exec"`): optimised, on the
+    /// execution platform, with the target's flags dropped. Bazel names it
+    /// `k8-opt-exec`.
+    pub fn to_exec(&self) -> Configuration {
+        Configuration {
+            cpu: self.cpu.clone(),
+            compilation_mode: CompilationMode::Opt,
+            constraints: self.constraints.clone(),
+            exec: true,
+            ..Configuration::default()
+        }
+    }
+
     /// The directory of `bazel-out` this configuration's outputs are in:
     /// `k8-fastbuild`. A configuration that builds tools says so.
     pub fn mnemonic(&self) -> String {
@@ -151,6 +164,22 @@ mod tests {
         assert_eq!(
             config.bin_dir(),
             format!("bazel-out/{}-fastbuild/bin", host_cpu())
+        );
+    }
+
+    #[test]
+    fn a_tool_is_built_optimised_in_the_exec_configuration() {
+        let target = Configuration {
+            compilation_mode: CompilationMode::Dbg,
+            ..Configuration::default()
+        };
+        assert_eq!(
+            target.to_exec().mnemonic(),
+            format!("{}-opt-exec", target.cpu)
+        );
+        assert_eq!(
+            target.to_exec().bin_dir(),
+            format!("bazel-out/{}-opt-exec/bin", target.cpu)
         );
     }
 

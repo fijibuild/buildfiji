@@ -105,7 +105,10 @@ const NOT_DEPENDENCIES: [&str; 10] = [
 
 /// Every label the rule's attributes name, set or defaulted: the targets its
 /// code can see.
-pub fn labels_of_attrs(schema: &RuleSchema, set: &[(String, AttrValue)]) -> Vec<Label> {
+///
+/// The flag says the attribute's `cfg` builds the target for the execution
+/// platform. A label named by both kinds of attribute is listed for each.
+pub fn labels_of_attrs(schema: &RuleSchema, set: &[(String, AttrValue)]) -> Vec<(Label, bool)> {
     let mut seen = BTreeSet::new();
     let mut out = Vec::new();
     for (name, value) in resolved_attrs(schema, set) {
@@ -129,11 +132,21 @@ pub fn labels_of_attrs(schema: &RuleSchema, set: &[(String, AttrValue)]) -> Vec<
         if !is_dep {
             continue;
         }
+        let exec = schema
+            .attrs
+            .iter()
+            .find(|a| a.name == name)
+            .is_some_and(|a| {
+                matches!(
+                    a.def.cfg,
+                    fjfj_graph::rule::Cfg::Exec | fjfj_graph::rule::Cfg::Host
+                )
+            });
         let mut found = Vec::new();
         value.labels(&mut found);
         for label in found {
-            if seen.insert(label.clone()) {
-                out.push(label.clone());
+            if seen.insert((label.clone(), exec)) {
+                out.push((label.clone(), exec));
             }
         }
     }
