@@ -38,6 +38,8 @@ pub(crate) struct CtxState {
     pub(crate) deps: BTreeMap<Label, Arc<DepInfo>>,
     /// Predeclared outputs by the name `ctx.outputs` gives them.
     pub(crate) outputs: Vec<(String, Artifact)>,
+    /// `ctx.toolchains`: each type and the implementation resolved for it.
+    pub(crate) toolchains: Vec<(Label, Option<Arc<DepInfo>>)>,
     pub(crate) actions: Mutex<Vec<Action>>,
     /// Exec paths declared so far, which another declaration may not repeat.
     pub(crate) declared: Mutex<BTreeSet<String>>,
@@ -211,6 +213,13 @@ fn ctx_members(builder: &mut MethodsBuilder) {
             vars.into_iter()
                 .map(|(k, v)| (heap.alloc(k), heap.alloc(v.as_str()))),
         )))
+    }
+
+    #[starlark(attribute)]
+    fn toolchains<'v>(this: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
+        Ok(heap.alloc(ToolchainsValue {
+            state: state(this).clone(),
+        }))
     }
 
     #[starlark(attribute)]
@@ -486,5 +495,94 @@ pub(crate) fn target_cpu(cpu: &str) -> &str {
     match cpu {
         "k8" => "x86_64",
         other => other,
+    }
+}
+
+/// `ctx.toolchains`: indexed by a toolchain type, gives the `ToolchainInfo`
+/// of the toolchain resolved for it.
+#[derive(ProvidesStaticType, NoSerialize, Allocative)]
+pub(crate) struct ToolchainsValue {
+    #[allocative(skip)]
+    state: Arc<CtxState>,
+}
+
+starlark_simple_value!(ToolchainsValue);
+
+impl fmt::Debug for ToolchainsValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("toolchains")
+    }
+}
+
+impl fmt::Display for ToolchainsValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("<toolchain context>")
+    }
+}
+
+#[starlark_value(type = "ToolchainContext")]
+impl<'v> StarlarkValue<'v> for ToolchainsValue {
+    fn at(&self, index: Value<'v>, _heap: Heap<'v>) -> starlark::Result<Value<'v>> {
+        let wanted = match crate::label::label_of_value(index) {
+            Some(label) => label,
+            None => {
+                let text = index.unpack_str().ok_or_else(|| {
+                    fatal(format!(
+                        "in index, got a {} for the toolchain type",
+                        index.get_type()
+                    ))
+                })?;
+                Label::parse(
+                    text,
+                    LabelContext {
+                        repo: &self.state.label.repo,
+                        package: &self.state.label.package,
+                    },
+                )
+                .map_err(|e| fatal(format!("invalid toolchain type '{text}': {e}")))?
+            }
+        };
+        let Some((_, resolved)) = self.state.toolchains.iter().find(|(l, _)| *l == wanted) else {
+            return Err(fatal(format!(
+                "In {} rule {}, toolchain type {} was requested but only types [{}] are configured",
+                self.state.rule_kind,
+                crate::label::display_label(&self.state.label),
+                crate::label::display_label(&wanted),
+                self.state
+                    .toolchains
+                    .iter()
+                    .map(|(l, _)| crate::label::display_label(l))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )));
+        };
+        let Some(info) = resolved else {
+            return Ok(Value::new_none());
+        };
+        let tool = super::target::builtin_by_path("platform_common.ToolchainInfo");
+        info.providers
+            .iter()
+            // SAFETY: the evaluation took a reference to the heap that owns
+            // each provider of a dependency (`run_rule`).
+            .map(|p| unsafe { p.value.unchecked_frozen_value().to_value() })
+            .find(|instance| {
+                crate::structs::provider_of(*instance)
+                    .is_some_and(|q| crate::provider::same_provider(q, tool))
+            })
+            .ok_or_else(|| {
+                fatal(format!(
+                    "toolchain {} does not give a platform_common.ToolchainInfo",
+                    crate::label::display_label(&info.label)
+                ))
+            })
+    }
+
+    fn is_in(&self, other: Value<'v>) -> starlark::Result<bool> {
+        let label = crate::label::label_of_value(other);
+        Ok(self
+            .state
+            .toolchains
+            .iter()
+            .any(|(l, r)| Some(l) == label.as_ref() && r.is_some()))
     }
 }

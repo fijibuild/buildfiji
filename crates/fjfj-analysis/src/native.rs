@@ -86,6 +86,7 @@ pub(crate) async fn analyze(
         "alias" => alias(ctx, key, attrs, target).await,
         "genrule" => genrule(ctx, key, package, attrs, target).await,
         "config_setting" => config_setting(ctx, key, attrs, target).await,
+        "toolchain" => toolchain_rule(key, attrs, target),
         "constraint_setting" => constraint_setting(key, target),
         "constraint_value" => constraint_value(ctx, key, attrs, target).await,
         // Rules that give providers for other rules to read and no files.
@@ -430,4 +431,42 @@ async fn flag_value(ctx: &Ctx, flag: &Label) -> Result<String, Error> {
         Some(AttrValue::StringList(items)) => items.join(","),
         _ => String::new(),
     })
+}
+
+/// `toolchain`: what it offers and what it needs. The implementation is not
+/// analysed until a rule resolves to it.
+fn toolchain_rule(
+    key: &ConfiguredTargetKey,
+    attrs: &Attrs,
+    mut target: ConfiguredTarget,
+) -> Result<ConfiguredTarget, Error> {
+    let one = |name: &str| -> Result<Label, Error> {
+        let found = match attr(attrs, name) {
+            Some(AttrValue::Label(l)) => Some(l.clone()),
+            // `toolchain` is a string in the schema; it names a label.
+            Some(AttrValue::String(text)) => Label::parse(
+                text,
+                LabelContext {
+                    repo: &key.label.repo,
+                    package: &key.label.package,
+                },
+            )
+            .ok(),
+            _ => None,
+        };
+        found.ok_or_else(|| {
+            Error::msg(format!(
+                "{}: toolchain needs a '{name}'",
+                label_text(&key.label)
+            ))
+        })
+    };
+    target.toolchain_decl = Some(crate::target::ToolchainDecl {
+        toolchain_type: one("toolchain_type")?,
+        toolchain: one("toolchain")?,
+        exec_compatible_with: labels(&key.label, attrs, "exec_compatible_with")?,
+        target_compatible_with: labels(&key.label, attrs, "target_compatible_with")?,
+        target_settings: labels(&key.label, attrs, "target_settings")?,
+    });
+    Ok(target)
 }

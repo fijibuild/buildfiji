@@ -13,8 +13,10 @@ mod select;
 mod starlark_rule;
 mod target;
 mod test_action;
+mod toolchain;
 
 pub use select::ConfigMatching;
+pub use target::ToolchainDecl;
 pub use target::{ConfiguredTarget, ConfiguredTargetKey, Env, PackageKey, engine};
 
 #[cfg(test)]

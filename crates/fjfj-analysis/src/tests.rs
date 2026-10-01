@@ -55,10 +55,20 @@ async fn analyse_in(
     label: &str,
     configuration: Configuration,
 ) -> Result<Arc<ConfiguredTarget>, String> {
+    analyse_registering(repos, label, configuration, Vec::new()).await
+}
+
+async fn analyse_registering(
+    repos: &Arc<Repos>,
+    label: &str,
+    configuration: Configuration,
+    registered_toolchains: Vec<(String, String)>,
+) -> Result<Arc<ConfiguredTarget>, String> {
     let engine = engine(Env {
         source: repos.clone(),
         rules: repos.clone(),
         main_repo_name: "_main".into(),
+        registered_toolchains,
     });
     let (package, name) = label.trim_start_matches("//").split_once(':').unwrap();
     engine
@@ -337,4 +347,69 @@ my_bin = rule(implementation = _impl, executable = True, attrs = {"data": attr.l
         ]
     );
     assert_eq!(repo_mapping_contents, ",m,_main\n");
+}
+
+/// Probed with `bazel build` of the same BUILD file and `register_toolchains`.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_rule_gets_the_first_registered_toolchain_its_platform_fits() {
+    let (_dir, repos) = workspace(&[
+        ("MODULE.bazel", ""),
+        (
+            "defs.bzl",
+            r#"
+def _tc_impl(ctx):
+    return [platform_common.ToolchainInfo(name = ctx.attr.n)]
+my_toolchain = rule(implementation = _tc_impl, attrs = {"n": attr.string()})
+
+def _impl(ctx):
+    info = ctx.toolchains["//:tt"]
+    print("toolchain:", info.name if info else None, ctx.toolchains["//:opt"])
+    return []
+r = rule(implementation = _impl, toolchains = ["//:tt", config_common.toolchain_type("//:opt", mandatory = False)])
+"#,
+        ),
+        (
+            "BUILD.bazel",
+            r#"
+load(":defs.bzl", "my_toolchain", "r")
+toolchain_type(name = "tt")
+toolchain_type(name = "opt")
+constraint_setting(name = "os")
+constraint_value(name = "linux", constraint_setting = ":os")
+constraint_value(name = "windows", constraint_setting = ":os")
+my_toolchain(name = "impl_linux", n = "linux")
+my_toolchain(name = "impl_other", n = "other")
+toolchain(name = "tc_other", toolchain_type = ":tt", toolchain = ":impl_other", target_compatible_with = [":windows"])
+toolchain(name = "tc_linux", toolchain_type = ":tt", toolchain = ":impl_linux", target_compatible_with = [":linux"])
+r(name = "t")
+"#,
+        ),
+    ]);
+    let mut on_linux = config();
+    on_linux.constraints.insert(Label {
+        repo: String::new(),
+        package: String::new(),
+        name: "linux".into(),
+    });
+    let registered = vec![
+        (String::new(), "//:tc_other".to_owned()),
+        (String::new(), "//:tc_linux".to_owned()),
+    ];
+    let t = analyse_registering(&repos, "//:t", on_linux.clone(), registered.clone())
+        .await
+        .unwrap();
+    assert_eq!(t.printed, ["toolchain: linux None"]);
+    // None registered, or none that fits: Bazel's words.
+    let error = analyse_registering(&repos, "//:t", on_linux, Vec::new())
+        .await
+        .unwrap_err();
+    assert!(
+        error.contains("While resolving toolchains for target //:t")
+            && error.contains("No matching toolchains found for types:\n  //:tt\nTo debug, rerun with --toolchain_resolution_debug='//:tt'\nFor more information on platforms or toolchains see https://bazel.build/concepts/platforms-intro."),
+        "{error}"
+    );
+    let error = analyse_registering(&repos, "//:t", config(), registered)
+        .await
+        .unwrap_err();
+    assert!(error.contains("No matching toolchains found"), "{error}");
 }

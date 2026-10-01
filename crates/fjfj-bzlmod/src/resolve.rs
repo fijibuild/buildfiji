@@ -217,6 +217,29 @@ impl Resolution {
         key.canonical_repo_name()
     }
 
+    /// The toolchain patterns modules register, in the order Bazel considers
+    /// them (the root module's first, then the others'), each with the
+    /// canonical repo of the module that wrote it and the pattern as written.
+    pub fn registered_toolchains(&self) -> Vec<(String, String)> {
+        self.registered(|m| &m.toolchains_to_register)
+    }
+
+    /// The same for `register_execution_platforms`.
+    pub fn registered_execution_platforms(&self) -> Vec<(String, String)> {
+        self.registered(|m| &m.execution_platforms_to_register)
+    }
+
+    fn registered(&self, which: impl Fn(&Module) -> &Vec<String>) -> Vec<(String, String)> {
+        let mut out = Vec::new();
+        for (key, module) in self.selection.resolved.iter() {
+            let repo = self.canonical_name_of(key);
+            for pattern in which(module) {
+                out.push((repo.clone(), pattern.clone()));
+            }
+        }
+        out
+    }
+
     /// What each apparent repo name means in each repo of the module graph
     /// (Bazel's repo mapping, what `bazel mod dump_repo_mapping` prints): for
     /// every selected module, in breadth-first order, its canonical repo

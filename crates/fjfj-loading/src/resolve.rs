@@ -162,6 +162,7 @@ pub fn declared_target(
 type Loaded = Result<Arc<Package>, String>;
 
 struct Resolver<'a> {
+    include_manual: bool,
     source: &'a dyn PackageSource,
     packages: RefCell<HashMap<(String, String), Loaded>>,
 }
@@ -188,7 +189,7 @@ impl Resolver<'_> {
         };
         for target in loaded.targets() {
             let is_rule = matches!(target.kind, TargetKind::Rule { .. });
-            if (rules_only && !is_rule) || is_manual(target) {
+            if (rules_only && !is_rule) || (!self.include_manual && is_manual(target)) {
                 continue;
             }
             out.push(label(&target.name));
@@ -288,7 +289,18 @@ impl Resolver<'_> {
 
 /// The targets `patterns` select.
 pub fn resolve(patterns: &[TargetPattern], source: &dyn PackageSource) -> Resolved {
+    resolve_with(patterns, source, false)
+}
+
+/// [`resolve`], with the targets tagged `manual` that a wildcard leaves out
+/// kept in when `include_manual`: what `register_toolchains` selects.
+pub fn resolve_with(
+    patterns: &[TargetPattern],
+    source: &dyn PackageSource,
+    include_manual: bool,
+) -> Resolved {
     let resolver = Resolver {
+        include_manual,
         source,
         packages: RefCell::new(HashMap::new()),
     };

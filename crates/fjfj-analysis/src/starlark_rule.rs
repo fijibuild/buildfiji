@@ -94,6 +94,29 @@ pub(crate) async fn analyze(
         deps.insert(dep_key.label.clone(), dep_info(&done, generated));
     }
 
+    // The toolchains it asked for, resolved.
+    let mut toolchains: Vec<(Label, Option<DepInfo>)> = Vec::new();
+    let mut missing: Vec<Label> = Vec::new();
+    let mut toolchain_keys: Vec<ConfiguredTargetKey> = Vec::new();
+    for (toolchain_type, mandatory) in &schema.toolchains {
+        match crate::toolchain::resolve(ctx, key, toolchain_type).await? {
+            Some(decl) => {
+                let implementation = ConfiguredTargetKey {
+                    label: decl.toolchain.clone(),
+                    configuration: key.configuration.clone(),
+                };
+                let done = ctx.get(implementation.clone()).await?;
+                toolchains.push((toolchain_type.clone(), Some(dep_info(&done, false))));
+                toolchain_keys.push(implementation);
+            }
+            None if *mandatory => missing.push(toolchain_type.clone()),
+            None => toolchains.push((toolchain_type.clone(), None)),
+        }
+    }
+    if !missing.is_empty() {
+        return Err(Error::msg(crate::toolchain::no_match(key, &missing)));
+    }
+
     // The outputs the class declares: `outputs = {...}` templates, and the
     // `attr.output`s the call set.
     let mut outputs: Vec<(String, String)> = Vec::new();
@@ -127,6 +150,7 @@ pub(crate) async fn analyze(
         deps,
         outputs,
         mappings: rules.mappings(),
+        toolchains,
     };
     let result = tokio::task::spawn_blocking(move || run_rule(&request))
         .await
@@ -157,6 +181,7 @@ pub(crate) async fn analyze(
         })
         .collect();
     target.deps = dep_keys;
+    target.deps.extend(toolchain_keys);
     let mappings = rules.mappings();
     crate::runfiles_tree::register(&mut target, &env.main_repo_name, &mappings, &|r| {
         r.to_owned()

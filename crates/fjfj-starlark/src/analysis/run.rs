@@ -40,6 +40,9 @@ pub struct RuleRequest {
     pub outputs: Vec<(String, String)>,
     /// What `Label()` in the rule's code means in each repository.
     pub mappings: Arc<RepoMappings>,
+    /// The toolchain types the rule asked for, each with the target that
+    /// implements the toolchain resolved for it, if one was.
+    pub toolchains: Vec<(Label, Option<DepInfo>)>,
 }
 
 /// What an `implementation` gave.
@@ -183,6 +186,11 @@ pub fn run_rule(req: &RuleRequest) -> Result<RuleResult, String> {
             .map(|(l, d)| (l.clone(), Arc::new(d.clone())))
             .collect(),
         outputs: outputs.clone(),
+        toolchains: req
+            .toolchains
+            .iter()
+            .map(|(l, d)| (l.clone(), d.clone().map(Arc::new)))
+            .collect(),
         actions: Mutex::new(Vec::new()),
         declared: Mutex::new(outputs.iter().map(|(_, a)| a.exec_path()).collect()),
     });

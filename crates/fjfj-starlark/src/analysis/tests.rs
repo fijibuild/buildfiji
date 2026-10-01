@@ -46,6 +46,7 @@ fn request_in(
         deps: deps.into_iter().map(|d| (d.label.clone(), d)).collect(),
         outputs: Vec::new(),
         mappings: Arc::new(crate::test_support::probe_mappings()),
+        toolchains: Vec::new(),
     }
 }
 

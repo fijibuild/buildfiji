@@ -17,6 +17,9 @@ pub struct Env {
     pub rules: Arc<dyn RuleSource>,
     /// What the main repository is called in a runfiles tree: `_main`.
     pub main_repo_name: String,
+    /// `register_toolchains` patterns, each with the canonical repo of the module that
+    /// wrote it, in the order they are considered.
+    pub registered_toolchains: Vec<(String, String)>,
 }
 
 /// An engine that analyses against `env`.
@@ -79,6 +82,8 @@ pub struct ConfiguredTarget {
     pub providers: Vec<StoredProvider>,
     /// What its rule printed.
     pub printed: Vec<String>,
+    /// For a `toolchain`: what it offers and what it needs.
+    pub toolchain_decl: Option<ToolchainDecl>,
     /// For a `config_setting`: whether it matches this configuration.
     pub config_matching: Option<crate::select::ConfigMatching>,
     /// The actions this target registered.
@@ -101,6 +106,7 @@ impl ConfiguredTarget {
             test: None,
             providers: Vec::new(),
             printed: Vec::new(),
+            toolchain_decl: None,
             config_matching: None,
             actions: Vec::new(),
             deps: Vec::new(),
@@ -178,4 +184,15 @@ fn source_file(key: &ConfiguredTargetKey, mut target: ConfiguredTarget) -> Confi
         &key.label.name,
     )]);
     target
+}
+
+/// What a `toolchain` target says: the type it is of, the target that
+/// implements it, and the constraints under which it applies.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ToolchainDecl {
+    pub toolchain_type: Label,
+    pub toolchain: Label,
+    pub exec_compatible_with: Vec<Label>,
+    pub target_compatible_with: Vec<Label>,
+    pub target_settings: Vec<Label>,
 }

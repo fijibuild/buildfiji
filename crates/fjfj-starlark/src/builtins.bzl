@@ -104,16 +104,30 @@ def _java_internals():
         collect_native_deps_dirs = _unavailable("java_common.internal_DO_NOT_USE().collect_native_deps_dirs", "buildfiji-136.15"),
     )
 
+# Providers inside a namespace are named by the private names they are bound
+# to here, as `rule(provides = [...])` requires of a provider.
+_ConstraintSettingInfo = provider(doc = "A constraint_setting.")
+_ConstraintValueInfo = provider(doc = "A constraint_value.")
+_PlatformInfo = provider(doc = "A platform.")
+_TemplateVariableInfo = provider(doc = "Make variables.", fields = ["variables"])
+_ToolchainInfo = provider(doc = "The data of a toolchain.")
+_FeatureFlagInfo = provider(doc = "A feature flag's value.", fields = ["value"])
+_ExecutionInfo = provider(doc = "How a test runs.", fields = ["requirements", "exec_group"])
+_TestEnvironment = provider(doc = "The environment of a test.", fields = ["environment", "inherited_environment"])
+_Objc = provider(doc = "Objective-C information.")
+_XcodeProperties = provider(doc = "Xcode properties.")
+_XcodeVersionConfig = provider(doc = "An xcode_config.")
+
 platform_common = struct(
-    ConstraintSettingInfo = provider(doc = "A constraint_setting."),
-    ConstraintValueInfo = provider(doc = "A constraint_value."),
-    PlatformInfo = provider(doc = "A platform."),
-    TemplateVariableInfo = provider(doc = "Make variables.", fields = ["variables"]),
-    ToolchainInfo = provider(doc = "The data of a toolchain."),
+    ConstraintSettingInfo = _ConstraintSettingInfo,
+    ConstraintValueInfo = _ConstraintValueInfo,
+    PlatformInfo = _PlatformInfo,
+    TemplateVariableInfo = _TemplateVariableInfo,
+    ToolchainInfo = _ToolchainInfo,
 )
 
 config_common = struct(
-    FeatureFlagInfo = provider(doc = "A feature flag's value.", fields = ["value"]),
+    FeatureFlagInfo = _FeatureFlagInfo,
     config_feature_flag_transition = _unavailable("config_common.config_feature_flag_transition", "buildfiji-136.16"),
     toolchain_type = _toolchain_type,
 )
@@ -138,8 +152,8 @@ coverage_common = struct(
 )
 
 testing = struct(
-    ExecutionInfo = provider(doc = "How a test runs.", fields = ["requirements", "exec_group"]),
-    TestEnvironment = provider(doc = "The environment of a test.", fields = ["environment", "inherited_environment"]),
+    ExecutionInfo = _ExecutionInfo,
+    TestEnvironment = _TestEnvironment,
     analysis_test = _unavailable("testing.analysis_test", "buildfiji-136.16"),
 )
 
@@ -187,9 +201,9 @@ _APPLE_PLATFORM_TYPE = struct(
 )
 
 apple_common = struct(
-    Objc = provider(doc = "Objective-C information."),
-    XcodeProperties = provider(doc = "Xcode properties."),
-    XcodeVersionConfig = provider(doc = "An xcode_config."),
+    Objc = _Objc,
+    XcodeProperties = _XcodeProperties,
+    XcodeVersionConfig = _XcodeVersionConfig,
     apple_host_system_env = _unavailable("apple_common.apple_host_system_env", "buildfiji-136.15"),
     apple_toolchain = lambda: struct(developer_dir = _unavailable("apple_common.apple_toolchain().developer_dir", "buildfiji-136.15"), platform_developer_framework_dir = _unavailable("apple_common.apple_toolchain().platform_developer_framework_dir", "buildfiji-136.15"), sdk_dir = _unavailable("apple_common.apple_toolchain().sdk_dir", "buildfiji-136.15")),
     dotted_version = lambda version: struct(_version = version, compare_to = _unavailable("DottedVersion.compare_to", "buildfiji-136.15")),

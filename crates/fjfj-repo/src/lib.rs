@@ -347,6 +347,16 @@ impl Repos {
             .find_apparent("", apparent)
     }
 
+    /// `register_toolchains` patterns, with the repo of the module that wrote each.
+    pub fn registered_toolchains(&self) -> Vec<(String, String)> {
+        self.inner.resolution.registered_toolchains()
+    }
+
+    /// `register_execution_platforms` patterns, likewise.
+    pub fn registered_execution_platforms(&self) -> Vec<(String, String)> {
+        self.inner.resolution.registered_execution_platforms()
+    }
+
     /// The canonical name of the repository of the selected module `name`.
     pub fn module_repo(&self, name: &str) -> Option<String> {
         let resolution = &self.inner.resolution;

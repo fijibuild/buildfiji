@@ -251,6 +251,7 @@ pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> R
         source: repos.clone(),
         rules: repos.clone(),
         main_repo_name: MAIN_REPO_DIR.to_owned(),
+        registered_toolchains: repos.registered_toolchains(),
     });
     let handle = tokio::runtime::Handle::current();
     let (roots, all) = handle.block_on(analyse(

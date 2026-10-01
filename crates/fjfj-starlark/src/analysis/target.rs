@@ -88,6 +88,19 @@ pub(crate) fn builtin<'v>(name: &str) -> Option<Value<'v>> {
     value.value().unpack_frozen().map(|f| f.to_value())
 }
 
+/// The builtin provider at a dotted path: `platform_common.ToolchainInfo`.
+pub(crate) fn builtin_by_path<'v>(path: &str) -> Option<Value<'v>> {
+    let mut names = path.split('.');
+    let mut value = builtin(names.next()?)?;
+    for name in names {
+        value = crate::structs::fields_of(value)?
+            .into_iter()
+            .find(|(n, _)| *n == name)
+            .map(|(_, v)| v)?;
+    }
+    Some(value)
+}
+
 /// An instance of `DefaultInfo` with these files.
 pub(crate) fn default_info<'v>(
     heap: Heap<'v>,

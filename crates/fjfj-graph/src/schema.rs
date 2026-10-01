@@ -83,6 +83,8 @@ pub struct RuleSchema {
     /// The `.bzl` that made the class (a `rule()`'s), for analysis to find its
     /// implementation; `None` for a native class.
     pub defined_in: Option<crate::Label>,
+    /// The toolchain types the class asks for and whether each must resolve.
+    pub toolchains: Vec<(crate::Label, bool)>,
     /// Implicit outputs given as templates: the output's name in the
     /// rule's `outputs` and its template (`%{name}.txt`).
     pub outputs: Vec<(String, String)>,
@@ -133,6 +135,7 @@ impl RuleSchema {
             executable: false,
             starlark: false,
             defined_in: None,
+            toolchains: Vec::new(),
             outputs: Vec::new(),
         }
     }
@@ -176,6 +179,7 @@ impl RuleSchema {
             executable: executable || test,
             starlark: true,
             defined_in: None,
+            toolchains: Vec::new(),
             outputs,
         })
     }

@@ -505,11 +505,15 @@ fn make_rule<'v>(
     }
     if let Some(toolchains) = arg("toolchains") {
         for item in sequence(toolchains, heap).unwrap_or_default() {
-            if label_of_value(item).is_some()
-                || item
-                    .downcast_ref::<crate::decl::ToolchainTypeRequirement>()
-                    .is_some()
+            if let Some(label) = label_of_value(item) {
+                schema.toolchains.push((label, true));
+                continue;
+            }
+            if let Some(requirement) = item.downcast_ref::<crate::decl::ToolchainTypeRequirement>()
             {
+                schema
+                    .toolchains
+                    .push((requirement.label.clone(), requirement.mandatory));
                 continue;
             }
             let Some(text) = item.unpack_str() else {
@@ -518,10 +522,13 @@ fn make_rule<'v>(
                     java_name(item)
                 )));
             };
-            if let Err(e) = parse_in_caller(eval, "rule", text)? {
-                return Err(fatal(format!(
-                    "Unable to parse toolchain_type label '{text}': {e}"
-                )));
+            match parse_in_caller(eval, "rule", text)? {
+                Ok(label) => schema.toolchains.push((label, true)),
+                Err(e) => {
+                    return Err(fatal(format!(
+                        "Unable to parse toolchain_type label '{text}': {e}"
+                    )));
+                }
             }
         }
     }
