@@ -43,6 +43,8 @@ pub struct RuleRequest {
     /// The toolchain types the rule asked for, each with the target that
     /// implements the toolchain resolved for it, if one was.
     pub toolchains: Vec<(Label, Option<DepInfo>)>,
+    /// For a build setting: its value in this configuration.
+    pub build_setting_value: Option<fjfj_graph::SettingValue>,
 }
 
 /// What an `implementation` gave.
@@ -106,51 +108,50 @@ const NOT_DEPENDENCIES: [&str; 10] = [
 /// Every label the rule's attributes name, set or defaulted: the targets its
 /// code can see.
 ///
-/// The flag says the attribute's `cfg` builds the target for the execution
-/// platform. A label named by both kinds of attribute is listed for each.
-pub fn labels_of_attrs(schema: &RuleSchema, set: &[(String, AttrValue)]) -> Vec<(Label, bool)> {
+/// Each comes with the attribute that names it and that attribute's `cfg`.
+/// A label named by attributes of different kinds is listed for each.
+pub fn labels_of_attrs(schema: &RuleSchema, set: &[(String, AttrValue)]) -> Vec<DepEdge> {
     let mut seen = BTreeSet::new();
     let mut out = Vec::new();
     for (name, value) in resolved_attrs(schema, set) {
         if NOT_DEPENDENCIES.contains(&name.as_str()) {
             continue;
         }
-        let is_dep = schema
-            .attrs
-            .iter()
-            .find(|a| a.name == name)
-            .is_some_and(|a| {
-                matches!(
-                    a.def.ty,
-                    AttrType::Label
-                        | AttrType::LabelList
-                        | AttrType::LabelKeyedStringDict
-                        | AttrType::StringKeyedLabelDict
-                        | AttrType::LabelListDict
-                )
-            });
+        let Some(attr) = schema.attrs.iter().find(|a| a.name == name) else {
+            continue;
+        };
+        let is_dep = matches!(
+            attr.def.ty,
+            AttrType::Label
+                | AttrType::LabelList
+                | AttrType::LabelKeyedStringDict
+                | AttrType::StringKeyedLabelDict
+                | AttrType::LabelListDict
+        );
         if !is_dep {
             continue;
         }
-        let exec = schema
-            .attrs
-            .iter()
-            .find(|a| a.name == name)
-            .is_some_and(|a| {
-                matches!(
-                    a.def.cfg,
-                    fjfj_graph::rule::Cfg::Exec | fjfj_graph::rule::Cfg::Host
-                )
-            });
         let mut found = Vec::new();
         value.labels(&mut found);
         for label in found {
-            if seen.insert((label.clone(), exec)) {
-                out.push((label.clone(), exec));
+            if seen.insert((label.clone(), attr.def.cfg as u8, name.clone())) {
+                out.push(DepEdge {
+                    label: label.clone(),
+                    attr: name.clone(),
+                    cfg: attr.def.cfg,
+                });
             }
         }
     }
     out
+}
+
+/// A dependency a rule's attribute names.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DepEdge {
+    pub label: Label,
+    pub attr: String,
+    pub cfg: fjfj_graph::rule::Cfg,
 }
 
 /// Prints what a rule's code `print()`s.
@@ -192,6 +193,7 @@ pub fn run_rule(req: &RuleRequest) -> Result<RuleResult, String> {
         configuration: req.configuration.clone(),
         main_repo_name: req.main_repo_name.clone(),
         schema: schema.clone(),
+        build_setting_value: req.build_setting_value.clone(),
         attrs,
         deps: req
             .deps
@@ -286,7 +288,7 @@ pub fn run_rule(req: &RuleRequest) -> Result<RuleResult, String> {
     })
 }
 
-pub(crate) fn builtins_owner() -> &'static starlark::values::FrozenHeapRef {
+pub(super) fn builtins_owner() -> &'static starlark::values::FrozenHeapRef {
     let (_, _) = builtins()
         .get_any_visibility("DefaultInfo")
         .expect("builtin");

@@ -1094,6 +1094,23 @@ pub(crate) struct BuildSetting {
 
 starlark_simple_value!(BuildSetting);
 
+impl BuildSetting {
+    pub(crate) fn spec(&self) -> fjfj_graph::schema::BuildSettingSpec {
+        use fjfj_graph::schema::SettingKind;
+        fjfj_graph::schema::BuildSettingSpec {
+            kind: match self.ty {
+                SettingType::Bool => SettingKind::Bool,
+                SettingType::Int => SettingKind::Int,
+                SettingType::String => SettingKind::String,
+                SettingType::StringList => SettingKind::StringList,
+                SettingType::StringSet => SettingKind::StringSet,
+            },
+            flag: self.flag,
+            multiple: self.multiple,
+        }
+    }
+}
+
 impl fmt::Display for BuildSetting {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -1283,9 +1300,26 @@ fn transition_view<'v>(value: Value<'v>) -> Option<TransitionView<'v>> {
     }
 }
 
+/// A defined transition's implementation function and the settings it reads
+/// and writes. `None` for any other kind.
+pub(crate) fn defined_transition<'v>(
+    value: Value<'v>,
+) -> Option<(Value<'v>, Vec<String>, Vec<String>)> {
+    let t = transition_view(value)?;
+    (t.kind == TransitionKind::Defined && !t.values.is_empty())
+        .then(|| (t.values[0], t.inputs, t.outputs))
+}
+
 /// Whether `value` is a transition (of any kind but `config.exec()`).
 pub(crate) fn is_transition(value: Value<'_>) -> bool {
     transition_view(value).is_some()
+}
+
+/// Whether `value` is a transition the `.bzl` defined (or composed), which
+/// has an implementation to run.
+pub(crate) fn is_defined_transition(value: Value<'_>) -> bool {
+    transition_view(value)
+        .is_some_and(|t| matches!(t.kind, TransitionKind::Defined | TransitionKind::Composed))
 }
 
 /// Whether `value` is `config.target()`.

@@ -31,8 +31,13 @@ pub trait RuleSource: Send + Sync {
 }
 
 pub use native_providers::{Field, native_provider};
-pub use run::{RuleRequest, RuleResult, labels_of_attrs, resolved_attrs, rule_schema, run_rule};
+pub use run::{
+    DepEdge, RuleRequest, RuleResult, labels_of_attrs, resolved_attrs, rule_schema, run_rule,
+};
 pub use target::{DepInfo, StoredProvider};
+pub use transition::{Edge, TransitionSpec, apply_transition, transition_spec};
+
+mod transition;
 
 #[cfg(test)]
 mod tests;

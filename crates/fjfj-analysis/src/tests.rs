@@ -458,3 +458,50 @@ use = rule(implementation = _use, attrs = {"t": attr.label(cfg = "exec", executa
         "{argv:?}"
     );
 }
+
+/// Probed with `bazel build` on the same files: the output directories, and
+/// that a transition setting a flag to its default changes nothing.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_transition_changes_the_configuration_of_the_edge_it_is_on() {
+    let (_dir, repos) = workspace(&[
+        ("MODULE.bazel", ""),
+        (
+            "defs.bzl",
+            r#"
+Setting = provider(fields = ["value"])
+def _flag(ctx):
+    return [Setting(value = ctx.build_setting_value)]
+flag = rule(implementation = _flag, build_setting = config.string(flag = True))
+
+def _leaf(ctx):
+    out = ctx.actions.declare_file(ctx.label.name)
+    ctx.actions.write(out, ctx.attr.flag[Setting].value)
+    return [DefaultInfo(files = depset([out]))]
+leaf = rule(implementation = _leaf, attrs = {"flag": attr.label(default = "//:flag")})
+
+def _on(settings, attr):
+    return {"//:flag": "on", "//command_line_option:compilation_mode": "opt"}
+on = transition(implementation = _on, inputs = [], outputs = ["//:flag", "//command_line_option:compilation_mode"])
+def _same(settings, attr):
+    return {"//:flag": "off"}
+same = transition(implementation = _same, inputs = ["//:flag"], outputs = ["//:flag"])
+
+def _top(ctx):
+    return [DefaultInfo(files = depset(transitive = [d[DefaultInfo].files for d in ctx.attr.deps]))]
+top = rule(implementation = _top, attrs = {"deps": attr.label_list(cfg = on)})
+keep = rule(implementation = _top, attrs = {"deps": attr.label_list(cfg = same)})
+"#,
+        ),
+        (
+            "BUILD.bazel",
+            "load(':defs.bzl', 'flag', 'leaf', 'top', 'keep')\nflag(name = 'flag', build_setting_default = 'off')\nleaf(name = 'leaf')\ntop(name = 't', deps = [':leaf'])\nkeep(name = 'k', deps = [':leaf'])\n",
+        ),
+    ]);
+    let t = analyse(&repos, "//:t").await.unwrap();
+    assert_eq!(
+        paths(&t.files),
+        ["bazel-out/k8-opt-ST-c59cc04586de/bin/leaf"]
+    );
+    let k = analyse(&repos, "//:k").await.unwrap();
+    assert_eq!(paths(&k.files), [format!("{BIN}/leaf")]);
+}

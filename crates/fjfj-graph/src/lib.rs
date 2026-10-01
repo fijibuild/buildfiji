@@ -22,7 +22,7 @@ pub mod visibility;
 
 pub use action::{Action, ActionKind};
 pub use artifact::{Artifact, NestedSet, Root, Runfiles};
-pub use config::{CompilationMode, Configuration};
+pub use config::{CompilationMode, Configuration, SettingValue};
 pub use label::LabelError;
 pub use parse::{LabelContext, LabelParseError};
 pub use test_info::TestInfo;

@@ -14,6 +14,7 @@ mod starlark_rule;
 mod target;
 mod test_action;
 mod toolchain;
+mod transition;
 
 pub use select::ConfigMatching;
 pub use target::ToolchainDecl;

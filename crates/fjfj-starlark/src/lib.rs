@@ -81,8 +81,9 @@ mod structs;
 mod test_support;
 
 pub use analysis::{
-    DepInfo, Field, RuleRequest, RuleResult, RuleSource, StoredProvider, labels_of_attrs,
-    native_provider, resolved_attrs, rule_schema, run_rule,
+    DepEdge, DepInfo, Edge, Field, RuleRequest, RuleResult, RuleSource, StoredProvider,
+    TransitionSpec, apply_transition, labels_of_attrs, native_provider, resolved_attrs,
+    rule_schema, run_rule, transition_spec,
 };
 pub use depset::{Depset, DepsetGen, FrozenDepset, Order, depset_to_list, is_depset, new_depset};
 pub use dialect::{FileKind, build_dialect, bzl_dialect, parse};
@@ -104,7 +105,8 @@ pub use repo_ctx::{
 pub use repo_download::{Downloader, HttpRequest};
 pub use structs::{FrozenStruct, Struct, StructGen};
 
-use starlark::environment::{FrozenModule, Globals, Module};
+pub use starlark::environment::FrozenModule;
+use starlark::environment::{Globals, Module};
 use starlark::eval::{Evaluator, FileLoader};
 
 /// Evaluate a BUILD/bzl source string with no `load()` support. Placeholder:

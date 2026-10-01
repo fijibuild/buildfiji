@@ -62,6 +62,16 @@ pub fn extract(args: &[String], command: &str) -> (BuildFlags, Vec<String>) {
             rest.push(arg.clone());
             continue;
         }
+        // A boolean Starlark flag turned off: `--no//pkg:name`.
+        if let Some(body) = arg
+            .strip_prefix("--no")
+            .filter(|b| b.starts_with("//") || b.starts_with('@'))
+        {
+            flags
+                .starlark_flags
+                .push((body.to_owned(), "false".to_owned()));
+            continue;
+        }
         // A Starlark flag: `--//pkg:name=value`, `--@repo//pkg:name=value`.
         if let Some(body) = arg
             .strip_prefix("--")

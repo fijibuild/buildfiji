@@ -5,8 +5,11 @@ use crate::target::{ConfiguredTarget, ConfiguredTargetKey, Env};
 use fjfj_engine::{Ctx, Error};
 use fjfj_graph::package::Package;
 use fjfj_graph::rule::AttrValue;
+use fjfj_graph::rule::Cfg;
 use fjfj_graph::{Label, NestedSet};
-use fjfj_starlark::{DepInfo, RuleRequest, labels_of_attrs, resolved_attrs, rule_schema, run_rule};
+use fjfj_starlark::{
+    DepInfo, Edge, RuleRequest, labels_of_attrs, resolved_attrs, rule_schema, run_rule,
+};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -54,6 +57,39 @@ pub(crate) async fn analyze(
         ))
     })?;
 
+    // A rule that transitions itself is analysed in the configuration the
+    // transition makes of the one asked for.
+    if schema.incoming_transition {
+        let flat: Vec<(String, AttrValue)> = attrs
+            .iter()
+            .filter(|(_, v)| !matches!(v, AttrValue::Select(_)))
+            .cloned()
+            .collect();
+        let mut made = crate::transition::apply(
+            ctx,
+            &key.configuration,
+            bzl,
+            rule_class,
+            Edge::Incoming,
+            &resolved_attrs(&schema, &flat),
+        )
+        .await
+        .map_err(|e| Error::msg(format!("{}: {e}", label_text(label))))?;
+        if made.len() != 1 {
+            return Err(Error::msg(format!(
+                "{}: a split transition is not supported yet (buildfiji-7w6)",
+                label_text(label)
+            )));
+        }
+        let configuration = made.remove(0);
+        if configuration != key.configuration {
+            let done = ctx
+                .get(crate::transition::key(label.clone(), configuration))
+                .await?;
+            return Ok((*done).clone());
+        }
+    }
+
     // A `select()` that no configuration decides is flattened, or refused.
     let mut set: Vec<(String, AttrValue)> = Vec::new();
     for (name, value) in attrs {
@@ -71,19 +107,48 @@ pub(crate) async fn analyze(
         }
     }
 
-    // The targets its attributes name, in this configuration.
-    let dep_labels = labels_of_attrs(&schema, &set);
-    let dep_keys: Vec<ConfiguredTargetKey> = dep_labels
-        .iter()
-        .map(|(l, exec)| ConfiguredTargetKey {
-            label: l.clone(),
-            configuration: if *exec {
-                key.configuration.to_exec()
-            } else {
-                key.configuration.clone()
-            },
-        })
-        .collect();
+    // The targets its attributes name, each in the configuration its edge asks.
+    let edges = labels_of_attrs(&schema, &set);
+    let resolved = resolved_attrs(&schema, &set);
+    let mut dep_keys: Vec<ConfiguredTargetKey> = Vec::new();
+    for edge in &edges {
+        let configuration = match edge.cfg {
+            Cfg::Target => key.configuration.clone(),
+            Cfg::Exec | Cfg::Host => key.configuration.to_exec(),
+            Cfg::Transition => {
+                let mut made = crate::transition::apply(
+                    ctx,
+                    &key.configuration,
+                    bzl,
+                    rule_class,
+                    Edge::Attr(&edge.attr),
+                    &resolved,
+                )
+                .await
+                .map_err(|e| {
+                    Error::msg(format!(
+                        "{}: on dependency edge {} -|{}|-> {}: {e}",
+                        label_text(label),
+                        label_text(label),
+                        edge.attr,
+                        label_text(&edge.label)
+                    ))
+                })?;
+                if made.len() != 1 {
+                    return Err(Error::msg(format!(
+                        "{}: a split transition on attribute '{}' is not supported yet (buildfiji-7w6)",
+                        label_text(label),
+                        edge.attr
+                    )));
+                }
+                made.remove(0)
+            }
+        };
+        dep_keys.push(ConfiguredTargetKey {
+            label: edge.label.clone(),
+            configuration,
+        });
+    }
     let mut deps = BTreeMap::new();
     for (dep_key, result) in dep_keys.iter().zip(ctx.get_all(dep_keys.clone()).await) {
         let done = result?;
@@ -142,6 +207,10 @@ pub(crate) async fn analyze(
         .map(|t| t.location.clone())
         .unwrap_or_default();
     let build_file = location.split(':').next().unwrap_or_default().to_owned();
+    let build_setting_value = match schema.build_setting {
+        Some(_) => Some(crate::transition::setting_value(ctx, key).await?),
+        None => None,
+    };
     let request = RuleRequest {
         module,
         rule_name: rule_class.to_owned(),
@@ -155,6 +224,7 @@ pub(crate) async fn analyze(
         outputs,
         mappings: rules.mappings(),
         toolchains,
+        build_setting_value,
     };
     let result = tokio::task::spawn_blocking(move || run_rule(&request))
         .await

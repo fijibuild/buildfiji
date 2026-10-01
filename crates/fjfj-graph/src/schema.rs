@@ -88,6 +88,30 @@ pub struct RuleSchema {
     /// Implicit outputs given as templates: the output's name in the
     /// rule's `outputs` and its template (`%{name}.txt`).
     pub outputs: Vec<(String, String)>,
+    /// `build_setting = config.string(flag = True)`: the class is a build
+    /// setting, and this is its type.
+    pub build_setting: Option<BuildSettingSpec>,
+    /// `rule(cfg = transition(...))`: the target is built in the configuration
+    /// the transition makes of the one it was asked for.
+    pub incoming_transition: bool,
+}
+
+/// The type of a build setting and whether the command line may set it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BuildSettingSpec {
+    pub kind: SettingKind,
+    pub flag: bool,
+    pub multiple: bool,
+}
+
+/// What a build setting holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SettingKind {
+    Bool,
+    Int,
+    String,
+    StringList,
+    StringSet,
 }
 
 /// What is wrong with the attributes a `rule()` declares.
@@ -137,6 +161,8 @@ impl RuleSchema {
             defined_in: None,
             toolchains: Vec::new(),
             outputs: Vec::new(),
+            build_setting: None,
+            incoming_transition: false,
         }
     }
 
@@ -181,6 +207,8 @@ impl RuleSchema {
             defined_in: None,
             toolchains: Vec::new(),
             outputs,
+            build_setting: None,
+            incoming_transition: false,
         })
     }
 }

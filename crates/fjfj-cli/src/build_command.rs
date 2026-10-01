@@ -49,7 +49,18 @@ pub(crate) fn configuration_from(
         entry.push_str(value);
     }
     for (flag, value) in &flags.starlark_flags {
-        configuration.options.insert(flag.clone(), value.clone());
+        let label = fjfj_graph::Label::parse(
+            flag,
+            fjfj_graph::LabelContext {
+                repo: "",
+                package: "",
+            },
+        )
+        .map_err(|e| format!("While parsing option --{flag}={value}: {e}"))?;
+        configuration.settings.insert(
+            fjfj_graph::expand::label_text(&label),
+            fjfj_graph::SettingValue::Str(value.clone()),
+        );
     }
     Ok(configuration)
 }

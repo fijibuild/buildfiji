@@ -70,6 +70,10 @@ pub(crate) struct RuleGen<V> {
     /// The rule's own attribute descriptors, as declared.
     #[allow(dead_code)]
     attrs: Vec<V>,
+    /// The names of `attrs`, in the same order.
+    #[trace(static)]
+    #[allocative(skip)]
+    attr_names: Vec<String>,
     /// `outputs` when it is a function (at most one).
     outputs: Vec<V>,
     /// `provides`, as given.
@@ -107,6 +111,7 @@ impl<'v> Freeze for Rule<'v> {
             schema: self.schema,
             implementation: self.implementation.freeze(freezer)?,
             attrs: all(self.attrs)?,
+            attr_names: self.attr_names,
             outputs: all(self.outputs)?,
             provides: all(self.provides)?,
             declared_names: self.declared_names,
@@ -157,6 +162,29 @@ pub(crate) fn implementation_of<'v>(value: Value<'v>) -> Option<Value<'v>> {
         value
             .downcast_ref::<FrozenRule>()
             .map(|frozen| frozen.implementation.to_value())
+    }
+}
+
+/// The transition on the edge to the attribute `attr` of the rule `value`, or
+/// with `None` the one the rule applies to itself (`rule(cfg = ...)`).
+pub(crate) fn transition_of<'v>(value: Value<'v>, attr: Option<&str>) -> Option<Value<'v>> {
+    fn of<'v, V: ValueLike<'v>>(rule: &RuleGen<V>, attr: Option<&str>) -> Option<Value<'v>> {
+        match attr {
+            None => rule
+                .declared_names
+                .iter()
+                .position(|n| *n == "cfg")
+                .map(|at| rule.declared[at].to_value()),
+            Some(name) => {
+                let at = rule.attr_names.iter().position(|n| n == name)?;
+                crate::attr::view(rule.attrs[at].to_value())?.transition
+            }
+        }
+    }
+    if let Some(live) = value.downcast_ref::<Rule<'v>>() {
+        of(live, attr)
+    } else {
+        value.downcast_ref::<FrozenRule>().and_then(|f| of(f, attr))
     }
 }
 
@@ -439,6 +467,7 @@ fn make_rule<'v>(
     // The rule's own attributes.
     let mut own: Vec<SchemaAttr> = Vec::new();
     let mut descriptors: Vec<Value<'v>> = Vec::new();
+    let mut attr_names: Vec<String> = Vec::new();
     if let Some(attrs) = arg("attrs").and_then(DictRef::from_value) {
         for (name, descriptor) in attrs.iter() {
             let view = attribute_view(descriptor).expect("checked as bound");
@@ -459,6 +488,7 @@ fn make_rule<'v>(
                 set: false,
             });
             descriptors.push(descriptor);
+            attr_names.push(name.to_owned());
         }
     }
 
@@ -499,6 +529,10 @@ fn make_rule<'v>(
     let mut schema =
         RuleSchema::starlark(own, test, executable, templates).map_err(|e| fatal(e.to_string()))?;
     schema.defined_in = crate::label::evaluating_file(eval);
+    schema.incoming_transition = arg("cfg").is_some_and(crate::decl::is_defined_transition);
+    schema.build_setting = arg("build_setting")
+        .and_then(build_setting_of)
+        .map(|s| s.spec());
 
     if let Some(fragments) = arg("fragments") {
         strings_of("fragments", fragments, heap)?;
@@ -604,6 +638,7 @@ fn make_rule<'v>(
         schema: Arc::new(schema),
         implementation,
         attrs: descriptors,
+        attr_names,
         outputs: outputs_fn,
         provides,
         declared_names: declared.iter().map(|(n, _)| *n).collect(),

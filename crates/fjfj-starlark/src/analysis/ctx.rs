@@ -33,6 +33,8 @@ pub(crate) struct CtxState {
     pub(crate) configuration: Configuration,
     pub(crate) main_repo_name: String,
     pub(crate) schema: Arc<RuleSchema>,
+    /// `ctx.build_setting_value`, for a build setting.
+    pub(crate) build_setting_value: Option<fjfj_graph::SettingValue>,
     /// Every attribute, set or defaulted.
     pub(crate) attrs: Vec<(String, AttrValue)>,
     pub(crate) deps: BTreeMap<Label, Arc<DepInfo>>,
@@ -166,6 +168,23 @@ fn ctx_members(builder: &mut MethodsBuilder) {
     #[starlark(attribute)]
     fn label<'v>(this: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
         Ok(heap.alloc(StarlarkLabel::from(state(this).label.clone())))
+    }
+
+    #[starlark(attribute)]
+    fn build_setting_value<'v>(this: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
+        use fjfj_graph::SettingValue;
+        match &state(this).build_setting_value {
+            Some(SettingValue::Bool(b)) => Ok(Value::new_bool(*b)),
+            Some(SettingValue::Int(i)) => Ok(heap.alloc(*i)),
+            Some(SettingValue::Str(s)) => Ok(heap.alloc(s.as_str())),
+            Some(SettingValue::List(items)) => {
+                Ok(heap.alloc(AllocList(items.iter().map(String::as_str))))
+            }
+            None => Err(fatal(format!(
+                "attempting to access 'build_setting_value' of non-build setting {}",
+                fjfj_graph::expand::label_text(&state(this).label)
+            ))),
+        }
     }
 
     #[starlark(attribute)]

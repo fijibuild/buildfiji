@@ -406,45 +406,15 @@ async fn config_setting(
     }
     if let Some(AttrValue::LabelKeyedStringDict(flags)) = attr(attrs, "flag_values") {
         for (flag, wanted) in flags {
-            let current = match config.options.get(&label_text(flag)) {
-                Some(set) => set.clone(),
-                None => flag_value(ctx, flag).await?,
-            };
+            let current = crate::transition::setting_in(ctx, config, flag).await?;
             check(
                 format!("flag:{}={wanted}", label_text(flag)),
-                current.eq_ignore_ascii_case(wanted),
+                crate::transition::matches_text(&current, wanted),
             );
         }
     }
     target.config_matching = Some(matching);
     Ok(target)
-}
-
-/// What a Starlark build setting is set to: its default, as text.
-async fn flag_value(ctx: &Ctx, flag: &Label) -> Result<String, Error> {
-    let package = ctx
-        .get(crate::target::PackageKey {
-            repo: flag.repo.clone(),
-            package: flag.package.clone(),
-        })
-        .await?;
-    let declared = package
-        .target(&flag.name)
-        .ok_or_else(|| Error::msg(format!("no such build setting {}", label_text(flag))))?;
-    let fjfj_graph::package::TargetKind::Rule { attrs, .. } = &declared.kind else {
-        return Err(Error::msg(format!(
-            "{} is not a build setting",
-            label_text(flag)
-        )));
-    };
-    Ok(match attr(attrs, "build_setting_default") {
-        Some(AttrValue::String(s)) => s.clone(),
-        Some(AttrValue::Bool(b)) => b.to_string(),
-        Some(AttrValue::Int(i)) => i.to_string(),
-        Some(AttrValue::Label(l)) => label_text(l),
-        Some(AttrValue::StringList(items)) => items.join(","),
-        _ => String::new(),
-    })
 }
 
 /// `toolchain`: what it offers and what it needs. The implementation is not

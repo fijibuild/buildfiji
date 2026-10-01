@@ -6,7 +6,36 @@
 //! outputs are under `bazel-out/k8-fastbuild/bin`. `bazel-genfiles` is the
 //! same directory as `bazel-bin`.
 
-use std::collections::BTreeMap;
+use sha2::{Digest, Sha256};
+use std::collections::{BTreeMap, BTreeSet};
+
+/// The value of a build setting or a command-line option a transition reads
+/// or writes.
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+pub enum SettingValue {
+    Bool(bool),
+    Int(i64),
+    Str(String),
+    List(Vec<String>),
+}
+
+impl SettingValue {
+    /// How Java prints it, which is how Bazel spells it in the hash of an
+    /// output directory: `[-O1, -O2]` for a list.
+    fn java(&self) -> String {
+        match self {
+            SettingValue::Bool(b) => b.to_string(),
+            SettingValue::Int(i) => i.to_string(),
+            SettingValue::Str(s) => s.clone(),
+            SettingValue::List(items) => format!("[{}]", items.join(", ")),
+        }
+    }
+}
+
+/// The prefix of a command-line option in a transition's settings.
+pub const COMMAND_LINE_OPTION: &str = "//command_line_option:";
 
 /// `-c fastbuild|dbg|opt`.
 #[derive(
@@ -72,6 +101,13 @@ pub struct Configuration {
     pub test_args: Vec<String>,
     /// Built to run on the execution platform: a tool, not a target.
     pub exec: bool,
+    /// Build settings and command-line options set away from their defaults,
+    /// by `--//pkg:flag=value` or a transition: the label of the setting
+    /// (`//pkg:flag`), or `//command_line_option:name`.
+    pub settings: BTreeMap<String, SettingValue>,
+    /// The settings a Starlark transition changed. They name the output
+    /// directory (`k8-fastbuild-ST-<hash>`).
+    pub affected: BTreeSet<String>,
 }
 
 /// The `@platforms` constraint values of the machine fjfj runs on, as
@@ -114,6 +150,8 @@ impl Default for Configuration {
             test_env: BTreeMap::new(),
             test_args: Vec::new(),
             exec: false,
+            settings: BTreeMap::new(),
+            affected: BTreeSet::new(),
         }
     }
 }
@@ -139,7 +177,36 @@ impl Configuration {
         if self.exec {
             name.push_str("-exec");
         }
+        if let Some(hash) = self.transition_hash() {
+            name.push_str("-ST-");
+            name.push_str(&hash);
+        }
         name
+    }
+
+    /// The twelve hex digits a Starlark transition adds to the name of the
+    /// output directory: SHA-256 of `setting=value` for each setting it
+    /// changed, in name order, each prefixed by its length. `--cpu` and
+    /// `--compilation_mode` are in the name already and are left out.
+    /// Probed on Bazel 9.2.0.
+    fn transition_hash(&self) -> Option<String> {
+        let mut digest = Sha256::new();
+        let mut any = false;
+        for name in &self.affected {
+            let Some(value) = self.settings.get(name) else {
+                continue;
+            };
+            let entry = format!("{name}={}", value.java());
+            let mut len = entry.len();
+            while len >= 0x80 {
+                digest.update([(len & 0x7f) as u8 | 0x80]);
+                len >>= 7;
+            }
+            digest.update([len as u8]);
+            digest.update(entry.as_bytes());
+            any = true;
+        }
+        any.then(|| hex::encode(digest.finalize())[..12].to_owned())
     }
 
     /// `bazel-out/k8-fastbuild/bin`, where the rules' outputs go.
@@ -183,6 +250,30 @@ mod tests {
         );
     }
 
+    /// Probed with `bazel build` and `bazel aquery` on transitions that set
+    /// `//:flag`, `//:flag2` and `--copt`.
+    #[test]
+    fn a_transition_names_the_output_directory_as_bazel_does() {
+        let mut config = Configuration::default();
+        config
+            .settings
+            .insert("//:flag".into(), SettingValue::Str("on".into()));
+        config.affected.insert("//:flag".into());
+        assert_eq!(config.mnemonic(), "k8-fastbuild-ST-c59cc04586de");
+        config
+            .settings
+            .insert("//:flag2".into(), SettingValue::Str("x".into()));
+        config.affected.insert("//:flag2".into());
+        assert_eq!(config.mnemonic(), "k8-fastbuild-ST-92296e9f19db");
+        let mut copt = Configuration::default();
+        copt.settings.insert(
+            format!("{COMMAND_LINE_OPTION}copt"),
+            SettingValue::List(vec!["-O2".into()]),
+        );
+        copt.affected.insert(format!("{COMMAND_LINE_OPTION}copt"));
+        assert_eq!(copt.mnemonic(), "k8-fastbuild-ST-bf371aea6388");
+    }
+
     #[test]
     fn the_mode_and_exec_show_in_the_name() {
         let config = Configuration {
@@ -194,6 +285,8 @@ mod tests {
             test_env: BTreeMap::new(),
             test_args: Vec::new(),
             exec: true,
+            settings: BTreeMap::new(),
+            affected: BTreeSet::new(),
         };
         assert_eq!(config.mnemonic(), "k8-opt-exec");
         assert_eq!(CompilationMode::parse("dbg"), Some(CompilationMode::Dbg));
