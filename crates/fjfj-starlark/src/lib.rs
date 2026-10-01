@@ -5,6 +5,7 @@
 //! Bazel builtins (`rule`, `attr`, `aspect`, `provider`, `ctx.actions.*`,
 //! `native.*`, `select`, ...) are supplied by this crate as globals.
 
+mod analysis;
 mod args;
 mod attr;
 #[cfg(test)]
@@ -79,6 +80,10 @@ mod structs;
 #[cfg(test)]
 mod test_support;
 
+pub use analysis::{
+    DepInfo, RuleRequest, RuleResult, RuleSource, StoredProvider, labels_of_attrs, resolved_attrs,
+    rule_schema, run_rule,
+};
 pub use depset::{Depset, DepsetGen, FrozenDepset, Order, depset_to_list, is_depset, new_depset};
 pub use dialect::{FileKind, build_dialect, bzl_dialect, parse};
 pub use label::{BzlFile, RepoLookup, RepoMappings, bzl_name, evaluate_bzl};

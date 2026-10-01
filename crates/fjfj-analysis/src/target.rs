@@ -5,6 +5,7 @@ use fjfj_engine::{Ctx, Engine, Error, Key};
 use fjfj_graph::package::{Package, TargetKind};
 use fjfj_graph::{Action, Artifact, Configuration, Label, NestedSet};
 use fjfj_loading::PackageSource;
+use fjfj_starlark::{RuleSource, StoredProvider};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -12,6 +13,8 @@ use std::sync::Arc;
 pub struct Env {
     /// Where packages come from.
     pub source: Arc<dyn PackageSource>,
+    /// Where the `.bzl` files of rules come from.
+    pub rules: Arc<dyn RuleSource>,
     /// What the main repository is called in a runfiles tree: `_main`.
     pub main_repo_name: String,
 }
@@ -65,6 +68,10 @@ pub struct ConfiguredTarget {
     pub executable: Option<Artifact>,
     /// The files the rule declares it creates, by target name.
     pub outputs: BTreeMap<String, Artifact>,
+    /// The providers it gave besides `DefaultInfo`.
+    pub providers: Vec<StoredProvider>,
+    /// What its rule printed.
+    pub printed: Vec<String>,
     /// The actions this target registered.
     pub actions: Vec<Action>,
     /// The targets it read, for finding every action a build needs.
@@ -80,6 +87,8 @@ impl ConfiguredTarget {
             files: NestedSet::empty(),
             executable: None,
             outputs: BTreeMap::new(),
+            providers: Vec::new(),
+            printed: Vec::new(),
             actions: Vec::new(),
             deps: Vec::new(),
         }

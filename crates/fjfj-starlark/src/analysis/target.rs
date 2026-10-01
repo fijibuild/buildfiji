@@ -1,0 +1,194 @@
+//! `Target`: a dependency as a rule's code sees it.
+
+use super::file::alloc_file;
+use crate::args::fatal;
+use crate::depset::{Order, new_depset};
+use crate::label::StarlarkLabel;
+use crate::provider::same_provider;
+use crate::structs::{new_instance, provider_of};
+use allocative::Allocative;
+use fjfj_graph::{Artifact, Label};
+use starlark::environment::{Methods, MethodsBuilder, MethodsStatic};
+use starlark::starlark_module;
+use starlark::starlark_simple_value;
+use starlark::values::{
+    Heap, NoSerialize, OwnedFrozenValue, ProvidesStaticType, StarlarkValue, Value, ValueLike,
+};
+use starlark_derive::starlark_value;
+use std::fmt;
+use std::sync::Arc;
+
+/// A provider instance a target gave, kept after its evaluation ended.
+#[derive(Clone, Debug)]
+pub struct StoredProvider {
+    pub value: OwnedFrozenValue,
+}
+
+/// Instances are the same when they are the same value; a recomputed target
+/// is never equal to the one it replaces.
+impl PartialEq for StoredProvider {
+    fn eq(&self, other: &StoredProvider) -> bool {
+        self.value.value().ptr_eq(other.value.value())
+    }
+}
+
+impl Eq for StoredProvider {}
+
+/// What a rule's code can see of a target it depends on.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DepInfo {
+    pub label: Label,
+    /// The rule class; `None` for a file.
+    pub rule_class: Option<String>,
+    /// A generated file's target, as opposed to a source file's.
+    pub generated: bool,
+    /// `DefaultInfo.files`.
+    pub files: Vec<Artifact>,
+    /// `DefaultInfo.executable`.
+    pub executable: Option<Artifact>,
+    /// The other providers it gave.
+    pub providers: Vec<StoredProvider>,
+}
+
+#[derive(ProvidesStaticType, NoSerialize, Allocative)]
+pub(crate) struct TargetValue {
+    #[allocative(skip)]
+    pub(crate) info: Arc<DepInfo>,
+}
+
+starlark_simple_value!(TargetValue);
+
+impl fmt::Debug for TargetValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "TargetValue({})", self.info.label)
+    }
+}
+
+impl fmt::Display for TargetValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let label = crate::label::display_label(&self.info.label);
+        match (&self.info.rule_class, self.info.generated) {
+            (Some(_), _) => write!(f, "<target {label}>"),
+            (None, true) => write!(f, "<output file target {label}>"),
+            (None, false) => write!(f, "<input file target {label}>"),
+        }
+    }
+}
+
+fn target<'v>(this: Value<'v>) -> &'v TargetValue {
+    this.downcast_ref::<TargetValue>().expect("a Target")
+}
+
+/// The builtin provider `name`, from the builtins module whose values every
+/// evaluation of a rule keeps alive.
+pub(crate) fn builtin<'v>(name: &str) -> Option<Value<'v>> {
+    let (value, _) = crate::label::builtins().get_any_visibility(name).ok()?;
+    value.value().unpack_frozen().map(|f| f.to_value())
+}
+
+/// An instance of `DefaultInfo` with these files.
+pub(crate) fn default_info<'v>(
+    heap: Heap<'v>,
+    files: &[Artifact],
+    executable: Option<&Artifact>,
+    owner: &Label,
+) -> Value<'v> {
+    let provider = builtin("DefaultInfo").expect("the builtins define DefaultInfo");
+    let items: Vec<Value<'v>> = files
+        .iter()
+        .map(|a| alloc_file(heap, a.clone(), owner.clone()))
+        .collect();
+    let depset = new_depset(heap, &items, Order::Default, &[]).expect("files of one type");
+    let exe = executable
+        .map(|a| alloc_file(heap, a.clone(), owner.clone()))
+        .unwrap_or_else(Value::new_none);
+    new_instance(
+        heap,
+        provider,
+        vec![
+            ("files".to_owned(), depset),
+            ("runfiles".to_owned(), Value::new_none()),
+            ("executable".to_owned(), exe),
+            ("data_runfiles".to_owned(), Value::new_none()),
+            ("default_runfiles".to_owned(), Value::new_none()),
+            ("files_to_run".to_owned(), Value::new_none()),
+        ],
+    )
+}
+
+#[starlark_value(type = "Target")]
+impl<'v> StarlarkValue<'v> for TargetValue {
+    fn get_methods() -> Option<&'static Methods> {
+        static RES: MethodsStatic = MethodsStatic::new("Target", target_members);
+        Some(RES.methods())
+    }
+
+    fn at(&self, index: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
+        match self.find(index, heap) {
+            Some(found) => Ok(found),
+            None => Err(fatal(format!(
+                "{} doesn't contain declared provider '{}'",
+                self,
+                crate::provider::instance_of(Some(index))
+            ))),
+        }
+    }
+
+    fn is_in(&self, other: Value<'v>) -> starlark::Result<bool> {
+        // `Provider in target`: the default info is always there.
+        let default = builtin("DefaultInfo");
+        if same_provider(default, Some(other)) {
+            return Ok(true);
+        }
+        Ok(self.info.providers.iter().any(|p| {
+            provider_of(p.value.value().to_value()).is_some_and(|q| same_provider(q, Some(other)))
+        }))
+    }
+}
+
+impl TargetValue {
+    fn find<'v>(&self, provider: Value<'v>, heap: Heap<'v>) -> Option<Value<'v>> {
+        if same_provider(builtin("DefaultInfo"), Some(provider)) {
+            return Some(default_info(
+                heap,
+                &self.info.files,
+                self.info.executable.as_ref(),
+                &self.info.label,
+            ));
+        }
+        self.info
+            .providers
+            .iter()
+            // SAFETY: the evaluation that made this `Target` took a reference to
+            // the heap that owns each provider (`run_rule`), so the value lives
+            // as long as `'v`.
+            .map(|p| unsafe { p.value.unchecked_frozen_value().to_value() })
+            .find(|instance| {
+                provider_of(*instance).is_some_and(|q| same_provider(q, Some(provider)))
+            })
+    }
+}
+
+#[starlark_module]
+fn target_members(builder: &mut MethodsBuilder) {
+    #[starlark(attribute)]
+    fn label<'v>(this: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
+        Ok(heap.alloc(StarlarkLabel::from(target(this).info.label.clone())))
+    }
+
+    #[starlark(attribute)]
+    fn files<'v>(this: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
+        let info = &target(this).info;
+        let items: Vec<Value<'v>> = info
+            .files
+            .iter()
+            .map(|a| alloc_file(heap, a.clone(), info.label.clone()))
+            .collect();
+        new_depset(heap, &items, Order::Default, &[])
+    }
+}
+
+/// The `Target` for `info`.
+pub(crate) fn alloc_target<'v>(heap: Heap<'v>, info: Arc<DepInfo>) -> Value<'v> {
+    heap.alloc(TargetValue { info })
+}

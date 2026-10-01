@@ -13,7 +13,7 @@
 //! - an error names the attribute and the rule:
 //!   `in cmd attribute of genrule rule //:t: $(foo) not defined`.
 
-use fjfj_graph::{Artifact, Label, LabelContext};
+use crate::{Artifact, Label, LabelContext};
 use std::collections::BTreeMap;
 
 /// A target the rule depends on and the files it gave.
@@ -50,6 +50,17 @@ pub struct Expander<'a> {
     /// Where relative labels in `$(location ...)` are read.
     pub context: LabelContext<'a>,
 }
+
+const LOCATION_FUNCTIONS: [&str; 8] = [
+    "location",
+    "locations",
+    "execpath",
+    "execpaths",
+    "rootpath",
+    "rootpaths",
+    "rlocationpath",
+    "rlocationpaths",
+];
 
 fn with_dot_slash(path: String) -> String {
     if path.contains('/') {
@@ -104,23 +115,41 @@ impl Expander<'_> {
         Ok(out)
     }
 
+    /// Only the `$(location ...)` family, as `ctx.expand_location` does:
+    /// every other `$` stays as written.
+    pub fn expand_locations(&self, text: &str) -> Result<String, ExpandError> {
+        let mut out = String::with_capacity(text.len());
+        let mut rest = text;
+        while let Some(at) = rest.find("$(") {
+            out.push_str(&rest[..at]);
+            let after = &rest[at + 2..];
+            let Some(len) = after.find(')') else {
+                return Err(self.error("unterminated variable reference"));
+            };
+            let inner = &after[..len];
+            match inner.split_once(char::is_whitespace) {
+                Some((word, label)) if LOCATION_FUNCTIONS.contains(&word) => {
+                    out.push_str(&self.location(word, label.trim_start())?);
+                }
+                _ => {
+                    out.push_str("$(");
+                    out.push_str(inner);
+                    out.push(')');
+                }
+            }
+            rest = &after[len + 1..];
+        }
+        out.push_str(rest);
+        Ok(out)
+    }
+
     /// What is inside `$( )`: a location function or a variable.
     fn reference(&self, inner: &str) -> Result<String, ExpandError> {
         let (word, rest) = match inner.split_once(char::is_whitespace) {
             Some((word, rest)) => (word, Some(rest.trim_start())),
             None => (inner, None),
         };
-        const FUNCTIONS: [&str; 8] = [
-            "location",
-            "locations",
-            "execpath",
-            "execpaths",
-            "rootpath",
-            "rootpaths",
-            "rlocationpath",
-            "rlocationpaths",
-        ];
-        match (FUNCTIONS.contains(&word), rest) {
+        match (LOCATION_FUNCTIONS.contains(&word), rest) {
             (true, Some(label)) => self.location(word, label),
             _ => self.variable(inner),
         }
@@ -256,7 +285,7 @@ fn dirname(path: &str) -> String {
 }
 
 /// `//p:n` for the main repository, `@@repo//p:n` for another.
-pub(crate) fn label_text(label: &Label) -> String {
+pub fn label_text(label: &Label) -> String {
     if label.repo.is_empty() {
         format!("//{}:{}", label.package, label.name)
     } else {

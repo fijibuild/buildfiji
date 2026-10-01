@@ -149,6 +149,17 @@ pub(crate) fn schema_of(value: Value<'_>) -> Option<Arc<RuleSchema>> {
     }
 }
 
+/// The `implementation` of the rule `value`, if it is one.
+pub(crate) fn implementation_of<'v>(value: Value<'v>) -> Option<Value<'v>> {
+    if let Some(live) = value.downcast_ref::<Rule<'v>>() {
+        Some(live.implementation)
+    } else {
+        value
+            .downcast_ref::<FrozenRule>()
+            .map(|frozen| frozen.implementation.to_value())
+    }
+}
+
 /// A rule, for [`crate::exports`] to name.
 pub(crate) fn named<'v>(value: Value<'v>) -> Option<Named<'v>> {
     identity(value).map(|(id, name, test)| Named {

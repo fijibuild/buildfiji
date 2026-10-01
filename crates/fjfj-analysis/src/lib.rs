@@ -7,11 +7,10 @@
 //! repositories and the main repository's name come to the keys as [`Env`], the
 //! engine's data.
 
-mod expand;
 mod native;
+mod starlark_rule;
 mod target;
 
-pub use expand::{ExpandError, Expander, Prerequisite};
 pub use target::{ConfiguredTarget, ConfiguredTargetKey, Env, PackageKey, engine};
 
 #[cfg(test)]

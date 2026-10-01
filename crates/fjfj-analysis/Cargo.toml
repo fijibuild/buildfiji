@@ -9,6 +9,7 @@ repository.workspace = true
 fjfj-engine.workspace = true
 fjfj-graph.workspace = true
 fjfj-loading.workspace = true
+fjfj-starlark.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true

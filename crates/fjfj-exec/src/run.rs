@@ -237,6 +237,22 @@ impl Scheduler {
                     .map_err(|e| fail(format!("cannot write {}: {e}", at.display())))?;
                 let _ = executable;
             }
+            ActionKind::Template {
+                template,
+                substitutions,
+                executable,
+            } => {
+                let text = std::fs::read_to_string(execroot.join(template))
+                    .map_err(|e| fail(format!("cannot read template {template}: {e}")))?;
+                let mut text = text;
+                for (key, value) in substitutions {
+                    text = text.replace(key, value);
+                }
+                let at = execroot.join(action.outputs[0].exec_path());
+                std::fs::write(&at, text)
+                    .map_err(|e| fail(format!("cannot write {}: {e}", at.display())))?;
+                let _ = executable;
+            }
             ActionKind::Symlink { target } => {
                 let at = execroot.join(action.outputs[0].exec_path());
                 std::os::unix::fs::symlink(execroot.join(target), &at)

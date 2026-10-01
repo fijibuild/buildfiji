@@ -9,6 +9,7 @@ use std::fmt;
 pub mod action;
 pub mod artifact;
 pub mod config;
+pub mod expand;
 pub mod label;
 pub mod native_rules;
 pub mod package;
@@ -25,7 +26,9 @@ pub use label::LabelError;
 pub use parse::{LabelContext, LabelParseError};
 
 /// A Bazel label, e.g. `@repo//pkg/sub:name`.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub struct Label {
     pub repo: String,
     pub package: String,

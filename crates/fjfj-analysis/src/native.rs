@@ -1,8 +1,8 @@
 //! The native rules, analysed in Rust (buildfiji-136.10).
 
-use crate::expand::{Expander, Prerequisite, label_text};
 use crate::target::{ConfiguredTarget, ConfiguredTargetKey, Env};
 use fjfj_engine::{Ctx, Error};
+use fjfj_graph::expand::{Expander, Prerequisite, label_text};
 use fjfj_graph::package::Package;
 use fjfj_graph::rule::{AttrValue, native_rule};
 use fjfj_graph::{Action, ActionKind, Artifact, Label, LabelContext, NestedSet};
@@ -76,11 +76,8 @@ pub(crate) async fn analyze(
     target: ConfiguredTarget,
 ) -> Result<ConfiguredTarget, Error> {
     if let Some(bzl) = defined_in {
-        return Err(Error::msg(format!(
-            "{}: rule '{rule_class}' is defined in {}, and rules written in Starlark are not analysed yet (buildfiji-136.2)",
-            label_text(&key.label),
-            label_text(bzl)
-        )));
+        return crate::starlark_rule::analyze(ctx, key, package, rule_class, bzl, attrs, target)
+            .await;
     }
     match rule_class {
         "filegroup" => filegroup(ctx, key, attrs, target).await,

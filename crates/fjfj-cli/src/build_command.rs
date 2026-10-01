@@ -38,6 +38,8 @@ pub(crate) struct TargetResult {
 pub(crate) struct Report {
     /// What successful commands printed, with what each was doing.
     pub outputs: Vec<(String, String)>,
+    /// What rules `print()`ed while they were analysed.
+    pub printed: Vec<String>,
     pub results: Vec<TargetResult>,
     /// Analysis errors, one message each, with the target they stopped.
     pub analysis_errors: Vec<(Label, String)>,
@@ -114,6 +116,7 @@ pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> R
     let mut report = Report::default();
     let analysis = engine(Env {
         source: repos.clone(),
+        rules: repos.clone(),
         main_repo_name: MAIN_REPO_DIR.to_owned(),
     });
     let handle = tokio::runtime::Handle::current();
@@ -123,6 +126,7 @@ pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> R
         &request.options.configuration,
         &mut report,
     ));
+    report.printed = all.iter().flat_map(|t| t.printed.clone()).collect();
     report.configured = all.iter().filter(|t| t.rule_class.is_some()).count();
     report.packages = all
         .iter()
@@ -254,6 +258,9 @@ pub(crate) fn print(
     layout: &Layout,
     verbose_failures: bool,
 ) -> bool {
+    for text in &report.printed {
+        eprintln!("DEBUG: {text}");
+    }
     for (label, message) in &report.analysis_errors {
         eprintln!("ERROR: {message}");
         eprintln!(

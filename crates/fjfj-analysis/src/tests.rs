@@ -49,6 +49,7 @@ fn config() -> Configuration {
 async fn analyse(repos: &Arc<Repos>, label: &str) -> Result<Arc<ConfiguredTarget>, String> {
     let engine = engine(Env {
         source: repos.clone(),
+        rules: repos.clone(),
         main_repo_name: "_main".into(),
     });
     let (package, name) = label.trim_start_matches("//").split_once(':').unwrap();
@@ -154,4 +155,56 @@ async fn a_command_that_cannot_be_expanded_fails_analysis_in_bazels_words() {
             .unwrap_err()
             .contains("no such target")
     );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_rule_written_in_starlark_is_analysed_with_the_targets_it_names() {
+    let (_dir, repos) = workspace(&[
+        ("MODULE.bazel", ""),
+        (
+            "defs.bzl",
+            r#"
+Info = provider(fields = ["n"])
+
+def _impl(ctx):
+    out = ctx.actions.declare_file(ctx.label.name + ".txt")
+    total = ctx.attr.k
+    srcs = []
+    for d in ctx.attr.deps:
+        total += d[Info].n
+        srcs += d[DefaultInfo].files.to_list()
+    ctx.actions.run_shell(
+        outputs = [out],
+        inputs = srcs + ctx.files.data,
+        command = "cat %s > %s; echo %d >> %s" % (" ".join([f.path for f in srcs + ctx.files.data]), out.path, total, out.path),
+    )
+    return [DefaultInfo(files = depset([out])), Info(n = total)]
+
+r = rule(implementation = _impl, attrs = {"k": attr.int(default = 1), "deps": attr.label_list(), "data": attr.label_list(allow_files = True)})
+"#,
+        ),
+        (
+            "BUILD.bazel",
+            "load(':defs.bzl', 'r')\nr(name = 'a', k = 2, data = ['in.txt'])\nr(name = 'b', deps = [':a'], k = 10)\n",
+        ),
+        ("in.txt", "x\n"),
+    ]);
+    let b = analyse(&repos, "//:b").await.unwrap();
+    assert_eq!(b.rule_class.as_deref(), Some("r"));
+    assert_eq!(paths(&b.files), [format!("{BIN}/b.txt")]);
+    let [action] = &b.actions[..] else {
+        panic!("{:?}", b.actions)
+    };
+    assert_eq!(action.progress_message.as_deref(), Some("Action b.txt"));
+    let inputs: Vec<String> = action.inputs.iter().map(|a| a.exec_path()).collect();
+    assert_eq!(inputs, [format!("{BIN}/a.txt")]);
+    let ActionKind::Spawn { argv, .. } = &action.kind else {
+        panic!()
+    };
+    // `a` gave `Info(n = 2)`, so `b` is 10 + 2.
+    assert_eq!(
+        argv[2],
+        format!("cat {BIN}/a.txt > {BIN}/b.txt; echo 12 >> {BIN}/b.txt")
+    );
+    assert_eq!(b.deps.len(), 1);
 }

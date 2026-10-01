@@ -241,6 +241,11 @@ impl FileLoader for NoLoads {
     }
 }
 
+/// fjfj's builtins, for analysis to build the providers they define.
+pub(crate) fn builtins() -> &'static FrozenModule {
+    builtins_module()
+}
+
 /// The frozen module of [`BUILTINS_SOURCE`], made once.
 fn builtins_module() -> &'static FrozenModule {
     static MODULE: std::sync::OnceLock<FrozenModule> = std::sync::OnceLock::new();

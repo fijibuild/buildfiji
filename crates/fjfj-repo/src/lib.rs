@@ -453,6 +453,16 @@ impl fjfj_loading::PackageSource for Repos {
     }
 }
 
+impl fjfj_starlark::RuleSource for Repos {
+    fn module(&self, bzl: &Label) -> Result<starlark::environment::FrozenModule, String> {
+        self.loader().module_of(bzl)
+    }
+
+    fn mappings(&self) -> Arc<RepoMappings> {
+        self.inner.state.lock().unwrap().mappings.clone()
+    }
+}
+
 impl Inner {
     fn loader(&self) -> &BzlLoader {
         self.loader.get().expect("set when made")

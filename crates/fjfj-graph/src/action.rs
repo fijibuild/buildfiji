@@ -22,6 +22,12 @@ pub enum ActionKind {
     WriteFile { contents: Vec<u8>, executable: bool },
     /// Make the output a symlink to `target`, an exec path.
     Symlink { target: String },
+    /// Write the file `template`, with each key replaced by its value.
+    Template {
+        template: String,
+        substitutions: Vec<(String, String)>,
+        executable: bool,
+    },
 }
 
 /// One action of a configured target.

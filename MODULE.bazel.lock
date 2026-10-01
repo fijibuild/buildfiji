@@ -360,7 +360,7 @@
           "REPO_MAPPING:rules_rust+,bazel_skylib bazel_skylib+",
           "REPO_MAPPING:rules_rust+,bazel_tools bazel_tools",
           "REPO_MAPPING:rules_rust+,rules_cc rules_cc+",
-          "FILE:@@//Cargo.lock fa52ef1809f158ae6fbd32ecd5eb435f18095112c17f89d852a1933f5de62a81",
+          "FILE:@@//Cargo.lock 1974ea91ae2ebd97b2b1bba69a230fe448fec9eb3e9bc75ff0cb6b6bd2572a9c",
           "FILE:@@//Cargo.toml f9b8386a8773a8a3e92211ea5f071c4b00a4e62400bbf11f7c53541bace5eaef",
           "FILE:@@//crates/fjfj/Cargo.toml ef31872aa582b75601172747471d5c4aad9b85162f7769b1b8f7b6b81e2b1703",
           "FILE:@@//crates/fjfj-cli/Cargo.toml f40ff06c9e02d8633eceec9b451da0d0a528199da02ac0952ec220bf578af035",
@@ -376,11 +376,11 @@
           "FILE:@@//crates/fjfj-proto/Cargo.toml 42e8451f9720dbcf0f9a4cee973869e05eca996bda57ff0a2538dafe97ff3395",
           "FILE:@@//crates/starlark/Cargo.toml f5ef9aba69ea08829d415ba4dbe6f0da8ad1e4b415ece8f8956d7af54665a0f8",
           "FILE:@@//crates/starlark_syntax/Cargo.toml d85ef9bd5a41555da8f78dae100c6c7c2251a10996e6358bee624f31ccba3018",
-          "FILE:@@//crates/fjfj-analysis/Cargo.toml 60b870f38fd909eff34b9a9cebb275705cdd4f2457b31b2c8156417697dbde05",
+          "FILE:@@//crates/fjfj-analysis/Cargo.toml b220cfe7139352a646db3e79d34cd5b53c62211f4867b729c61a2da81813a8a4",
           "FILE:@@//crates/fjfj-engine/Cargo.toml a5182651be93dfdcc19ccae06b81a6828fd497914d61c762446e38682cf1ac17",
           "FILE:@@//crates/fjfj-loading/Cargo.toml fbc2f9da455bedce7a25cfd672f629c7eff82da07a2e222ce7e15a64c30f15af",
-          "FILE:@@//crates/fjfj-repo/Cargo.toml 427bf00a9ea2aaaefa7b4149960c21fb5923dd6bcecedf153410eddd0a47093e",
-          "FILE:@@//crates/fjfj-archive/Cargo.toml 44805ef38536439af5bd70c66a63d135b839d7a9fb12c010e7ed281f7496c575"
+          "FILE:@@//crates/fjfj-archive/Cargo.toml 44805ef38536439af5bd70c66a63d135b839d7a9fb12c010e7ed281f7496c575",
+          "FILE:@@//crates/fjfj-repo/Cargo.toml 427bf00a9ea2aaaefa7b4149960c21fb5923dd6bcecedf153410eddd0a47093e"
         ],
         "generatedRepoSpecs": {
           "crates": {

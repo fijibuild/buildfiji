@@ -1028,6 +1028,7 @@ dependencies = [
  "fjfj-graph",
  "fjfj-loading",
  "fjfj-repo",
+ "fjfj-starlark",
  "tempfile",
  "thiserror",
  "tokio",
