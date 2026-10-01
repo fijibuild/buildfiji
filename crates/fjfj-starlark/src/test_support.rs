@@ -222,6 +222,7 @@ pub(crate) fn run_build(bzl: &str, build: &str) -> BuildOutcome {
         loaded: RefCell::new(HashMap::new()),
     };
     let out = crate::evaluate_build_file(&BuildFile {
+        module: None,
         repo: "",
         package: "",
         lookup: &lookup,

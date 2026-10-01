@@ -66,6 +66,12 @@ pub trait RepoProvider: Send + Sync {
 
     /// What each repo calls the others, as of now.
     fn mappings(&self) -> Arc<RepoMappings>;
+
+    /// The name and version of the module whose repo `repo` is, for
+    /// `module_name()` and `module_version()` in its BUILD files.
+    fn module(&self, _repo: &str) -> Option<(String, String)> {
+        None
+    }
 }
 
 /// The repositories that were all known at the start.
@@ -222,6 +228,7 @@ impl BzlLoader {
         };
         let loader = self.importing(importer);
         evaluate_build_file(&BuildFile {
+            module: self.repos.module(repo),
             repo,
             package,
             lookup: &lookup,

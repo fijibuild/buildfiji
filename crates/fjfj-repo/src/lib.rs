@@ -209,6 +209,30 @@ impl RepoProvider for Provider {
             None => Arc::default(),
         }
     }
+
+    fn module(&self, repo: &str) -> Option<(String, String)> {
+        let inner = self.0.upgrade()?;
+        inner
+            .resolution
+            .selection
+            .resolved
+            .iter()
+            .find(|(key, _)| {
+                if key.is_root() {
+                    repo.is_empty()
+                } else {
+                    inner.resolution.canonical_name_of(key) == repo
+                }
+            })
+            .map(|(key, module)| {
+                let name = if key.is_root() {
+                    module.name.clone()
+                } else {
+                    key.name.clone()
+                };
+                (name, key.version.to_string())
+            })
+    }
 }
 
 /// The repositories of a workspace.
@@ -1296,12 +1320,11 @@ impl Inner {
         };
         let prefix = extension.repo_name("");
         let prefix = prefix.trim_end_matches('+').to_owned();
-        let env = self.env(
-            &prefix,
-            name,
-            self.options.output_base.join("modextwd").join(&prefix),
-            Vec::new(),
-        );
+        // Each run starts in an empty directory, as in Bazel: what an earlier
+        // run left (or an older fjfj wrote) must not be read as this one's.
+        let work = self.options.output_base.join("modextwd").join(&prefix);
+        let _ = std::fs::remove_dir_all(&work);
+        let env = self.env(&prefix, name, work, Vec::new());
         let mappings = self.mappings();
         let made = run_module_extension(
             &module,

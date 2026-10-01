@@ -90,6 +90,9 @@ pub struct BuildFile<'a> {
     /// Resolves the file's `load()`s. Each `.bzl` it evaluates should use
     /// [`bzl_globals`].
     pub loader: &'a dyn FileLoader,
+    /// The module this repo is, as `(name, version)`; `None` for a repo no
+    /// module made.
+    pub module: Option<(String, String)>,
 }
 
 /// `json` and `proto`, which BUILD and `.bzl` files both see.
@@ -216,6 +219,7 @@ pub fn evaluate_build_file(input: &BuildFile<'_>) -> Result<BuildFileOutput, Bui
         package: input.package,
         lookup: input.lookup,
         mappings: input.mappings,
+        module: input.module.clone(),
         state: RefCell::new(BuildState {
             builder: PackageBuilder::new(input.repo, input.package, &is_package),
             errors: Vec::new(),
@@ -260,6 +264,7 @@ pub(crate) struct BuildContext<'a> {
     pub(crate) package: &'a str,
     pub(crate) lookup: &'a PackageLookup,
     pub(crate) mappings: &'a RepoMappings,
+    pub(crate) module: Option<(String, String)>,
     pub(crate) state: RefCell<BuildState<'a>>,
     printed: RefCell<Vec<String>>,
     /// The schema each rule of the package was called with, by target name,
@@ -836,6 +841,30 @@ fn native_functions(builder: &mut GlobalsBuilder) {
         Ok(format!("@{}", ctx.repo))
     }
 
+    fn module_name<'v>(
+        args: &Arguments<'v, '_>,
+        eval: &mut Evaluator<'v, '_, '_>,
+    ) -> starlark::Result<Value<'v>> {
+        let ctx = context(eval, "module_name")?;
+        bind("module_name", Wording::Signature, &[], args, eval)?;
+        Ok(match &ctx.module {
+            Some((name, _)) if !name.is_empty() => eval.heap().alloc(name.as_str()),
+            _ => Value::new_none(),
+        })
+    }
+
+    fn module_version<'v>(
+        args: &Arguments<'v, '_>,
+        eval: &mut Evaluator<'v, '_, '_>,
+    ) -> starlark::Result<Value<'v>> {
+        let ctx = context(eval, "module_version")?;
+        bind("module_version", Wording::Signature, &[], args, eval)?;
+        Ok(match &ctx.module {
+            Some((_, version)) if !version.is_empty() => eval.heap().alloc(version.as_str()),
+            _ => Value::new_none(),
+        })
+    }
+
     fn repo_name<'v>(
         args: &Arguments<'v, '_>,
         eval: &mut Evaluator<'v, '_, '_>,
@@ -1006,6 +1035,7 @@ mod tests {
         let mappings = mappings();
         let loader = MapLoader::new(bzl.iter().copied().collect(), "", package, &mappings);
         evaluate_build_file(&BuildFile {
+            module: None,
             repo: "",
             package,
             lookup: &lookup,
@@ -1813,6 +1843,7 @@ mod tests {
         let mappings = mappings();
         let loader = MapLoader::new(HashMap::new(), "dep+", "p", &mappings);
         let out = evaluate_build_file(&BuildFile {
+            module: None,
             repo: "dep+",
             package: "p",
             lookup: &lookup,

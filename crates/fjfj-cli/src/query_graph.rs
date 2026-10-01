@@ -27,11 +27,12 @@ pub(crate) struct QueryGraph {
 
 impl QueryGraph {
     pub(crate) fn new(repos: Arc<Repos>) -> QueryGraph {
-        let apparent = repos
-            .imports()
-            .into_iter()
-            .map(|(apparent, canonical)| (canonical, apparent))
-            .collect();
+        let mut apparent: BTreeMap<String, String> = BTreeMap::new();
+        for (name, canonical) in repos.mappings().entries("") {
+            if !canonical.is_empty() {
+                apparent.entry(canonical).or_insert(name);
+            }
+        }
         QueryGraph {
             repos,
             nodes: Mutex::new(BTreeMap::new()),
@@ -99,6 +100,17 @@ impl QueryGraph {
                 });
                 continue;
             }
+            let value = match (attr.name.as_str(), value) {
+                // The package's default stands where the rule gave none.
+                ("package_metadata", Some(AttrValue::LabelList(none)))
+                    if none.is_empty() && !explicit =>
+                {
+                    Some(AttrValue::LabelList(
+                        package.defaults.package_metadata.clone(),
+                    ))
+                }
+                (_, value) => value,
+            };
             let Some(value) = value else { continue };
             let mut labels = Vec::new();
             let implicit = attr.name.starts_with('_') || attr.name.starts_with('$');
@@ -117,19 +129,6 @@ impl QueryGraph {
                 let tool = matches!(attr.def.cfg, Cfg::Exec | Cfg::Host);
                 for (to, condition) in found {
                     labels.push(to.clone());
-                    // Visibility and licenses are not dependencies.
-                    if matches!(
-                        attr.name.as_str(),
-                        "visibility"
-                            | "compatible_with"
-                            | "restricted_to"
-                            | "package_metadata"
-                            | "applicable_licenses"
-                            | "aspect_hints"
-                            | "transitive_configs"
-                    ) {
-                        continue;
-                    }
                     edges.push(Edge {
                         to,
                         implicit,
@@ -138,11 +137,51 @@ impl QueryGraph {
                     });
                 }
             }
+            // The conditions of a `select()` are dependencies whatever the
+            // attribute holds.
+            if !is_label && let AttrValue::Select(list) = &value {
+                for selector in &list.elements {
+                    for (condition, _) in &selector.branches {
+                        if *condition != default_condition() {
+                            edges.push(Edge {
+                                to: condition.clone(),
+                                implicit,
+                                tool: false,
+                                condition: None,
+                            });
+                        }
+                    }
+                }
+            }
             attrs.push(NodeAttr {
                 name: attr.name.clone(),
                 text: self.attr_text(&value),
                 labels,
                 explicit,
+            });
+        }
+        // The `package_group`s that say who may see the rule.
+        let visibility = target
+            .visibility
+            .as_ref()
+            .unwrap_or(&package.default_visibility);
+        for entry in &visibility.entries {
+            if let fjfj_graph::visibility::VisibilityEntry::Group(group) = entry {
+                edges.push(Edge {
+                    to: group.clone(),
+                    implicit: false,
+                    tool: false,
+                    condition: None,
+                });
+            }
+        }
+        // And the toolchain types it asks for.
+        for (toolchain_type, _) in &schema.toolchains {
+            edges.push(Edge {
+                to: toolchain_type.clone(),
+                implicit: true,
+                tool: false,
+                condition: None,
             });
         }
         // The one implicit dependency of a native rule that its attributes do
