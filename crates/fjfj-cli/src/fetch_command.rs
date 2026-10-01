@@ -17,6 +17,7 @@ use std::time::Duration;
 use fjfj_bazel_compat::bzlmod_flags::BzlmodFlags;
 use fjfj_bzlmod::Resolution;
 use fjfj_bzlmod::lockfile::LockSession;
+use fjfj_graph::pattern::{PatternContext, TargetPattern};
 use fjfj_repo::{
     CredentialHelper, CredentialHelpers, HttpDownloader, Options, Repos, module_extensions_json,
 };
@@ -187,38 +188,61 @@ pub(crate) fn run(
     run_inner(flags, bzlmod, workspace_root, module_bazel_text).map(|_| ())
 }
 
-/// What `build` does about external repositories: the module graph is resolved,
-/// the repositories its target patterns name (`@name//...`) are made, and the
-/// lockfile is written as `--lockfile_mode` says. Which other repositories a
-/// build needs is the loading phase's to say once it asks for them.
+/// What `build` does before it has a loading phase of its own: the module graph
+/// is resolved, the target patterns are turned into targets (which makes the
+/// repositories they and the BUILD files reach), and the lockfile is written
+/// as `--lockfile_mode` says, with the extensions that ran on the way.
 pub(crate) fn run_for_build(
     flags: &FetchFlags,
     bzlmod: &BzlmodFlags,
     workspace_root: &Path,
     module_bazel_text: &str,
-) -> Result<Resolution, CliError> {
-    run_inner(flags, bzlmod, workspace_root, module_bazel_text)
-}
-
-/// The repositories external target patterns name, as `fetch --repo` writes
-/// them: each as the pattern wrote it (`@m`, `@@m+`), the main repo (`@`)
-/// left out.
-pub(crate) fn repos_named_by<'a>(written: impl Iterator<Item = &'a str>) -> Vec<String> {
-    let mut named: Vec<String> = Vec::new();
-    for repo in written.filter(|r| !matches!(*r, "@" | "@@")) {
-        if !named.iter().any(|n| n == repo) {
-            named.push(repo.to_owned());
-        }
+    patterns: &[String],
+    offset: &str,
+) -> Result<BuildLoad, CliError> {
+    let (resolved, repos) = begin(flags, bzlmod, workspace_root, module_bazel_text)?;
+    let unknown = std::cell::RefCell::new(None);
+    let context = PatternContext { repo: "", offset };
+    let parsed = patterns
+        .iter()
+        .map(|p| {
+            TargetPattern::parse(p, context, &mut |apparent| match apparent {
+                "" => String::new(),
+                _ => repos.main_repo_canonical(apparent).unwrap_or_else(|| {
+                    unknown.borrow_mut().get_or_insert(apparent.to_owned());
+                    apparent.to_owned()
+                }),
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| CliError::CommandLine(anyhow::Error::from(e)))?;
+    if let Some(apparent) = unknown.into_inner() {
+        return Err(CliError::CommandLine(anyhow::anyhow!(
+            "No repository visible as '@{apparent}' from main repository"
+        )));
     }
-    named
+    let targets = fjfj_loading::resolve(&parsed, &repos);
+    let resolution = finish(resolved, repos)?;
+    Ok(BuildLoad {
+        resolution,
+        targets,
+    })
 }
 
-fn run_inner(
+/// What `build` has learnt once its patterns are resolved.
+pub(crate) struct BuildLoad {
+    pub resolution: Resolution,
+    pub targets: fjfj_loading::Resolved,
+}
+
+/// Resolves the module graph, makes the repositories `flags` ask for, and hands
+/// back what the lock still needs written once more has run.
+fn begin(
     flags: &FetchFlags,
     bzlmod: &BzlmodFlags,
     workspace_root: &Path,
     module_bazel_text: &str,
-) -> Result<Resolution, CliError> {
+) -> Result<(Resolved, Repos), CliError> {
     let resolved = crate::resolve_bzlmod_session(
         module_bazel_text,
         workspace_root,
@@ -270,10 +294,32 @@ fn run_inner(
     let mut repos = Repos::from_resolution(options, resolved.resolution.clone())
         .map_err(|e| CliError::Build(anyhow::anyhow!(e.message)))?;
     let outcome = fetch_repos(flags, &mut repos);
+    if outcome.is_err() {
+        print_warnings(&repos);
+    }
+    outcome?;
+    Ok((resolved, repos))
+}
+
+fn print_warnings(repos: &Repos) {
     for warning in repos.warnings() {
         eprintln!("WARNING: {warning}");
     }
-    outcome?;
+}
+
+fn run_inner(
+    flags: &FetchFlags,
+    bzlmod: &BzlmodFlags,
+    workspace_root: &Path,
+    module_bazel_text: &str,
+) -> Result<Resolution, CliError> {
+    let (resolved, repos) = begin(flags, bzlmod, workspace_root, module_bazel_text)?;
+    finish(resolved, repos)
+}
+
+/// Writes the lockfile with what the extensions that have run gave it.
+fn finish(resolved: Resolved, repos: Repos) -> Result<Resolution, CliError> {
+    print_warnings(&repos);
     if let Some(session) = &resolved.session {
         session.set_module_extensions(
             module_extensions_json(&repos.locked_extensions()),

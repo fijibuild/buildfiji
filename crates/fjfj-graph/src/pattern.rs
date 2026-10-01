@@ -54,6 +54,8 @@ pub enum Pattern {
 /// A pattern as given on the command line.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TargetPattern {
+    /// The argument as given, dash included, for messages.
+    pub text: String,
     /// Written with a leading `-`: remove what it selects.
     pub negative: bool,
     /// The repo as written, with its `@` or `@@`, if the pattern names one.
@@ -120,6 +122,7 @@ impl TargetPattern {
         let (written, apparent, rest, repo_only) = split_repo(text);
         let repo_written = written.map(|_| text[..text.len() - rest.len()].to_owned());
         let wrap = |pattern| TargetPattern {
+            text: input.to_owned(),
             negative,
             repo_written: repo_written.clone(),
             pattern,

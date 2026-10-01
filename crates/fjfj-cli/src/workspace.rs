@@ -45,10 +45,17 @@ pub(crate) fn keep_end_of_options(args: Vec<OsString>) -> Vec<OsString> {
     args
 }
 
-/// Arguments before the first `--` and the target patterns after it.
+/// Arguments before the first `--` and the target patterns after it. The
+/// parser keeps both of the markers [`keep_end_of_options`] wrote when an
+/// argument came before them and one when none did, so a second marker right
+/// after the first is that one.
 pub(crate) fn split_end_of_options(args: &[String]) -> (&[String], &[String]) {
     match args.iter().position(|a| a == "--") {
-        Some(i) => (&args[..i], &args[i + 1..]),
+        Some(i) => {
+            let after = &args[i + 1..];
+            let after = after.strip_prefix(&["--".to_owned()]).unwrap_or(after);
+            (&args[..i], after)
+        }
         None => (args, &[]),
     }
 }
@@ -79,13 +86,16 @@ mod tests {
 
     #[test]
     fn arguments_split_at_the_first_marker() {
-        let args: Vec<String> = ["-k", "//a", "--", "-//b", "--", "c"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
+        let words = |w: &[&str]| w.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        let args = words(&["-k", "//a", "--", "-//b", "--", "c"]);
         let (before, after) = split_end_of_options(&args);
         assert_eq!(before, ["-k", "//a"]);
         assert_eq!(after, ["-//b", "--", "c"]);
+        // Both markers survived, or only the second.
+        let args = words(&["-k", "--", "--", "-//b"]);
+        assert_eq!(split_end_of_options(&args), (&args[..1], &args[3..]));
+        let args = words(&["--", "-//b"]);
+        assert_eq!(split_end_of_options(&args), (&args[..0], &args[1..]));
     }
 
     #[test]

@@ -276,7 +276,9 @@ fn locate_workspace_root(command: &str) -> Result<std::path::PathBuf, CliError> 
 async fn fetch_repositories_for_build(
     repo_flags: fetch_command::FetchFlags,
     bzlmod: &BzlmodFlags,
-) -> Result<Resolution, CliError> {
+    patterns: Vec<String>,
+    offset: String,
+) -> Result<fetch_command::BuildLoad, CliError> {
     let workspace_root = locate_workspace_root("build")?;
     let module_bazel_text =
         std::fs::read_to_string(workspace_root.join("MODULE.bazel")).map_err(|e| {
@@ -287,7 +289,14 @@ async fn fetch_repositories_for_build(
         })?;
     let bzlmod = bzlmod.clone();
     tokio::task::spawn_blocking(move || {
-        fetch_command::run_for_build(&repo_flags, &bzlmod, &workspace_root, &module_bazel_text)
+        fetch_command::run_for_build(
+            &repo_flags,
+            &bzlmod,
+            &workspace_root,
+            &module_bazel_text,
+            &patterns,
+            &offset,
+        )
     })
     .await
     .map_err(|e| CliError::Internal(anyhow::anyhow!("build's repository task panicked: {e}")))?
@@ -402,7 +411,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
             let (remote, rest) = remote_flags::extract(&rest, "build");
             let (bes, rest) = bes_flags::extract(&rest, "build");
             let (bzlmod, rest) = bzlmod_flags::extract(&rest, "build");
-            let (mut repo_flags, rest) = fetch_command::extract(&rest)?;
+            let (repo_flags, rest) = fetch_command::extract(&rest)?;
             let (console_flags, rest) = console_flags::extract(&rest, "build");
             // Everything left is a bare positional now that `validate`
             // above has ruled out any unimplemented or unrecognized flag.
@@ -524,13 +533,22 @@ async fn run(cli: Cli) -> Result<(), CliError> {
                     message: "Resolving MODULE.bazel".to_owned(),
                 })
                 .map_err(|e| CliError::Internal(anyhow::anyhow!("console write failed: {e}")))?;
-            repo_flags.repos = fetch_command::repos_named_by(
-                patterns
-                    .iter()
-                    .filter(|p| !p.negative)
-                    .filter_map(|p| p.repo_written.as_deref()),
-            );
-            let resolution = fetch_repositories_for_build(repo_flags, &bzlmod).await?;
+            let texts: Vec<String> = rest.iter().chain(after_marker).cloned().collect();
+            let loaded = fetch_repositories_for_build(repo_flags, &bzlmod, texts, offset).await?;
+            let resolution = loaded.resolution;
+            let targets = loaded.targets;
+            if !targets.failures.is_empty() {
+                eprintln!("WARNING: Target pattern parsing failed.");
+                for failure in &targets.failures {
+                    eprintln!("ERROR: Skipping '{}': {}", failure.pattern, failure.message);
+                }
+                if !diagnostics.keep_going {
+                    return Err(CliError::Build(anyhow::anyhow!(
+                        "{}",
+                        targets.failures[0].message
+                    )));
+                }
+            }
             tracing::info!(
                 selected_modules = resolution.selection.keys().count(),
                 "bzlmod module graph resolved"
@@ -541,6 +559,14 @@ async fn run(cli: Cli) -> Result<(), CliError> {
                     resolution.selection.keys().count()
                 ))
                 .map_err(|e| CliError::Internal(anyhow::anyhow!("console write failed: {e}")))?;
+            console
+                .line(&format!("INFO: Found {} targets...", targets.targets.len()))
+                .map_err(|e| CliError::Internal(anyhow::anyhow!("console write failed: {e}")))?;
+            if !targets.failures.is_empty() {
+                return Err(CliError::Build(anyhow::anyhow!(
+                    "command succeeded, but there were errors parsing the target pattern"
+                )));
+            }
             Err(CliError::Build(anyhow::anyhow!(
                 "fjfj build is not implemented yet; see `bd ready`"
             )))
@@ -890,9 +916,7 @@ mod tests {
     }
 
     #[test]
-    fn build_makes_the_repositories_its_patterns_name_and_writes_the_lock_as_the_mode_says() {
-        let named = fetch_command::repos_named_by(["@r1", "@", "@@ext+gen+r1", "@r1"].into_iter());
-        assert_eq!(named, ["@r1", "@@ext+gen+r1"]);
+    fn build_makes_the_repositories_its_patterns_reach_and_writes_the_lock_as_the_mode_says() {
         let dir = Scratch::new("build-repos");
         let module = "module(name = 'root', version = '0')\n\
             bazel_dep(name = 'ext', version = '2.0')\n\
@@ -903,13 +927,15 @@ mod tests {
         args.push("--lockfile_mode=update".to_owned());
         let (bzlmod, _) = bzlmod_flags::extract(&args, "build");
         let flags = fetch_command::FetchFlags {
-            repos: named[..1].to_vec(),
             output_base: Some(dir.0.join("ob")),
             repository_cache: Some(None),
             ..fetch_command::FetchFlags::default()
         };
-        let resolution = fetch_command::run_for_build(&flags, &bzlmod, &dir.0, module).unwrap();
-        assert!(resolution.selection.keys().count() >= 2);
+        let patterns = ["@r1//:all".to_owned()];
+        let loaded =
+            fetch_command::run_for_build(&flags, &bzlmod, &dir.0, module, &patterns, "").unwrap();
+        assert_eq!(loaded.targets.failures, []);
+        assert!(loaded.resolution.selection.keys().count() >= 2);
         assert!(dir.0.join("ob/external/ext++gen+r1/BUILD.bazel").is_file());
         let lock = std::fs::read_to_string(dir.0.join("MODULE.bazel.lock")).unwrap();
         assert!(lock.contains("\"@@ext+//:ext.bzl%gen\""), "{lock}");
@@ -921,7 +947,8 @@ mod tests {
             repository_cache: Some(None),
             ..fetch_command::FetchFlags::default()
         };
-        fetch_command::run_for_build(&none, &bzlmod, &other.0, module).unwrap();
+        let patterns = ["//:all".to_owned()];
+        fetch_command::run_for_build(&none, &bzlmod, &other.0, module, &patterns, "").unwrap();
         assert!(!other.0.join("ob/external/ext++gen+r1").exists());
         assert!(other.0.join("MODULE.bazel.lock").is_file());
     }

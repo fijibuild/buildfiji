@@ -252,6 +252,12 @@ impl<'a> PackageBuilder<'a> {
         Ok(())
     }
 
+    /// `licenses(...)`: the package's licenses, as `package(licenses = ...)`
+    /// would give them; the last call wins.
+    pub fn set_licenses(&mut self, licenses: Vec<String>) {
+        self.defaults.licenses = licenses;
+    }
+
     /// Declare a rule instance whose attributes the caller does not record.
     /// `location` is `file:line:col`.
     pub fn add_rule(

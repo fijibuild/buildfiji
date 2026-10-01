@@ -1079,6 +1079,7 @@ dependencies = [
  "fjfj-bzlmod",
  "fjfj-exec",
  "fjfj-graph",
+ "fjfj-loading",
  "fjfj-remote",
  "fjfj-repo",
  "fjfj-starlark",

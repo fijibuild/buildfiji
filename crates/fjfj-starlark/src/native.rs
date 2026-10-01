@@ -102,11 +102,75 @@ pub(crate) fn module_globals(builder: &mut GlobalsBuilder) {
 pub fn build_globals() -> Globals {
     GlobalsBuilder::extended_by(&[LibraryExtension::Print])
         .with(native_functions)
+        .with(build_only_functions)
         .with(depset_globals)
         .with(module_globals)
         .with(select_globals)
         .with(set_globals)
         .build()
+}
+
+/// The license kinds Bazel 9.2.0 accepts, in any case.
+const LICENSE_TYPES: [&str; 8] = [
+    "none",
+    "notice",
+    "restricted",
+    "reciprocal",
+    "permissive",
+    "unencumbered",
+    "by_exception_only",
+    "restricted_if_statically_linked",
+];
+
+fn invalid_license(kind: &str) -> Option<String> {
+    let lower = kind.to_lowercase();
+    (!LICENSE_TYPES.contains(&lower.as_str())).then(|| format!("invalid license type: '{kind}'"))
+}
+
+/// Functions of a BUILD file that `native` does not have.
+#[starlark_module]
+fn build_only_functions(builder: &mut GlobalsBuilder) {
+    fn licenses<'v>(
+        args: &Arguments<'v, '_>,
+        eval: &mut Evaluator<'v, '_, '_>,
+    ) -> starlark::Result<NoneType> {
+        let ctx = context(eval, "licenses")?;
+        let at = location(eval);
+        let bound = bind(
+            "licenses",
+            Wording::Signature,
+            &[param("license_strings", true, true)],
+            args,
+            eval,
+        )?;
+        let items = want_sequence(
+            "licenses",
+            "license_strings",
+            bound[0].expect("required"),
+            false,
+        )?
+        .unwrap_or_default();
+        let mut kinds = Vec::new();
+        for (i, item) in items.iter().enumerate() {
+            let Some(kind) = item.unpack_str() else {
+                ctx.event(
+                    &at,
+                    format!(
+                        "expected value of type 'string' for element {i} of 'licenses' operand, but got {}",
+                        describe(*item)
+                    ),
+                );
+                return Ok(NoneType);
+            };
+            if let Some(message) = invalid_license(kind) {
+                ctx.event(&at, message);
+                return Ok(NoneType);
+            }
+            kinds.push(kind.to_owned());
+        }
+        ctx.state.borrow_mut().builder.set_licenses(kinds);
+        Ok(NoneType)
+    }
 }
 
 /// The globals of a `.bzl` file: the same, with the native functions under
@@ -532,6 +596,14 @@ fn native_functions(builder: &mut GlobalsBuilder) {
             label_list(4, "default_restricted_to")?.unwrap_or_default();
         settings.defaults.hdrs_check = string(5, "default_hdrs_check")?;
         settings.defaults.licenses = string_list(6, "licenses")?;
+        if let Some(message) = settings
+            .defaults
+            .licenses
+            .iter()
+            .find_map(|kind| invalid_license(kind))
+        {
+            return Err(fatal(message));
+        }
         let licenses = label_list(7, "default_applicable_licenses")?;
         let metadata = label_list(8, "default_package_metadata")?;
         if licenses.is_some() && metadata.is_some() {
@@ -1129,6 +1201,60 @@ mod tests {
         )
         .unwrap();
         assert_eq!(out.printed, [r#""sub" "@" """#]);
+    }
+
+    /// Probed on Bazel 9.2.0: `licenses()` is a BUILD-file function only, takes
+    /// the license kinds in any case, and reports a bad one as an event.
+    #[test]
+    fn licenses_sets_the_package_licenses_and_checks_each_kind() {
+        let p = package("licenses([\"notice\", \"Restricted\"])\nfilegroup(name = \"a\")");
+        assert_eq!(p.defaults.licenses, ["notice", "Restricted"]);
+        let p = package("licenses([\"notice\"])\nlicenses([\"restricted\"])");
+        assert_eq!(p.defaults.licenses, ["restricted"]);
+        for kind in [
+            "none",
+            "notice",
+            "restricted",
+            "reciprocal",
+            "permissive",
+            "unencumbered",
+            "by_exception_only",
+            "restricted_if_statically_linked",
+            "NOTICE",
+        ] {
+            package(&format!("licenses([\"{kind}\"])"));
+        }
+        package("licenses([])\nlicenses((\"notice\",))");
+        assert_eq!(printed("print(licenses([\"notice\"]))"), ["None"]);
+        for bad in ["exempt", "", "notice ", "by_exception"] {
+            assert_eq!(
+                events(&format!("licenses([\"{bad}\"])")),
+                [format!("BUILD.bazel:1:9: invalid license type: '{bad}'")]
+            );
+        }
+        assert_eq!(
+            events("licenses([\"notice\", 1])"),
+            [
+                "BUILD.bazel:1:9: expected value of type 'string' for element 1 of 'licenses' operand, but got 1 (int)"
+            ]
+        );
+        let fatal = |build: &str| match load(build) {
+            Err(BuildFileError::Eval(e)) => format!("{e:#}"),
+            other => panic!("{other:?}"),
+        };
+        assert!(
+            fatal("licenses(\"notice\")")
+                .contains("in call to licenses(), parameter 'license_strings' got value of type 'string', want 'sequence'")
+        );
+        assert!(
+            fatal("licenses()")
+                .contains("licenses() missing 1 required positional argument: license_strings")
+        );
+        assert!(
+            fatal("licenses(licenses = [\"notice\"])")
+                .contains("licenses() got unexpected keyword argument 'licenses'")
+        );
+        assert!(fatal("package(licenses = [\"bogus\"])").contains("invalid license type: 'bogus'"));
     }
 
     #[test]

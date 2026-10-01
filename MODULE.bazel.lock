@@ -360,10 +360,10 @@
           "REPO_MAPPING:rules_rust+,bazel_skylib bazel_skylib+",
           "REPO_MAPPING:rules_rust+,bazel_tools bazel_tools",
           "REPO_MAPPING:rules_rust+,rules_cc rules_cc+",
-          "FILE:@@//Cargo.lock 34dbc20e1dab98beae104e256eef2fd6d4338e4c36cfe01a65c53652bdfbe52e",
+          "FILE:@@//Cargo.lock e775e91eea57cb03efb561809f768b8bb1a4fef00b3e8775b0e7642d62ab9f2e",
           "FILE:@@//Cargo.toml 24f5901ef8cbb89b9fec9e99ccbdad0a3ebc7e18ee9b41e700f838a16ce0c4c5",
           "FILE:@@//crates/fjfj/Cargo.toml ef31872aa582b75601172747471d5c4aad9b85162f7769b1b8f7b6b81e2b1703",
-          "FILE:@@//crates/fjfj-cli/Cargo.toml e9ca0b037b076cf274d902049793bf7c2b0fb7c16918af77c4382fbd6ddc3606",
+          "FILE:@@//crates/fjfj-cli/Cargo.toml 7ff1031cea86d68f6dad6371bbeebd1787e2b8b0850b6a2ee7f6d2316263b5a5",
           "FILE:@@//crates/fjfj-starlark/Cargo.toml 4e02963e759af31ed170a2c4d8813451ca59192ea844df819c443c6bb0e45eee",
           "FILE:@@//crates/fjfj-graph/Cargo.toml 9f6e5996996ad7b79fd501b257e0965df673117058beec42b198df0485c79e16",
           "FILE:@@//crates/fjfj-exec/Cargo.toml 9bf55855d25ac9ffb1f6a537a1c21262bf495e56900d6a0ca73391c503834a9f",
@@ -376,9 +376,9 @@
           "FILE:@@//crates/fjfj-proto/Cargo.toml 42e8451f9720dbcf0f9a4cee973869e05eca996bda57ff0a2538dafe97ff3395",
           "FILE:@@//crates/starlark/Cargo.toml f5ef9aba69ea08829d415ba4dbe6f0da8ad1e4b415ece8f8956d7af54665a0f8",
           "FILE:@@//crates/starlark_syntax/Cargo.toml d85ef9bd5a41555da8f78dae100c6c7c2251a10996e6358bee624f31ccba3018",
+          "FILE:@@//crates/fjfj-loading/Cargo.toml fbc2f9da455bedce7a25cfd672f629c7eff82da07a2e222ce7e15a64c30f15af",
           "FILE:@@//crates/fjfj-repo/Cargo.toml 427bf00a9ea2aaaefa7b4149960c21fb5923dd6bcecedf153410eddd0a47093e",
-          "FILE:@@//crates/fjfj-archive/Cargo.toml 44805ef38536439af5bd70c66a63d135b839d7a9fb12c010e7ed281f7496c575",
-          "FILE:@@//crates/fjfj-loading/Cargo.toml fbc2f9da455bedce7a25cfd672f629c7eff82da07a2e222ce7e15a64c30f15af"
+          "FILE:@@//crates/fjfj-archive/Cargo.toml 44805ef38536439af5bd70c66a63d135b839d7a9fb12c010e7ed281f7496c575"
         ],
         "generatedRepoSpecs": {
           "crates": {

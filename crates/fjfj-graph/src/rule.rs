@@ -69,6 +69,31 @@ pub struct SelectorList {
 }
 
 impl AttrValue {
+    /// Every label the value holds, in the order it was written, those of a
+    /// `select()` included.
+    pub fn labels<'a>(&'a self, out: &mut Vec<&'a Label>) {
+        use AttrValue::*;
+        match self {
+            Label(l) => out.push(l),
+            LabelList(ls) => out.extend(ls),
+            LabelKeyedStringDict(d) => out.extend(d.iter().map(|(l, _)| l)),
+            StringKeyedLabelDict(d) => out.extend(d.iter().map(|(_, l)| l)),
+            LabelListDict(d) => out.extend(d.iter().flat_map(|(_, ls)| ls)),
+            Select(list) => {
+                for selector in &list.elements {
+                    for (condition, value) in &selector.branches {
+                        out.push(condition);
+                        if let Some(value) = value {
+                            value.labels(out);
+                        }
+                    }
+                }
+            }
+            Bool(_) | Int(_) | String(_) | StringList(_) | IntList(_) | StringDict(_)
+            | StringListDict(_) => {}
+        }
+    }
+
     /// `a` followed by `b`, as `+` joins two lists, two strings or two ints
     /// and `|` two dicts (the later entry of a key wins). `None` for values
     /// of different kinds, and kinds that do not join (a bool, a label).

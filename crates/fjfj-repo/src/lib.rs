@@ -45,6 +45,8 @@ mod multi_tests;
 mod replay_matrix;
 #[cfg(test)]
 mod replay_tests;
+#[cfg(test)]
+mod resolve_tests;
 mod tools;
 
 pub use credentials::{CredentialHelper, CredentialHelpers, Headers};
@@ -427,6 +429,27 @@ impl Repos {
     /// The loader the repositories are read through.
     pub fn loader(&self) -> &BzlLoader {
         self.inner.loader()
+    }
+}
+
+impl fjfj_loading::PackageSource for Repos {
+    fn lookup(&self, repo: &str) -> Result<Arc<PackageLookup>, String> {
+        match self.inner.lookup(repo) {
+            Ok(Some(lookup)) => Ok(lookup),
+            Ok(None) => Err(format!("Repository '@@{repo}' is not defined")),
+            Err(e) => Err(e.message),
+        }
+    }
+
+    fn package(
+        &self,
+        repo: &str,
+        package: &str,
+    ) -> Result<Arc<fjfj_graph::package::Package>, String> {
+        self.loader()
+            .load_package(repo, package)
+            .map(|loaded| Arc::new(loaded.package))
+            .map_err(|e| e.to_string())
     }
 }
 

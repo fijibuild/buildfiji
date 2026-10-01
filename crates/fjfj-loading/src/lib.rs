@@ -5,6 +5,8 @@
 
 mod glob;
 mod lookup;
+mod resolve;
 
 pub use glob::{GlobError, GlobOptions, glob};
 pub use lookup::{LookupError, PackageLookup};
+pub use resolve::{Failure, PackageSource, Resolved, resolve};
