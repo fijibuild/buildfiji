@@ -81,3 +81,37 @@ pub fn feature_flag_value(provider: &StoredProvider) -> Option<String> {
         .find(|(name, _)| *name == "value")
         .and_then(|(_, v)| v.unpack_str().map(str::to_owned))
 }
+
+/// The files of the output group `group` of the `OutputGroupInfo` among
+/// `providers`, if there is one and it has the group.
+pub fn output_group_files(providers: &[StoredProvider], group: &str) -> Vec<fjfj_graph::Artifact> {
+    let Some(kind) = super::target::builtin("OutputGroupInfo") else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for provider in providers {
+        let value = provider.value.value();
+        let Some(Some(this)) = crate::structs::provider_of(value) else {
+            continue;
+        };
+        if !this.ptr_eq(kind) {
+            continue;
+        }
+        let Some((_, files)) = crate::structs::fields_of(value)
+            .unwrap_or_default()
+            .into_iter()
+            .find(|(name, _)| *name == group)
+        else {
+            continue;
+        };
+        let items = if crate::depset::is_depset(files) {
+            crate::depset::depset_to_list(files)
+                .and_then(Result::ok)
+                .unwrap_or_default()
+        } else {
+            crate::args::sequence(files).unwrap_or_default()
+        };
+        out.extend(items.into_iter().filter_map(super::file::artifact_of));
+    }
+    out
+}

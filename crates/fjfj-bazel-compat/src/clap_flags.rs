@@ -154,6 +154,12 @@ fn base_arg(flag: &'static FlagInfo) -> Arg {
 /// parsed but isn't in `implemented`. Returns `Ok(())` when every flag
 /// token is a real, implemented flag and only bare positionals remain for
 /// `TargetPattern` parsing.
+/// `--//pkg:setting=value` or `--@repo//pkg:setting=value`: a flag of a
+/// Starlark-defined build setting, which is not in the table of Bazel's own.
+fn looks_like_starlark_flag(token: &str) -> bool {
+    token.starts_with("--//") || token.starts_with("--@")
+}
+
 pub fn validate(
     args: &[String],
     bazel_command: &'static str,
@@ -168,7 +174,7 @@ pub fn validate(
     // clap's own strict, no-`allow_hyphen_values` rejection.
     let flag_tokens: Vec<&String> = args
         .iter()
-        .filter(|t| !looks_like_negative_pattern(t))
+        .filter(|t| !looks_like_negative_pattern(t) && !looks_like_starlark_flag(t))
         .collect();
     let matches = cmd
         .try_get_matches_from(flag_tokens)

@@ -84,7 +84,7 @@ pub use analysis::{
     AspectRef, AspectRequest, AspectSpec, DepEdge, DepInfo, Edge, Field, RuleRequest, RuleResult,
     RuleSource, StoredProvider, TransitionSpec, apply_transition, aspect_applies, aspect_spec,
     attr_aspects, computed_defaults, feature_flag_value, labels_of_attrs, native_provider,
-    resolved_attrs, rule_schema, run_aspect, run_rule, transition_spec,
+    output_group_files, resolved_attrs, rule_schema, run_aspect, run_rule, transition_spec,
 };
 pub use depset::{Depset, DepsetGen, FrozenDepset, Order, depset_to_list, is_depset, new_depset};
 pub use dialect::{FileKind, build_dialect, bzl_dialect, parse};

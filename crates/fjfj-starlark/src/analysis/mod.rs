@@ -103,7 +103,7 @@ pub trait RuleSource: Send + Sync {
 pub use aspect::{
     AspectRef, AspectRequest, AspectSpec, aspect_applies, aspect_spec, attr_aspects, run_aspect,
 };
-pub use native_providers::{Field, feature_flag_value, native_provider};
+pub use native_providers::{Field, feature_flag_value, native_provider, output_group_files};
 pub use run::{
     DepEdge, RuleRequest, RuleResult, labels_of_attrs, resolved_attrs, rule_schema, run_rule,
 };

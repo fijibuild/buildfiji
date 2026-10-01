@@ -20,6 +20,10 @@ pub(crate) struct Options {
     /// `--extra_toolchains`: patterns of toolchains to consider before the
     /// registered ones.
     pub extra_toolchains: Vec<String>,
+    /// `--aspects`: aspects to apply to the targets, `<bzl label>%<name>`.
+    pub aspects: Vec<String>,
+    /// `--output_groups`.
+    pub output_groups: Vec<String>,
     pub keep_going: bool,
     pub symlink_prefix: String,
     /// `--jobs`; the number of CPUs if unset.
@@ -215,14 +219,83 @@ fn label_text(label: &Label) -> String {
     }
 }
 
-/// Analyse `targets` and every target they read, in `configuration`.
+/// `--aspects` as aspects: `<bzl label>%<name>`, the label as the main
+/// repository names repositories.
+fn parse_aspects(repos: &Repos, specs: &[String]) -> Result<Vec<fjfj_starlark::AspectRef>, String> {
+    use fjfj_starlark::RuleSource;
+    let mappings = repos.mappings();
+    specs
+        .iter()
+        .map(|spec| {
+            let (bzl, name) = spec.rsplit_once('%').ok_or_else(|| {
+                format!("Invalid aspect '{spec}': want <bzl label>%<aspect name>")
+            })?;
+            let bzl = Label::parse_mapped(
+                bzl,
+                fjfj_graph::LabelContext {
+                    repo: "",
+                    package: "",
+                },
+                &mut |apparent| mappings.resolve_apparent("", apparent),
+            )
+            .map_err(|e| format!("Invalid aspect '{spec}': {e}"))?;
+            Ok(fjfj_starlark::AspectRef {
+                bzl,
+                name: name.to_owned(),
+            })
+        })
+        .collect()
+}
+
+/// The output groups to build: `--output_groups` applied to the defaults.
+fn output_groups(flags: &[String]) -> BTreeSet<String> {
+    let mut groups: BTreeSet<String> = ["default", "_validation", "_hidden_top_level_INTERNAL_"]
+        .into_iter()
+        .map(str::to_owned)
+        .collect();
+    // A name with no sign replaces the defaults, once.
+    let mut replaced = false;
+    for flag in flags {
+        if let Some(name) = flag.strip_prefix('+') {
+            groups.insert(name.to_owned());
+        } else if let Some(name) = flag.strip_prefix('-') {
+            groups.remove(name);
+        } else {
+            if !replaced {
+                groups.clear();
+                replaced = true;
+            }
+            groups.insert(flag.clone());
+        }
+    }
+    groups
+}
+
+/// The files of `target` in the output groups `groups`: its `DefaultInfo`
+/// files for `default`, the others from its `OutputGroupInfo`.
+fn group_files(target: &ConfiguredTarget, groups: &BTreeSet<String>) -> Vec<Artifact> {
+    let mut out = Vec::new();
+    for group in groups {
+        if group == "default" {
+            out.extend(target.files.to_vec());
+        } else {
+            out.extend(fjfj_starlark::output_group_files(&target.providers, group));
+        }
+    }
+    out
+}
+
+/// Analyse `targets` and every target they read, in `configuration`, and
+/// `aspects` applied to each of them.
 async fn analyse(
     engine: &Engine,
     targets: &[Label],
+    aspects: &[fjfj_starlark::AspectRef],
     configuration: &Configuration,
     report: &mut Report,
 ) -> (
     Vec<(Label, Arc<ConfiguredTarget>)>,
+    Vec<Arc<ConfiguredTarget>>,
     Vec<Arc<ConfiguredTarget>>,
 ) {
     let key = |label: &Label| ConfiguredTargetKey {
@@ -237,11 +310,32 @@ async fn analyse(
             Err(e) => report.analysis_errors.push((label.clone(), e.to_string())),
         }
     }
+    // The aspects on them.
+    let mut aspect_roots: Vec<Arc<ConfiguredTarget>> = Vec::new();
+    for (label, root) in &roots {
+        for aspect in aspects {
+            let aspect_key = fjfj_analysis::AspectKey {
+                target: ConfiguredTargetKey {
+                    label: root.label.clone(),
+                    configuration: root.configuration.clone(),
+                },
+                aspect: aspect.clone(),
+            };
+            match engine.get(aspect_key).await {
+                Ok(done) => aspect_roots.push(done),
+                Err(e) => report.analysis_errors.push((label.clone(), e.to_string())),
+            }
+        }
+    }
     // Everything they read, once each.
     let mut all: Vec<Arc<ConfiguredTarget>> = Vec::new();
     // An engine hands out the same value for a key every time, so one is seen once.
     let mut seen: HashSet<*const ConfiguredTarget> = HashSet::new();
-    let mut queue: Vec<Arc<ConfiguredTarget>> = roots.iter().map(|(_, t)| t.clone()).collect();
+    let mut queue: Vec<Arc<ConfiguredTarget>> = roots
+        .iter()
+        .map(|(_, t)| t.clone())
+        .chain(aspect_roots.iter().cloned())
+        .collect();
     while let Some(next) = queue.pop() {
         if !seen.insert(Arc::as_ptr(&next)) {
             continue;
@@ -258,7 +352,7 @@ async fn analyse(
         }
         all.push(next);
     }
-    (roots, all)
+    (roots, aspect_roots, all)
 }
 
 /// Build `targets`. Blocking; run where a Tokio runtime is current.
@@ -311,7 +405,28 @@ pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> R
             }
         }
     }
-    let (roots, all) = handle.block_on(analyse(&analysis, targets, &configuration, &mut report));
+    let aspects = match parse_aspects(repos, &request.options.aspects) {
+        Ok(aspects) => aspects,
+        Err(message) => {
+            report.analysis_errors.push((
+                fjfj_graph::Label {
+                    repo: String::new(),
+                    package: String::new(),
+                    name: String::new(),
+                },
+                message,
+            ));
+            report.elapsed = started.elapsed();
+            return report;
+        }
+    };
+    let (roots, aspect_roots, all) = handle.block_on(analyse(
+        &analysis,
+        targets,
+        &aspects,
+        &configuration,
+        &mut report,
+    ));
     report.printed = all.iter().flat_map(|t| t.printed.clone()).collect();
     report.configured = all.iter().filter(|t| t.rule_class.is_some()).count();
     report.packages = all
@@ -329,6 +444,12 @@ pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> R
         .iter()
         .flat_map(|(_, t)| t.files.to_vec().into_iter().chain(t.extra_outputs.clone()))
         .collect();
+    // The output groups besides the default one, of the targets and of the
+    // aspects applied to them (`_validation` among them).
+    let groups = output_groups(&request.options.output_groups);
+    for target in roots.iter().map(|(_, t)| t).chain(&aspect_roots) {
+        wanted.extend(group_files(target, &groups));
+    }
     // The tests among the roots run too, with their logs among the results.
     let mut tests_to_run: Vec<(Label, fjfj_graph::TestInfo)> = Vec::new();
     if request.options.test.is_some() {

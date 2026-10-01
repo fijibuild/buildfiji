@@ -299,6 +299,27 @@ async fn resolve_workspace_bzlmod(flags: &BzlmodFlags) -> Result<Resolution, Cli
 }
 
 /// The workspace root above the current directory, or Bazel's refusal.
+/// The flags the `.bazelrc` files give `command`: the system, workspace and
+/// home ones, `import`s and `--config`s expanded, those of the commands it
+/// inherits from included. Nothing if there is no workspace here.
+fn rc_flags(command: &str) -> Result<Vec<String>, CliError> {
+    let Ok(cwd) = std::env::current_dir() else {
+        return Ok(Vec::new());
+    };
+    let Some((workspace_root, _)) = workspace::locate(&cwd) else {
+        return Ok(Vec::new());
+    };
+    let options = fjfj_bazel_compat::bazelrc::DiscoveryOptions {
+        workspace_root: Some(workspace_root),
+        home: std::env::var_os("HOME").map(std::path::PathBuf::from),
+        ..Default::default()
+    };
+    let lines = fjfj_bazel_compat::bazelrc::discover_and_parse(&options)
+        .map_err(|e| CliError::CommandLine(anyhow::anyhow!("{e}")))?;
+    fjfj_bazel_compat::bazelrc::resolve_command(&lines, command)
+        .map_err(|e| CliError::CommandLine(anyhow::anyhow!("{e}")))
+}
+
 fn locate_workspace_root(command: &str) -> Result<std::path::PathBuf, CliError> {
     let cwd = std::env::current_dir()
         .map_err(|e| CliError::Internal(anyhow::anyhow!("couldn't get current directory: {e}")))?;
@@ -508,8 +529,15 @@ async fn build_main(
     command: &'static str,
     run_mode: bool,
 ) -> Result<Built, CliError> {
+    // The flags the rc files give the command come first, so the command
+    // line overrides them.
+    let rc = rc_flags(command)?;
+    let with_rc: Vec<String> = rc
+        .into_iter()
+        .chain(args.patterns.iter().cloned())
+        .collect();
     // Only what follows `--` is a pattern that may start with `-`.
-    let (before, after_marker) = workspace::split_end_of_options(&args.patterns);
+    let (before, after_marker) = workspace::split_end_of_options(&with_rc);
     if let Some(negative) = before
         .iter()
         .find(|a| a.starts_with("-@") || a.starts_with("-//"))
@@ -714,6 +742,8 @@ async fn build_main(
         configuration,
         platform: build_flags.platforms.clone(),
         extra_toolchains: build_flags.extra_toolchains.clone(),
+        aspects: build_flags.aspects.clone(),
+        output_groups: build_flags.output_groups.clone(),
         keep_going: diagnostics.keep_going,
         symlink_prefix: build_flags
             .symlink_prefix
@@ -1116,6 +1146,8 @@ mod tests {
             },
             platform: None,
             extra_toolchains: Vec::new(),
+            aspects: Vec::new(),
+            output_groups: Vec::new(),
             keep_going: true,
             symlink_prefix: "bazel-".into(),
             jobs: None,
@@ -1215,6 +1247,8 @@ my_test = rule(implementation = _impl, test = True, attrs = {"exit": attr.int()}
             },
             platform: None,
             extra_toolchains: Vec::new(),
+            aspects: Vec::new(),
+            output_groups: Vec::new(),
             keep_going: true,
             symlink_prefix: "bazel-".into(),
             jobs: None,

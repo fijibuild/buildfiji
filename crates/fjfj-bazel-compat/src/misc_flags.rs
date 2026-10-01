@@ -10,7 +10,12 @@ use crate::flag_registry::FlagRegistry;
 
 /// Flag names this module reads, for `clap_flags::validate`'s
 /// unimplemented-flag gate.
-pub const IMPLEMENTED: &[&str] = &["check_visibility", "memory_profile"];
+pub const IMPLEMENTED: &[&str] = &[
+    "check_visibility",
+    "memory_profile",
+    "enable_bzlmod",
+    "incompatible_strict_action_env",
+];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MiscFlags {
@@ -21,6 +26,12 @@ pub struct MiscFlags {
     /// `--memory_profile=<path>`: write memory usage data here at phase
     /// ends.
     pub memory_profile: Option<PathBuf>,
+    /// `--[no]enable_bzlmod`: on, and bzlmod is the only way to name
+    /// dependencies here; accepted so rc files that say so are read.
+    pub enable_bzlmod: bool,
+    /// `--[no]incompatible_strict_action_env`: actions here always run
+    /// with the strict environment (`PATH` fixed), so off is not honoured yet.
+    pub strict_action_env: bool,
 }
 
 impl Default for MiscFlags {
@@ -28,6 +39,8 @@ impl Default for MiscFlags {
         MiscFlags {
             check_visibility: true,
             memory_profile: None,
+            enable_bzlmod: true,
+            strict_action_env: false,
         }
     }
 }
@@ -51,6 +64,8 @@ pub fn extract(args: &[String], command: &str) -> (MiscFlags, Vec<String>) {
         };
         match m.flag.name {
             "check_visibility" => flags.check_visibility = !m.negated,
+            "enable_bzlmod" => flags.enable_bzlmod = !m.negated,
+            "incompatible_strict_action_env" => flags.strict_action_env = !m.negated,
             "memory_profile" => {
                 match m.value.map(str::to_string).or_else(|| iter.next().cloned()) {
                     Some(value) => flags.memory_profile = Some(PathBuf::from(value)),

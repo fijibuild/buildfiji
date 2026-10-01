@@ -210,8 +210,20 @@ pub fn resolve_command(lines: &[ResolvedLine], command: &str) -> Result<Vec<Stri
     Ok(out)
 }
 
+/// The commands whose flags `command` also takes, as Bazel has them:
+/// `test` and `run` read `build`'s, `coverage` `test`'s and so `build`'s.
+fn inherits(command: &str) -> &'static [&'static str] {
+    match command {
+        "test" | "run" | "cquery" | "aquery" | "mobile-install" | "print_action" => &["build"],
+        "coverage" => &["build", "test"],
+        _ => &[],
+    }
+}
+
 fn applies_to(line: &ResolvedLine, command: &str) -> bool {
-    line.command == command || line.command == "common"
+    line.command == command
+        || line.command == "common"
+        || inherits(command).contains(&line.command.as_str())
 }
 
 fn append_expanding(
