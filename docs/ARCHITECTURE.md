@@ -39,6 +39,7 @@ and remote executors with Bazel.
 | `fjfj-starlark` | Starlark evaluation, Bazel builtins (`rule`, `aspect`, `provider`, `native`, `select`, `ctx`); `native.*` and `evaluate_build_file` (a BUILD file into a `Package`) are here. |
 | `fjfj-graph` | Labels, packages, targets, configured targets, aspects, actions, digests. Pure data. |
 | `fjfj-loading` | The loading phase's view of the filesystem: which directories are packages (BUILD lookup, `.bazelignore`, `--deleted_packages`, the `//...` walk) and `glob`. |
+| `fjfj-engine` | The memoising graph all three phases are nodes of: async keys, versioned dependency edges, early cutoff, cycle detection, shared in-flight work. |
 | `fjfj-exec` | Action scheduler: strategy selection, action cache lookup, local vs remote. |
 | `fjfj-sandbox` | Local execution strategies (`local`, linux namespaces, darwin seatbelt, OCI). |
 | `fjfj-remote` | REAPI client: CAS, action cache, execution, capabilities. Disk cache. |
@@ -46,7 +47,7 @@ and remote executors with Bazel.
 | `fjfj-models` | Stateright models of protocols (publish, scheduler, daemon, compaction); not shipped. |
 | `fjfj-proto` | Command service proto (`RunCommand` streaming, `Cancel`, `Ping`, `Shutdown`, `Info`); prost/tonic codegen under both Cargo (`build.rs`) and Bazel (`rust_prost_library`) from one `.proto` source. |
 
-Planned crates: `fjfj-engine` (incremental memoising graph), `fjfj-daemon`
+Planned crates: `fjfj-daemon`
 (gRPC over UDS client/server, consumes `fjfj-proto`), `fjfj-query`
 (query/cquery/aquery).
 

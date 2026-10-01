@@ -1,0 +1,18 @@
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+
+package(default_visibility = ["//visibility:public"])
+
+rust_library(
+    name = "fjfj-engine",
+    srcs = glob(["src/**/*.rs"]),
+    crate_name = "fjfj_engine",
+    edition = "2024",
+    version = "0.0.1",
+    deps = ["@crates//:futures", "@crates//:thiserror", "@crates//:tracing"],
+)
+
+rust_test(
+    name = "fjfj-engine_test",
+    crate = ":fjfj-engine",
+    deps = ["@crates//:tokio"],
+)
