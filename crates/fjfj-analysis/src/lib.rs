@@ -8,6 +8,7 @@
 //! engine's data.
 
 mod native;
+mod runfiles_tree;
 mod select;
 mod starlark_rule;
 mod target;

@@ -92,13 +92,16 @@ pub(crate) struct Request {
 #[derive(Debug)]
 pub(crate) struct TargetResult {
     pub label: Label,
+    /// What was analysed: its executable, its rule class, its runfiles.
+    pub target: Arc<ConfiguredTarget>,
     /// The files it built, as `bazel-bin/...` paths.
     pub files: Vec<String>,
     pub built: bool,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(crate) struct Report {
+    pub layout: Layout,
     /// What successful commands printed, with what each was doing.
     pub outputs: Vec<(String, String)>,
     /// What rules `print()`ed while they were analysed.
@@ -116,6 +119,23 @@ pub(crate) struct Report {
 }
 
 impl Report {
+    fn new(layout: Layout) -> Report {
+        Report {
+            layout,
+            outputs: Vec::new(),
+            printed: Vec::new(),
+            results: Vec::new(),
+            analysis_errors: Vec::new(),
+            failures: Vec::new(),
+            configured: 0,
+            packages: 0,
+            total_actions: 0,
+            spawned: 0,
+            elapsed: Duration::ZERO,
+            execution: Duration::ZERO,
+        }
+    }
+
     pub fn succeeded(&self) -> bool {
         self.analysis_errors.is_empty() && self.failures.is_empty()
     }
@@ -176,7 +196,7 @@ async fn analyse(
 /// Build `targets`. Blocking; run where a Tokio runtime is current.
 pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> Report {
     let started = Instant::now();
-    let mut report = Report::default();
+    let mut report = Report::new(request.layout.clone());
     let analysis = engine(Env {
         source: repos.clone(),
         rules: repos.clone(),
@@ -203,7 +223,10 @@ pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> R
 
     let actions: Vec<Action> = all.iter().flat_map(|t| t.actions.clone()).collect();
     report.total_actions = actions.len();
-    let wanted: Vec<Artifact> = roots.iter().flat_map(|(_, t)| t.files.to_vec()).collect();
+    let wanted: Vec<Artifact> = roots
+        .iter()
+        .flat_map(|(_, t)| t.files.to_vec().into_iter().chain(t.extra_outputs.clone()))
+        .collect();
     if let Err(e) = request.layout.prepare() {
         report.analysis_errors.push((
             Label {
@@ -276,12 +299,29 @@ pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> R
             .collect();
         report.results.push(TargetResult {
             label: label.clone(),
+            target: target.clone(),
             files,
             built,
         });
     }
     report.elapsed = started.elapsed();
     report
+}
+
+/// What the main repository is called in a runfiles tree.
+pub(crate) const MAIN_REPO_NAME: &str = MAIN_REPO_DIR;
+
+pub(crate) fn label_name(label: &Label) -> String {
+    label_text(label)
+}
+
+/// A file as the console names it: `bazel-bin/pkg/f` for a derived one.
+pub(crate) fn shown_path(
+    prefix: &str,
+    configuration: &Configuration,
+    artifact: &Artifact,
+) -> String {
+    shown(prefix, configuration, artifact)
 }
 
 /// A file as the console names it: `bazel-bin/pkg/f` for a derived one.

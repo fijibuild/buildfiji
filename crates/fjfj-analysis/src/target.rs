@@ -70,6 +70,9 @@ pub struct ConfiguredTarget {
     pub runfiles: fjfj_graph::Runfiles,
     /// The files the rule declares it creates, by target name.
     pub outputs: BTreeMap<String, Artifact>,
+    /// Files built with the target that its results do not list: the
+    /// runfiles tree of an executable.
+    pub extra_outputs: Vec<Artifact>,
     /// The providers it gave besides `DefaultInfo`.
     pub providers: Vec<StoredProvider>,
     /// What its rule printed.
@@ -92,6 +95,7 @@ impl ConfiguredTarget {
             executable: None,
             runfiles: fjfj_graph::Runfiles::default(),
             outputs: BTreeMap::new(),
+            extra_outputs: Vec::new(),
             providers: Vec::new(),
             printed: Vec::new(),
             config_matching: None,

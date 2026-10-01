@@ -276,3 +276,65 @@ filegroup(name = "e", srcs = select({":fast": ["f.txt"], ":opt": ["o.txt"]}) + [
         ["o.txt"]
     );
 }
+
+/// Probed with `bazel build` and `aquery` of the same rule.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_executable_rule_gets_the_runfiles_tree_bazel_makes() {
+    let (_dir, repos) = workspace(&[
+        ("MODULE.bazel", ""),
+        (
+            "defs.bzl",
+            r#"
+def _impl(ctx):
+    exe = ctx.actions.declare_file(ctx.label.name)
+    ctx.actions.write(exe, "exit 0\n", is_executable = True)
+    return [DefaultInfo(executable = exe, runfiles = ctx.runfiles(files = ctx.files.data))]
+
+my_bin = rule(implementation = _impl, executable = True, attrs = {"data": attr.label_list(allow_files = True)})
+"#,
+        ),
+        (
+            "pkg/BUILD.bazel",
+            "load('//:defs.bzl', 'my_bin')\nexports_files(['data.txt'])\nmy_bin(name = 'bin', data = ['data.txt'])\n",
+        ),
+        ("BUILD.bazel", ""),
+        ("pkg/data.txt", "d"),
+    ]);
+    let bin = analyse(&repos, "//pkg:bin").await.unwrap();
+    // The executable is built with the target; the tree is built, not reported.
+    assert_eq!(paths(&bin.files), [format!("{BIN}/pkg/bin")]);
+    let extra: Vec<String> = bin.extra_outputs.iter().map(|a| a.exec_path()).collect();
+    assert_eq!(
+        extra,
+        [
+            format!("{BIN}/pkg/bin.runfiles"),
+            format!("{BIN}/pkg/bin.runfiles_manifest"),
+            format!("{BIN}/pkg/bin.repo_mapping"),
+        ]
+    );
+    let tree = bin
+        .actions
+        .iter()
+        .find(|a| a.mnemonic == "SymlinkTree")
+        .unwrap();
+    let ActionKind::RunfilesTree {
+        entries,
+        repo_mapping_contents,
+        ..
+    } = &tree.kind
+    else {
+        panic!()
+    };
+    let entries: Vec<(String, String)> = entries
+        .iter()
+        .map(|(p, a)| (p.clone(), a.exec_path()))
+        .collect();
+    assert_eq!(
+        entries,
+        [
+            ("_main/pkg/bin".to_owned(), format!("{BIN}/pkg/bin")),
+            ("_main/pkg/data.txt".to_owned(), "pkg/data.txt".to_owned()),
+        ]
+    );
+    assert_eq!(repo_mapping_contents, ",m,_main\n");
+}

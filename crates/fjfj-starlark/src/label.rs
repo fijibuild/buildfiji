@@ -110,6 +110,15 @@ impl RepoMappings {
         mappings
     }
 
+    /// What the repo `repo` calls each repo it can name, as `(apparent,
+    /// canonical)` pairs in order.
+    pub fn entries(&self, repo: &str) -> Vec<(String, String)> {
+        self.by_repo
+            .get(repo)
+            .map(|m| m.iter().map(|(a, c)| (a.clone(), c.clone())).collect())
+            .unwrap_or_default()
+    }
+
     /// Note that the file `file` (as [`bzl_name`] writes it) wrote the repo name
     /// `apparent` in a label.
     pub(crate) fn note_lookup(&self, file: &Label, apparent: &str) {

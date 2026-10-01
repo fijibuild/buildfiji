@@ -22,6 +22,19 @@ pub enum ActionKind {
     WriteFile { contents: Vec<u8>, executable: bool },
     /// Make the output a symlink to `target`, an exec path.
     Symlink { target: String },
+    /// Make the runfiles tree of an executable: a directory of symlinks at
+    /// `dir`, a manifest and a repository mapping beside it.
+    RunfilesTree {
+        /// `bazel-out/k8-fastbuild/bin/pkg/bin.runfiles`.
+        dir: String,
+        /// `bin.runfiles_manifest`.
+        manifest: String,
+        /// `bin.repo_mapping`, and what it holds.
+        repo_mapping: String,
+        repo_mapping_contents: String,
+        /// Each link as a path under `dir` and the file it leads to.
+        entries: Vec<(String, Artifact)>,
+    },
     /// Write the file `template`, with each key replaced by its value.
     Template {
         template: String,

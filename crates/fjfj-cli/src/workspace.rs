@@ -36,7 +36,9 @@ pub(crate) fn locate(cwd: &Path) -> Option<(PathBuf, String)> {
 /// negative pattern from a flag. Writing it twice leaves one in the
 /// positionals of `build`.
 pub(crate) fn keep_end_of_options(args: Vec<OsString>) -> Vec<OsString> {
-    let command = args.iter().position(|a| a == "build");
+    let command = args
+        .iter()
+        .position(|a| a == "build" || a == "run" || a == "test");
     let marker = command.and_then(|c| args[c..].iter().position(|a| a == "--"));
     let mut args = args;
     if let (Some(c), Some(m)) = (command, marker) {

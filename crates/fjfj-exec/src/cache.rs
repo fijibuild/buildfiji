@@ -154,6 +154,23 @@ impl ActionCache {
                 field(b"symlink");
                 field(target.as_bytes());
             }
+            ActionKind::RunfilesTree {
+                dir,
+                manifest,
+                repo_mapping,
+                repo_mapping_contents,
+                entries,
+            } => {
+                field(b"runfiles");
+                field(dir.as_bytes());
+                field(manifest.as_bytes());
+                field(repo_mapping.as_bytes());
+                field(repo_mapping_contents.as_bytes());
+                for (path, artifact) in entries {
+                    field(path.as_bytes());
+                    field(artifact.exec_path().as_bytes());
+                }
+            }
             ActionKind::Template {
                 template,
                 substitutions,
@@ -206,6 +223,7 @@ impl ActionCache {
                 // A symlink output is current while it is a link.
                 match std::fs::symlink_metadata(root.join(path)) {
                     Ok(meta) if meta.file_type().is_symlink() => digest == "symlink",
+                    Ok(meta) if meta.is_dir() => digest == "directory",
                     Ok(_) => self.digest(root, path).as_deref() == Some(digest.as_str()),
                     Err(_) => false,
                 }
@@ -224,6 +242,7 @@ impl ActionCache {
                 let path = out.exec_path();
                 let digest = match std::fs::symlink_metadata(root.join(&path)) {
                     Ok(meta) if meta.file_type().is_symlink() => "symlink".to_owned(),
+                    Ok(meta) if meta.is_dir() => "directory".to_owned(),
                     _ => self.digest(root, &path).unwrap_or_default(),
                 };
                 (path, digest)

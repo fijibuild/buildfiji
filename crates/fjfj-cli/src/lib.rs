@@ -33,6 +33,7 @@ use fjfj_remote::execution_log::{CompactExecutionLogWriter, EntryType, ExecLogEn
 mod build_command;
 mod fetch_command;
 mod mod_command;
+mod run_command;
 mod workspace;
 
 /// `fjfj license`'s output. Bazel's own prints an equivalent short notice
@@ -76,13 +77,16 @@ pub enum CliError {
     /// The build failed and has said why: only the exit code is left.
     #[error("the build failed")]
     Reported,
+    /// The program `run` ran exited with this code.
+    #[error("the program exited with {0}")]
+    Program(u8),
 }
 
 impl CliError {
     fn exit_code(&self) -> ExitCode {
         match self {
             CliError::CommandLine(_) => ExitCode::CommandLineProblem,
-            CliError::Build(_) | CliError::Reported => ExitCode::BuildFailed,
+            CliError::Build(_) | CliError::Reported | CliError::Program(_) => ExitCode::BuildFailed,
             CliError::Fetch(_) => ExitCode::Interrupted,
             CliError::Internal(_) => ExitCode::InternalError,
         }
@@ -96,7 +100,7 @@ impl CliError {
                 messages::error(e)
             }
             CliError::Internal(e) => messages::fatal(e),
-            CliError::Reported => String::new(),
+            CliError::Reported | CliError::Program(_) => String::new(),
         }
     }
 }
@@ -344,6 +348,9 @@ pub fn main() -> std::process::ExitCode {
             if !line.is_empty() {
                 eprintln!("{line}");
             }
+            if let CliError::Program(code) = e {
+                return std::process::ExitCode::from(code);
+            }
             e.exit_code().into()
         }
     }
@@ -366,253 +373,8 @@ async fn run(cli: Cli) -> Result<(), CliError> {
             println!("{}", canonical.join(" "));
             Ok(())
         }
-        Command::Build(args) => {
-            // Only what follows `--` is a pattern that may start with `-`.
-            let (before, after_marker) = workspace::split_end_of_options(&args.patterns);
-            if let Some(negative) = before
-                .iter()
-                .find(|a| a.starts_with("-@") || a.starts_with("-//"))
-            {
-                return Err(CliError::CommandLine(anyhow::anyhow!(
-                    "Invalid options syntax: {negative}\nNote: Negative target patterns can only \
-                     appear after the end of options marker ('--'). Flags corresponding to \
-                     Starlark-defined build settings always start with '--', not '-'."
-                )));
-            }
-            let (aliases, rest) = flag_alias::extract(before)
-                .map_err(|e| CliError::CommandLine(anyhow::Error::from(e)))?;
-            let rest = flag_alias::apply(&aliases, &rest);
-            // buildfiji-gwl.15/gwl.16: validate every flag token against
-            // the full generated `bazel_flags` table *before* any typed
-            // extraction runs, and fail loudly — rather than warning and
-            // continuing — on a flag that isn't a real Bazel flag for
-            // `build`, or is one but no module below actually reads it.
-            // Silently accepting the latter would let a build proceed
-            // with the flag's value doing nothing, which is worse than
-            // refusing to run: see `docs/design/cli-compat.md`'s "Flag
-            // surface" decision. This also keeps a leftover token from
-            // ever reaching `TargetPattern::from_str`, whose "pattern
-            // must start with // or @" error is misleading for a flag
-            // typo.
-            const BUILD_IMPLEMENTED: &[&[&str]] = &[
-                flag_alias::IMPLEMENTED,
-                build_flags::IMPLEMENTED,
-                diagnostics_flags::IMPLEMENTED,
-                workspace_status_flags::IMPLEMENTED,
-                misc_flags::IMPLEMENTED,
-                output_filter::IMPLEMENTED,
-                execution_log_flags::IMPLEMENTED,
-                remote_flags::IMPLEMENTED,
-                bes_flags::IMPLEMENTED,
-                bzlmod_flags::IMPLEMENTED,
-                console_flags::IMPLEMENTED,
-                fetch_command::BUILD_IMPLEMENTED,
-            ];
-            let implemented: Vec<&'static str> = BUILD_IMPLEMENTED
-                .iter()
-                .flat_map(|s| s.iter().copied())
-                .collect();
-            clap_flags::validate(&rest, "build", &implemented)
-                .map_err(|e| CliError::CommandLine(anyhow::Error::from(e)))?;
-            let (build_flags, rest) = build_flags::extract(&rest, "build");
-            let (diagnostics, rest) = diagnostics_flags::extract(&rest, "build");
-            let (workspace_status, rest) = workspace_status_flags::extract(&rest, "build");
-            let (misc, rest) = misc_flags::extract(&rest, "build");
-            let (output_filter_flags, rest) = output_filter::extract(&rest, "build");
-            let (execution_log, rest) = execution_log_flags::extract(&rest, "build");
-            let (remote, rest) = remote_flags::extract(&rest, "build");
-            let (bes, rest) = bes_flags::extract(&rest, "build");
-            let (bzlmod, rest) = bzlmod_flags::extract(&rest, "build");
-            let (repo_flags, rest) = fetch_command::extract(&rest)?;
-            let (console_flags, rest) = console_flags::extract(&rest, "build");
-            // Everything left is a bare positional now that `validate`
-            // above has ruled out any unimplemented or unrecognized flag.
-            let cwd = std::env::current_dir().map_err(|e| {
-                CliError::Internal(anyhow::anyhow!("couldn't get current directory: {e}"))
-            })?;
-            let (_, offset) = workspace::locate(&cwd).ok_or_else(|| {
-                CliError::CommandLine(anyhow::anyhow!(workspace::not_in_a_workspace("build")))
-            })?;
-            let context = PatternContext {
-                repo: "",
-                offset: &offset,
-            };
-            // The main module's repo mapping is not known until the module
-            // graph is resolved, so an apparent name stays as written; what
-            // the pattern wrote is what `fetch --repo` takes.
-            let patterns = rest
-                .iter()
-                .chain(after_marker)
-                .map(|p| TargetPattern::parse(p, context, &mut |apparent| apparent.to_owned()))
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(|e| CliError::CommandLine(anyhow::Error::from(e)))?;
-            let command_line_packages = patterns.iter().map(|p| p.pattern.package().to_owned());
-            let _output_filter =
-                output_filter::OutputFilter::compile(&output_filter_flags, command_line_packages)
-                    .map_err(|e| CliError::CommandLine(anyhow::Error::from(e)))?;
-            tracing::debug!(
-                ?patterns,
-                ?diagnostics,
-                ?workspace_status,
-                ?misc,
-                ?aliases,
-                ?output_filter_flags,
-                ?execution_log,
-                ?remote,
-                ?bes,
-                ?bzlmod,
-                ?console_flags,
-                "build requested"
-            );
-            // buildfiji-k62.5: real console output for the two steps that
-            // exist so far. `total: 0` is `ProgressUpdate`'s "unknown yet"
-            // form — there's no fixed step count worth promising the user,
-            // only "here's what's happening now" until real action counts
-            // exist to build a `[done / total]` bar from.
-            let mut console = ConsoleUi::new(
-                std::io::stdout(),
-                &console_flags,
-                std::io::stdout().is_terminal(),
-            )
-            .map_err(|e| CliError::CommandLine(anyhow::anyhow!("--ui_event_filters: {e}")))?;
-            // Just a writability check: there is no REAPI client yet to
-            // make a gRPC call worth logging, so unlike the execution log
-            // above there is no header entry to write. Still fails fast on
-            // a bad path rather than waiting for remote execution to exist.
-            if let Some(path) = &remote.remote_grpc_log {
-                std::fs::File::create(path).map_err(|e| {
-                    CliError::CommandLine(anyhow::anyhow!(
-                        "couldn't open --remote_grpc_log {}: {e}",
-                        path.display()
-                    ))
-                })?;
-            }
-            // Opened and given its Invocation header now, for the same
-            // fail-fast reason as --workspace_status_command above: an
-            // unwritable --execution_log_compact_file path should reject
-            // the build immediately, not silently produce nothing once
-            // there are real spawns to log. The invocation id is left
-            // empty until there is a daemon-assigned one to put here (see
-            // `invocation_id` in fjfj-proto's command.proto).
-            if let Some(path) = &execution_log.execution_log_compact_file {
-                let file = std::fs::File::create(path).map_err(|e| {
-                    CliError::CommandLine(anyhow::anyhow!(
-                        "couldn't open --execution_log_compact_file {}: {e}",
-                        path.display()
-                    ))
-                })?;
-                let mut writer = CompactExecutionLogWriter::new(file)
-                    .map_err(|e| CliError::Internal(anyhow::Error::from(e)))?;
-                writer
-                    .write_entry(&ExecLogEntry {
-                        id: 0,
-                        r#type: Some(EntryType::Invocation(Invocation {
-                            hash_function_name: "SHA-256".into(),
-                            workspace_runfiles_directory: "_main".into(),
-                            sibling_repository_layout: true,
-                            id: String::new(),
-                        })),
-                    })
-                    .map_err(|e| CliError::Internal(anyhow::Error::from(e)))?;
-                writer
-                    .finish()
-                    .map_err(|e| CliError::Internal(anyhow::Error::from(e)))?;
-            }
-            // Computed and logged now so `--workspace_status_command` and
-            // `--stamp` fail fast the way Bazel does, even before there's
-            // a real build to stamp; the snapshot isn't written to disk
-            // yet since there's no execroot/bazel-out layout for
-            // stable-status.txt/volatile-status.txt to land in (see
-            // fjfj_exec::workspace_status).
-            console
-                .progress(&ProgressUpdate {
-                    done: 1,
-                    total: 0,
-                    message: "Computing workspace status".to_owned(),
-                })
-                .map_err(|e| CliError::Internal(anyhow::anyhow!("console write failed: {e}")))?;
-            let status = fjfj_exec::workspace_status::compute(&workspace_status)
-                .await
-                .map_err(|e| CliError::Build(anyhow::anyhow!(e)))?;
-            tracing::info!(stable = ?status.stable, "workspace status computed");
-            // buildfiji-gwl.17: resolve the bzlmod module graph now, same
-            // fail-fast reasoning as the workspace status and execution log
-            // above.
-            console
-                .progress(&ProgressUpdate {
-                    done: 2,
-                    total: 0,
-                    message: "Resolving MODULE.bazel".to_owned(),
-                })
-                .map_err(|e| CliError::Internal(anyhow::anyhow!("console write failed: {e}")))?;
-            let texts: Vec<String> = rest.iter().chain(after_marker).cloned().collect();
-            let build = build_command::Options {
-                configuration: build_command::configuration_from(&build_flags)
-                    .map_err(|e| CliError::CommandLine(anyhow::anyhow!(e)))?,
-                keep_going: diagnostics.keep_going,
-                symlink_prefix: build_flags
-                    .symlink_prefix
-                    .clone()
-                    .unwrap_or_else(|| "bazel-".to_owned()),
-                jobs: build_command::jobs_from(build_flags.jobs.as_deref())
-                    .map_err(|e| CliError::CommandLine(anyhow::anyhow!(e)))?,
-                show_result: match build_flags.show_result.as_deref() {
-                    None => 1,
-                    Some(n) => n.parse().map_err(|_| {
-                        CliError::CommandLine(anyhow::anyhow!(
-                            "--show_result: '{n}' is not a non-negative integer"
-                        ))
-                    })?,
-                },
-            };
-            let build_show_result = build.show_result;
-            let loaded =
-                fetch_repositories_for_build(repo_flags, &bzlmod, texts, offset, build).await?;
-            let resolution = loaded.resolution;
-            let targets = loaded.targets;
-            tracing::info!(
-                selected_modules = resolution.selection.keys().count(),
-                "bzlmod module graph resolved"
-            );
-            if !targets.failures.is_empty() {
-                eprintln!("WARNING: Target pattern parsing failed.");
-                for failure in &targets.failures {
-                    eprintln!("ERROR: Skipping '{}': {}", failure.pattern, failure.message);
-                }
-                if !diagnostics.keep_going {
-                    return Err(CliError::Build(anyhow::anyhow!(
-                        "{}",
-                        targets.failures[0].message
-                    )));
-                }
-            }
-            let Some(report) = loaded.report else {
-                return Err(CliError::Build(anyhow::anyhow!(
-                    "command succeeded, but there were errors parsing the target pattern"
-                )));
-            };
-            let layout = fjfj_exec::execroot::Layout {
-                workspace: locate_workspace_root("build")?,
-                output_base: std::path::PathBuf::new(),
-            };
-            let succeeded = build_command::print(
-                &report,
-                targets.targets.len(),
-                build_show_result,
-                diagnostics.keep_going,
-                &layout,
-                diagnostics.verbose_failures,
-            );
-            if !succeeded {
-                return Err(CliError::Reported);
-            }
-            if !targets.failures.is_empty() {
-                return Err(CliError::Build(anyhow::anyhow!(
-                    "command succeeded, but there were errors parsing the target pattern"
-                )));
-            }
-            Ok(())
-        }
+        Command::Build(args) => build_main(args, "build", false).await.map(|_| ()),
+        Command::Run(args) => run_command::run(args).await,
         Command::Mod(args) => {
             let (subcommand, rest) = args.expr.split_first().ok_or_else(|| {
                 CliError::CommandLine(anyhow::anyhow!(
@@ -689,6 +451,279 @@ async fn run(cli: Cli) -> Result<(), CliError> {
             "command not implemented yet: {other:?}"
         ))),
     }
+}
+
+/// What a `build`, `run` or `test` has built.
+pub(crate) struct Built {
+    pub(crate) report: build_command::Report,
+    pub(crate) layout: fjfj_exec::execroot::Layout,
+    pub(crate) options: build_command::Options,
+    /// `run`: what followed the target, for the program.
+    pub(crate) program_args: Vec<String>,
+}
+
+/// `fjfj build`, and the building half of `run` and `test`. `args` are flags
+/// and target patterns; `Ok(None)` if the targets did not build.
+async fn build_main(
+    args: fjfj_bazel_compat::TargetArgs,
+    command: &'static str,
+    run_mode: bool,
+) -> Result<Built, CliError> {
+    // Only what follows `--` is a pattern that may start with `-`.
+    let (before, after_marker) = workspace::split_end_of_options(&args.patterns);
+    if let Some(negative) = before
+        .iter()
+        .find(|a| a.starts_with("-@") || a.starts_with("-//"))
+    {
+        return Err(CliError::CommandLine(anyhow::anyhow!(
+            "Invalid options syntax: {negative}\nNote: Negative target patterns can only \
+             appear after the end of options marker ('--'). Flags corresponding to \
+             Starlark-defined build settings always start with '--', not '-'."
+        )));
+    }
+    let (aliases, rest) =
+        flag_alias::extract(before).map_err(|e| CliError::CommandLine(anyhow::Error::from(e)))?;
+    let rest = flag_alias::apply(&aliases, &rest);
+    // buildfiji-gwl.15/gwl.16: validate every flag token against
+    // the full generated `bazel_flags` table *before* any typed
+    // extraction runs, and fail loudly — rather than warning and
+    // continuing — on a flag that isn't a real Bazel flag for
+    // `build`, or is one but no module below actually reads it.
+    // Silently accepting the latter would let a build proceed
+    // with the flag's value doing nothing, which is worse than
+    // refusing to run: see `docs/design/cli-compat.md`'s "Flag
+    // surface" decision. This also keeps a leftover token from
+    // ever reaching `TargetPattern::from_str`, whose "pattern
+    // must start with // or @" error is misleading for a flag
+    // typo.
+    const BUILD_IMPLEMENTED: &[&[&str]] = &[
+        flag_alias::IMPLEMENTED,
+        build_flags::IMPLEMENTED,
+        diagnostics_flags::IMPLEMENTED,
+        workspace_status_flags::IMPLEMENTED,
+        misc_flags::IMPLEMENTED,
+        output_filter::IMPLEMENTED,
+        execution_log_flags::IMPLEMENTED,
+        remote_flags::IMPLEMENTED,
+        bes_flags::IMPLEMENTED,
+        bzlmod_flags::IMPLEMENTED,
+        console_flags::IMPLEMENTED,
+        fetch_command::BUILD_IMPLEMENTED,
+    ];
+    let implemented: Vec<&'static str> = BUILD_IMPLEMENTED
+        .iter()
+        .flat_map(|s| s.iter().copied())
+        .collect();
+    clap_flags::validate(&rest, command, &implemented)
+        .map_err(|e| CliError::CommandLine(anyhow::Error::from(e)))?;
+    let (build_flags, rest) = build_flags::extract(&rest, command);
+    let (diagnostics, rest) = diagnostics_flags::extract(&rest, command);
+    let (workspace_status, rest) = workspace_status_flags::extract(&rest, command);
+    let (misc, rest) = misc_flags::extract(&rest, command);
+    let (output_filter_flags, rest) = output_filter::extract(&rest, command);
+    let (execution_log, rest) = execution_log_flags::extract(&rest, command);
+    let (remote, rest) = remote_flags::extract(&rest, command);
+    let (bes, rest) = bes_flags::extract(&rest, command);
+    let (bzlmod, rest) = bzlmod_flags::extract(&rest, command);
+    let (repo_flags, rest) = fetch_command::extract(&rest)?;
+    let (console_flags, rest) = console_flags::extract(&rest, command);
+    // Everything left is a bare positional now that `validate`
+    // above has ruled out any unimplemented or unrecognized flag.
+    let cwd = std::env::current_dir()
+        .map_err(|e| CliError::Internal(anyhow::anyhow!("couldn't get current directory: {e}")))?;
+    let (_, offset) = workspace::locate(&cwd).ok_or_else(|| {
+        CliError::CommandLine(anyhow::anyhow!(workspace::not_in_a_workspace(command)))
+    })?;
+    let context = PatternContext {
+        repo: "",
+        offset: &offset,
+    };
+    // The main module's repo mapping is not known until the module
+    // graph is resolved, so an apparent name stays as written; what
+    // the pattern wrote is what `fetch --repo` takes.
+    let patterns = rest
+        .iter()
+        .chain(after_marker)
+        .map(|p| TargetPattern::parse(p, context, &mut |apparent| apparent.to_owned()))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| CliError::CommandLine(anyhow::Error::from(e)))?;
+    let command_line_packages = patterns.iter().map(|p| p.pattern.package().to_owned());
+    let _output_filter =
+        output_filter::OutputFilter::compile(&output_filter_flags, command_line_packages)
+            .map_err(|e| CliError::CommandLine(anyhow::Error::from(e)))?;
+    tracing::debug!(
+        ?patterns,
+        ?diagnostics,
+        ?workspace_status,
+        ?misc,
+        ?aliases,
+        ?output_filter_flags,
+        ?execution_log,
+        ?remote,
+        ?bes,
+        ?bzlmod,
+        ?console_flags,
+        "build requested"
+    );
+    // buildfiji-k62.5: real console output for the two steps that
+    // exist so far. `total: 0` is `ProgressUpdate`'s "unknown yet"
+    // form — there's no fixed step count worth promising the user,
+    // only "here's what's happening now" until real action counts
+    // exist to build a `[done / total]` bar from.
+    let mut console = ConsoleUi::new(
+        std::io::stdout(),
+        &console_flags,
+        std::io::stdout().is_terminal(),
+    )
+    .map_err(|e| CliError::CommandLine(anyhow::anyhow!("--ui_event_filters: {e}")))?;
+    // Just a writability check: there is no REAPI client yet to
+    // make a gRPC call worth logging, so unlike the execution log
+    // above there is no header entry to write. Still fails fast on
+    // a bad path rather than waiting for remote execution to exist.
+    if let Some(path) = &remote.remote_grpc_log {
+        std::fs::File::create(path).map_err(|e| {
+            CliError::CommandLine(anyhow::anyhow!(
+                "couldn't open --remote_grpc_log {}: {e}",
+                path.display()
+            ))
+        })?;
+    }
+    // Opened and given its Invocation header now, for the same
+    // fail-fast reason as --workspace_status_command above: an
+    // unwritable --execution_log_compact_file path should reject
+    // the build immediately, not silently produce nothing once
+    // there are real spawns to log. The invocation id is left
+    // empty until there is a daemon-assigned one to put here (see
+    // `invocation_id` in fjfj-proto's command.proto).
+    if let Some(path) = &execution_log.execution_log_compact_file {
+        let file = std::fs::File::create(path).map_err(|e| {
+            CliError::CommandLine(anyhow::anyhow!(
+                "couldn't open --execution_log_compact_file {}: {e}",
+                path.display()
+            ))
+        })?;
+        let mut writer = CompactExecutionLogWriter::new(file)
+            .map_err(|e| CliError::Internal(anyhow::Error::from(e)))?;
+        writer
+            .write_entry(&ExecLogEntry {
+                id: 0,
+                r#type: Some(EntryType::Invocation(Invocation {
+                    hash_function_name: "SHA-256".into(),
+                    workspace_runfiles_directory: "_main".into(),
+                    sibling_repository_layout: true,
+                    id: String::new(),
+                })),
+            })
+            .map_err(|e| CliError::Internal(anyhow::Error::from(e)))?;
+        writer
+            .finish()
+            .map_err(|e| CliError::Internal(anyhow::Error::from(e)))?;
+    }
+    // Computed and logged now so `--workspace_status_command` and
+    // `--stamp` fail fast the way Bazel does, even before there's
+    // a real build to stamp; the snapshot isn't written to disk
+    // yet since there's no execroot/bazel-out layout for
+    // stable-status.txt/volatile-status.txt to land in (see
+    // fjfj_exec::workspace_status).
+    console
+        .progress(&ProgressUpdate {
+            done: 1,
+            total: 0,
+            message: "Computing workspace status".to_owned(),
+        })
+        .map_err(|e| CliError::Internal(anyhow::anyhow!("console write failed: {e}")))?;
+    let status = fjfj_exec::workspace_status::compute(&workspace_status)
+        .await
+        .map_err(|e| CliError::Build(anyhow::anyhow!(e)))?;
+    tracing::info!(stable = ?status.stable, "workspace status computed");
+    // buildfiji-gwl.17: resolve the bzlmod module graph now, same
+    // fail-fast reasoning as the workspace status and execution log
+    // above.
+    console
+        .progress(&ProgressUpdate {
+            done: 2,
+            total: 0,
+            message: "Resolving MODULE.bazel".to_owned(),
+        })
+        .map_err(|e| CliError::Internal(anyhow::anyhow!("console write failed: {e}")))?;
+    // `run` takes the first target and gives the rest to the program.
+    let (texts, program_args): (Vec<String>, Vec<String>) = if run_mode {
+        let mut all = rest.iter().chain(after_marker).cloned();
+        (all.next().into_iter().collect(), all.collect())
+    } else {
+        (
+            rest.iter().chain(after_marker).cloned().collect(),
+            Vec::new(),
+        )
+    };
+    let build = build_command::Options {
+        configuration: build_command::configuration_from(&build_flags)
+            .map_err(|e| CliError::CommandLine(anyhow::anyhow!(e)))?,
+        keep_going: diagnostics.keep_going,
+        symlink_prefix: build_flags
+            .symlink_prefix
+            .clone()
+            .unwrap_or_else(|| "bazel-".to_owned()),
+        jobs: build_command::jobs_from(build_flags.jobs.as_deref())
+            .map_err(|e| CliError::CommandLine(anyhow::anyhow!(e)))?,
+        show_result: match build_flags.show_result.as_deref() {
+            None => 1,
+            Some(n) => n.parse().map_err(|_| {
+                CliError::CommandLine(anyhow::anyhow!(
+                    "--show_result: '{n}' is not a non-negative integer"
+                ))
+            })?,
+        },
+    };
+    let build_show_result = build.show_result;
+    let build_options = build.clone();
+    let loaded = fetch_repositories_for_build(repo_flags, &bzlmod, texts, offset, build).await?;
+    let resolution = loaded.resolution;
+    let targets = loaded.targets;
+    tracing::info!(
+        selected_modules = resolution.selection.keys().count(),
+        "bzlmod module graph resolved"
+    );
+    if !targets.failures.is_empty() {
+        eprintln!("WARNING: Target pattern parsing failed.");
+        for failure in &targets.failures {
+            eprintln!("ERROR: Skipping '{}': {}", failure.pattern, failure.message);
+        }
+        if !diagnostics.keep_going {
+            return Err(CliError::Build(anyhow::anyhow!(
+                "{}",
+                targets.failures[0].message
+            )));
+        }
+    }
+    let Some(report) = loaded.report else {
+        return Err(CliError::Build(anyhow::anyhow!(
+            "command succeeded, but there were errors parsing the target pattern"
+        )));
+    };
+    let layout = report.layout.clone();
+    let succeeded = build_command::print(
+        &report,
+        targets.targets.len(),
+        build_show_result,
+        diagnostics.keep_going,
+        &layout,
+        diagnostics.verbose_failures,
+    );
+    if !succeeded {
+        return Err(CliError::Reported);
+    }
+    if !targets.failures.is_empty() {
+        return Err(CliError::Build(anyhow::anyhow!(
+            "command succeeded, but there were errors parsing the target pattern"
+        )));
+    }
+    Ok(Built {
+        report,
+        layout,
+        options: build_options,
+        program_args,
+    })
 }
 
 #[cfg(test)]

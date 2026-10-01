@@ -246,7 +246,14 @@ pub fn run_rule(req: &RuleRequest) -> Result<RuleResult, String> {
         Ok((list, _)) => frozen_items(&list),
         Err(_) => Vec::new(),
     };
-    let files = default_files.unwrap_or_else(|| outputs.iter().map(|(_, a)| a.clone()).collect());
+    let mut files =
+        default_files.unwrap_or_else(|| outputs.iter().map(|(_, a)| a.clone()).collect());
+    // The executable is built with the target whether or not it is listed.
+    if let Some(exe) = &executable
+        && !files.contains(exe)
+    {
+        files.push(exe.clone());
+    }
     Ok(RuleResult {
         files,
         executable,

@@ -157,5 +157,9 @@ pub(crate) async fn analyze(
         })
         .collect();
     target.deps = dep_keys;
+    let mappings = rules.mappings();
+    crate::runfiles_tree::register(&mut target, &env.main_repo_name, &mappings, &|r| {
+        r.to_owned()
+    });
     Ok(target)
 }

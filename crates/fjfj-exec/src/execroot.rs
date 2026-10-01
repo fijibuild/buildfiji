@@ -33,6 +33,18 @@ impl Layout {
         self.output_base.join("external")
     }
 
+    /// Where an artifact is on disk: a source file where its repository has
+    /// it, an output in the execroot.
+    pub fn resolve(&self, artifact: &fjfj_graph::Artifact) -> PathBuf {
+        if !artifact.is_source() {
+            return self.execroot().join(artifact.exec_path());
+        }
+        match artifact.root.prefix.strip_prefix("external/") {
+            Some(repo) => self.external().join(repo).join(&artifact.path),
+            None => self.workspace.join(&artifact.path),
+        }
+    }
+
     /// Make the execroot, or bring it up to date: a link for each top-level
     /// entry of the workspace (but the convenience links `bazel-*`) and for
     /// each repository made so far.

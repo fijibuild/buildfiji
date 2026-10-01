@@ -274,6 +274,46 @@ impl Scheduler {
                     .map_err(|e| fail(format!("cannot write {}: {e}", at.display())))?;
                 let _ = executable;
             }
+            ActionKind::RunfilesTree {
+                dir,
+                manifest,
+                repo_mapping,
+                repo_mapping_contents,
+                entries,
+            } => {
+                let manifest_at = execroot.join(manifest);
+                let mapping_at = execroot.join(repo_mapping);
+                std::fs::write(&mapping_at, repo_mapping_contents)
+                    .map_err(|e| fail(format!("cannot write {}: {e}", mapping_at.display())))?;
+                let mut lines = String::new();
+                for (path, artifact) in entries {
+                    lines.push_str(&format!(
+                        "{path} {}\n",
+                        self.layout.resolve(artifact).display()
+                    ));
+                }
+                lines.push_str(&format!("_repo_mapping {}\n", mapping_at.display()));
+                std::fs::write(&manifest_at, lines)
+                    .map_err(|e| fail(format!("cannot write {}: {e}", manifest_at.display())))?;
+                let tree = execroot.join(dir);
+                std::fs::create_dir_all(&tree)
+                    .map_err(|e| fail(format!("cannot create {}: {e}", tree.display())))?;
+                for (path, artifact) in entries {
+                    let link = tree.join(path);
+                    if let Some(parent) = link.parent() {
+                        std::fs::create_dir_all(parent).map_err(|e| {
+                            fail(format!("cannot create {}: {e}", parent.display()))
+                        })?;
+                    }
+                    std::os::unix::fs::symlink(self.layout.resolve(artifact), &link)
+                        .map_err(|e| fail(format!("cannot link {}: {e}", link.display())))?;
+                }
+                std::os::unix::fs::symlink(&manifest_at, tree.join("MANIFEST"))
+                    .and_then(|()| {
+                        std::os::unix::fs::symlink(&mapping_at, tree.join("_repo_mapping"))
+                    })
+                    .map_err(|e| fail(format!("cannot link in {}: {e}", tree.display())))?;
+            }
             ActionKind::Symlink { target } => {
                 let at = execroot.join(action.outputs[0].exec_path());
                 std::os::unix::fs::symlink(execroot.join(target), &at)
