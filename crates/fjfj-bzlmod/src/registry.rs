@@ -339,7 +339,7 @@ impl Registry {
         }
         // Registry-supplied patches are named relative to the module's
         // directory in the registry, so they become absolute URLs here.
-        if let Some(patches) = json.patches
+        if let Some(InOrder(patches)) = json.patches
             && !patches.is_empty()
         {
             let remote_patches = patches
@@ -491,13 +491,47 @@ struct SourceJson {
     type_: Option<String>,
 }
 
+/// A JSON object that keeps the order it was written in: the patches of a
+/// `source.json` apply in that order, and Bazel keeps it (a dict attribute
+/// is not sorted), where a `BTreeMap` would apply `MODULE.bazel.patch`
+/// before `module_dot_bazel_version.patch`.
+#[derive(Debug, Default)]
+struct InOrder(Vec<(String, String)>);
+
+impl<'de> serde::Deserialize<'de> for InOrder {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<Self, D::Error> {
+        struct Visitor;
+        impl<'de> serde::de::Visitor<'de> for Visitor {
+            type Value = InOrder;
+
+            fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("an object of strings")
+            }
+
+            fn visit_map<A: serde::de::MapAccess<'de>>(
+                self,
+                mut map: A,
+            ) -> std::result::Result<Self::Value, A::Error> {
+                let mut entries = Vec::new();
+                while let Some(entry) = map.next_entry::<String, String>()? {
+                    entries.push(entry);
+                }
+                Ok(InOrder(entries))
+            }
+        }
+        deserializer.deserialize_map(Visitor)
+    }
+}
+
 #[derive(Debug, serde::Deserialize)]
 struct ArchiveSourceJson {
     url: Option<String>,
     mirror_urls: Option<Vec<String>>,
     integrity: Option<String>,
     strip_prefix: Option<String>,
-    patches: Option<BTreeMap<String, String>>,
+    patches: Option<InOrder>,
     patch_strip: Option<i32>,
     archive_type: Option<String>,
 }

@@ -493,7 +493,11 @@ fn make_rule<'v>(
     }
     if let Some(toolchains) = arg("toolchains") {
         for item in sequence(toolchains, heap).unwrap_or_default() {
-            if label_of_value(item).is_some() {
+            if label_of_value(item).is_some()
+                || item
+                    .downcast_ref::<crate::decl::ToolchainTypeRequirement>()
+                    .is_some()
+            {
                 continue;
             }
             let Some(text) = item.unpack_str() else {

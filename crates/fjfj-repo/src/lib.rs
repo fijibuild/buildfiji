@@ -65,7 +65,6 @@ use fjfj_starlark::{
     run_module_extension, run_repository_rule,
 };
 use starlark::PrintHandler;
-use starlark::eval::FileLoader;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock, Weak};
@@ -437,17 +436,9 @@ impl Inner {
     }
 
     fn load(&self, label: &Label) -> Result<starlark::environment::FrozenModule, FetchError> {
-        let importer = Label {
-            repo: String::new(),
-            package: String::new(),
-            name: "MODULE.bazel".to_owned(),
-        };
         self.loader()
-            .importing(importer)
-            .load(&label_text(label))
-            .map_err(|e| FetchError {
-                message: e.to_string(),
-            })
+            .module_of(label)
+            .map_err(|message| FetchError { message })
     }
 
     fn mappings(&self) -> Arc<RepoMappings> {

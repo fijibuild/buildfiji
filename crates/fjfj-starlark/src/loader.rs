@@ -228,6 +228,14 @@ impl BzlLoader {
         })
     }
 
+    /// The module of `file`, which the engine (not a `load()` statement)
+    /// asks for, as it does to find the rule class of a repository an
+    /// extension made. Bazel checks `visibility()` of the files a
+    /// `load()` names, and of nothing else.
+    pub fn module_of(&self, file: &Label) -> Result<FrozenModule, String> {
+        self.loaded(file).map_err(|e| (*e).clone())
+    }
+
     /// Whether `file` (canonical) is a package of its repo.
     fn is_package(&self, repo: &str, package: &str) -> bool {
         matches!(self.repos.lookup(repo), Ok(Some(l)) if l.is_package(package))

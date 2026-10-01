@@ -301,6 +301,21 @@ pub fn apply_patch(patch: &str, strip: usize, root: &Path) -> Result<(), String>
             inside(&new_name)?
         } else if root.join(&old_name).is_file() {
             inside(&old_name)?
+        } else if file.hunks.iter().all(|h| h.old.is_empty()) {
+            // A plain diff that only adds lines makes the file, named by its
+            // `+++` line (Bazel 9.2.0, probed): the registry's
+            // `module_dot_bazel.patch` is one.
+            let target = inside(&new_name)?;
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            }
+            let mut text = String::new();
+            for line in file.hunks.iter().flat_map(|h| &h.new) {
+                text.push_str(line);
+                text.push('\n');
+            }
+            std::fs::write(&target, text).map_err(|e| e.to_string())?;
+            continue;
         } else {
             // A name outside the repository is refused before it is looked for.
             inside(&new_name)?;

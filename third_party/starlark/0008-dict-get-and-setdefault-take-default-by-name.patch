@@ -1,0 +1,21 @@
+diff --git a/src/values/types/dict/methods.rs b/src/values/types/dict/methods.rs
+--- a/src/values/types/dict/methods.rs
++++ b/src/values/types/dict/methods.rs
+@@ -83,7 +83,7 @@
+     fn get<'v>(
+         this: DictRef<'v>,
+         #[starlark(require = pos)] key: Value<'v>,
+-        #[starlark(require = pos)] default: Option<Value<'v>>,
++        default: Option<Value<'v>>,
+     ) -> starlark::Result<Value<'v>> {
+         match this.get(key)? {
+             None => Ok(default.unwrap_or_else(Value::new_none)),
+@@ -262,7 +262,7 @@
+     fn setdefault<'v>(
+         this: Value<'v>,
+         #[starlark(require = pos)] key: Value<'v>,
+-        #[starlark(require = pos)] default: Option<Value<'v>>,
++        default: Option<Value<'v>>,
+     ) -> starlark::Result<Value<'v>> {
+         let mut this = DictMut::from_value(this)?;
+         let key = key.get_hashed()?;

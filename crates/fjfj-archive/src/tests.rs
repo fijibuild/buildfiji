@@ -389,3 +389,38 @@ fn a_plain_patch_of_several_files_applies_only_the_last() {
         ("one\n", "two\n")
     );
 }
+
+/// A plain diff that only adds lines makes a file that is not there, under its
+/// `+++` name, and one that changes lines does not (Bazel 9.2.0, probed).
+#[test]
+fn a_plain_diff_that_only_adds_makes_the_file() {
+    let (d, r) = patched(&[], "--- f.txt\n+++ f.txt\n@@ -0,0 +1,2 @@\n+a\n+b\n", 0);
+    assert_eq!(r, Ok(()));
+    assert_eq!(
+        std::fs::read_to_string(d.path().join("f.txt")).unwrap(),
+        "a\nb\n"
+    );
+    let (d, r) = patched(&[], "--- f.txt\n+++ g.txt\n@@ -0,0 +1,1 @@\n+a\n", 0);
+    assert_eq!(r, Ok(()));
+    assert_eq!(
+        std::fs::read_to_string(d.path().join("g.txt")).unwrap(),
+        "a\n"
+    );
+    assert!(!d.path().join("f.txt").exists());
+    let (_d, r) = patched(&[], "--- f.txt\n+++ f.txt\n@@ -1,1 +1,2 @@\n a\n+b\n", 0);
+    assert!(r.unwrap_err().starts_with("Cannot find file to patch"));
+}
+
+/// rules_proto 7.1.0's `module_dot_bazel_version.patch`: a `====` line before the
+/// headers, and a context line that is a single space.
+#[test]
+fn a_patch_with_a_rule_line_before_its_headers_applies() {
+    let file = "\"Bazel dependencies\"\n\nmodule(\n    name = \"rules_proto\",\n    # Note: the publish-to-BCR app will patch this line to stamp the version being published.\n    version = \"0.0.0\",\n    compatibility_level = 1,\n)\n\nbazel_dep(name = \"protobuf\", version = \"27.1\")\n";
+    let patch = "===================================================================\n--- a/MODULE.bazel\n+++ b/MODULE.bazel\n@@ -2,9 +2,9 @@\n \n module(\n     name = \"rules_proto\",\n     # Note: the publish-to-BCR app will patch this line to stamp the version being published.\n-    version = \"0.0.0\",\n+    version = \"7.1.0\",\n     compatibility_level = 1,\n )\n \n bazel_dep(name = \"protobuf\", version = \"27.1\")\n";
+    let (d, r) = patched(&[("MODULE.bazel", file)], patch, 1);
+    assert_eq!(r, Ok(()));
+    assert_eq!(
+        std::fs::read_to_string(d.path().join("MODULE.bazel")).unwrap(),
+        file.replace("0.0.0", "7.1.0")
+    );
+}

@@ -34,3 +34,4 @@ that no longer applies fails the build, which is the reminder.
 | 0005-elems-and-codepoints-are-lists | buildfiji-9zq | `s.elems()` and `s.codepoints()` are lists (they have a length, and `set()` takes them) |
 | 0006-cycle-marker | buildfiji-sib | a list, dict or tuple that contains itself is written `...` inside, as Bazel does |
 | 0007-raw-string-keeps-backslash (`starlark_syntax`) | buildfiji-sib | `r'\"'` keeps the backslash before a quote |
+| 0008-dict-get-and-setdefault-take-default-by-name | buildfiji-b0s | `d.get(k, default = v)` and `d.setdefault(k, default = v)` take `default` by name (`repository_ctx.os.environ.get("X", default = "")` is in apple_support) |

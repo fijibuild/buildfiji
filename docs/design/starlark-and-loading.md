@@ -1137,12 +1137,19 @@ repository cannot be made.
 `http.bzl`, `git.bzl` and friends are gone. Every `.bzl` module also gets the builtin
 providers (`PackageSpecificationInfo`, ...) from `crates/fjfj-starlark/src/builtins.bzl`.
 
-Known gap: `fetch --all` on a real workspace stops at the analysis-phase builtins that
-rulesets read while loading (`config_common`, `platform_common`, `cc_common`,
-`java_common`, ...), e.g. `@rules_java//java:extensions.bzl`. Per the `starlark` skill these
-are written in Starlark or supplied by the rules, so they belong to the analysis beads.
-`fetch --repo=@bazel_skylib` and `@platforms` host_platform work, and skylib's
-`registryFileHashes` in the lockfile equal Bazel's.
+The analysis namespaces rulesets read while loading (`platform_common`, `config_common`,
+`coverage_common`, `testing`, `cc_common`, `java_common`, `apple_common`, `android_common`)
+are Starlark in `builtins.bzl` with the names Bazel 9.2.0's `dir()` gives; their functions
+fail with the bead that owns them (buildfiji-136.15, .16), and `internal_DO_NOT_USE()` is a
+struct with the few members rules_cc and rules_java call while loading.
+`config_common.toolchain_type` is native (`toolchain_type` value). The engine's own load of
+a repo rule's `.bzl` skips `visibility()`, which only `load()` statements are checked for.
+Registry `patches` apply in `source.json` order (Bazel keeps a dict's order), and a plain
+diff that only adds lines creates its file.
+
+`fetch --all` on skylib + rules_java loads every extension of the graph (rules_cc,
+rules_apple, rules_swift, apple_support, ...) and fetches every repository, JDKs included;
+it ends at rules_jvm_external's coursier, which needs `java` on `PATH`, as it does in Bazel.
 
 ## Bazel 9.2.0's builtin namespaces, and who owns each name (buildfiji-mum.3)
 

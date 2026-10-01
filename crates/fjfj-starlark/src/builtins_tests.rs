@@ -2347,3 +2347,134 @@ print(Y)"#,
     ),
     (r#"print(dir(set))"#, Ok(r#"[]"#)),
 ];
+
+/// The analysis namespaces have the names Bazel 9.2.0's `dir()` printed for
+/// them (buildfiji-b0s), and a function that is not there yet says so.
+#[test]
+fn analysis_namespaces_have_bazels_names() {
+    use crate::test_support::run;
+    let printed = run(r#"
+def f():
+    for ns in [platform_common, config_common, coverage_common, testing, cc_common, java_common, apple_common, android_common]:
+        print(dir(ns))
+f()
+"#)
+    .expect("the namespaces exist");
+    assert_eq!(
+        printed,
+        [
+            r#"["ConstraintSettingInfo", "ConstraintValueInfo", "PlatformInfo", "TemplateVariableInfo", "ToolchainInfo"]"#,
+            r#"["FeatureFlagInfo", "config_feature_flag_transition", "toolchain_type"]"#,
+            r#"["instrumented_files_info"]"#,
+            r#"["ExecutionInfo", "TestEnvironment", "analysis_test"]"#,
+            r#"["action_is_enabled", "add_go_exec_groups_to_binary_rules", "check_experimental_cc_shared_library", "do_not_use_tools_cpp_compiler_present", "empty_variables", "get_environment_variables", "get_execution_requirements", "get_memory_inefficient_command_line", "get_tool_for_action", "get_tool_requirement_for_action", "implementation_deps_allowed_by_allowlist", "incompatible_disable_objc_library_transition", "internal_DO_NOT_USE", "legacy_cc_flags_make_variable_do_not_use"]"#,
+            r#"["internal_DO_NOT_USE"]"#,
+            r#"["Objc", "XcodeProperties", "XcodeVersionConfig", "apple_host_system_env", "apple_toolchain", "dotted_version", "new_objc_provider", "platform", "platform_type", "target_apple_env"]"#,
+            r#"["create_dex_merger_actions", "resource_source_directory"]"#,
+        ]
+    );
+    assert_eq!(
+        run("print(cc_common.internal_DO_NOT_USE().freeze([1]))").unwrap(),
+        ["[1]"]
+    );
+    assert_eq!(
+        run("print(java_common.internal_DO_NOT_USE().google_legacy_api_enabled())").unwrap(),
+        ["False"]
+    );
+    let err = run("cc_common.empty_variables()").expect_err("not implemented yet");
+    assert!(
+        err.contains("cc_common.empty_variables is not implemented yet"),
+        "{err}"
+    );
+    // toolchain_type(), as Bazel 9.2.0 answered it.
+    let t = |body: &str| {
+        run(&format!(
+            "x = config_common.toolchain_type({body})\nprint(x.toolchain_type == Label('//a:b'), x.toolchain_type.name, x.mandatory)\nprint(type(x), dir(x))"
+        ))
+    };
+    assert_eq!(
+        t("'//a:b', mandatory = False").unwrap(),
+        [
+            "True b False",
+            "toolchain_type [\"mandatory\", \"toolchain_type\"]"
+        ]
+    );
+    assert_eq!(t("'!!'").unwrap()[0], "False !! True");
+    assert_eq!(t("'@@x//a:b'").unwrap()[0], "False b True");
+    assert_eq!(t("Label('//a:b')").unwrap()[0], "True b True");
+    for (body, want) in [
+        (
+            "1",
+            "parameter 'name' got value of type 'int', want 'string or Label'",
+        ),
+        (
+            "None",
+            "parameter 'name' got value of type 'NoneType', want 'string or Label'",
+        ),
+        (
+            "'//a:b', mandatory = 1",
+            "parameter 'mandatory' got value of type 'int', want 'bool'",
+        ),
+        (
+            "'//a:b', True",
+            "toolchain_type() accepts no more than 1 positional argument but got 2",
+        ),
+        (
+            "'//a:b', x = 1",
+            "toolchain_type() got unexpected keyword argument 'x'",
+        ),
+        (
+            "",
+            "toolchain_type() missing 1 required positional argument: name",
+        ),
+    ] {
+        let err = t(body).expect_err(body);
+        assert!(err.contains(want), "{body}: {err}");
+    }
+    assert_eq!(
+        run("print(apple_common.platform.ios_device)\nprint(apple_common.platform_type.ios)")
+            .unwrap(),
+        [
+            r#"struct(is_device = True, name = "ios_device", name_in_plist = "iPhoneOS", platform_type = "ios")"#,
+            "ios"
+        ]
+    );
+    // Both a rule and an exec group take it.
+    assert_eq!(
+        run("t = config_common.toolchain_type('//a:b')\nprint(exec_group(toolchains = [t, '//c:d']))\nr = rule(implementation = lambda ctx: [], toolchains = [t])\nprint(t == config_common.toolchain_type('//a:b'), t == config_common.toolchain_type('//a:b', mandatory = False))").unwrap(),
+        [
+            "<unknown object com.google.devtools.build.lib.packages.DeclaredExecGroup>",
+            "True False"
+        ]
+    );
+}
+
+/// Names that rules_java 9.1.0 and rules_cc pass to `configuration_field`, which
+/// Bazel 9.2.0 accepts (probed one by one; `java_launcher` and `cc_compiler`
+/// it refuses).
+#[test]
+fn configuration_fields_of_the_rulesets() {
+    use crate::test_support::run;
+    for (fragment, name) in [
+        ("java", "java_toolchain_bytecode_optimizer"),
+        ("cpp", "fdo_optimize"),
+        ("cpp", "xbinary_fdo"),
+        ("cpp", "proto_profile_path"),
+    ] {
+        run(&format!(
+            "configuration_field(fragment = '{fragment}', name = '{name}')"
+        ))
+        .unwrap_or_else(|e| panic!("{fragment} {name}: {e}"));
+    }
+}
+
+/// `default` of `dict.get` and `dict.setdefault` can be named (Bazel 9.2.0; patch
+/// 0008 to the starlark crate), and `key` of `get` cannot.
+#[test]
+fn dict_get_and_setdefault_take_default_by_name() {
+    use crate::test_support::run;
+    assert_eq!(
+        run("d = {'a': 1}\nprint(d.get('b', default = 5), d.get('a', default = 5))\nprint(dict(d).setdefault('b', default = 6))").unwrap(),
+        ["5 1", "6"]
+    );
+}

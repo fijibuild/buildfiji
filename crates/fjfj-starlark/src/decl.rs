@@ -34,7 +34,7 @@
 use crate::args::{Param, Wording, bind, fatal, param, positional_only};
 use crate::attr::{provider_alternatives, sequence, view as attribute_view};
 use crate::exports::{Kind, Named, name_at_assignment, next_id, resolve_name};
-use crate::label::{display_label, evaluating_bzl, label_of_value, parse_in_caller};
+use crate::label::{StarlarkLabel, display_label, evaluating_bzl, label_of_value, parse_in_caller};
 use allocative::Allocative;
 use fjfj_graph::Label;
 use fjfj_graph::rule::{AttrDef, AttrFlag, AttrType, AttrValue};
@@ -260,6 +260,10 @@ fn toolchain_types<'v>(
     for item in sequence(value, eval.heap()).unwrap_or_default() {
         if let Some(label) = label_of_value(item) {
             labels.push(label);
+            continue;
+        }
+        if let Some(requirement) = item.downcast_ref::<ToolchainTypeRequirement>() {
+            labels.push(requirement.label.clone());
             continue;
         }
         let Some(text) = item.unpack_str() else {
@@ -813,6 +817,80 @@ fn make_subrule<'v>(
     }))
 }
 
+/// A `config_common.toolchain_type()`: a toolchain type that a rule,
+/// aspect or exec group asks for, and whether it must be there.
+#[derive(Debug, Clone, PartialEq, Eq, ProvidesStaticType, NoSerialize, Allocative)]
+pub(crate) struct ToolchainTypeRequirement {
+    #[allocative(skip)]
+    pub(crate) label: Label,
+    pub(crate) mandatory: bool,
+}
+
+starlark_simple_value!(ToolchainTypeRequirement);
+
+impl fmt::Display for ToolchainTypeRequirement {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "<unknown object com.google.devtools.build.lib.analysis.config.ToolchainTypeRequirement>"
+        )
+    }
+}
+
+#[starlark_value(type = "toolchain_type")]
+impl<'v> StarlarkValue<'v> for ToolchainTypeRequirement {
+    fn equals(&self, other: Value<'v>) -> starlark::Result<bool> {
+        Ok(other.downcast_ref::<ToolchainTypeRequirement>() == Some(self))
+    }
+
+    fn get_attr(&self, attribute: &str, heap: Heap<'v>) -> Option<Value<'v>> {
+        match attribute {
+            "toolchain_type" => Some(heap.alloc(StarlarkLabel::from(self.label.clone()))),
+            "mandatory" => Some(Value::new_bool(self.mandatory)),
+            _ => None,
+        }
+    }
+
+    fn dir_attr(&self) -> Vec<String> {
+        vec!["mandatory".to_owned(), "toolchain_type".to_owned()]
+    }
+}
+
+const TOOLCHAIN_TYPE_PARAMS: &[P] = &[
+    p("name", true, true, "string or Label", is_string_or_label),
+    p("mandatory", false, false, "bool", is_bool),
+];
+
+fn is_string_or_label(v: Value<'_>) -> bool {
+    v.unpack_str().is_some() || label_of_value(v).is_some()
+}
+
+fn make_toolchain_type<'v>(
+    args: &Arguments<'v, '_>,
+    eval: &mut Evaluator<'v, '_, '_>,
+) -> starlark::Result<Value<'v>> {
+    let bound = bind_checked("toolchain_type", TOOLCHAIN_TYPE_PARAMS, args, eval)?;
+    let name = bound[0].expect("required");
+    let label = match label_of_value(name) {
+        Some(label) => label,
+        None => {
+            let text = name.unpack_str().expect("checked");
+            match parse_in_caller(eval, "toolchain_type", text)? {
+                Ok(label) => label,
+                Err(e) => {
+                    return Err(fatal(format!(
+                        "Unable to parse toolchain_type label '{text}': {e}"
+                    )));
+                }
+            }
+        }
+    };
+    let mandatory = bound[1].and_then(|v| v.unpack_bool()).unwrap_or(true);
+    Ok(eval
+        .heap()
+        .alloc(ToolchainTypeRequirement { label, mandatory }))
+}
+
 // ---- exec_group, configuration_field, build settings ----------------------------------
 
 /// An `exec_group()`: constraints and toolchain types, as labels. Two are
@@ -899,6 +977,9 @@ const CONFIGURATION_FIELDS: &[(&str, &[&str])] = &[
             "libc_top",
             "fdo_profile",
             "fdo_prefetch_hints",
+            "fdo_optimize",
+            "xbinary_fdo",
+            "proto_profile_path",
             "memprof_profile",
             "propeller_optimize",
             "custom_malloc",
@@ -910,6 +991,7 @@ const CONFIGURATION_FIELDS: &[(&str, &[&str])] = &[
         "java",
         &[
             "bytecode_optimizer",
+            "java_toolchain_bytecode_optimizer",
             "local_java_optimization_configuration",
             "launcher",
         ],
@@ -1508,6 +1590,15 @@ pub(crate) fn decl_globals(builder: &mut GlobalsBuilder) {
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> starlark::Result<Value<'v>> {
         make_exec_group(args, eval)
+    }
+
+    /// `config_common.toolchain_type(name, *, mandatory = True)`, which
+    /// builtins.bzl puts in `config_common`.
+    fn _toolchain_type<'v>(
+        args: &Arguments<'v, '_>,
+        eval: &mut Evaluator<'v, '_, '_>,
+    ) -> starlark::Result<Value<'v>> {
+        make_toolchain_type(args, eval)
     }
 
     /// `configuration_field(fragment, name)`.
