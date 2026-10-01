@@ -20,7 +20,7 @@ rust_library(
         "//crates/fjfj-starlark",
         "@crates//:reqwest",
         "@crates//:serde_json",
-        "@crates//:starlark",
+        "//crates/starlark",
         "@crates//:thiserror",
         "@crates//:tracing",
     ],

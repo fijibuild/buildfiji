@@ -3204,8 +3204,6 @@ dependencies = [
 [[package]]
 name = "starlark"
 version = "0.14.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9062e866918dc4c9701c98ac99f7f4fa9e4b3b4edce306e147393bc75458c4fc"
 dependencies = [
  "allocative",
  "anyhow",
@@ -3231,6 +3229,7 @@ dependencies = [
  "once_cell",
  "pagable",
  "paste",
+ "rand 0.10.2",
  "ref-cast",
  "regex",
  "rustyline",
@@ -3277,8 +3276,6 @@ dependencies = [
 [[package]]
 name = "starlark_syntax"
 version = "0.14.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7492c571c531e68099c911cfd909d32659f1cc0910cf3adee9fce66e39d21f14"
 dependencies = [
  "allocative",
  "annotate-snippets",
@@ -3293,6 +3290,7 @@ dependencies = [
  "num-traits",
  "once_cell",
  "pagable",
+ "serde_json",
  "starlark_map",
  "thiserror",
 ]

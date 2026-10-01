@@ -17,6 +17,9 @@ only 51% of that, and reading the tree costs more than parsing it on
 small-file repos. Do not re-propose a custom front end unless a profile of a
 real fjfj load puts parsing above 20% of loading wall time.
 
+The crates are **vendored** at `crates/starlark` and `crates/starlark_syntax` and edited in place when
+Bazel behaves differently; see the design doc's "Carrying changes to the `starlark` crate".
+
 ## No native Starlark modules
 
 `cc_common`, `java_common`, `proto_common`, `apple_common`, `platform_common`

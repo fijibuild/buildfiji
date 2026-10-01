@@ -53,27 +53,8 @@ crate.from_cargo(
         "//crates/fjfj-bzlmod:Cargo.toml",
         "//crates/fjfj-models:Cargo.toml",
         "//crates/fjfj-proto:Cargo.toml",
+        "//crates/starlark:Cargo.toml",
+        "//crates/starlark_syntax:Cargo.toml",
     ],
-)
-# The patch queue of the starlark crate (docs/design/starlark-and-loading.md,
-# buildfiji-6z4): each patch is a difference from Bazel 9.2.0 that only a change
-# inside the crate can fix.
-crate.annotation(
-    crate = "starlark",
-    patch_args = ["-p1"],
-    patches = [
-        "//third_party/starlark:0001-percent-s-is-str.patch",
-        "//third_party/starlark:0002-no-recursion.patch",
-        "//third_party/starlark:0003-excessive-repeat.patch",
-        "//third_party/starlark:0004-split-keywords-and-empty-separator.patch",
-        "//third_party/starlark:0005-elems-and-codepoints-are-lists.patch",
-        "//third_party/starlark:0006-cycle-marker.patch",
-        "//third_party/starlark:0008-dict-get-and-setdefault-take-default-by-name.patch",
-    ],
-)
-crate.annotation(
-    crate = "starlark_syntax",
-    patch_args = ["-p1"],
-    patches = ["//third_party/starlark:0007-raw-string-keeps-backslash.patch"],
 )
 use_repo(crate, "crates")

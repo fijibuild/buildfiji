@@ -50,10 +50,10 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.11"
 stacker = "0.1"
-starlark = "0.14"
+starlark = { path = "crates/starlark" }
 num-bigint = "0.4"
 starlark_derive = "0.14"
-starlark_syntax = "0.14"
+starlark_syntax = { path = "crates/starlark_syntax" }
 stateright = "0.31"
 tar = "0.4"
 tempfile = "3"

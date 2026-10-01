@@ -1,0 +1,56 @@
+load("@rules_rust//rust:defs.bzl", "rust_library")
+
+package(default_visibility = ["//visibility:public"])
+
+# Vendored from starlark-rust 0.14.2 with fjfj's patches applied (see
+# docs/design/starlark-and-loading.md); third-party style, so the lint aspects skip it.
+rust_library(
+    name = "starlark",
+    srcs = glob(["src/**/*.rs"]),
+    compile_data = glob(["src/**", "testcases/**"], exclude = ["src/**/*.rs"], allow_empty = True),
+    crate_name = "starlark",
+    edition = "2024",
+    version = "0.14.2",
+    tags = ["no-clippy", "no-rustfmt"],
+    deps = [
+        "@crates//:allocative",
+        "@crates//:anyhow",
+        "@crates//:blake3",
+        "@crates//:bumpalo",
+        "@crates//:cmp_any",
+        "@crates//:dashmap",
+        "@crates//:debugserver-types",
+        "@crates//:derive_more",
+        "@crates//:display_container",
+        "@crates//:dupe",
+        "@crates//:either",
+        "@crates//:erased-serde",
+        "@crates//:hashbrown",
+        "@crates//:indexmap",
+        "@crates//:inventory",
+        "@crates//:itertools",
+        "@crates//:maplit",
+        "@crates//:memoffset",
+        "@crates//:num-bigint",
+        "@crates//:num-traits",
+        "@crates//:once_cell",
+        "@crates//:pagable",
+        "@crates//:ref-cast",
+        "@crates//:regex",
+        "@crates//:rustyline",
+        "@crates//:serde",
+        "@crates//:serde_json",
+        "@crates//:starlark_map",
+        "//crates/starlark_syntax",
+        "@crates//:static_assertions",
+        "@crates//:strong_hash",
+        "@crates//:strsim",
+        "@crates//:textwrap",
+        "@crates//:thiserror",
+    ],
+    proc_macro_deps = [
+        "@crates//:derivative",
+        "@crates//:paste",
+        "@crates//:starlark_derive",
+    ],
+)
