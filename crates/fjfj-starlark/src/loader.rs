@@ -227,7 +227,7 @@ impl BzlLoader {
             format!("{package}/{}", importer.name)
         };
         let loader = self.importing(importer);
-        evaluate_build_file(&BuildFile {
+        let mut output = evaluate_build_file(&BuildFile {
             module: self.repos.module(repo),
             repo,
             package,
@@ -236,7 +236,9 @@ impl BzlLoader {
             path: &path,
             source: &source,
             loader: &loader,
-        })
+        })?;
+        output.package.loads = loader.loads.borrow().clone();
+        Ok(output)
     }
 
     /// The module of `file`, which the engine (not a `load()` statement)

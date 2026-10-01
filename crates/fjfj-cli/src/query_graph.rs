@@ -130,6 +130,8 @@ impl QueryGraph {
                     text: self.visibility_text(package, target),
                     labels: Vec::new(),
                     explicit: target.visibility.is_some(),
+                    ty: AttrType::LabelList,
+                    value: AttrValue::StringList(self.visibility_parts(package, target)),
                 });
                 continue;
             }
@@ -167,6 +169,7 @@ impl QueryGraph {
                         implicit,
                         tool,
                         condition: condition.map(|c| self.display_text(&c)),
+                        visibility: false,
                     });
                 }
             }
@@ -181,6 +184,7 @@ impl QueryGraph {
                                 implicit,
                                 tool: false,
                                 condition: None,
+                                visibility: false,
                             });
                         }
                     }
@@ -191,6 +195,8 @@ impl QueryGraph {
                 text: self.attr_text(&value),
                 labels,
                 explicit,
+                ty: attr.def.ty,
+                value: value.clone(),
             });
         }
         // The `package_group`s that say who may see the rule.
@@ -205,6 +211,7 @@ impl QueryGraph {
                     implicit: false,
                     tool: false,
                     condition: None,
+                    visibility: true,
                 });
             }
         }
@@ -215,6 +222,7 @@ impl QueryGraph {
                 implicit: true,
                 tool: false,
                 condition: None,
+                visibility: false,
             });
         }
         // The one implicit dependency of a native rule that its attributes do
@@ -229,6 +237,7 @@ impl QueryGraph {
                 implicit: true,
                 tool: false,
                 condition: None,
+                visibility: false,
             });
         }
         let location = target.location.clone();
@@ -242,6 +251,33 @@ impl QueryGraph {
             location: self.rule_location(&label.repo, &location)?,
             attrs,
             edges,
+            outputs: package
+                .targets()
+                .iter()
+                .filter(|t| matches!(&t.kind, TargetKind::GeneratedFile { rule } if *rule == target.name))
+                .map(|t| package.label(t))
+                .collect::<BTreeSet<Label>>()
+                .into_iter()
+                .collect(),
+            visibility: self.visibility_parts(package, target),
+            loads: Vec::new(),
+            build_file: false,
+            group: None,
+        })
+    }
+
+    /// The BUILD file of the package of `label`.
+    fn build_file_of(&self, label: &Label) -> Result<Label, String> {
+        self.maybe_build_file_of(label)
+            .ok_or_else(|| format!("no BUILD file for package '{}'", label.package))
+    }
+
+    fn maybe_build_file_of(&self, label: &Label) -> Option<Label> {
+        let lookup = self.repos.lookup(&label.repo).ok()?;
+        let build = lookup.build_file(&label.package).ok()?;
+        Some(Label {
+            name: build.file_name()?.to_str()?.to_owned(),
+            ..label.clone()
         })
     }
 
@@ -253,10 +289,20 @@ impl QueryGraph {
     }
 
     fn visibility_text(&self, package: &Package, target: &Target) -> String {
-        let visibility = target
-            .visibility
-            .as_ref()
-            .unwrap_or(&package.default_visibility);
+        format!("[{}]", self.visibility_parts(package, target).join(", "))
+    }
+
+    /// The entries of the target's `visibility` as they are written.
+    fn visibility_parts(&self, package: &Package, target: &Target) -> Vec<String> {
+        self.visibility_parts_of(
+            target
+                .visibility
+                .as_ref()
+                .unwrap_or(&package.default_visibility),
+        )
+    }
+
+    fn visibility_parts_of(&self, visibility: &fjfj_graph::visibility::Visibility) -> Vec<String> {
         let mut parts = Vec::new();
         for entry in &visibility.entries {
             match entry {
@@ -284,7 +330,27 @@ impl QueryGraph {
         if parts.is_empty() {
             parts.push("//visibility:private".to_owned());
         }
-        format!("[{}]", parts.join(", "))
+        parts
+    }
+
+    /// A `packages` entry of a `package_group` as it is written.
+    fn spec_text(&self, spec: &fjfj_graph::visibility::PackageSpec) -> String {
+        use fjfj_graph::visibility::PackageScope;
+        let body = match &spec.scope {
+            PackageScope::Public => "public".to_owned(),
+            PackageScope::Repo(r) => format!("{}//...", self.repo_prefix(r)),
+            PackageScope::Package { repo, package } => {
+                format!("{}//{package}", self.repo_prefix(repo))
+            }
+            PackageScope::Subpackages { repo, package } => {
+                format!("{}//{package}/...", self.repo_prefix(repo))
+            }
+        };
+        if spec.negated {
+            format!("-{body}")
+        } else {
+            body
+        }
     }
 
     fn repo_prefix(&self, repo: &str) -> String {
@@ -391,6 +457,11 @@ impl QueryGraph {
             location: format!("{}:1:1", path.display()),
             attrs: Vec::new(),
             edges: Vec::new(),
+            outputs: Vec::new(),
+            visibility: vec!["//visibility:private".to_owned()],
+            loads: Vec::new(),
+            build_file: false,
+            group: None,
         })
     }
 }
@@ -468,10 +539,18 @@ impl Graph for QueryGraph {
                     defined_in.as_ref(),
                     attrs,
                 )?,
-                TargetKind::SourceFile => self.file_node(label, NodeKind::SourceFile)?,
+                TargetKind::SourceFile => {
+                    let mut node = self.file_node(label, NodeKind::SourceFile)?;
+                    node.visibility = self.visibility_parts(&package, target);
+                    node
+                }
                 TargetKind::PackageGroup(group) => {
                     let mut node = self.file_node(label, NodeKind::PackageGroup)?;
                     node.location = self.rule_location(&label.repo, &target.location)?;
+                    node.group = Some((
+                        group.includes.clone(),
+                        group.specs.iter().map(|s| self.spec_text(s)).collect(),
+                    ));
                     node.edges = group
                         .includes
                         .iter()
@@ -480,6 +559,7 @@ impl Graph for QueryGraph {
                             implicit: false,
                             tool: false,
                             condition: None,
+                            visibility: false,
                         })
                         .collect();
                     node
@@ -501,13 +581,35 @@ impl Graph for QueryGraph {
                         implicit: false,
                         tool: false,
                         condition: None,
+                        visibility: false,
                     }];
                     node
                 }
             },
             None => {
-                fjfj_loading::declared_target(&package, &lookup, label)?;
-                self.file_node(label, NodeKind::SourceFile)?
+                let is_build = lookup
+                    .build_file(&label.package)
+                    .ok()
+                    .and_then(|b| b.file_name().map(|n| n.to_string_lossy().into_owned()))
+                    .is_some_and(|n| n == label.name);
+                let exists = lookup
+                    .package_dir(&label.package)
+                    .join(&label.name)
+                    .is_file();
+                // A file the load graph reaches is a target here even where a
+                // pattern naming it would be refused.
+                if !exists {
+                    fjfj_loading::declared_target(&package, &lookup, label)?;
+                }
+                let mut node = self.file_node(label, NodeKind::SourceFile)?;
+                if is_build {
+                    node.build_file = true;
+                    node.loads = package.loads.clone();
+                    node.visibility = self.visibility_parts_of(&package.default_visibility);
+                } else if label.name.ends_with(".bzl") {
+                    node.loads = self.repos.mappings().loads_of(label);
+                }
+                node
             }
         };
         let node = Arc::new(node);
@@ -538,23 +640,27 @@ impl Graph for QueryGraph {
     }
 
     fn build_files(&self, label: &Label) -> Result<Vec<Label>, String> {
-        let lookup = self.repos.lookup(&label.repo)?;
-        let build = lookup
-            .build_file(&label.package)
-            .map_err(|e| e.to_string())?;
-        let name = build
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("BUILD")
-            .to_owned();
-        Ok(vec![Label {
-            name,
-            ..label.clone()
-        }])
+        let mut out = BTreeSet::new();
+        for file in std::iter::once(self.build_file_of(label)?).chain(self.load_files(label)?) {
+            if let Some(build) = self.maybe_build_file_of(&file) {
+                out.insert(build);
+            }
+            out.insert(file);
+        }
+        Ok(out.into_iter().collect())
     }
 
-    fn load_files(&self, _label: &Label) -> Result<Vec<Label>, String> {
-        Ok(Vec::new())
+    fn load_files(&self, label: &Label) -> Result<Vec<Label>, String> {
+        let package = self.package(label)?;
+        let mappings = self.repos.mappings();
+        let mut seen: BTreeSet<Label> = BTreeSet::new();
+        let mut todo: Vec<Label> = package.loads.clone();
+        while let Some(file) = todo.pop() {
+            if seen.insert(file.clone()) {
+                todo.extend(mappings.loads_of(&file));
+            }
+        }
+        Ok(seen.into_iter().collect())
     }
 
     fn visible(&self, from: &Label, to: &Label) -> Result<bool, String> {

@@ -1,8 +1,9 @@
 //! The output formats of `query`.
 
 use crate::eval::{Evaluator, Set};
-use crate::graph::Edge;
+use crate::graph::{Edge, NodeKind};
 use fjfj_graph::Label;
+use fjfj_graph::rule::AttrValue;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 /// `--output`.
@@ -14,6 +15,7 @@ pub enum Format {
     MinRank,
     MaxRank,
     Graph,
+    Xml,
 }
 
 impl Format {
@@ -25,6 +27,7 @@ impl Format {
             "minrank" => Format::MinRank,
             "maxrank" => Format::MaxRank,
             "graph" => Format::Graph,
+            "xml" => Format::Xml,
             _ => return None,
         })
     }
@@ -211,6 +214,16 @@ pub fn render(
                 line(format!("{r} {}", graph.display(label)));
             }
         }
+        Format::Xml => {
+            line("<?xml version=\"1.1\" encoding=\"UTF-8\" standalone=\"no\"?>".to_owned());
+            line("<query version=\"2\">".to_owned());
+            for label in order(ev, set, wanted)? {
+                for text in xml_element(ev, &label)? {
+                    line(text);
+                }
+            }
+            line("</query>".to_owned());
+        }
         Format::Graph => {
             let sub = subgraph(ev, set)?;
             line("digraph mygraph {".to_owned());
@@ -232,4 +245,283 @@ pub fn render(
         }
     }
     Ok(out)
+}
+
+fn escape(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&apos;"),
+            '\n' => out.push_str("&#10;"),
+            '\r' => out.push_str("&#13;"),
+            '\t' => out.push_str("&#9;"),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+/// The lines of one target in `--output=xml`.
+fn xml_element(ev: &Evaluator<'_>, label: &Label) -> Result<Vec<String>, String> {
+    let graph = ev.graph();
+    let node = ev.node(label)?;
+    let name = escape(&graph.display(label));
+    let location = escape(&node.location);
+    let mut out = Vec::new();
+    match &node.kind {
+        NodeKind::SourceFile => {
+            let errors = if node.build_file {
+                " package_contains_errors=\"false\""
+            } else {
+                ""
+            };
+            out.push(format!(
+                "    <source-file location=\"{location}\" name=\"{name}\"{errors}>"
+            ));
+            let mut loads: Vec<&Label> = node.loads.iter().collect();
+            loads.sort();
+            for l in loads {
+                out.push(format!(
+                    "        <load name=\"{}\"/>",
+                    escape(&graph.display(l))
+                ));
+            }
+            for v in &node.visibility {
+                out.push(format!(
+                    "        <visibility-label name=\"{}\"/>",
+                    escape(v)
+                ));
+            }
+            out.push("    </source-file>".to_owned());
+        }
+        NodeKind::GeneratedFile { rule } => {
+            out.push(format!(
+                "    <generated-file generating-rule=\"{}\" location=\"{location}\" name=\"{name}\"/>",
+                escape(&graph.display(rule))
+            ));
+        }
+        NodeKind::PackageGroup => {
+            out.push(format!(
+                "    <package-group location=\"{location}\" name=\"{name}\">"
+            ));
+            let (includes, packages) = node.group.clone().unwrap_or_default();
+            if includes.is_empty() {
+                out.push("        <list name=\"includes\"/>".to_owned());
+            } else {
+                out.push("        <list name=\"includes\">".to_owned());
+                for i in &includes {
+                    out.push(format!(
+                        "            <label value=\"{}\"/>",
+                        escape(&graph.display(i))
+                    ));
+                }
+                out.push("        </list>".to_owned());
+            }
+            if packages.is_empty() {
+                out.push("        <list name=\"packages\"/>".to_owned());
+            } else {
+                out.push("        <list name=\"packages\">".to_owned());
+                for p in &packages {
+                    out.push(format!("            <string value=\"{}\"/>", escape(p)));
+                }
+                out.push("        </list>".to_owned());
+            }
+            out.push("    </package-group>".to_owned());
+        }
+        NodeKind::Rule { class, .. } => {
+            out.push(format!(
+                "    <rule class=\"{}\" location=\"{location}\" name=\"{name}\">",
+                escape(class)
+            ));
+            for attr in &node.attrs {
+                if attr.explicit || attr.name == "name" {
+                    xml_attr(graph, attr, &mut out);
+                }
+            }
+            let inputs: BTreeSet<Label> = ev
+                .edges(&node)
+                .into_iter()
+                .filter(|e| !e.visibility)
+                .map(|e| e.to)
+                .collect();
+            for to in &inputs {
+                out.push(format!(
+                    "        <rule-input name=\"{}\"/>",
+                    escape(&graph.display(to))
+                ));
+            }
+            for o in &node.outputs {
+                out.push(format!(
+                    "        <rule-output name=\"{}\"/>",
+                    escape(&graph.display(o))
+                ));
+            }
+            out.push("    </rule>".to_owned());
+        }
+    }
+    Ok(out)
+}
+
+/// Every value a `select()` could give, joined, which is what `--output=xml`
+/// shows of it.
+fn flatten(value: &AttrValue) -> AttrValue {
+    let AttrValue::Select(list) = value else {
+        return value.clone();
+    };
+    let mut joined: Option<AttrValue> = None;
+    for selector in &list.elements {
+        for (_, branch) in &selector.branches {
+            let Some(branch) = branch else { continue };
+            let branch = flatten(branch);
+            joined = Some(match joined {
+                None => branch,
+                Some(so_far) => AttrValue::concat(&so_far, &branch).unwrap_or(so_far),
+            });
+        }
+    }
+    joined.unwrap_or(AttrValue::StringList(Vec::new()))
+}
+
+fn xml_attr(graph: &dyn crate::graph::Graph, attr: &crate::graph::NodeAttr, out: &mut Vec<String>) {
+    let name = escape(&attr.name);
+    let label = |l: &Label| escape(&graph.display(l));
+    let is_output = matches!(
+        attr.ty,
+        fjfj_graph::rule::AttrType::Output | fjfj_graph::rule::AttrType::OutputList
+    );
+    let item = |l: &Label| {
+        let tag = if is_output { "output" } else { "label" };
+        format!("<{tag} value=\"{}\"/>", label(l))
+    };
+    let pad = "        ";
+    match flatten(&attr.value) {
+        AttrValue::Bool(b) => out.push(format!("{pad}<boolean name=\"{name}\" value=\"{b}\"/>")),
+        AttrValue::Int(i) => out.push(format!("{pad}<int name=\"{name}\" value=\"{i}\"/>")),
+        AttrValue::String(s) => out.push(format!(
+            "{pad}<string name=\"{name}\" value=\"{}\"/>",
+            escape(&s)
+        )),
+        AttrValue::Label(l) => {
+            let tag = if is_output { "output" } else { "label" };
+            out.push(format!(
+                "{pad}<{tag} name=\"{name}\" value=\"{}\"/>",
+                label(&l)
+            ));
+        }
+        AttrValue::StringList(items) => {
+            list(
+                out,
+                &name,
+                items.iter().map(|s| {
+                    if attr.ty == fjfj_graph::rule::AttrType::LabelList {
+                        format!("<label value=\"{}\"/>", escape(s))
+                    } else {
+                        format!("<string value=\"{}\"/>", escape(s))
+                    }
+                }),
+            );
+        }
+        AttrValue::IntList(items) => {
+            list(
+                out,
+                &name,
+                items.iter().map(|i| format!("<int value=\"{i}\"/>")),
+            );
+        }
+        AttrValue::LabelList(items) => list(out, &name, items.iter().map(item)),
+        AttrValue::StringDict(items) => dict(
+            out,
+            &name,
+            items.iter().map(|(k, v)| {
+                (
+                    format!("<string value=\"{}\"/>", escape(k)),
+                    format!("<string value=\"{}\"/>", escape(v)),
+                )
+            }),
+        ),
+        AttrValue::LabelKeyedStringDict(items) => dict(
+            out,
+            &name,
+            items.iter().map(|(k, v)| {
+                (
+                    format!("<label value=\"{}\"/>", label(k)),
+                    format!("<string value=\"{}\"/>", escape(v)),
+                )
+            }),
+        ),
+        AttrValue::StringKeyedLabelDict(items) => dict(
+            out,
+            &name,
+            items.iter().map(|(k, v)| {
+                (
+                    format!("<string value=\"{}\"/>", escape(k)),
+                    format!("<label value=\"{}\"/>", label(v)),
+                )
+            }),
+        ),
+        AttrValue::StringListDict(items) => dict(
+            out,
+            &name,
+            items.iter().map(|(k, v)| {
+                (
+                    format!("<string value=\"{}\"/>", escape(k)),
+                    format!(
+                        "<list>{}</list>",
+                        v.iter()
+                            .map(|s| format!("<string value=\"{}\"/>", escape(s)))
+                            .collect::<String>()
+                    ),
+                )
+            }),
+        ),
+        AttrValue::LabelListDict(items) => dict(
+            out,
+            &name,
+            items.iter().map(|(k, v)| {
+                (
+                    format!("<string value=\"{}\"/>", escape(k)),
+                    format!(
+                        "<list>{}</list>",
+                        v.iter()
+                            .map(|l| format!("<label value=\"{}\"/>", label(l)))
+                            .collect::<String>()
+                    ),
+                )
+            }),
+        ),
+        AttrValue::Select(_) => {}
+    }
+}
+
+fn list(out: &mut Vec<String>, name: &str, items: impl Iterator<Item = String>) {
+    let items: Vec<String> = items.collect();
+    if items.is_empty() {
+        out.push(format!("        <list name=\"{name}\"/>"));
+        return;
+    }
+    out.push(format!("        <list name=\"{name}\">"));
+    for i in items {
+        out.push(format!("            {i}"));
+    }
+    out.push("        </list>".to_owned());
+}
+
+fn dict(out: &mut Vec<String>, name: &str, pairs: impl Iterator<Item = (String, String)>) {
+    let pairs: Vec<(String, String)> = pairs.collect();
+    if pairs.is_empty() {
+        out.push(format!("        <dict name=\"{name}\"/>"));
+        return;
+    }
+    out.push(format!("        <dict name=\"{name}\">"));
+    for (k, v) in pairs {
+        out.push("            <pair>".to_owned());
+        out.push(format!("                {k}"));
+        out.push(format!("                {v}"));
+        out.push("            </pair>".to_owned());
+    }
+    out.push("        </dict>".to_owned());
 }

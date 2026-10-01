@@ -2,6 +2,7 @@
 //! loading phase gives them. The crate does no I/O; a [`Graph`] supplies it.
 
 use fjfj_graph::Label;
+use fjfj_graph::rule::{AttrType, AttrValue};
 use std::sync::Arc;
 
 /// What kind of target a node is.
@@ -45,6 +46,9 @@ pub struct NodeAttr {
     pub labels: Vec<Label>,
     /// Set by the BUILD file, as `--output=build` shows.
     pub explicit: bool,
+    pub ty: AttrType,
+    /// The value, `select()`s included.
+    pub value: AttrValue,
 }
 
 /// A dependency of a target.
@@ -58,6 +62,9 @@ pub struct Edge {
     pub tool: bool,
     /// For `--output=graph`: the `select()` condition that brings it in.
     pub condition: Option<String>,
+    /// Comes from the `visibility` attribute, which `--output=xml` does not
+    /// list among a rule's inputs.
+    pub visibility: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -70,6 +77,17 @@ pub struct Node {
     pub attrs: Vec<NodeAttr>,
     /// In the order Bazel visits them.
     pub edges: Vec<Edge>,
+    /// For a rule: the files it declares it makes.
+    pub outputs: Vec<Label>,
+    /// Who may see the target, as `visibility` is written.
+    pub visibility: Vec<String>,
+    /// For a BUILD file: the `.bzl` files it loads.
+    pub loads: Vec<Label>,
+    /// This is the BUILD file of a package.
+    pub build_file: bool,
+    /// For a `package_group`: the other groups it includes and its package
+    /// specifications, as written.
+    pub group: Option<(Vec<Label>, Vec<String>)>,
 }
 
 /// Where a query's targets come from.

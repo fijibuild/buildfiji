@@ -145,6 +145,26 @@ impl RepoMappings {
             .insert(bzl_name(loaded));
     }
 
+    /// The `.bzl` files `file` loads directly, sorted.
+    pub fn loads_of(&self, file: &Label) -> Vec<Label> {
+        let loads = self.lookups.loads.lock().unwrap();
+        loads
+            .get(&bzl_name(file))
+            .into_iter()
+            .flatten()
+            .filter_map(|name| {
+                Label::parse(
+                    name,
+                    fjfj_graph::LabelContext {
+                        repo: "",
+                        package: "",
+                    },
+                )
+                .ok()
+            })
+            .collect()
+    }
+
     /// The lookups made by `root` and every file it loads, directly or not.
     pub fn lookups_under(&self, root: &Label) -> std::collections::BTreeSet<RepoLookup> {
         let loads = self.lookups.loads.lock().unwrap();

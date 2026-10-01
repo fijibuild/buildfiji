@@ -445,8 +445,11 @@ fn labels(ctx: &BuildContext<'_>, items: &[Value<'_>], noun: &str) -> starlark::
         .iter()
         .enumerate()
         .map(|(i, s)| {
-            Label::parse(s, ctx.label_context())
-                .map_err(|e| fatal(format!("invalid label '{s}' in element {i} of {noun}: {e}")))
+            // A repo written `@r` is the one this repo calls `r`.
+            Label::parse_mapped(s, ctx.label_context(), &mut |apparent| {
+                ctx.mappings.resolve_apparent(ctx.repo, apparent)
+            })
+            .map_err(|e| fatal(format!("invalid label '{s}' in element {i} of {noun}: {e}")))
         })
         .collect()
 }

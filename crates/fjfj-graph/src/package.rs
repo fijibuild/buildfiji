@@ -93,6 +93,9 @@ pub struct Package {
     pub defaults: PackageDefaults,
     targets: Vec<Target>,
     index: BTreeMap<String, usize>,
+    /// The `.bzl` files the BUILD file loads, in the order it does.
+    #[serde(default)]
+    pub loads: Vec<Label>,
 }
 
 impl Package {
@@ -427,6 +430,7 @@ impl<'a> PackageBuilder<'a> {
             defaults: self.defaults,
             targets: self.targets,
             index: self.index,
+            loads: Vec::new(),
         }
     }
 
