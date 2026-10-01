@@ -719,13 +719,37 @@ where
     fn invoke(
         &self,
         me: Value<'v>,
-        _args: &Arguments<'v, '_>,
+        args: &Arguments<'v, '_>,
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> starlark::Result<Value<'v>> {
         let name = resolve_name(me, eval)?.unwrap_or_else(|| "unexported subrule".to_owned());
-        Err(fatal(format!(
-            "{name} can only be called from a rule or aspect implementation"
-        )))
+        // A subrule runs in the rule that calls it, with that rule's `ctx` and
+        // the values of the attributes it declared.
+        let state = eval
+            .extra
+            .and_then(|e| e.downcast_ref::<crate::label::BzlEval>())
+            .and_then(|e| e.rule_ctx.clone());
+        let Some(state) = state else {
+            return Err(fatal(format!(
+                "{name} can only be called from a rule or aspect implementation"
+            )));
+        };
+        let implementation = subrule_arg(me, "implementation")
+            .ok_or_else(|| fatal(format!("{name} has no implementation")))?;
+        let heap = eval.heap();
+        let mut positional = vec![crate::analysis::alloc_ctx(heap, state.clone())];
+        positional.extend(args.positions(heap)?);
+        let given = args.names_map()?;
+        let mut named: Vec<(&str, Value<'v>)> =
+            given.iter().map(|(k, v)| (k.as_str(), *v)).collect();
+        if let Some(attrs) = subrule_arg(me, "attrs").and_then(DictRef::from_value) {
+            for (attr, _) in attrs.iter() {
+                if let Some(attr) = attr.unpack_str() {
+                    named.push((attr, crate::analysis::attr_named(&state, heap, attr)));
+                }
+            }
+        }
+        eval.eval_function(implementation, &positional, &named)
     }
 
     fn write_hash(

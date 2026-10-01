@@ -29,7 +29,7 @@ use starlark::eval::{Arguments, Evaluator, FileLoader};
 use starlark::starlark_module;
 use starlark::values::dict::AllocDict;
 use starlark::values::none::NoneType;
-use starlark::values::{ProvidesStaticType, Value};
+use starlark::values::{Heap, ProvidesStaticType, Value};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -203,7 +203,21 @@ pub fn bzl_globals() -> Globals {
         .with(module_globals)
         .with(select_globals)
         .with(set_globals)
+        .with(internal_globals)
         .build()
+}
+
+/// What the builtins (and nothing else) use.
+#[starlark_module]
+fn internal_globals(builder: &mut GlobalsBuilder) {
+    /// Bazel's `Starlark.freeze`: a list that nothing can change any more, which
+    /// is then hashable, so that a struct or provider holding it can be a depset
+    /// element or a dict key.
+    fn fjfj_freeze<'v>(value: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
+        Ok(starlark::values::list::ListRef::freeze_in_place(
+            heap, value,
+        ))
+    }
 }
 
 /// Evaluate a BUILD file into the package it declares.

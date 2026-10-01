@@ -506,6 +506,61 @@ keep = rule(implementation = _top, attrs = {"deps": attr.label_list(cfg = same)}
     assert_eq!(paths(&k.files), [format!("{BIN}/leaf")]);
 }
 
+/// A `toolchain` may name a `toolchain_type` through an alias (rules_rust does),
+/// and a `label_flag` is the target its value names.
+#[tokio::test(flavor = "multi_thread")]
+async fn toolchain_types_may_be_aliases_and_a_label_flag_is_its_value() {
+    let (_dir, repos) = workspace(&[
+        ("MODULE.bazel", ""),
+        ("a.txt", ""),
+        ("b.txt", ""),
+        (
+            "defs.bzl",
+            r#"
+def _tc_impl(ctx):
+    return [platform_common.ToolchainInfo(name = ctx.attr.n)]
+my_toolchain = rule(implementation = _tc_impl, attrs = {"n": attr.string()})
+
+def _impl(ctx):
+    print("toolchain:", ctx.toolchains["//:tt"].name)
+    return []
+r = rule(implementation = _impl, toolchains = ["//:tt"])
+"#,
+        ),
+        (
+            "BUILD.bazel",
+            r#"
+load(":defs.bzl", "my_toolchain", "r")
+toolchain_type(name = "tt")
+alias(name = "tt_alias", actual = ":tt")
+my_toolchain(name = "impl", n = "via alias")
+toolchain(name = "tc", toolchain_type = ":tt_alias", toolchain = ":impl")
+r(name = "t")
+filegroup(name = "default_target", srcs = ["a.txt"])
+filegroup(name = "other_target", srcs = ["b.txt"])
+label_flag(name = "flag", build_setting_default = ":default_target")
+filegroup(name = "user", srcs = [":flag"])
+"#,
+        ),
+    ]);
+    let registered = vec![(String::new(), "//:tc".to_owned())];
+    let t = analyse_registering(&repos, "//:t", config(), registered)
+        .await
+        .unwrap();
+    assert_eq!(t.printed, ["toolchain: via alias"]);
+    let user = analyse(&repos, "//:user").await.unwrap();
+    assert_eq!(paths(&user.files), ["a.txt"]);
+    let mut set = config();
+    set.settings.insert(
+        "//:flag".to_owned(),
+        fjfj_graph::SettingValue::Str("//:other_target".to_owned()),
+    );
+    let user = analyse_registering(&repos, "//:user", set, Vec::new())
+        .await
+        .unwrap();
+    assert_eq!(paths(&user.files), ["b.txt"]);
+}
+
 /// A transition's `attr` has every attribute of the rule: a label as a `Label`,
 /// and one with no value as `None` (rules_rust reads `attr.platform`).
 #[tokio::test(flavor = "multi_thread")]

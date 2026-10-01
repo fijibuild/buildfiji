@@ -191,6 +191,31 @@ impl<'v> Array<'v> {
         }
     }
 
+    /// fjfj: Bazel's `Starlark.freeze`. A list frozen in place can no longer be
+    /// changed, and is hashable if its elements are. The flag is the top bit
+    /// of the iterator count, which keeps the list from being mutated.
+    pub(crate) fn freeze_in_place(&self) {
+        if !self.is_statically_allocated() {
+            unsafe {
+                *self.iter_count.get() |= 1 << 31;
+            }
+        }
+    }
+
+    pub(crate) fn is_frozen_in_place(&self) -> bool {
+        unsafe { *self.iter_count.get() & (1 << 31) != 0 }
+    }
+
+    /// Whether this is the shared empty array, which `freeze_in_place` cannot mark.
+    pub(crate) fn is_shared_empty(&self) -> bool {
+        self.is_statically_allocated()
+    }
+
+    /// Frozen in place.
+    pub(crate) fn is_immutable(&self) -> bool {
+        self.is_frozen_in_place()
+    }
+
     /// Has at leave one iterator over the array.
     pub(crate) fn iter_count_is_non_zero(&self) -> bool {
         unsafe { *self.iter_count.get() != 0 }

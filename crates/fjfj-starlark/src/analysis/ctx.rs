@@ -66,7 +66,7 @@ impl CtxState {
     }
 
     /// An attribute's value as the code sees it.
-    fn attr_value<'v>(&self, heap: Heap<'v>, value: &AttrValue) -> Value<'v> {
+    pub(crate) fn attr_value<'v>(&self, heap: Heap<'v>, value: &AttrValue) -> Value<'v> {
         match value {
             AttrValue::Bool(b) => Value::new_bool(*b),
             AttrValue::Int(i) => heap.alloc(*i),
@@ -166,6 +166,20 @@ impl CtxState {
     }
 }
 
+/// The `ctx` of the rule being analysed, for code that runs in it (a subrule).
+pub(crate) fn alloc_ctx<'v>(heap: Heap<'v>, state: Arc<CtxState>) -> Value<'v> {
+    heap.alloc(CtxValue { state })
+}
+
+/// The value of the attribute `name` of the rule being analysed, None if it has none.
+pub(crate) fn attr_named<'v>(state: &CtxState, heap: Heap<'v>, name: &str) -> Value<'v> {
+    state
+        .attrs
+        .iter()
+        .find(|(n, _)| n == name)
+        .map_or_else(Value::new_none, |(_, v)| state.attr_value(heap, v))
+}
+
 #[derive(ProvidesStaticType, NoSerialize, Allocative)]
 pub(crate) struct CtxValue {
     #[allocative(skip)]
@@ -183,6 +197,20 @@ impl fmt::Debug for CtxValue {
 impl fmt::Display for CtxValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "<ctx for {}>", self.state.label)
+    }
+}
+
+/// `(enabled, name)` of each entry of the rule's `features` attribute.
+fn features_of(state: &CtxState) -> Vec<(bool, String)> {
+    match state.attrs.iter().find(|(n, _)| n == "features") {
+        Some((_, AttrValue::StringList(items))) => items
+            .iter()
+            .map(|f| match f.strip_prefix('-') {
+                Some(off) => (false, off.to_owned()),
+                None => (true, f.clone()),
+            })
+            .collect(),
+        _ => Vec::new(),
     }
 }
 
@@ -230,6 +258,37 @@ fn ctx_members(builder: &mut MethodsBuilder) {
         super::fragments::made_by("_make_fragments", &options)
             .map(|made| made.to_value())
             .map_err(fatal)
+    }
+
+    /// The features the rule asks for: its `features` attribute (the package's
+    /// and `--features` are not merged in yet).
+    #[starlark(attribute)]
+    fn features<'v>(this: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
+        Ok(heap.alloc(AllocList(
+            features_of(state(this))
+                .into_iter()
+                .filter_map(|(on, f)| on.then_some(f)),
+        )))
+    }
+
+    /// The features it turned off (`-name`).
+    #[starlark(attribute)]
+    fn disabled_features<'v>(this: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
+        Ok(heap.alloc(AllocList(
+            features_of(state(this))
+                .into_iter()
+                .filter_map(|(on, f)| (!on).then_some(f)),
+        )))
+    }
+
+    /// `ctx.coverage_instrumented(target = None)`: coverage is not collected
+    /// (buildfiji-fyz.9).
+    fn coverage_instrumented<'v>(
+        this: Value<'v>,
+        args: &Arguments<'v, '_>,
+    ) -> starlark::Result<bool> {
+        let _ = (this, args);
+        Ok(false)
     }
 
     /// The configuration: `ctx.configuration`.
@@ -565,11 +624,11 @@ impl CtxState {
         name == "visibility" && false
     }
 
+    /// Every label attribute has its files in `ctx.files` (probed on Bazel
+    /// 9.2.0), whether or not it allows source files.
     fn takes_files(&self, name: &str) -> bool {
-        self.attr_def(name).is_some_and(|d| {
-            matches!(d.ty, AttrType::Label | AttrType::LabelList)
-                && !matches!(d.files, fjfj_graph::rule::FileTypes::None)
-        })
+        self.attr_def(name)
+            .is_some_and(|d| matches!(d.ty, AttrType::Label | AttrType::LabelList))
     }
 
     fn takes_single_file(&self, name: &str) -> bool {

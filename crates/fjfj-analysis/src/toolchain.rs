@@ -78,6 +78,35 @@ impl Key for RegisteredToolchains {
     }
 }
 
+/// The `toolchain_type` a label stands for: an alias of one is that one.
+async fn canonical_type(ctx: &Ctx, label: &Label) -> Result<Label, Error> {
+    let mut current = label.clone();
+    for _ in 0..16 {
+        let package = ctx
+            .get(crate::target::PackageKey {
+                repo: current.repo.clone(),
+                package: current.package.clone(),
+            })
+            .await?;
+        let next = package.target(&current.name).and_then(|t| match &t.kind {
+            fjfj_graph::package::TargetKind::Rule {
+                rule_class,
+                defined_in: None,
+                attrs,
+            } if rule_class == "alias" => attrs.iter().find_map(|(n, v)| match (n.as_str(), v) {
+                ("actual", fjfj_graph::rule::AttrValue::Label(l)) => Some(l.clone()),
+                _ => None,
+            }),
+            _ => None,
+        });
+        match next {
+            Some(actual) => current = actual,
+            None => break,
+        }
+    }
+    Ok(current)
+}
+
 /// The toolchain target that serves `toolchain_type` in `key`'s configuration,
 /// and what it says.
 pub(crate) async fn resolve(
@@ -87,6 +116,7 @@ pub(crate) async fn resolve(
 ) -> Result<Option<Arc<ToolchainDecl>>, Error> {
     let registered = ctx.get(RegisteredToolchains).await?;
     let config = &key.configuration;
+    let wanted = canonical_type(ctx, toolchain_type).await?;
     for label in registered.iter() {
         let candidate = ctx
             .get(ConfiguredTargetKey {
@@ -97,12 +127,24 @@ pub(crate) async fn resolve(
         let Some(decl) = &candidate.toolchain_decl else {
             continue;
         };
-        if decl.toolchain_type != *toolchain_type {
+        if decl.toolchain_type != wanted
+            && canonical_type(ctx, &decl.toolchain_type).await? != wanted
+        {
             continue;
         }
         let has = |needed: &[Label]| needed.iter().all(|c| config.constraints.contains(c));
         // Execution and target platform are the host's for now.
         if !has(&decl.exec_compatible_with) || !has(&decl.target_compatible_with) {
+            if std::env::var_os("FJFJ_TOOLCHAIN_DEBUG").is_some() {
+                eprintln!(
+                    "toolchain {} of {} rejected: constraints {:?} / {:?} not all in {:?}",
+                    expand_label_text(label),
+                    expand_label_text(toolchain_type),
+                    decl.exec_compatible_with,
+                    decl.target_compatible_with,
+                    config.constraints
+                );
+            }
             continue;
         }
         let mut settings_match = true;
@@ -114,6 +156,14 @@ pub(crate) async fn resolve(
                 })
                 .await?;
             settings_match &= target.config_matching.as_ref().is_some_and(|m| m.matches);
+            if std::env::var_os("FJFJ_TOOLCHAIN_DEBUG").is_some() {
+                eprintln!(
+                    "toolchain {}: setting {} -> {:?}",
+                    expand_label_text(label),
+                    expand_label_text(setting),
+                    target.config_matching
+                );
+            }
         }
         if settings_match {
             return Ok(Some(Arc::new(decl.clone())));

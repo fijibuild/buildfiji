@@ -3,6 +3,18 @@
 # (buildfiji-136.4 is the analysis phase's use of them, buildfiji-136.15 the
 # mechanism that puts fjfj's own .bzl files in every file's globals).
 
+load(
+    "@_builtins//:cc_features.bzl",
+    _action_is_enabled = "action_is_enabled",
+    _cc_toolchain_features = "cc_toolchain_features",
+    _cc_variables = "cc_variables",
+    _combine_cc_variables = "combine_cc_variables",
+    _get_environment_variables = "get_environment_variables",
+    _get_execution_requirements = "get_execution_requirements",
+    _get_memory_inefficient_command_line = "get_memory_inefficient_command_line",
+    _get_tool_for_action = "get_tool_for_action",
+)
+
 DefaultInfo = provider(
     doc = "The default providers of a target.",
     fields = ["files", "runfiles", "data_runfiles", "default_runfiles", "executable"],
@@ -59,28 +71,67 @@ def _unavailable(name, bead):
 def _exec_os(ctx):
     return ctx.fragments.platform._os
 
+# HeaderInfo, which a CcCompilationContextInfo keeps of its headers and modules.
+def _create_header_info(
+        header_module = None,
+        pic_header_module = None,
+        modular_public_headers = [],
+        modular_private_headers = [],
+        textual_headers = [],
+        separate_module_headers = [],
+        separate_module = None,
+        separate_pic_module = None,
+        deps = [],
+        merged_deps = []):
+    return struct(
+        header_module = header_module,
+        pic_header_module = pic_header_module,
+        modular_public_headers = list(modular_public_headers),
+        modular_private_headers = list(modular_private_headers),
+        textual_headers = list(textual_headers),
+        separate_module_headers = list(separate_module_headers),
+        separate_module = separate_module,
+        separate_pic_module = separate_pic_module,
+        deps = list(deps),
+        merged_deps = list(merged_deps),
+    )
+
+def _create_header_info_with_deps(header_info, deps, merged_deps):
+    return _create_header_info(
+        header_module = header_info.header_module,
+        pic_header_module = header_info.pic_header_module,
+        modular_public_headers = header_info.modular_public_headers,
+        modular_private_headers = header_info.modular_private_headers,
+        textual_headers = header_info.textual_headers,
+        separate_module_headers = header_info.separate_module_headers,
+        separate_module = header_info.separate_module,
+        separate_pic_module = header_info.separate_pic_module,
+        deps = deps,
+        merged_deps = merged_deps,
+    )
+
 def _cc_internals():
     return struct(
         check_private_api = lambda *args, **kwargs: None,
-        freeze = lambda value: value,
-        create_header_info = lambda *args, **kwargs: struct(),
+        freeze = fjfj_freeze,
+        create_header_info = _create_header_info,
         get_artifact_name_for_category = _unavailable("cc_common.internal_DO_NOT_USE().get_artifact_name_for_category", "buildfiji-136.15"),
-        combine_cc_toolchain_variables = _unavailable("cc_common.internal_DO_NOT_USE().combine_cc_toolchain_variables", "buildfiji-136.15"),
+        combine_cc_toolchain_variables = _combine_cc_variables,
         actions = _unavailable("cc_common.internal_DO_NOT_USE().actions", "buildfiji-136.15"),
-        cc_toolchain_variables = _unavailable("cc_common.internal_DO_NOT_USE().cc_toolchain_variables", "buildfiji-136.15"),
+        cc_toolchain_variables = lambda *, vars: _cc_variables(vars),
         dynamic_library_symlink = _unavailable("cc_common.internal_DO_NOT_USE().dynamic_library_symlink", "buildfiji-136.15"),
         create_cc_compile_action = _unavailable("cc_common.internal_DO_NOT_USE().create_cc_compile_action", "buildfiji-136.15"),
         is_tree_artifact = _unavailable("cc_common.internal_DO_NOT_USE().is_tree_artifact", "buildfiji-136.15"),
-        intern_string_sequence_variable_value = _unavailable("cc_common.internal_DO_NOT_USE().intern_string_sequence_variable_value", "buildfiji-136.15"),
+        intern_string_sequence_variable_value = lambda values: values,
         wrap_link_actions = _unavailable("cc_common.internal_DO_NOT_USE().wrap_link_actions", "buildfiji-136.15"),
         dynamic_library_soname = _unavailable("cc_common.internal_DO_NOT_USE().dynamic_library_soname", "buildfiji-136.15"),
         declare_other_output_file = _unavailable("cc_common.internal_DO_NOT_USE().declare_other_output_file", "buildfiji-136.15"),
-        create_header_info_with_deps = _unavailable("cc_common.internal_DO_NOT_USE().create_header_info_with_deps", "buildfiji-136.15"),
+        create_header_info_with_deps = _create_header_info_with_deps,
         compute_output_name_prefix_dir = _unavailable("cc_common.internal_DO_NOT_USE().compute_output_name_prefix_dir", "buildfiji-136.15"),
         solib_symlink_action = _unavailable("cc_common.internal_DO_NOT_USE().solib_symlink_action", "buildfiji-136.15"),
         rule_class = _unavailable("cc_common.internal_DO_NOT_USE().rule_class", "buildfiji-136.15"),
         per_file_copts = _unavailable("cc_common.internal_DO_NOT_USE().per_file_copts", "buildfiji-136.15"),
-        intern_seq = _unavailable("cc_common.internal_DO_NOT_USE().intern_seq", "buildfiji-136.15"),
+        intern_seq = lambda values: values,
         get_link_args = _unavailable("cc_common.internal_DO_NOT_USE().get_link_args", "buildfiji-136.15"),
         get_artifact_name_extension_for_category = _unavailable("cc_common.internal_DO_NOT_USE().get_artifact_name_extension_for_category", "buildfiji-136.15"),
         expand_and_tokenize = _unavailable("cc_common.internal_DO_NOT_USE().expand_and_tokenize", "buildfiji-136.15"),
@@ -91,7 +142,7 @@ def _cc_internals():
         create_cc_compile_action_template = _unavailable("cc_common.internal_DO_NOT_USE().create_cc_compile_action_template", "buildfiji-136.15"),
         collect_per_file_lto_backend_opts = _unavailable("cc_common.internal_DO_NOT_USE().collect_per_file_lto_backend_opts", "buildfiji-136.15"),
         check_toplevel = _unavailable("cc_common.internal_DO_NOT_USE().check_toplevel", "buildfiji-136.15"),
-        cc_toolchain_features = _unavailable("cc_common.internal_DO_NOT_USE().cc_toolchain_features", "buildfiji-136.15"),
+        cc_toolchain_features = lambda *, toolchain_config_info, tools_directory: _cc_toolchain_features(toolchain_config_info, tools_directory),
         absolute_symlink = _unavailable("cc_common.internal_DO_NOT_USE().absolute_symlink", "buildfiji-136.15"),
     )
 
@@ -114,7 +165,7 @@ def _java_internals():
 _ConstraintSettingInfo = provider(doc = "A constraint_setting.")
 _ConstraintValueInfo = provider(doc = "A constraint_value.")
 _PlatformInfo = provider(doc = "A platform.")
-_TemplateVariableInfo = provider(doc = "Make variables.", fields = ["variables"])
+_TemplateVariableInfo, _raw_TemplateVariableInfo = provider(doc = "Make variables.", fields = ["variables"], init = lambda variables: {"variables": variables})
 _ToolchainInfo = provider(doc = "The data of a toolchain.")
 _FeatureFlagInfo = provider(doc = "A feature flag's value.", fields = ["value"])
 _ExecutionInfo = provider(doc = "How a test runs.", fields = ["requirements", "exec_group"])
@@ -160,7 +211,7 @@ def _xcode_version_config_init(
         "execution_info": lambda: {"requires-darwin": ""} if include_xcode_execution_info else {},
     }
 
-_XcodeVersionConfig, _ = provider(doc = "An xcode_config.", init = _xcode_version_config_init)
+_XcodeVersionConfig, _raw_XcodeVersionConfig = provider(doc = "An xcode_config.", init = _xcode_version_config_init)
 
 platform_common = struct(
     ConstraintSettingInfo = _ConstraintSettingInfo,
@@ -202,16 +253,16 @@ testing = struct(
 )
 
 cc_common = struct(
-    action_is_enabled = _unavailable("cc_common.action_is_enabled", "buildfiji-136.15"),
+    action_is_enabled = lambda *, feature_configuration, action_name: _action_is_enabled(feature_configuration, action_name),
     add_go_exec_groups_to_binary_rules = _unavailable("cc_common.add_go_exec_groups_to_binary_rules", "buildfiji-136.15"),
     check_experimental_cc_shared_library = _unavailable("cc_common.check_experimental_cc_shared_library", "buildfiji-136.15"),
     do_not_use_tools_cpp_compiler_present = None,
-    empty_variables = _unavailable("cc_common.empty_variables", "buildfiji-136.15"),
-    get_environment_variables = _unavailable("cc_common.get_environment_variables", "buildfiji-136.15"),
-    get_execution_requirements = _unavailable("cc_common.get_execution_requirements", "buildfiji-136.15"),
-    get_memory_inefficient_command_line = _unavailable("cc_common.get_memory_inefficient_command_line", "buildfiji-136.15"),
-    get_tool_for_action = _unavailable("cc_common.get_tool_for_action", "buildfiji-136.15"),
-    get_tool_requirement_for_action = _unavailable("cc_common.get_tool_requirement_for_action", "buildfiji-136.15"),
+    empty_variables = lambda: _cc_variables({}),
+    get_environment_variables = lambda *, feature_configuration, action_name, variables: _get_environment_variables(feature_configuration, action_name, variables),
+    get_execution_requirements = lambda *, feature_configuration, action_name: _get_execution_requirements(feature_configuration, action_name),
+    get_memory_inefficient_command_line = lambda *, feature_configuration, action_name, variables: _get_memory_inefficient_command_line(feature_configuration, action_name, variables),
+    get_tool_for_action = lambda *, feature_configuration, action_name: _get_tool_for_action(feature_configuration, action_name),
+    get_tool_requirement_for_action = lambda *, feature_configuration, action_name: _get_execution_requirements(feature_configuration, action_name),
     implementation_deps_allowed_by_allowlist = _unavailable("cc_common.implementation_deps_allowed_by_allowlist", "buildfiji-136.15"),
     incompatible_disable_objc_library_transition = _unavailable("cc_common.incompatible_disable_objc_library_transition", "buildfiji-136.15"),
     internal_DO_NOT_USE = _cc_internals,

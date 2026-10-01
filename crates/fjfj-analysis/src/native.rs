@@ -92,6 +92,7 @@ pub(crate) async fn analyze(
                 .await
         }
         "alias" => alias(ctx, key, attrs, target).await,
+        "label_flag" | "label_setting" => label_flag(ctx, key, attrs, target).await,
         "genrule" => genrule(ctx, key, package, attrs, target).await,
         "config_setting" => config_setting(ctx, key, attrs, target).await,
         "toolchain" => {
@@ -136,15 +137,59 @@ async fn alias(
     ctx: &Ctx,
     key: &ConfiguredTargetKey,
     attrs: &Attrs,
-    mut target: ConfiguredTarget,
+    target: ConfiguredTarget,
 ) -> Result<ConfiguredTarget, Error> {
     let actual = labels(&key.label, attrs, "actual")?;
-    let [(k, actual)] = targets(ctx, key, actual).await?.try_into().map_err(|_| {
-        Error::msg(format!(
-            "{}: alias needs exactly one 'actual'",
-            label_text(&key.label)
-        ))
-    })?;
+    forward(ctx, key, actual, target, "alias needs exactly one 'actual'").await
+}
+
+/// `label_flag` and `label_setting`: the target their value names, which is
+/// the default unless a flag or a transition set another.
+async fn label_flag(
+    ctx: &Ctx,
+    key: &ConfiguredTargetKey,
+    attrs: &Attrs,
+    target: ConfiguredTarget,
+) -> Result<ConfiguredTarget, Error> {
+    let setting = fjfj_graph::expand::label_text(&key.label);
+    let chosen = match key.configuration.settings.get(&setting) {
+        Some(fjfj_graph::SettingValue::Str(text)) => {
+            let mappings = ctx.data::<Env>()?.rules.mappings();
+            let parsed = Label::parse_mapped(
+                text,
+                LabelContext {
+                    repo: "",
+                    package: "",
+                },
+                &mut |apparent| mappings.resolve_apparent("", apparent),
+            )
+            .map_err(|e| Error::msg(format!("{setting}: bad value '{text}': {e}")))?;
+            vec![parsed]
+        }
+        _ => labels(&key.label, attrs, "build_setting_default")?,
+    };
+    forward(
+        ctx,
+        key,
+        chosen,
+        target,
+        "a label_flag needs a build_setting_default",
+    )
+    .await
+}
+
+/// This target is what `actual` is.
+async fn forward(
+    ctx: &Ctx,
+    key: &ConfiguredTargetKey,
+    actual: Vec<Label>,
+    mut target: ConfiguredTarget,
+    message: &str,
+) -> Result<ConfiguredTarget, Error> {
+    let [(k, actual)] = targets(ctx, key, actual)
+        .await?
+        .try_into()
+        .map_err(|_| Error::msg(format!("{}: {message}", label_text(&key.label))))?;
     target.files = actual.files.clone();
     target.executable = actual.executable.clone();
     target.runfiles = actual.runfiles.clone();

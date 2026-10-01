@@ -254,12 +254,9 @@ fn actions_members(builder: &mut MethodsBuilder) {
             }
             None => s.derived(filename),
         };
-        if !s.declared.lock().unwrap().insert(artifact.exec_path()) {
-            return Err(fatal(format!(
-                "ctx.actions.declare_file: '{}' was already declared",
-                artifact.exec_path()
-            )));
-        }
+        // Declaring a path again is allowed (Bazel gives the same file); two
+        // different actions creating it are not (checked when the rule is done).
+        s.declared.lock().unwrap().insert(artifact.exec_path());
         Ok(alloc_file(eval.heap(), artifact, s.label.clone()))
     }
 

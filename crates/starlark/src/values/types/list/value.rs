@@ -24,6 +24,7 @@ use std::fmt;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::fmt::Formatter;
+use std::hash::Hash;
 use std::slice;
 
 use allocative::Allocative;
@@ -37,6 +38,7 @@ use starlark_syntax::slice_vec_ext::VecExt;
 use crate as starlark;
 use crate::any::ProvidesStaticType;
 use crate::coerce::coerce;
+use crate::collections::StarlarkHasher;
 use crate::environment::Methods;
 use crate::hint::likely;
 use crate::hint::unlikely;
@@ -145,8 +147,19 @@ impl<'v> ListData<'v> {
         x == TypeId::of::<ListGen<ListData>>() || x == TypeId::of::<ListGen<FrozenListData>>()
     }
 
+    pub(crate) fn freeze_in_place(&self) {
+        self.content.get().as_ref().freeze_in_place();
+    }
+
+    pub(crate) fn is_shared_empty(&self) -> bool {
+        self.content.get().as_ref().is_shared_empty()
+    }
+
     /// Return an error if there's at least one iterator over the list.
     fn check_can_mutate(&self) -> anyhow::Result<()> {
+        if unlikely(self.content.get().as_ref().is_frozen_in_place()) {
+            return Err(ValueError::CannotMutateImmutableValue.into());
+        }
         if unlikely(self.content.get().as_ref().iter_count_is_non_zero()) {
             return Err(ValueError::MutationDuringIteration.into());
         }
@@ -353,9 +366,15 @@ pub(crate) trait ListLike<'v>: Debug + Allocative {
     unsafe fn iter_size_hint(&self, index: usize) -> (usize, Option<usize>);
     unsafe fn iter_next(&self, index: usize) -> Option<Value<'v>>;
     unsafe fn iter_stop(&self);
+    /// fjfj: whether the list is immutable for good, and so hashable.
+    fn is_immutable(&self) -> bool;
 }
 
 impl<'v> ListLike<'v> for ListData<'v> {
+    fn is_immutable(&self) -> bool {
+        self.content.get().as_ref().is_immutable()
+    }
+
     fn content(&self) -> &[Value<'v>] {
         self.content.get().as_ref().content()
     }
@@ -385,6 +404,10 @@ impl<'v> ListLike<'v> for ListData<'v> {
 }
 
 impl<'v> ListLike<'v> for FrozenListData {
+    fn is_immutable(&self) -> bool {
+        true
+    }
+
     fn content(&self) -> &[Value<'v>] {
         coerce(self.content())
     }
@@ -436,6 +459,22 @@ where
         Self: Sized,
     {
         true
+    }
+
+    /// fjfj: Bazel hashes a list that is immutable (a constant of a loaded
+    /// `.bzl`, or frozen by `Starlark.freeze`).
+    fn write_hash(&self, hasher: &mut StarlarkHasher) -> crate::Result<()> {
+        if !self.0.is_immutable() {
+            return Err(crate::Error::new_other(
+                crate::values::error::ControlError::NotHashableValue("list".to_owned()),
+            ));
+        }
+        let content = self.0.content();
+        content.len().hash(hasher);
+        for v in content {
+            v.write_hash(hasher)?;
+        }
+        Ok(())
     }
 
     fn get_methods() -> Option<&'static Methods> {

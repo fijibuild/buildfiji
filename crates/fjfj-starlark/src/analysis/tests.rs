@@ -510,3 +510,113 @@ r = rule(implementation = _impl, fragments = ["cpp"])
         ]
     );
 }
+
+/// The C++ feature engine: which features a request enables (requires, implies,
+/// provides), and the flags, environment and tool they give an action.
+#[test]
+fn the_cc_feature_engine_selects_features_and_expands_flags() {
+    let src = r#"
+def _flag_group(flags = [], flag_groups = [], iterate_over = None, expand_if_available = None, expand_if_not_available = None, expand_if_true = None, expand_if_false = None, expand_if_equal = None):
+    return struct(flags = flags, flag_groups = flag_groups, iterate_over = iterate_over, expand_if_available = expand_if_available, expand_if_not_available = expand_if_not_available, expand_if_true = expand_if_true, expand_if_false = expand_if_false, expand_if_equal = expand_if_equal)
+
+def _flag_set(actions, flag_groups, with_features = []):
+    return struct(actions = actions, flag_groups = flag_groups, with_features = with_features)
+
+def _feature(name, enabled = False, flag_sets = [], env_sets = [], requires = [], implies = [], provides = []):
+    return struct(name = name, enabled = enabled, flag_sets = flag_sets, env_sets = env_sets, requires = requires, implies = implies, provides = provides)
+
+def _impl(ctx):
+    internals = cc_common.internal_DO_NOT_USE()
+    compile = _flag_set(["c++-compile"], [
+        _flag_group(flags = ["-c", "%{source_file}"]),
+        _flag_group(iterate_over = "includes", flags = ["-I", "%{includes}"]),
+        _flag_group(flag_groups = [_flag_group(flags = ["-O%{opt_level}"])], expand_if_available = "opt_level"),
+        _flag_group(flags = ["-DPIC"], expand_if_true = "pic"),
+        _flag_group(flags = ["-fno-pic"], expand_if_false = "pic"),
+        _flag_group(iterate_over = "libs", flag_groups = [_flag_group(flags = ["-l%{libs.name}", "100%%"])]),
+    ])
+    features = [
+        _feature("opt", flag_sets = [_flag_set(["c++-compile"], [_flag_group(flags = ["-O2"])])]),
+        _feature("base", enabled = True, flag_sets = [compile], implies = ["dep"]),
+        _feature("dep", flag_sets = [_flag_set(["c++-compile"], [_flag_group(flags = ["-dep"])], with_features = [struct(features = [], not_features = ["opt"])])]),
+        _feature("needs_opt", requires = [struct(features = ["opt"])], flag_sets = [_flag_set(["c++-compile"], [_flag_group(flags = ["-needs-opt"])])]),
+        _feature("env", env_sets = [struct(actions = ["c++-compile"], with_features = [], env_entries = [struct(key = "K", value = "v-%{source_file}", expand_if_available = None)])]),
+    ]
+    gcc = struct(path = "bin/gcc", tool = None, with_features = [], execution_requirements = ["requires-x"])
+    config = struct(
+        _features_DO_NOT_USE = features,
+        _action_configs_DO_NOT_USE = [struct(action_name = "c++-compile", config_name = "c++-compile", enabled = True, tools = [gcc], flag_sets = [], implies = ["env"])],
+        _artifact_name_patterns_DO_NOT_USE = [],
+    )
+    engine = internals.cc_toolchain_features(toolchain_config_info = config, tools_directory = "external/tc")
+    print(engine.default_features_and_action_configs())
+    variables = internals.cc_toolchain_variables(vars = {
+        "source_file": "a.cc",
+        "includes": ["x", "y"],
+        "pic": "",
+        "libs": [struct(name = "m"), struct(name = "z")],
+    })
+    for requested in [["c++-compile"], ["c++-compile", "opt", "needs_opt"], ["needs_opt"]]:
+        fc = engine.configure_features(requested_features = requested + engine.default_features_and_action_configs())
+        print(requested, [n for n in ["opt", "base", "dep", "needs_opt", "env"] if fc.is_enabled(n)])
+        print(cc_common.get_memory_inefficient_command_line(feature_configuration = fc, action_name = "c++-compile", variables = variables))
+    fc = engine.configure_features(requested_features = ["c++-compile", "base"])
+    print(cc_common.get_environment_variables(feature_configuration = fc, action_name = "c++-compile", variables = variables))
+    print(cc_common.get_tool_for_action(feature_configuration = fc, action_name = "c++-compile"))
+    print(cc_common.get_execution_requirements(feature_configuration = fc, action_name = "c++-compile"))
+    print(cc_common.action_is_enabled(feature_configuration = fc, action_name = "c++-compile"), cc_common.action_is_enabled(feature_configuration = fc, action_name = "link"))
+    return []
+r = rule(implementation = _impl)
+"#;
+    let out = run_rule(&request(src, "r", Vec::new(), Vec::new())).unwrap();
+    assert_eq!(
+        out.printed,
+        [
+            r#"["base", "c++-compile"]"#,
+            // base implies dep, and the c++-compile action config implies env.
+            r#"["c++-compile"] ["base", "dep", "env"]"#,
+            r#"["-c", "a.cc", "-I", "x", "-I", "y", "-fno-pic", "-lm", "100%", "-lz", "100%", "-dep"]"#,
+            // opt turns dep's flag off (not_features) and allows needs_opt.
+            r#"["c++-compile", "opt", "needs_opt"] ["opt", "base", "dep", "needs_opt", "env"]"#,
+            r#"["-O2", "-c", "a.cc", "-I", "x", "-I", "y", "-fno-pic", "-lm", "100%", "-lz", "100%", "-needs-opt"]"#,
+            // needs_opt without opt is not satisfied and goes.
+            r#"["needs_opt"] ["base", "dep", "env"]"#,
+            r#"["-c", "a.cc", "-I", "x", "-I", "y", "-fno-pic", "-lm", "100%", "-lz", "100%", "-dep"]"#,
+            r#"{"K": "v-a.cc"}"#,
+            "external/tc/bin/gcc",
+            r#"["requires-x"]"#,
+            "True False",
+        ]
+    );
+}
+
+/// A subrule runs in the rule that calls it, with the rule's `ctx` and the
+/// values of the attributes it declares; `freeze` makes a list hashable.
+#[test]
+fn a_subrule_runs_in_its_callers_ctx_and_freeze_makes_lists_hashable() {
+    let src = r#"
+def _sub_impl(ctx, x, *, _helper, _absent):
+    return "%s %s %s %s" % (ctx.label.name, x, _helper.label.name if _helper else None, _absent)
+sub = subrule(implementation = _sub_impl, attrs = {
+    "_helper": attr.label(default = "//:h"),
+    "_absent": attr.label(default = configuration_field("cpp", "zipper")),
+})
+def _impl(ctx):
+    print(sub(7))
+    frozen = cc_common.internal_DO_NOT_USE().freeze([1, 2])
+    print({struct(a = frozen): "ok"}[struct(a = [1, 2])] if False else {struct(a = frozen): "ok"}[struct(a = frozen)])
+    return []
+r = rule(implementation = _impl, subrules = [sub])
+"#;
+    let helper = DepInfo {
+        label: label("", "h"),
+        rule_class: None,
+        generated: false,
+        files: Vec::new(),
+        executable: None,
+        runfiles: Default::default(),
+        providers: Vec::new(),
+    };
+    let out = run_rule(&request(src, "r", Vec::new(), vec![helper])).unwrap();
+    assert_eq!(out.printed, ["t 7 h None", "ok"]);
+}

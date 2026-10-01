@@ -28,6 +28,7 @@ use ref_cast::ref_cast_custom;
 use crate::coerce::coerce;
 use crate::typing::Ty;
 use crate::values::FrozenValue;
+use crate::values::Heap;
 use crate::values::UnpackValue;
 use crate::values::Value;
 use crate::values::ValueLike;
@@ -74,6 +75,28 @@ impl<'v> ListRef<'v> {
         'v: 'a,
     {
         self.content.iter().copied()
+    }
+
+    /// fjfj: freeze a list in place (Bazel's `Starlark.freeze`), so that it can no
+    /// longer be changed and is hashable if its elements are. The shared empty list
+    /// cannot be marked, so a new empty one is made. Anything else is returned as is.
+    pub fn freeze_in_place(heap: Heap<'v>, x: Value<'v>) -> Value<'v> {
+        if x.unpack_frozen().is_some() {
+            return x;
+        }
+        let Some(list) = x.downcast_ref::<ListGen<ListData>>() else {
+            return x;
+        };
+        if list.0.is_shared_empty() {
+            let fresh = heap.alloc(crate::values::list::AllocList([Value::new_none()]));
+            if let Some(fresh_list) = fresh.downcast_ref::<ListGen<ListData>>() {
+                fresh_list.0.clear();
+                fresh_list.0.freeze_in_place();
+            }
+            return fresh;
+        }
+        list.0.freeze_in_place();
+        x
     }
 
     /// Downcast the value to the list or frozen list (both are represented by `ListRef`).

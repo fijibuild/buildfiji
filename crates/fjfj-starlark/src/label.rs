@@ -238,6 +238,8 @@ pub(crate) struct BzlEval<'a> {
     pub(crate) recorder: Option<crate::repo_ctx::Recorder>,
     /// The file being evaluated, when it is one's code that runs.
     file: Option<Label>,
+    /// The rule whose implementation is running, for the subrules it calls.
+    pub(crate) rule_ctx: Option<std::sync::Arc<crate::analysis::CtxState>>,
 }
 
 impl<'a> BzlEval<'a> {
@@ -252,6 +254,7 @@ impl<'a> BzlEval<'a> {
             extension: None,
             recorder: None,
             file: None,
+            rule_ctx: None,
         }
     }
 }
@@ -259,14 +262,49 @@ impl<'a> BzlEval<'a> {
 /// fjfj's own `.bzl`: the providers every file has as globals.
 const BUILTINS_SOURCE: &str = include_str!("builtins.bzl");
 
-/// The loads of the builtins: there are none.
-struct NoLoads;
+/// fjfj's own `.bzl` files other than the builtins, which the builtins `load()`
+/// as `@_builtins//:<name>`.
+const BUILTIN_FILES: &[(&str, &str)] = &[("cc_features.bzl", include_str!("cc_features.bzl"))];
 
-impl FileLoader for NoLoads {
+/// The loads of the builtins: the files of [`BUILTIN_FILES`].
+struct BuiltinLoads;
+
+impl FileLoader for BuiltinLoads {
     fn load(&self, path: &str) -> starlark::Result<FrozenModule> {
-        Err(starlark::Error::new_other(anyhow::anyhow!(
-            "the builtins load nothing, not {path}"
-        )))
+        static MODULES: std::sync::Mutex<Vec<(String, FrozenModule)>> =
+            std::sync::Mutex::new(Vec::new());
+        let name = path.strip_prefix("@_builtins//:").unwrap_or(path);
+        if let Some((_, module)) = MODULES.lock().unwrap().iter().find(|(n, _)| n == name) {
+            return Ok(module.clone());
+        }
+        let Some((_, source)) = BUILTIN_FILES.iter().find(|(n, _)| *n == name) else {
+            return Err(starlark::Error::new_other(anyhow::anyhow!(
+                "the builtins have no file {path}"
+            )));
+        };
+        let globals = crate::native::bzl_globals();
+        let mappings = RepoMappings::new();
+        let label = Label {
+            repo: "_builtins".to_owned(),
+            package: String::new(),
+            name: name.to_owned(),
+        };
+        let module = evaluate_bzl_with(
+            &BzlFile {
+                file: &label,
+                source,
+                globals: &globals,
+                mappings: &mappings,
+                loader: &BuiltinLoads,
+                print: None,
+            },
+            false,
+        )?;
+        MODULES
+            .lock()
+            .unwrap()
+            .push((name.to_owned(), module.clone()));
+        Ok(module)
     }
 }
 
@@ -297,7 +335,7 @@ fn builtins_module() -> &'static FrozenModule {
                 source: BUILTINS_SOURCE,
                 globals: &globals,
                 mappings: &mappings,
-                loader: &NoLoads,
+                loader: &BuiltinLoads,
                 print: None,
             },
             false,
@@ -325,6 +363,7 @@ fn evaluate_bzl_with(input: &BzlFile<'_>, builtins: bool) -> starlark::Result<Fr
         extension: None,
         recorder: None,
         file: Some(input.file.clone()),
+        rule_ctx: None,
     };
     Module::with_temp_heap(|module| {
         if builtins {

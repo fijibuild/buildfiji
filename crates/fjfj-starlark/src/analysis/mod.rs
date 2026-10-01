@@ -10,6 +10,7 @@
 mod actions;
 mod args_object;
 mod ctx;
+pub(crate) use ctx::{CtxState, alloc_ctx, attr_named};
 mod file;
 mod fragments;
 mod native_providers;

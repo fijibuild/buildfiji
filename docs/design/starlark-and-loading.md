@@ -1077,7 +1077,7 @@ source is cheaper and `git log` on the file says why a line is there.
   is an error not a panic (gpj); `split`/`rsplit` keywords and empty separator (wtt);
   `elems()`/`codepoints()` return lists, so `string/iter.rs` is deleted (9zq); self-containing
   list/dict/tuple prints `...` (sib); `r'\"'` keeps the backslash (sib, `starlark_syntax`);
-  `dict.get`/`setdefault` take `default` by name (b0s). A new difference is a normal commit
+  `dict.get`/`setdefault` take `default` by name (b0s); a list frozen by `Starlark.freeze` (`fjfj_freeze`, which `cc_common.internal_DO_NOT_USE().freeze` is) can no longer change and is hashable, as it is in Bazel, so a provider holding one can be a depset element or a dict key (136.16). A new difference is a normal commit
   that names its bead and replays its probe row.
 - Upstream: the PRs Buck2 would want are sent from a branch rebased on the upstream
   tag; a rebase on a new upstream release is `git diff` of the two trees.
@@ -1109,3 +1109,25 @@ so loading, defaults and query do not change) and its analysis is a function in
 
 Revisit a "Rust" row when its consumer reads providers instead of a side field
 (toolchain resolution is the one that would move four rows).
+
+## The C++ feature engine and what rules_cc's `cc_common` stands on (2026-10-01, buildfiji-136.16)
+
+rules_cc 0.2.17's `cc_common` is Starlark (`cc/private/cc_common.bzl`) on two layers that
+Bazel keeps in Java: `cc_common.internal_DO_NOT_USE()` and the native `cc_common`
+(`get_tool_for_action`, `get_memory_inefficient_command_line`, ...). Both are `builtins.bzl`
+here, in Starlark. The feature engine (`cc_features.bzl`, loaded by the builtins as
+`@_builtins//:cc_features.bzl`) is CcToolchainFeatures: it selects the features a request
+enables (requested or implied, then repeatedly dropping what is not requested nor implied by
+something enabled, whose implications are not all enabled, or whose `requires` is not met),
+refuses two enabled features that `provide` one symbol, and expands flag sets and env sets
+against variables (`%{a.b}`, `%%`, `iterate_over`, the `expand_if_*` conditions,
+`with_features`). Enabled features are in the order the toolchain defines them; an action
+config's flags come before the features'. Starlark has neither recursion nor `while`, so
+nested flag groups are a stack and loops are bounded.
+
+Other pieces this needed, each a Rust primitive only because Starlark cannot say it:
+`ctx.fragments` and `ctx.configuration` (structs of the builtins, frozen once per set of
+options), `subrule()` calls (the calling rule's `ctx` and its attributes, including those of
+the subrules it lists), late-bound defaults (`configuration_field`), `ctx.files` for every
+label attribute (probed), re-declaring a file (allowed when the actions are equal) and
+`label_flag`.

@@ -2381,9 +2381,10 @@ f()
         run("print(java_common.internal_DO_NOT_USE().google_legacy_api_enabled())").unwrap(),
         ["False"]
     );
-    let err = run("cc_common.empty_variables()").expect_err("not implemented yet");
+    let err = run("cc_common.legacy_cc_flags_make_variable_do_not_use()")
+        .expect_err("not implemented yet");
     assert!(
-        err.contains("cc_common.empty_variables is not implemented yet"),
+        err.contains("cc_common.legacy_cc_flags_make_variable_do_not_use is not implemented yet"),
         "{err}"
     );
     // toolchain_type(), as Bazel 9.2.0 answered it.

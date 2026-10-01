@@ -494,10 +494,13 @@ fn make_rule<'v>(
     let mut own: Vec<SchemaAttr> = Vec::new();
     let mut descriptors: Vec<Value<'v>> = Vec::new();
     let mut attr_names: Vec<String> = Vec::new();
-    if let Some(attrs) = arg("attrs").and_then(DictRef::from_value) {
+    let mut add_attrs = |attrs: DictRef<'v>, skip_existing: bool| -> starlark::Result<()> {
         for (name, descriptor) in attrs.iter() {
             let view = attribute_view(descriptor).expect("checked as bound");
             let name = name.unpack_str().expect("checked as bound");
+            if skip_existing && attr_names.iter().any(|n| n == name) {
+                continue;
+            }
             // `configurable` is for the attributes of built-in rules only.
             if view.def.configurable.is_some() {
                 return Err(fatal(format!(
@@ -515,6 +518,27 @@ fn make_rule<'v>(
             });
             descriptors.push(descriptor);
             attr_names.push(name.to_owned());
+        }
+        Ok(())
+    };
+    if let Some(attrs) = arg("attrs").and_then(DictRef::from_value) {
+        add_attrs(attrs, false)?;
+    }
+    // The attributes of the subrules (and of theirs) are the rule's own.
+    if let Some(subrules) = arg("subrules") {
+        let mut pending = all_of_type("subrules", subrules, heap, "Subrule", "Subrule")?;
+        let mut seen = 0;
+        while seen < pending.len() {
+            let subrule = pending[seen];
+            seen += 1;
+            if let Some(attrs) =
+                crate::decl::subrule_arg(subrule, "attrs").and_then(DictRef::from_value)
+            {
+                add_attrs(attrs, true)?;
+            }
+            if let Some(nested) = crate::decl::subrule_arg(subrule, "subrules") {
+                pending.extend(all_of_type("subrules", nested, heap, "Subrule", "Subrule")?);
+            }
         }
     }
 
