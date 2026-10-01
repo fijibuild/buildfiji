@@ -196,7 +196,9 @@ pub(crate) async fn analyze(
         });
     }
     let mut deps = BTreeMap::new();
-    for (dep_key, result) in dep_keys.iter().zip(ctx.get_all(dep_keys.clone()).await) {
+    let gathered = ctx.get_all(dep_keys.clone()).await;
+    let started = std::time::Instant::now();
+    for (dep_key, result) in dep_keys.iter().zip(gathered) {
         let done = result?;
         let generated = package.target(&dep_key.label.name).is_some_and(|t| {
             dep_key.label.repo == label.repo
@@ -208,6 +210,7 @@ pub(crate) async fn analyze(
         });
         deps.insert(dep_key.label.clone(), dep_info(&done, generated));
     }
+    let dep_info_time = started.elapsed();
 
     // The aspects its attributes ask for, on the targets they name: what they
     // provide is added to what the rule sees of those targets.
@@ -291,6 +294,7 @@ pub(crate) async fn analyze(
         build_setting_value,
         native,
     };
+    let started = std::time::Instant::now();
     let result = tokio::task::spawn_blocking(move || run_rule(&request))
         .await
         .map_err(|e| Error::msg(format!("running a rule panicked: {e}")))?
@@ -301,6 +305,8 @@ pub(crate) async fn analyze(
                 label_text(label)
             ))
         })?;
+    let run_time = started.elapsed();
+    let started = std::time::Instant::now();
     target.files = NestedSet::of(result.files);
     target.executable = result.executable;
     target.runfiles = result.runfiles;
@@ -331,6 +337,15 @@ pub(crate) async fn analyze(
         let resolved = resolved_attrs(&schema, &set);
         crate::test_action::register(ctx, key, &resolved, &mut target).await?;
     }
+    tracing::debug!(
+        ?dep_info_time,
+        ?run_time,
+        finish_time = ?started.elapsed(),
+        deps = target.deps.len(),
+        %rule_class,
+        label = %label_text(label),
+        "analysis phases"
+    );
     Ok(target)
 }
 

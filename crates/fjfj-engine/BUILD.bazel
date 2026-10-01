@@ -8,7 +8,12 @@ rust_library(
     crate_name = "fjfj_engine",
     edition = "2024",
     version = "0.0.1",
-    deps = ["@crates//:futures", "@crates//:thiserror", "@crates//:tracing"],
+    deps = [
+        "@crates//:futures",
+        "@crates//:thiserror",
+        "@crates//:tokio",
+        "@crates//:tracing",
+    ],
 )
 
 rust_test(

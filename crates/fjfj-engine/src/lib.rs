@@ -336,10 +336,17 @@ async fn evaluate_now(
                         _ => None,
                     };
                     let dirty = node.dirty.swap(false, Ordering::AcqRel);
-                    let future: Running =
-                        run(inner.clone(), node.clone(), previous, dirty, version)
-                            .boxed()
-                            .shared();
+                    // A task of its own, so that independent keys run on
+                    // different workers instead of inside whichever poll
+                    // first asked for them.
+                    let task =
+                        tokio::spawn(run(inner.clone(), node.clone(), previous, dirty, version));
+                    let future: Running = async move {
+                        task.await
+                            .map_err(|e| Error::msg(format!("a computation panicked: {e}")))?
+                    }
+                    .boxed()
+                    .shared();
                     *state = State::Running {
                         version,
                         future: future.clone(),
