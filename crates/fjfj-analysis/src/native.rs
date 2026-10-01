@@ -82,7 +82,15 @@ pub(crate) async fn analyze(
             .await;
     }
     match rule_class {
-        "filegroup" => filegroup(ctx, key, attrs, target).await,
+        "filegroup" => {
+            let builtins = Label {
+                repo: crate::starlark_rule::NATIVE_REPO.into(),
+                package: String::new(),
+                name: "providers.bzl".into(),
+            };
+            crate::starlark_rule::analyze(ctx, key, package, rule_class, &builtins, attrs, target)
+                .await
+        }
         "alias" => alias(ctx, key, attrs, target).await,
         "genrule" => genrule(ctx, key, package, attrs, target).await,
         "config_setting" => config_setting(ctx, key, attrs, target).await,
@@ -119,23 +127,6 @@ async fn targets(
         out.push((k, result?));
     }
     Ok(out)
-}
-
-async fn filegroup(
-    ctx: &Ctx,
-    key: &ConfiguredTargetKey,
-    attrs: &Attrs,
-    mut target: ConfiguredTarget,
-) -> Result<ConfiguredTarget, Error> {
-    let srcs = targets(ctx, key, labels(&key.label, attrs, "srcs")?).await?;
-    target.files = NestedSet::new(
-        Vec::new(),
-        srcs.iter()
-            .map(|(_, t)| Arc::new(t.files.clone()))
-            .collect(),
-    );
-    target.deps = srcs.into_iter().map(|(k, _)| k).collect();
-    Ok(target)
 }
 
 async fn alias(

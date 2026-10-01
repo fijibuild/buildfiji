@@ -87,7 +87,7 @@ pub use analysis::{
 };
 pub use depset::{Depset, DepsetGen, FrozenDepset, Order, depset_to_list, is_depset, new_depset};
 pub use dialect::{FileKind, build_dialect, bzl_dialect, parse};
-pub use label::{BzlFile, RepoLookup, RepoMappings, bzl_name, evaluate_bzl};
+pub use label::{BzlFile, RepoLookup, RepoMappings, bzl_name, evaluate_bzl, native_builtins};
 pub use load_visibility::{LoadVisibility, check_load_visibility, load_visibility};
 pub use loader::{BzlLoader, Importing, RepoProvider};
 pub use module_ctx::{

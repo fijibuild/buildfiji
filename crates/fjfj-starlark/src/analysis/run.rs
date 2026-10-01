@@ -13,6 +13,7 @@ use fjfj_graph::schema::RuleSchema;
 use fjfj_graph::{Action, Artifact, Configuration, Label};
 use starlark::environment::{FrozenModule, Module};
 use starlark::eval::Evaluator;
+use starlark::values::dict::DictRef;
 use starlark::values::{Heap, Value};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
@@ -45,6 +46,10 @@ pub struct RuleRequest {
     pub toolchains: Vec<(Label, Option<DepInfo>)>,
     /// For a build setting: its value in this configuration.
     pub build_setting_value: Option<fjfj_graph::SettingValue>,
+    /// The schema of a native rule whose analysis is the function
+    /// `_native_implementations[rule_name]` of the builtins, in which case
+    /// `module` is the builtins and there is no `rule()` to look at.
+    pub native: Option<Arc<RuleSchema>>,
 }
 
 /// What an `implementation` gave.
@@ -166,12 +171,25 @@ impl starlark::PrintHandler for Printed {
 
 /// Run the rule's `implementation`.
 pub fn run_rule(req: &RuleRequest) -> Result<RuleResult, String> {
-    let (rule, _) = req
-        .module
-        .get_any_visibility(&req.rule_name)
-        .map_err(|_| format!("no rule named {} in its .bzl", req.rule_name))?;
-    let schema =
-        schema_of(rule.value()).ok_or_else(|| format!("{} is not a rule", req.rule_name))?;
+    // A native rule is its schema and a function in a table of the builtins.
+    let (rule, schema) = match &req.native {
+        Some(schema) => {
+            let (table, _) = req
+                .module
+                .get_any_visibility("_native_implementations")
+                .map_err(|_| "the builtins have no _native_implementations".to_owned())?;
+            (table, schema.clone())
+        }
+        None => {
+            let (rule, _) = req
+                .module
+                .get_any_visibility(&req.rule_name)
+                .map_err(|_| format!("no rule named {} in its .bzl", req.rule_name))?;
+            let schema = schema_of(rule.value())
+                .ok_or_else(|| format!("{} is not a rule", req.rule_name))?;
+            (rule, schema)
+        }
+    };
     let attrs = resolved_attrs(&schema, &req.attrs);
     // The predeclared outputs are files of the package, and declared.
     let bin_dir = req.configuration.bin_dir();
@@ -224,8 +242,12 @@ pub fn run_rule(req: &RuleRequest) -> Result<RuleResult, String> {
             .unpack_frozen()
             .expect("a global is frozen")
             .to_value();
-        let implementation = implementation_of(rule_value)
-            .ok_or_else(|| format!("{} has no implementation", req.rule_name))?;
+        let implementation = if req.native.is_some() {
+            DictRef::from_value(rule_value).and_then(|table| table.get_str(&req.rule_name))
+        } else {
+            implementation_of(rule_value)
+        }
+        .ok_or_else(|| format!("{} has no implementation", req.rule_name))?;
         let running = BzlEval::running(&req.mappings);
         let heap = module.heap();
         let ctx = heap.alloc(CtxValue {

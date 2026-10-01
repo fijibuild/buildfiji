@@ -31,6 +31,9 @@ fn dep_info(target: &ConfiguredTarget, generated: bool) -> DepInfo {
     }
 }
 
+/// The repository that stands for the builtins as the file a rule is defined in.
+pub(crate) const NATIVE_REPO: &str = "_builtins";
+
 pub(crate) async fn analyze(
     ctx: &Ctx,
     key: &ConfiguredTargetKey,
@@ -43,20 +46,42 @@ pub(crate) async fn analyze(
     let env = ctx.data::<Env>()?;
     let label = &key.label;
     let rules = env.rules.clone();
-    let module = {
-        let (rules, bzl) = (rules.clone(), bzl.clone());
-        tokio::task::spawn_blocking(move || rules.module(&bzl))
-            .await
-            .map_err(|e| Error::msg(format!("loading a .bzl panicked: {e}")))?
-            .map_err(Error::msg)?
+    // A native rule written in Starlark is a function of the builtins and the
+    // schema Bazel gives the class.
+    let native = (bzl.repo == NATIVE_REPO).then(|| {
+        fjfj_graph::rule::native_rule(rule_class)
+            .map(|class| Arc::new(fjfj_graph::schema::RuleSchema::native(class)))
+    });
+    let (module, schema) = match native {
+        Some(schema) => (
+            fjfj_starlark::native_builtins(),
+            Some(schema.ok_or_else(|| {
+                Error::msg(format!(
+                    "{}: no native rule '{rule_class}'",
+                    label_text(label)
+                ))
+            })?),
+        ),
+        None => {
+            let (rules, bzl) = (rules.clone(), bzl.clone());
+            let module = tokio::task::spawn_blocking(move || rules.module(&bzl))
+                .await
+                .map_err(|e| Error::msg(format!("loading a .bzl panicked: {e}")))?
+                .map_err(Error::msg)?;
+            (module, None)
+        }
     };
-    let schema = rule_schema(&module, rule_class).ok_or_else(|| {
-        Error::msg(format!(
-            "{}: rule '{rule_class}' is not defined by {}",
-            label_text(label),
-            label_text(bzl)
-        ))
-    })?;
+    let native = schema.clone();
+    let schema = match schema {
+        Some(schema) => schema,
+        None => rule_schema(&module, rule_class).ok_or_else(|| {
+            Error::msg(format!(
+                "{}: rule '{rule_class}' is not defined by {}",
+                label_text(label),
+                label_text(bzl)
+            ))
+        })?,
+    };
 
     // A rule that transitions itself is analysed in the configuration the
     // transition makes of the one asked for.
@@ -245,6 +270,7 @@ pub(crate) async fn analyze(
         mappings: rules.mappings(),
         toolchains,
         build_setting_value,
+        native,
     };
     let result = tokio::task::spawn_blocking(move || run_rule(&request))
         .await

@@ -243,3 +243,13 @@ py_internal = struct(
     share_native_deps = _unavailable("py_internal.share_native_deps", "buildfiji-136.16"),
     stamp_binaries = _unavailable("py_internal.stamp_binaries", "buildfiji-136.16"),
 )
+
+# The native rules whose analysis is Starlark (buildfiji-4qs): `ctx` is the rule's
+# attributes as the native schema types them. The rules that stay Rust are the
+# ones that read or write what a provider cannot say.
+def _filegroup(ctx):
+    return [DefaultInfo(files = depset(transitive = [src[DefaultInfo].files for src in ctx.attr.srcs]))]
+
+_native_implementations = {
+    "filegroup": _filegroup,
+}

@@ -275,6 +275,11 @@ pub(crate) fn builtins() -> &'static FrozenModule {
     builtins_module()
 }
 
+/// The builtins, for analysis of the native rules written in Starlark.
+pub fn native_builtins() -> FrozenModule {
+    builtins_module().clone()
+}
+
 /// The frozen module of [`BUILTINS_SOURCE`], made once.
 fn builtins_module() -> &'static FrozenModule {
     static MODULE: std::sync::OnceLock<FrozenModule> = std::sync::OnceLock::new();

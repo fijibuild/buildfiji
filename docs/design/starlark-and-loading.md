@@ -1087,3 +1087,25 @@ queue), upstream PRs only (too slow for Bazel parity), workarounds in fjfj (kept
 buildfiji-8q5 is a check in `dialect.rs`), replacing the evaluator (rejected by the mum.1 spike).
 Error wording (buildfiji-v32) is a change in the crate when a whole family of messages is its
 own, a wrapper when it is one call.
+
+## Native rules: Starlark where it takes no hooks (decided 2026-10-01, buildfiji-4qs)
+
+fjfj does not follow Bazel's native/Java split for the sake of it. A native rule
+is Starlark if its analysis needs nothing that a provider and `ctx` cannot say;
+it stays Rust if Starlark would need hooks into analysis state. A native rule
+written in Starlark keeps the schema Bazel gives its class (`native_rules.rs`,
+so loading, defaults and query do not change) and its analysis is a function in
+`_native_implementations` in `builtins.bzl`, run by the same `run_rule` as a
+`rule()`'s `implementation` (`RuleRequest.native`).
+
+| Rule | Decision | Hooks Starlark would need |
+|---|---|---|
+| `filegroup` | **Starlark** | 0 |
+| `alias` | Rust | 2: forward every provider of `actual` (Starlark cannot enumerate a target's providers), and `config_matching`, so that an alias of a `config_setting` still selects |
+| `genrule` | Rust | 4: the make-variable and `$(location)` expander of `fjfj-graph` (shared with query), the implicit `genrule-setup.sh` attribute, an exec-configured `tools` in the native schema, and `outs` as output labels; the action reports owner kind `genrule` |
+| `constraint_setting`, `constraint_value`, `platform` | Rust | 1, but in all three: toolchain resolution and `--platforms` read `PlatformDecl` and `constraint_setting` from the configured target, so each would also need a step turning its providers into those, or resolution would read providers |
+| `config_setting` | Rust | reads the `Configuration` and build-setting values, and sets `config_matching`, which `select()` reads |
+| `toolchain` | Rust | sets `toolchain_decl`, which resolution reads; the implementation is not analysed until a rule resolves to it |
+
+Revisit a "Rust" row when its consumer reads providers instead of a side field
+(toolchain resolution is the one that would move four rows).
