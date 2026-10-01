@@ -22,6 +22,9 @@ pub enum ActionKind {
     WriteFile { contents: Vec<u8>, executable: bool },
     /// Make the output a symlink to `target`, an exec path.
     Symlink { target: String },
+    /// Make the output a symlink whose text is `target`, as written (a path
+    /// that need not exist, relative to the link).
+    UnresolvedSymlink { target: String },
     /// Make the runfiles tree of an executable: a directory of symlinks at
     /// `dir`, a manifest and a repository mapping beside it.
     RunfilesTree {

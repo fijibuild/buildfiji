@@ -44,6 +44,11 @@ pub(crate) struct CtxState {
     pub(crate) outputs: Vec<(String, Artifact)>,
     /// `ctx.toolchains`: each type and the implementation resolved for it.
     pub(crate) toolchains: Vec<(Label, Option<Arc<DepInfo>>)>,
+    /// For an aspect: the rule it is looking at, as a `ctx` of the rule's own
+    /// attributes (`ctx.rule`).
+    pub(crate) rule: Option<Arc<CtxState>>,
+    /// For an aspect: the aspects applied to this target so far, then this one.
+    pub(crate) aspect_ids: Vec<String>,
     pub(crate) actions: Mutex<Vec<Action>>,
     /// Exec paths declared so far, which another declaration may not repeat.
     pub(crate) declared: Mutex<BTreeSet<String>>,
@@ -369,6 +374,26 @@ fn ctx_members(builder: &mut MethodsBuilder) {
         Ok(heap.alloc(ActionsValue {
             state: state(this).clone(),
         }))
+    }
+
+    /// `ctx.rule`, in an aspect: the attributes of the target it looks at.
+    #[starlark(attribute)]
+    fn rule<'v>(this: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
+        match &state(this).rule {
+            Some(rule) => Ok(alloc_ctx(heap, rule.clone())),
+            None => Err(fatal("'ctx.rule' is only available in aspects")),
+        }
+    }
+
+    /// `ctx.kind` (`ctx.rule.kind` in an aspect): the rule class.
+    #[starlark(attribute)]
+    fn kind<'v>(this: Value<'v>) -> starlark::Result<String> {
+        Ok(state(this).rule_kind.clone())
+    }
+
+    #[starlark(attribute)]
+    fn aspect_ids<'v>(this: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
+        Ok(heap.alloc(AllocList(state(this).aspect_ids.iter().map(String::as_str))))
     }
 
     #[starlark(attribute)]

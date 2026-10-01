@@ -372,25 +372,73 @@ def _merge_runfiles_with_generated_inits(*, ctx, runfiles):
         return runfiles
     return runfiles.merge(ctx.runfiles(symlinks = symlinks, root_symlinks = root_symlinks))
 
+# `ctx.actions.template_dict()`: substitutions for `expand_template` that are
+# computed from lists. `_computed_substitutions` is what `expand_template`
+# turns one into.
+def _template_dict():
+    entries = []
+
+    def add(key, value):
+        entries.append((key, [value], None, None, False, None))
+        return None
+
+    def add_joined(key, values, *, join_with, map_each, uniquify = False, format_joined = None, allow_closure = False):
+        items = values.to_list() if type(values) == "depset" else list(values)
+        entries.append((key, items, join_with, map_each, uniquify, format_joined))
+        return None
+
+    return struct(add = add, add_joined = add_joined, _entries = entries)
+
+def _computed_substitutions(template_dict):
+    out = {}
+    for key, items, join_with, map_each, uniquify, format_joined in template_dict._entries:
+        if join_with == None:
+            out[key] = items[0]
+            continue
+        parts = []
+        for item in items:
+            mapped = map_each(item)
+            if mapped == None:
+                continue
+            for part in (mapped if type(mapped) == "list" else [mapped]):
+                if not uniquify or part not in parts:
+                    parts.append(part)
+        joined = join_with.join(parts)
+        if format_joined != None:
+            joined = format_joined % joined
+        out[key] = joined
+    return out
+
 # What rules_python's `py_internal_renamed.bzl` re-exports: a native object in
 # Bazel that only the python rules may use. Loading needs the symbol; calling
 # a member is buildfiji-136.16's.
 py_internal = struct(
     cc_toolchain_build_info_files = _unavailable("py_internal.cc_toolchain_build_info_files", "buildfiji-136.16"),
+    # A file that does not change from build to build; here an ordinary one.
+    declare_constant_metadata_file = lambda *, ctx, name, root: ctx.actions.declare_file(name),
     copy_without_caching = _unavailable("py_internal.copy_without_caching", "buildfiji-136.16"),
-    create_repo_mapping_manifest = _unavailable("py_internal.create_repo_mapping_manifest", "buildfiji-136.16"),
+    create_repo_mapping_manifest = lambda *, ctx, runfiles, output: ctx.actions.write(output, fjfj_repo_mapping(ctx, runfiles)),
     declare_shareable_artifact = _unavailable("py_internal.declare_shareable_artifact", "buildfiji-136.16"),
     # RepositoryName.getRunfilesPath: nothing for the main repository, else "../<repo>".
     get_label_repo_runfiles_path = lambda label: "../" + label.workspace_name if label.workspace_name else "",
-    get_legacy_external_runfiles = _unavailable("py_internal.get_legacy_external_runfiles", "buildfiji-136.16"),
+    get_legacy_external_runfiles = lambda ctx: False,
+    # The few cc helpers rules_python reads. Stamping is not implemented
+    # (buildfiji-ivq), so nothing is stamped.
+    cc_helper = struct(
+        is_valid_shared_library_artifact = lambda file: file.extension in ["so", "dylib", "dll", "pyd"] or file.basename.find(".so.") >= 0,
+        is_stamping_enabled = lambda ctx: False,
+        get_static_mode_params_for_dynamic_library_libraries = lambda libraries: libraries.to_list() if type(libraries) == "depset" else libraries,
+    ),
     is_bzlmod_enabled = lambda ctx: True,
+    # --legacy_external_runfiles is off, so the runfiles are as they are.
+    make_runfiles_respect_legacy_external_runfiles = lambda ctx, runfiles: runfiles,
     merge_runfiles_with_generated_inits_empty_files_supplier = _merge_runfiles_with_generated_inits,
     is_singleton_depset = lambda files: len(files.to_list()) == 1,
     is_tool_configuration = lambda ctx: ctx.configuration.is_tool_configuration(),
     link = _unavailable("py_internal.link", "buildfiji-136.16"),
     linkstamp_file = _unavailable("py_internal.linkstamp_file", "buildfiji-136.16"),
     regex_match = _unavailable("py_internal.regex_match", "buildfiji-136.16"),
-    runfiles_enabled = _unavailable("py_internal.runfiles_enabled", "buildfiji-136.16"),
+    runfiles_enabled = lambda ctx: True,
     share_native_deps = _unavailable("py_internal.share_native_deps", "buildfiji-136.16"),
     stamp_binaries = lambda ctx: False,
 )

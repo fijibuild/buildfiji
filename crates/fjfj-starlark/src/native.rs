@@ -230,6 +230,13 @@ fn internal_ctx_globals(builder: &mut GlobalsBuilder) {
             .ok_or_else(|| crate::args::fatal("actions2ctx_cheat: not a ctx.actions"))
     }
 
+    /// The contents of the repository mapping of a runfiles tree.
+    fn fjfj_repo_mapping<'v>(ctx: Value<'v>, runfiles: Value<'v>) -> starlark::Result<String> {
+        crate::analysis::repo_mapping_text(ctx, runfiles).ok_or_else(|| {
+            crate::args::fatal("create_repo_mapping_manifest: not a ctx or runfiles")
+        })
+    }
+
     /// An empty `Args`, as `ctx.actions.args()` gives.
     fn fjfj_new_args<'v>(heap: Heap<'v>) -> starlark::Result<Value<'v>> {
         Ok(crate::analysis::new_args(heap))

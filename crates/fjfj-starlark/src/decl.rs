@@ -38,7 +38,7 @@ use crate::label::{StarlarkLabel, display_label, evaluating_bzl, label_of_value,
 use allocative::Allocative;
 use fjfj_graph::Label;
 use fjfj_graph::rule::{AttrDef, AttrFlag, AttrType, AttrValue};
-use fjfj_graph::schema::SchemaAttr;
+use fjfj_graph::schema::{RuleSchema, SchemaAttr};
 use starlark::environment::{GlobalsBuilder, Methods, MethodsBuilder, MethodsStatic};
 use starlark::eval::{Arguments, Evaluator};
 use starlark::starlark_complex_value;
@@ -52,7 +52,7 @@ use starlark::values::{
 use starlark_derive::starlark_value;
 use std::fmt;
 use std::hash::Hash;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
 // ---- checking arguments ---------------------------------------------------------------
 
@@ -404,6 +404,14 @@ pub(crate) struct AspectGen<V> {
     #[trace(static)]
     #[allocative(skip)]
     name: OnceLock<String>,
+    /// The `.bzl` that made it, which with its name says which aspect it is.
+    #[trace(static)]
+    #[allocative(skip)]
+    defined_in: Option<fjfj_graph::Label>,
+    /// Its own attributes, as a schema, and the toolchains it asks for.
+    #[trace(static)]
+    #[allocative(skip)]
+    schema: Arc<RuleSchema>,
 }
 
 starlark_complex_value!(pub(crate) Aspect);
@@ -421,6 +429,8 @@ impl<'v> Freeze for Aspect<'v> {
                 .map(|v| v.freeze(freezer))
                 .collect::<FreezeResult<Vec<FrozenValue>>>()?,
             name: self.name,
+            defined_in: self.defined_in,
+            schema: self.schema,
         })
     }
 }
@@ -442,9 +452,32 @@ fn aspect_identity<'v>(value: Value<'v>) -> Option<(u64, &'v OnceLock<String>)> 
     }
 }
 
+/// Which aspect `value` is: the `.bzl` that made it and the name it is bound
+/// to there, with its own attributes.
+pub(crate) fn aspect_data(value: Value<'_>) -> Option<AspectData> {
+    fn of<'v, V: ValueLike<'v>>(a: &AspectGen<V>) -> AspectData {
+        AspectData {
+            name: a.name.get().cloned(),
+            defined_in: a.defined_in.clone(),
+            schema: a.schema.clone(),
+        }
+    }
+    if let Some(live) = value.downcast_ref::<Aspect<'_>>() {
+        Some(of(live))
+    } else {
+        value.downcast_ref::<FrozenAspect>().map(of)
+    }
+}
+
+/// See [`aspect_data`].
+pub(crate) struct AspectData {
+    pub(crate) name: Option<String>,
+    pub(crate) defined_in: Option<fjfj_graph::Label>,
+    pub(crate) schema: Arc<RuleSchema>,
+}
+
 /// What the aspect `value` was made with for the parameter `name`: `None` if
 /// it was not given.
-#[allow(dead_code)]
 pub(crate) fn aspect_arg<'v>(value: Value<'v>, name: &str) -> Option<Value<'v>> {
     fn of<'v, V: ValueLike<'v>>(a: &AspectGen<V>, name: &str) -> Option<Value<'v>> {
         let at = a.names.iter().position(|n| *n == name)?;
@@ -626,6 +659,55 @@ fn make_aspect<'v>(
             values.push(*value);
         }
     }
+    // Its own attributes (parameters, and the private ones that name the
+    // targets it reads) and the toolchain types it asks for.
+    let mut own: Vec<SchemaAttr> = Vec::new();
+    if let Some(attrs) = arg("attrs").and_then(DictRef::from_value) {
+        for (key, descriptor) in attrs.iter() {
+            let (Some(view), Some(attr_name)) = (attribute_view(descriptor), key.unpack_str())
+            else {
+                continue;
+            };
+            own.push(SchemaAttr {
+                name: attr_name.to_owned(),
+                def: view.def.clone(),
+                values: crate::rule::value_strings(view.def.ty, &view.values),
+                hidden: false,
+                configurable: !matches!(
+                    view.def.ty,
+                    fjfj_graph::rule::AttrType::Output | fjfj_graph::rule::AttrType::OutputList
+                ),
+                set: false,
+            });
+        }
+    }
+    // An aspect has none of the attributes every rule has.
+    let mut schema = RuleSchema {
+        attrs: own,
+        test: false,
+        executable: false,
+        starlark: true,
+        defined_in: crate::label::evaluating_file(eval),
+        toolchains: Vec::new(),
+        outputs: Vec::new(),
+        build_setting: None,
+        incoming_transition: false,
+    };
+    if let Some(toolchains) = arg("toolchains") {
+        for item in crate::args::sequence(toolchains).unwrap_or_default() {
+            if let Some(label) = crate::label::label_of_value(item) {
+                schema.toolchains.push((label, true));
+            } else if let Some(requirement) = item.downcast_ref::<ToolchainTypeRequirement>() {
+                schema
+                    .toolchains
+                    .push((requirement.label.clone(), requirement.mandatory));
+            } else if let Some(text) = item.unpack_str()
+                && let Ok(label) = crate::label::parse_in_caller(eval, "aspect", text)?
+            {
+                schema.toolchains.push((label, true));
+            }
+        }
+    }
     let name = OnceLock::new();
     name_at_assignment(eval, Kind::Aspect, &name)?;
     Ok(heap.alloc_complex(AspectGen {
@@ -633,6 +715,8 @@ fn make_aspect<'v>(
         names,
         args: values,
         name,
+        defined_in: crate::label::evaluating_file(eval),
+        schema: Arc::new(schema),
     }))
 }
 

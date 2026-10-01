@@ -36,7 +36,15 @@ pub(crate) fn flag_matches(configuration: &Configuration, flag: &str, value: &st
             Some((k, v)) => configuration.defines.get(k).is_some_and(|d| d == v),
             None => false,
         },
-        other => configuration.options.get(other).is_some_and(|d| d == value),
+        // A flag nothing set has the default Bazel gives it.
+        other => match configuration.options.get(other) {
+            Some(set) => set == value,
+            None => fjfj_bazel_compat::bazel_flags::FLAGS
+                .iter()
+                .find(|f| f.name == other)
+                .and_then(|f| f.default_value)
+                .is_some_and(|d| d == value),
+        },
     }
 }
 

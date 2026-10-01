@@ -97,7 +97,40 @@ pub struct ConfiguredTarget {
     pub actions: Vec<Action>,
     /// The targets it read, for finding every action a build needs.
     pub deps: Vec<ConfiguredTargetKey>,
+    /// The aspects it read: those its attributes ask for on the targets they
+    /// name, and for an aspect, the ones it propagated to.
+    pub aspect_deps: Vec<crate::aspect::AspectKey>,
+    /// For a target of a rule written in Starlark: what an aspect needs to
+    /// look at it as its rule's attributes.
+    pub rule_info: Option<Arc<RuleInfo>>,
 }
+
+/// What an aspect sees of the rule that made a target.
+#[derive(Clone, Debug)]
+pub struct RuleInfo {
+    pub bzl: Label,
+    pub rule_class: String,
+    pub schema: Arc<fjfj_graph::schema::RuleSchema>,
+    /// The attributes the BUILD file set, `select()`s decided.
+    pub attrs: Vec<(String, fjfj_graph::rule::AttrValue)>,
+    /// Each target an attribute named, by the attribute, in the configuration
+    /// the edge asked for.
+    pub edges: Vec<(String, ConfiguredTargetKey)>,
+    pub location: String,
+    pub build_file: String,
+}
+
+impl PartialEq for RuleInfo {
+    fn eq(&self, other: &RuleInfo) -> bool {
+        self.bzl == other.bzl
+            && self.rule_class == other.rule_class
+            && Arc::ptr_eq(&self.schema, &other.schema)
+            && self.attrs == other.attrs
+            && self.edges == other.edges
+    }
+}
+
+impl Eq for RuleInfo {}
 
 impl ConfiguredTarget {
     pub(crate) fn new(key: &ConfiguredTargetKey) -> ConfiguredTarget {
@@ -119,6 +152,8 @@ impl ConfiguredTarget {
             config_matching: None,
             actions: Vec::new(),
             deps: Vec::new(),
+            aspect_deps: Vec::new(),
+            rule_info: None,
         }
     }
 }

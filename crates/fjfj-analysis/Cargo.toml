@@ -6,6 +6,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+fjfj-bazel-compat.workspace = true
 fjfj-engine.workspace = true
 fjfj-graph.workspace = true
 fjfj-loading.workspace = true

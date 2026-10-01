@@ -363,6 +363,11 @@ impl Scheduler {
                 std::os::unix::fs::symlink(execroot.join(target), &at)
                     .map_err(|e| fail(format!("cannot link {}: {e}", at.display())))?;
             }
+            ActionKind::UnresolvedSymlink { target } => {
+                let at = execroot.join(action.outputs[0].exec_path());
+                std::os::unix::fs::symlink(target, &at)
+                    .map_err(|e| fail(format!("cannot link {}: {e}", at.display())))?;
+            }
             ActionKind::Spawn {
                 argv,
                 env,

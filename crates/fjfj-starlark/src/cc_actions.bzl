@@ -171,7 +171,11 @@ def create_cc_compile_action(
 def get_link_args(*, feature_configuration, action_name, build_variables, parameter_file_type):
     """The command line of a link as an Args, in a parameter file if the type says so."""
     args = fjfj_new_args()
-    args.add_all(_get_memory_inefficient_command_line(feature_configuration, action_name, build_variables))
+    # The toolchain writes `@<param file>` where the arguments after it may go
+    # to a file if the line is too long (`LINKER_PARAM_FILE_PLACEHOLDER`);
+    # run inline, they are all just arguments.
+    line = _get_memory_inefficient_command_line(feature_configuration, action_name, build_variables)
+    args.add_all([a for a in line if a != "@LINKER_PARAM_FILE_PLACEHOLDER"])
     if parameter_file_type != None:
         # Whether it is written is the Args': the command line is split when it
         # would be too long, which fjfj does not measure yet.

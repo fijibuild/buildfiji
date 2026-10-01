@@ -165,6 +165,26 @@ pub(crate) fn implementation_of<'v>(value: Value<'v>) -> Option<Value<'v>> {
     }
 }
 
+/// The aspects the attribute `attr` of the rule `value` asks for.
+pub(crate) fn aspects_of<'v>(value: Value<'v>, attr: &str) -> Vec<Value<'v>> {
+    fn of<'v, V: ValueLike<'v>>(rule: &RuleGen<V>, attr: &str) -> Vec<Value<'v>> {
+        rule.attr_names
+            .iter()
+            .position(|n| n == attr)
+            .and_then(|at| crate::attr::view(rule.attrs[at].to_value()))
+            .map(|v| v.aspects)
+            .unwrap_or_default()
+    }
+    if let Some(live) = value.downcast_ref::<Rule<'v>>() {
+        of(live, attr)
+    } else {
+        value
+            .downcast_ref::<FrozenRule>()
+            .map(|f| of(f, attr))
+            .unwrap_or_default()
+    }
+}
+
 /// The names of the attributes the rule `value` declares.
 pub(crate) fn declared_attr_names<'v>(value: Value<'v>) -> Vec<String> {
     if let Some(live) = value.downcast_ref::<Rule<'v>>() {
@@ -424,7 +444,7 @@ fn strings_of<'v>(
 }
 
 /// The `values` of an attribute, as the message that lists them writes them.
-fn value_strings(ty: AttrType, values: &[Value<'_>]) -> Vec<String> {
+pub(crate) fn value_strings(ty: AttrType, values: &[Value<'_>]) -> Vec<String> {
     values
         .iter()
         .filter_map(|v| match ty {

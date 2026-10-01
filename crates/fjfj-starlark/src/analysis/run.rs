@@ -2,7 +2,7 @@
 
 use super::ctx::{CtxState, CtxValue};
 use super::file::artifact_of;
-use super::target::{DepInfo, StoredProvider, builtin};
+use super::target::{DepInfo, StoredProvider, alloc_target, builtin};
 use crate::depset::{depset_to_list, is_depset};
 use crate::label::{BzlEval, RepoMappings, builtins};
 use crate::provider::same_provider;
@@ -225,31 +225,55 @@ pub fn run_rule(req: &RuleRequest) -> Result<RuleResult, String> {
             .iter()
             .map(|(l, d)| (l.clone(), d.clone().map(Arc::new)))
             .collect(),
+        rule: None,
+        aspect_ids: Vec::new(),
         actions: Mutex::new(Vec::new()),
         declared: Mutex::new(outputs.iter().map(|(_, a)| a.exec_path()).collect()),
     });
+    execute(
+        state,
+        &rule,
+        &|rule_value| {
+            if req.native.is_some() {
+                DictRef::from_value(rule_value).and_then(|table| table.get_str(&req.rule_name))
+            } else {
+                implementation_of(rule_value)
+            }
+        },
+        req.deps.values(),
+        &req.rule_name,
+        None,
+    )
+}
 
+/// Run the function that `implementation` finds in `owner`'s value with the
+/// `ctx` that `state` makes, and read the providers it returns.
+pub(super) fn execute<'a>(
+    state: Arc<CtxState>,
+    owner: &starlark::values::OwnedFrozenValue,
+    implementation: &dyn for<'v> Fn(Value<'v>) -> Option<Value<'v>>,
+    deps: impl Iterator<Item = &'a DepInfo>,
+    rule_name: &str,
+    target: Option<&DepInfo>,
+) -> Result<RuleResult, String> {
+    let outputs = state.outputs.clone();
     let printed = Printed(Mutex::new(Vec::new()));
     let frozen = Module::with_temp_heap(|module| -> Result<_, String> {
-        module.frozen_heap().add_reference(rule.owner());
+        module.frozen_heap().add_reference(owner.owner());
         module.frozen_heap().add_reference(builtins_owner());
-        for info in req.deps.values() {
+        for info in deps {
             for provider in &info.providers {
                 module.frozen_heap().add_reference(provider.value.owner());
             }
         }
-        let rule_value = rule
+        let rule_value = owner
             .value()
             .unpack_frozen()
             .expect("a global is frozen")
             .to_value();
-        let implementation = if req.native.is_some() {
-            DictRef::from_value(rule_value).and_then(|table| table.get_str(&req.rule_name))
-        } else {
-            implementation_of(rule_value)
-        }
-        .ok_or_else(|| format!("{} has no implementation", req.rule_name))?;
-        let mut running = BzlEval::running(&req.mappings);
+        let implementation = implementation(rule_value)
+            .ok_or_else(|| format!("{rule_name} has no implementation"))?;
+        let mut running = BzlEval::running(&state.mappings);
         running.rule_ctx = Some(state.clone());
         let heap = module.heap();
         let ctx = heap.alloc(CtxValue {
@@ -259,7 +283,13 @@ pub fn run_rule(req: &RuleRequest) -> Result<RuleResult, String> {
             let mut eval = Evaluator::new(&module);
             eval.extra = Some(&running);
             eval.set_print_handler(&printed);
-            eval.eval_function(implementation, &[ctx], &[])
+            // An aspect's implementation is given the target first.
+            let mut args = Vec::with_capacity(2);
+            if let Some(info) = target {
+                args.push(alloc_target(heap, Arc::new(info.clone())));
+            }
+            args.push(ctx);
+            eval.eval_function(implementation, &args, &[])
                 .map_err(|e| format!("{e}"))?
         };
         let mut default_files: Option<Vec<Artifact>> = None;
@@ -270,13 +300,12 @@ pub fn run_rule(req: &RuleRequest) -> Result<RuleResult, String> {
         for instance in instances(returned, heap)? {
             let Some(provider) = provider_of(instance) else {
                 return Err(format!(
-                    "Rule '{}' returned a {}; it must return providers",
-                    req.rule_name,
+                    "Rule '{rule_name}' returned a {}; it must return providers",
                     instance.get_type()
                 ));
             };
             if same_provider(default_info, provider) {
-                let (files, exe, rf) = read_default_info(instance, &req.rule_name)?;
+                let (files, exe, rf) = read_default_info(instance, rule_name)?;
                 default_files = Some(files);
                 executable = exe;
                 runfiles = rf;

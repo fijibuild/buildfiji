@@ -1,15 +1,16 @@
 //! Rules written in Starlark (buildfiji-136.2): run the `implementation`
 //! with the targets its attributes name.
 
-use crate::target::{ConfiguredTarget, ConfiguredTargetKey, Env};
+use crate::aspect::AspectKey;
+use crate::target::{ConfiguredTarget, ConfiguredTargetKey, Env, RuleInfo};
 use fjfj_engine::{Ctx, Error};
 use fjfj_graph::package::Package;
 use fjfj_graph::rule::AttrValue;
 use fjfj_graph::rule::Cfg;
 use fjfj_graph::{Label, NestedSet};
 use fjfj_starlark::{
-    DepInfo, Edge, RuleRequest, computed_defaults, labels_of_attrs, resolved_attrs, rule_schema,
-    run_rule,
+    DepInfo, Edge, RuleRequest, attr_aspects, computed_defaults, labels_of_attrs, resolved_attrs,
+    rule_schema, run_rule,
 };
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -19,7 +20,7 @@ fn label_text(label: &Label) -> String {
 }
 
 /// What a rule sees of a target it depends on.
-fn dep_info(target: &ConfiguredTarget, generated: bool) -> DepInfo {
+pub(crate) fn dep_info(target: &ConfiguredTarget, generated: bool) -> DepInfo {
     DepInfo {
         label: target.label.clone(),
         rule_class: target.rule_class.clone(),
@@ -208,28 +209,31 @@ pub(crate) async fn analyze(
         deps.insert(dep_key.label.clone(), dep_info(&done, generated));
     }
 
-    // The toolchains it asked for, resolved.
-    let mut toolchains: Vec<(Label, Option<DepInfo>)> = Vec::new();
-    let mut missing: Vec<Label> = Vec::new();
-    let mut toolchain_keys: Vec<ConfiguredTargetKey> = Vec::new();
-    for (toolchain_type, mandatory) in &schema.toolchains {
-        match crate::toolchain::resolve(ctx, key, toolchain_type).await? {
-            Some(decl) => {
-                let implementation = ConfiguredTargetKey {
-                    label: decl.toolchain.clone(),
-                    configuration: key.configuration.clone(),
-                };
-                let done = ctx.get(implementation.clone()).await?;
-                toolchains.push((toolchain_type.clone(), Some(dep_info(&done, false))));
-                toolchain_keys.push(implementation);
+    // The aspects its attributes ask for, on the targets they name: what they
+    // provide is added to what the rule sees of those targets.
+    let mut aspect_keys: Vec<AspectKey> = Vec::new();
+    if native.is_none() {
+        for (edge, dep_key) in edges.iter().zip(&dep_keys) {
+            for aspect in attr_aspects(&module, rule_class, &edge.attr) {
+                aspect_keys.push(AspectKey {
+                    target: dep_key.clone(),
+                    aspect,
+                });
             }
-            None if *mandatory => missing.push(toolchain_type.clone()),
-            None => toolchains.push((toolchain_type.clone(), None)),
+        }
+        for (aspect_key, result) in aspect_keys
+            .iter()
+            .zip(ctx.get_all(aspect_keys.clone()).await)
+        {
+            let result = result?;
+            if let Some(dep) = deps.get_mut(&aspect_key.target.label) {
+                dep.providers.extend(result.providers.iter().cloned());
+            }
         }
     }
-    if !missing.is_empty() {
-        return Err(Error::msg(crate::toolchain::no_match(key, &missing)));
-    }
+
+    // The toolchains it asked for, resolved.
+    let (toolchains, toolchain_keys) = resolve_toolchains(ctx, key, &schema.toolchains).await?;
 
     // The outputs the class declares: `outputs = {...}` templates, and the
     // `attr.output`s the call set.
@@ -256,6 +260,21 @@ pub(crate) async fn analyze(
         Some(_) => Some(crate::transition::setting_value(ctx, key).await?),
         None => None,
     };
+    let rule_info = native.is_none().then(|| {
+        Arc::new(RuleInfo {
+            bzl: bzl.clone(),
+            rule_class: rule_class.to_owned(),
+            schema: schema.clone(),
+            attrs: set.clone(),
+            edges: edges
+                .iter()
+                .zip(&dep_keys)
+                .map(|(e, k)| (e.attr.clone(), k.clone()))
+                .collect(),
+            location: location.clone(),
+            build_file: build_file.clone(),
+        })
+    });
     let request = RuleRequest {
         module,
         rule_name: rule_class.to_owned(),
@@ -301,6 +320,8 @@ pub(crate) async fn analyze(
         })
         .collect();
     target.deps = dep_keys;
+    target.aspect_deps = aspect_keys;
+    target.rule_info = rule_info;
     target.deps.extend(toolchain_keys);
     let mappings = rules.mappings();
     crate::runfiles_tree::register(&mut target, &env.main_repo_name, &mappings, &|r| {
@@ -311,4 +332,36 @@ pub(crate) async fn analyze(
         crate::test_action::register(ctx, key, &resolved, &mut target).await?;
     }
     Ok(target)
+}
+
+/// The toolchains `types` asks for (each with whether it is mandatory), the
+/// implementation resolved for each in `key`'s configuration, and the keys of
+/// those implementations.
+pub(crate) async fn resolve_toolchains(
+    ctx: &Ctx,
+    key: &ConfiguredTargetKey,
+    types: &[(Label, bool)],
+) -> Result<(Vec<(Label, Option<DepInfo>)>, Vec<ConfiguredTargetKey>), Error> {
+    let mut toolchains: Vec<(Label, Option<DepInfo>)> = Vec::new();
+    let mut missing: Vec<Label> = Vec::new();
+    let mut toolchain_keys: Vec<ConfiguredTargetKey> = Vec::new();
+    for (toolchain_type, mandatory) in types {
+        match crate::toolchain::resolve(ctx, key, toolchain_type).await? {
+            Some(decl) => {
+                let implementation = ConfiguredTargetKey {
+                    label: decl.toolchain.clone(),
+                    configuration: key.configuration.clone(),
+                };
+                let done = ctx.get(implementation.clone()).await?;
+                toolchains.push((toolchain_type.clone(), Some(dep_info(&done, false))));
+                toolchain_keys.push(implementation);
+            }
+            None if *mandatory => missing.push(toolchain_type.clone()),
+            None => toolchains.push((toolchain_type.clone(), None)),
+        }
+    }
+    if !missing.is_empty() {
+        return Err(Error::msg(crate::toolchain::no_match(key, &missing)));
+    }
+    Ok((toolchains, toolchain_keys))
 }

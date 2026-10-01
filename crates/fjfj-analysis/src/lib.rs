@@ -7,6 +7,7 @@
 //! repositories and the main repository's name come to the keys as [`Env`], the
 //! engine's data.
 
+mod aspect;
 mod native;
 mod runfiles_tree;
 mod select;
@@ -16,6 +17,7 @@ mod test_action;
 mod toolchain;
 mod transition;
 
+pub use aspect::AspectKey;
 pub use select::ConfigMatching;
 pub use target::{ConfiguredTarget, ConfiguredTargetKey, Env, PackageKey, engine};
 pub use target::{PlatformDecl, ToolchainDecl};

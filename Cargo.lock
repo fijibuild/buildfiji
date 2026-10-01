@@ -1023,6 +1023,7 @@ dependencies = [
 name = "fjfj-analysis"
 version = "0.0.1"
 dependencies = [
+ "fjfj-bazel-compat",
  "fjfj-bzlmod",
  "fjfj-engine",
  "fjfj-graph",

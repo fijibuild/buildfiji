@@ -25,10 +25,60 @@ pub(crate) fn new_args<'v>(heap: Heap<'v>) -> Value<'v> {
     heap.alloc(args_object::ArgsValue::new())
 }
 
+/// The repository mapping file of a runfiles tree with `runfiles` in it, as
+/// rules_python's `create_repo_mapping_manifest` has Bazel write: for each
+/// repository with runfiles, its names for the others that have some.
+pub(crate) fn repo_mapping_text(ctx: Value<'_>, runfiles: Value<'_>) -> Option<String> {
+    let state = &ctx.downcast_ref::<ctx::CtxValue>()?.state;
+    let runfiles = runfiles::runfiles_of(runfiles)?;
+    let main = &state.main_repo_name;
+    let repo_of = |a: &fjfj_graph::Artifact| -> String {
+        let path = if a.is_source() {
+            a.root.prefix.strip_prefix("external/").map(str::to_owned)
+        } else {
+            a.path
+                .strip_prefix("external/")
+                .map(|p| p.split('/').next().unwrap_or_default().to_owned())
+        };
+        path.unwrap_or_else(|| main.clone())
+    };
+    let mut with_runfiles: std::collections::BTreeSet<String> = runfiles
+        .files
+        .iter()
+        .map(&repo_of)
+        .chain(runfiles.symlinks.iter().map(|(_, a)| repo_of(a)))
+        .map(|r| if r == *main { String::new() } else { r })
+        .collect();
+    with_runfiles.insert(String::new());
+    let mut lines: Vec<(String, String, String)> = Vec::new();
+    for source in &with_runfiles {
+        for (apparent, target) in state.mappings.entries(source) {
+            if apparent.is_empty() || !with_runfiles.contains(&target) {
+                continue;
+            }
+            let shown = if target.is_empty() {
+                main.clone()
+            } else {
+                target
+            };
+            lines.push((source.clone(), apparent, shown));
+        }
+    }
+    lines.sort();
+    lines.dedup();
+    Some(
+        lines
+            .iter()
+            .map(|(s, a, t)| format!("{s},{a},{t}\n"))
+            .collect(),
+    )
+}
+
 /// The class of the rule a `ctx` is of.
 pub(crate) fn rule_kind_of<'v>(ctx: Value<'v>) -> Option<String> {
     Some(ctx.downcast_ref::<ctx::CtxValue>()?.state.rule_kind.clone())
 }
+mod aspect;
 mod file;
 mod fragments;
 mod native_providers;
@@ -50,6 +100,9 @@ pub trait RuleSource: Send + Sync {
     fn mappings(&self) -> Arc<RepoMappings>;
 }
 
+pub use aspect::{
+    AspectRef, AspectRequest, AspectSpec, aspect_applies, aspect_spec, attr_aspects, run_aspect,
+};
 pub use native_providers::{Field, feature_flag_value, native_provider};
 pub use run::{
     DepEdge, RuleRequest, RuleResult, labels_of_attrs, resolved_attrs, rule_schema, run_rule,

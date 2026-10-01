@@ -127,7 +127,10 @@ fn files_to_run_inputs(value: Value<'_>) -> Option<Vec<Artifact>> {
             out.push(artifact);
         }
     }
-    if let Some(exe) = field("executable").and_then(artifact_of) {
+    // A plain file has no runfiles tree.
+    if let Some(exe) = field("executable").and_then(artifact_of)
+        && field("runfiles_manifest").and_then(artifact_of).is_some()
+    {
         out.push(Artifact {
             root: exe.root.clone(),
             path: format!("{}.runfiles", exe.path),
@@ -256,6 +259,52 @@ impl FileValueView<'_> {
     }
 }
 
+/// `declare_file` and `declare_symlink`: a new file of the rule's package.
+fn declare<'v>(
+    this: Value<'v>,
+    args: &Arguments<'v, '_>,
+    eval: &mut Evaluator<'v, '_, '_>,
+    function: &str,
+) -> starlark::Result<Value<'v>> {
+    let s = state(this);
+    let bound = bind(
+        function,
+        Wording::Signature,
+        &[
+            param("filename", true, true),
+            param("sibling", false, false),
+        ],
+        args,
+        eval,
+    )?;
+    let filename = bound[0].and_then(|v| v.unpack_str()).ok_or_else(|| {
+        fatal(format!(
+            "in call to {function}(), parameter 'filename' got value of type that is not 'string'"
+        ))
+    })?;
+    let artifact = match bound[1].filter(|v| !v.is_none()) {
+        Some(sibling) => {
+            let sibling = artifact_of(sibling).ok_or_else(|| {
+                    fatal(format!("in call to {function}(), parameter 'sibling' got value of type that is not 'File'"))
+                })?;
+            let path = match sibling.path.rsplit_once('/') {
+                Some((dir, _)) => format!("{dir}/{filename}"),
+                None => filename.to_owned(),
+            };
+            Artifact {
+                root: sibling.root,
+                path,
+                tree: false,
+            }
+        }
+        None => s.derived(filename),
+    };
+    // Declaring a path again is allowed (Bazel gives the same file); two
+    // different actions creating it are not (checked when the rule is done).
+    s.declared.lock().unwrap().insert(artifact.exec_path());
+    Ok(alloc_file(eval.heap(), artifact, s.label.clone()))
+}
+
 #[starlark_module]
 fn actions_members(builder: &mut MethodsBuilder) {
     /// `ctx.actions.declare_file(filename, *, sibling = None)`.
@@ -264,41 +313,17 @@ fn actions_members(builder: &mut MethodsBuilder) {
         args: &Arguments<'v, '_>,
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> starlark::Result<Value<'v>> {
-        let s = state(this);
-        let bound = bind(
-            "declare_file",
-            Wording::Signature,
-            &[
-                param("filename", true, true),
-                param("sibling", false, false),
-            ],
-            args,
-            eval,
-        )?;
-        let filename = bound[0]
-            .and_then(|v| v.unpack_str())
-            .ok_or_else(|| fatal("in call to declare_file(), parameter 'filename' got value of type that is not 'string'"))?;
-        let artifact = match bound[1].filter(|v| !v.is_none()) {
-            Some(sibling) => {
-                let sibling = artifact_of(sibling).ok_or_else(|| {
-                    fatal("in call to declare_file(), parameter 'sibling' got value of type that is not 'File'")
-                })?;
-                let path = match sibling.path.rsplit_once('/') {
-                    Some((dir, _)) => format!("{dir}/{filename}"),
-                    None => filename.to_owned(),
-                };
-                Artifact {
-                    root: sibling.root,
-                    path,
-                    tree: false,
-                }
-            }
-            None => s.derived(filename),
-        };
-        // Declaring a path again is allowed (Bazel gives the same file); two
-        // different actions creating it are not (checked when the rule is done).
-        s.declared.lock().unwrap().insert(artifact.exec_path());
-        Ok(alloc_file(eval.heap(), artifact, s.label.clone()))
+        declare(this, args, eval, "declare_file")
+    }
+
+    /// `ctx.actions.declare_symlink(filename, *, sibling = None)`: a file that
+    /// `symlink(target_path = ...)` makes a link of.
+    fn declare_symlink<'v>(
+        this: Value<'v>,
+        args: &Arguments<'v, '_>,
+        eval: &mut Evaluator<'v, '_, '_>,
+    ) -> starlark::Result<Value<'v>> {
+        declare(this, args, eval, "declare_symlink")
     }
 
     /// `ctx.actions.transform_version_file(*, transform_func, template, output_file_name)`
@@ -388,6 +413,17 @@ fn actions_members(builder: &mut MethodsBuilder) {
         };
         s.declared.lock().unwrap().insert(artifact.exec_path());
         Ok(alloc_file(eval.heap(), artifact, s.label.clone()))
+    }
+
+    /// `ctx.actions.template_dict()`.
+    fn template_dict<'v>(
+        this: Value<'v>,
+        eval: &mut Evaluator<'v, '_, '_>,
+    ) -> starlark::Result<Value<'v>> {
+        let _ = this;
+        let make = super::target::builtin("_template_dict")
+            .ok_or_else(|| fatal("the builtins have no _template_dict"))?;
+        eval.eval_function(make, &[], &[])
     }
 
     /// `ctx.actions.args()`.
@@ -483,9 +519,22 @@ fn actions_members(builder: &mut MethodsBuilder) {
             fatal("in call to symlink(), parameter 'output' got value of type that is not 'File'")
         })?;
         let Some(target) = bound[1].filter(|v| !v.is_none()).and_then(artifact_of) else {
-            return Err(fatal(
-                "ctx.actions.symlink: only target_file is supported yet (buildfiji-136.13)",
-            ));
+            // `target_path`: the link says exactly that, with no input.
+            let Some(path) = bound[2].and_then(|v| v.unpack_str()) else {
+                return Err(fatal(
+                    "ctx.actions.symlink: needs target_file or target_path",
+                ));
+            };
+            s.register(
+                "UnresolvedSymlink",
+                Some(format!("Creating unresolved symlink {}", basename(&output))),
+                ActionKind::UnresolvedSymlink {
+                    target: path.to_owned(),
+                },
+                Vec::new(),
+                vec![output],
+            );
+            return Ok(NoneType);
         };
         let message = optional_string("symlink", "progress_message", bound[4])?
             .or_else(|| Some(format!("Creating symlink {}", basename(&output))));
@@ -532,10 +581,22 @@ fn actions_members(builder: &mut MethodsBuilder) {
         let output = bound[1]
             .and_then(artifact_of)
             .ok_or_else(|| fatal("in call to expand_template(), parameter 'output' got value of type that is not 'File'"))?;
-        let substitutions: Vec<(String, String)> =
-            string_dict("expand_template", "substitutions", bound[2])?
-                .into_iter()
-                .collect();
+        let mut substitutions: BTreeMap<String, String> =
+            string_dict("expand_template", "substitutions", bound[2])?;
+        // Substitutions computed from lists (`template_dict()`).
+        if let Some(computed) = bound[4].filter(|v| !v.is_none()) {
+            let compute = super::target::builtin("_computed_substitutions")
+                .ok_or_else(|| fatal("the builtins have no _computed_substitutions"))?;
+            let made = eval.eval_function(compute, &[computed], &[])?;
+            let dict = DictRef::from_value(made)
+                .ok_or_else(|| fatal("computed_substitutions is not a template_dict()"))?;
+            for (k, v) in dict.iter() {
+                if let (Some(k), Some(v)) = (k.unpack_str(), v.unpack_str()) {
+                    substitutions.insert(k.to_owned(), v.to_owned());
+                }
+            }
+        }
+        let substitutions: Vec<(String, String)> = substitutions.into_iter().collect();
         let executable = flag("expand_template", "is_executable", bound[3])?;
         s.register(
             "TemplateExpand",

@@ -55,6 +55,26 @@ fn runfiles_members(builder: &mut MethodsBuilder) {
         new_depset(heap, &items, Order::Default, &[])
     }
 
+    /// `runfiles.symlinks`: depset of `SymlinkEntry(path, target_file)`.
+    #[starlark(attribute)]
+    fn symlinks<'v>(this: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
+        let me = runfiles(this);
+        symlink_entries(heap, &me.runfiles.symlinks, &me.owner)
+    }
+
+    #[starlark(attribute)]
+    fn root_symlinks<'v>(this: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
+        let me = runfiles(this);
+        symlink_entries(heap, &me.runfiles.root_symlinks, &me.owner)
+    }
+
+    /// Empty files of the runfiles tree, which nothing here makes.
+    #[starlark(attribute)]
+    fn empty_filenames<'v>(this: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
+        let _ = this;
+        new_depset(heap, &[], Order::Default, &[])
+    }
+
     /// `runfiles.merge(other)`.
     fn merge<'v>(this: Value<'v>, other: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
         let a = runfiles(this);
@@ -129,4 +149,27 @@ pub(crate) fn files_in(value: Value<'_>, what: &str) -> starlark::Result<Vec<Art
             })
         })
         .collect()
+}
+
+fn symlink_entries<'v>(
+    heap: Heap<'v>,
+    entries: &[(String, Artifact)],
+    owner: &Label,
+) -> starlark::Result<Value<'v>> {
+    let items: Vec<Value<'v>> = entries
+        .iter()
+        .map(|(path, artifact)| {
+            crate::structs::new_struct(
+                heap,
+                vec![
+                    ("path".to_owned(), heap.alloc(path.as_str())),
+                    (
+                        "target_file".to_owned(),
+                        alloc_file(heap, artifact.clone(), owner.clone()),
+                    ),
+                ],
+            )
+        })
+        .collect();
+    new_depset(heap, &items, Order::Default, &[])
 }

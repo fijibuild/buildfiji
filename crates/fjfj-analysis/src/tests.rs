@@ -706,3 +706,60 @@ r = rule(implementation = _impl, attrs = {"_helper": attr.label(default = _defau
     };
     assert_eq!(String::from_utf8_lossy(contents), "None");
 }
+
+/// An aspect on an attribute runs on the targets it names and, along its
+/// `attr_aspects`, on theirs; the rule sees what it provides.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_aspect_on_an_attribute_follows_the_attributes_it_names() {
+    let (_dir, repos) = workspace(&[
+        ("MODULE.bazel", ""),
+        (
+            "defs.bzl",
+            r#"
+AInfo = provider(fields = ["n"])
+
+def _count(target, ctx):
+    n = 1
+    for d in ctx.rule.attr.deps:
+        n += d[AInfo].n
+    out = ctx.actions.declare_file(target.label.name + ".count")
+    ctx.actions.write(out, "%d\n" % n)
+    return [AInfo(n = n), DefaultInfo(files = depset([out]))]
+
+count = aspect(implementation = _count, attr_aspects = ["deps"])
+
+def _impl(ctx):
+    out = ctx.actions.declare_file(ctx.label.name + ".txt")
+    total = 0
+    for d in ctx.attr.deps:
+        total += d[AInfo].n
+    ctx.actions.write(out, "%d\n" % total)
+    return [DefaultInfo(files = depset([out]))]
+
+def _plain(ctx):
+    return [DefaultInfo()]
+
+plain = rule(implementation = _plain, attrs = {"deps": attr.label_list()})
+top = rule(implementation = _impl, attrs = {"deps": attr.label_list(aspects = [count])})
+"#,
+        ),
+        (
+            "BUILD.bazel",
+            "load(':defs.bzl', 'plain', 'top')\nplain(name = 'a')\nplain(name = 'b', deps = [':a'])\ntop(name = 't', deps = [':b'])\n",
+        ),
+    ]);
+    let t = analyse(&repos, "//:t").await.unwrap();
+    let [action] = &t.actions[..] else {
+        panic!("{:?}", t.actions)
+    };
+    // b counts itself and a.
+    assert!(
+        matches!(&action.kind, ActionKind::WriteFile { contents, .. } if contents == b"2\n"),
+        "{:?}",
+        action.kind
+    );
+    let [aspect] = &t.aspect_deps[..] else {
+        panic!("{:?}", t.aspect_deps)
+    };
+    assert_eq!(aspect.target.label.name, "b");
+}

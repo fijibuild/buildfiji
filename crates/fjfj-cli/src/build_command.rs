@@ -239,18 +239,20 @@ async fn analyse(
     }
     // Everything they read, once each.
     let mut all: Vec<Arc<ConfiguredTarget>> = Vec::new();
-    let mut seen: HashSet<ConfiguredTargetKey> = HashSet::new();
+    // An engine hands out the same value for a key every time, so one is seen once.
+    let mut seen: HashSet<*const ConfiguredTarget> = HashSet::new();
     let mut queue: Vec<Arc<ConfiguredTarget>> = roots.iter().map(|(_, t)| t.clone()).collect();
     while let Some(next) = queue.pop() {
-        let me = ConfiguredTargetKey {
-            label: next.label.clone(),
-            configuration: next.configuration.clone(),
-        };
-        if !seen.insert(me) {
+        if !seen.insert(Arc::as_ptr(&next)) {
             continue;
         }
         for dep in &next.deps {
             if let Ok(done) = engine.get(dep.clone()).await {
+                queue.push(done);
+            }
+        }
+        for aspect in &next.aspect_deps {
+            if let Ok(done) = engine.get(aspect.clone()).await {
                 queue.push(done);
             }
         }

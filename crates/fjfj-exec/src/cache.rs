@@ -164,6 +164,10 @@ impl ActionCache {
                 field(b"symlink");
                 field(target.as_bytes());
             }
+            ActionKind::UnresolvedSymlink { target } => {
+                field(b"unresolved-symlink");
+                field(target.as_bytes());
+            }
             ActionKind::RunfilesTree {
                 dir,
                 manifest,

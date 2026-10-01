@@ -106,6 +106,8 @@ pub(crate) fn default_info<'v>(
     heap: Heap<'v>,
     files: &[Artifact],
     executable: Option<&Artifact>,
+    // Whether the executable has a runfiles tree, which a plain file has not.
+    has_runfiles_tree: bool,
     runfiles: &fjfj_graph::Runfiles,
     owner: &Label,
 ) -> Value<'v> {
@@ -121,17 +123,19 @@ pub(crate) fn default_info<'v>(
     // What `files_to_run` says of an executable: it and its runfiles tree.
     let files_to_run = {
         let sibling = |suffix: &str| {
-            executable.map_or_else(Value::new_none, |e| {
-                alloc_file(
-                    heap,
-                    Artifact {
-                        root: e.root.clone(),
-                        path: format!("{}{suffix}", e.path),
-                        tree: false,
-                    },
-                    owner.clone(),
-                )
-            })
+            executable
+                .filter(|_| has_runfiles_tree)
+                .map_or_else(Value::new_none, |e| {
+                    alloc_file(
+                        heap,
+                        Artifact {
+                            root: e.root.clone(),
+                            path: format!("{}{suffix}", e.path),
+                            tree: false,
+                        },
+                        owner.clone(),
+                    )
+                })
         };
         new_struct(
             heap,
@@ -208,24 +212,51 @@ impl<'v> StarlarkValue<'v> for TargetValue {
 impl TargetValue {
     fn find<'v>(&self, provider: Value<'v>, heap: Heap<'v>) -> Option<Value<'v>> {
         if same_provider(builtin("DefaultInfo"), Some(provider)) {
+            // A file, or an alias of one, is its own executable for `files_to_run`.
+            let executable = self.info.executable.as_ref().or_else(|| {
+                match (self.info.rule_class.as_deref(), &self.info.files[..]) {
+                    (None | Some("alias"), [file]) => Some(file),
+                    _ => None,
+                }
+            });
             return Some(default_info(
                 heap,
                 &self.info.files,
-                self.info.executable.as_ref(),
+                executable,
+                self.info.executable.is_some(),
                 &self.info.runfiles,
                 &self.info.label,
             ));
         }
-        self.info
+        let mut matching = self
+            .info
             .providers
             .iter()
             // SAFETY: the evaluation that made this `Target` took a reference to
             // the heap that owns each provider (`run_rule`), so the value lives
             // as long as `'v`.
             .map(|p| unsafe { p.value.unchecked_frozen_value().to_value() })
-            .find(|instance| {
+            .filter(|instance| {
                 provider_of(*instance).is_some_and(|q| same_provider(q, Some(provider)))
-            })
+            });
+        let first = matching.next()?;
+        // The output groups of the rule and of the aspects applied to it are
+        // all the target's, in one `OutputGroupInfo`.
+        if same_provider(builtin("OutputGroupInfo"), Some(provider)) {
+            let rest: Vec<Value<'v>> = matching.collect();
+            if !rest.is_empty() {
+                let mut fields: Vec<(String, Value<'v>)> = Vec::new();
+                for instance in std::iter::once(first).chain(rest) {
+                    for (name, value) in crate::structs::fields_of(instance).unwrap_or_default() {
+                        if !fields.iter().any(|(n, _)| n == name) {
+                            fields.push((name.to_owned(), value));
+                        }
+                    }
+                }
+                return Some(new_instance(heap, provider, fields));
+            }
+        }
+        Some(first)
     }
 }
 
