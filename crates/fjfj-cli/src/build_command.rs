@@ -538,33 +538,41 @@ pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> R
     let _ = request
         .layout
         .convenience_links(prefix, &request.options.configuration.mnemonic());
-    let by_key: std::collections::HashMap<ConfiguredTargetKey, &Arc<ConfiguredTarget>> = all
-        .iter()
-        .map(|t| {
-            (
-                ConfiguredTargetKey {
-                    label: t.label.clone(),
-                    configuration: t.configuration.clone(),
-                },
-                t,
-            )
-        })
-        .collect();
+    // Which targets a root needs matters only once something has failed; the walk clones and
+    // hashes a key per target, so a build that failed nothing does not make it.
+    let by_key: std::collections::HashMap<ConfiguredTargetKey, &Arc<ConfiguredTarget>> =
+        if report.failures.is_empty() {
+            std::collections::HashMap::new()
+        } else {
+            all.iter()
+                .map(|t| {
+                    (
+                        ConfiguredTargetKey {
+                            label: t.label.clone(),
+                            configuration: t.configuration.clone(),
+                        },
+                        t,
+                    )
+                })
+                .collect()
+        };
     for (label, target) in &roots {
         // It was built unless one of the targets it needs failed.
         let mut needed: HashSet<String> = HashSet::new();
-        let mut pending = vec![ConfiguredTargetKey {
-            label: label.clone(),
-            configuration: target.configuration.clone(),
-        }];
-        let mut visited: HashSet<ConfiguredTargetKey> = HashSet::new();
-        while let Some(next) = pending.pop() {
-            if !visited.insert(next.clone()) {
-                continue;
-            }
-            if let Some(t) = by_key.get(&next) {
-                needed.insert(label_text(&t.label));
-                pending.extend(t.deps.iter().cloned());
+        if !report.failures.is_empty() {
+            let mut pending = vec![ConfiguredTargetKey {
+                label: label.clone(),
+                configuration: target.configuration.clone(),
+            }];
+            let mut visited: HashSet<ConfiguredTargetKey> = HashSet::new();
+            while let Some(next) = pending.pop() {
+                if !visited.insert(next.clone()) {
+                    continue;
+                }
+                if let Some(t) = by_key.get(&next) {
+                    needed.insert(label_text(&t.label));
+                    pending.extend(t.deps.iter().cloned());
+                }
             }
         }
         // With `--nobuild` nothing was built, so nothing is listed as up to date.

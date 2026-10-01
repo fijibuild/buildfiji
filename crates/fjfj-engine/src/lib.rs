@@ -603,6 +603,7 @@ impl Ctx {
     /// The value of `key`, which this computation now depends on.
     pub async fn get<K: Key>(&self, key: K) -> Result<Arc<K::Value>, Error> {
         let node = self.inner.node(KeyBox(Arc::new(key)));
+        tracing::trace!(target: "fjfj_engine::request", from = ?self.node.as_ref().map(|n| &n.key), to = ?node.key);
         let _waiting = self.inner.wait_on(self.node.as_ref(), &node)?;
         let done = evaluate(self.inner.clone(), node.clone(), self.version).await?;
         self.deps.lock().unwrap().push((node, done.changed_at));
