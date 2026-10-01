@@ -304,26 +304,35 @@ async fn analyse(
         label: label.clone(),
         configuration: configuration.clone(),
     };
-    let mut roots = Vec::new();
-    let results = futures::future::join_all(targets.iter().map(|t| engine.get(key(t)))).await;
-    for (label, result) in targets.iter().zip(results) {
-        match result {
-            Ok(done) => roots.push((label.clone(), done)),
-            Err(e) => report.analysis_errors.push((label.clone(), e.to_string())),
-        }
-    }
-    // The aspects on them.
-    let mut aspect_roots: Vec<Arc<ConfiguredTarget>> = Vec::new();
-    for (label, root) in &roots {
-        for aspect in aspects {
-            let aspect_key = fjfj_analysis::AspectKey {
+    // Each root is its own pipeline: its aspects need only its own analysis,
+    // so they start as soon as it finishes, not when the slowest root does.
+    let pipelines = futures::future::join_all(targets.iter().map(|label| async move {
+        let root = match engine.get(key(label)).await {
+            Ok(done) => done,
+            Err(e) => return (label, Err(e.to_string()), Vec::new()),
+        };
+        let applied = futures::future::join_all(aspects.iter().map(|aspect| {
+            engine.get(fjfj_analysis::AspectKey {
                 target: ConfiguredTargetKey {
                     label: root.label.clone(),
                     configuration: root.configuration.clone(),
                 },
                 aspect: aspect.clone(),
-            };
-            match engine.get(aspect_key).await {
+            })
+        }))
+        .await;
+        (label, Ok(root), applied)
+    }))
+    .await;
+    let mut roots = Vec::new();
+    let mut aspect_roots: Vec<Arc<ConfiguredTarget>> = Vec::new();
+    for (label, root, applied) in pipelines {
+        match root {
+            Ok(done) => roots.push((label.clone(), done)),
+            Err(e) => report.analysis_errors.push((label.clone(), e)),
+        }
+        for result in applied {
+            match result {
                 Ok(done) => aspect_roots.push(done),
                 Err(e) => report.analysis_errors.push((label.clone(), e.to_string())),
             }
