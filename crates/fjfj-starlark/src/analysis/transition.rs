@@ -176,6 +176,19 @@ pub fn apply_transition(
                         .iter()
                         .map(|l| heap.alloc(crate::label::StarlarkLabel::from(l.clone()))),
                 )),
+                AttrValue::StringDict(items) => heap.alloc(starlark::values::dict::AllocDict(
+                    items
+                        .iter()
+                        .map(|(k, v)| (heap.alloc(k.as_str()), heap.alloc(v.as_str()))),
+                )),
+                AttrValue::LabelKeyedStringDict(items) => heap.alloc(
+                    starlark::values::dict::AllocDict(items.iter().map(|(k, v)| {
+                        (
+                            heap.alloc(crate::label::StarlarkLabel::from(k.clone())),
+                            heap.alloc(v.as_str()),
+                        )
+                    })),
+                ),
                 _ => continue,
             };
             fields.push((name.clone(), value));

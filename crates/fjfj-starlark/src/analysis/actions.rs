@@ -457,7 +457,7 @@ fn actions_members(builder: &mut MethodsBuilder) {
         spawn(this, args, eval, false)
     }
 
-    /// `ctx.actions.symlink(*, output, target_file, target_path, is_executable, progress_message)`.
+    /// `ctx.actions.symlink(*, output, target_file, target_path, is_executable, progress_message, use_exec_root_for_source)`.
     fn symlink<'v>(
         this: Value<'v>,
         args: &Arguments<'v, '_>,
@@ -473,6 +473,8 @@ fn actions_members(builder: &mut MethodsBuilder) {
                 param("target_path", false, false),
                 param("is_executable", false, false),
                 param("progress_message", false, false),
+                // Where the link points is always the exec root here.
+                param("use_exec_root_for_source", false, false),
             ],
             args,
             eval,

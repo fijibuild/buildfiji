@@ -20,6 +20,9 @@ pub struct Env {
     /// `register_toolchains` patterns, each with the canonical repo of the module that
     /// wrote it, in the order they are considered.
     pub registered_toolchains: Vec<(String, String)>,
+    /// `--extra_toolchains` patterns (main repository), tried before those;
+    /// a configuration that sets the option replaces them.
+    pub extra_toolchains: Vec<String>,
 }
 
 /// An engine that analyses against `env`.

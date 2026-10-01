@@ -210,6 +210,7 @@ pub fn run_rule(req: &RuleRequest) -> Result<RuleResult, String> {
         build_file: req.build_file.clone(),
         configuration: req.configuration.clone(),
         main_repo_name: req.main_repo_name.clone(),
+        mappings: req.mappings.clone(),
         schema: schema.clone(),
         build_setting_value: req.build_setting_value.clone(),
         attrs,

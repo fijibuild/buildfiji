@@ -69,6 +69,7 @@ async fn analyse_registering(
         rules: repos.clone(),
         main_repo_name: "_main".into(),
         registered_toolchains,
+        extra_toolchains: Vec::new(),
     });
     let (package, name) = label.trim_start_matches("//").split_once(':').unwrap();
     engine

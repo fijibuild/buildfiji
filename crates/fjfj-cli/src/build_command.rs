@@ -263,20 +263,13 @@ async fn analyse(
 pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> Report {
     let started = Instant::now();
     let mut report = Report::new(request.layout.clone());
-    let mut registered = repos.registered_toolchains();
-    registered.splice(
-        0..0,
-        request
-            .options
-            .extra_toolchains
-            .iter()
-            .map(|pattern| (String::new(), pattern.clone())),
-    );
+    let registered = repos.registered_toolchains();
     let analysis = engine(Env {
         source: repos.clone(),
         rules: repos.clone(),
         main_repo_name: MAIN_REPO_DIR.to_owned(),
         registered_toolchains: registered,
+        extra_toolchains: request.options.extra_toolchains.clone(),
     });
     let handle = tokio::runtime::Handle::current();
     let mut configuration = request.options.configuration.clone();

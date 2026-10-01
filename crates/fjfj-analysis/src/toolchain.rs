@@ -16,14 +16,25 @@ use std::sync::Arc;
 
 /// Every registered `toolchain` target, in the order they are tried.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub(crate) struct RegisteredToolchains;
+pub(crate) struct RegisteredToolchains {
+    /// The `--extra_toolchains` a configuration sets, if it does.
+    pub extra: Option<Vec<String>>,
+}
 
 impl Key for RegisteredToolchains {
     type Value = Vec<Label>;
 
     async fn compute(&self, ctx: &Ctx) -> Result<Vec<Label>, Error> {
         let env = ctx.data::<Env>()?;
-        let patterns = env.registered_toolchains.clone();
+        let extra = self
+            .extra
+            .clone()
+            .unwrap_or_else(|| env.extra_toolchains.clone());
+        let patterns: Vec<(String, String)> = extra
+            .into_iter()
+            .map(|pattern| (String::new(), pattern))
+            .chain(env.registered_toolchains.iter().cloned())
+            .collect();
         let source = env.source.clone();
         let mappings = env.rules.mappings();
         tokio::task::spawn_blocking(move || {
@@ -78,8 +89,9 @@ impl Key for RegisteredToolchains {
     }
 }
 
-/// The `toolchain_type` a label stands for: an alias of one is that one.
-async fn canonical_type(ctx: &Ctx, label: &Label) -> Result<Label, Error> {
+/// The target a label stands for: an alias of one is that one (a toolchain
+/// type, a build setting).
+pub(crate) async fn follow_aliases(ctx: &Ctx, label: &Label) -> Result<Label, Error> {
     let mut current = label.clone();
     for _ in 0..16 {
         let package = ctx
@@ -114,9 +126,16 @@ pub(crate) async fn resolve(
     key: &ConfiguredTargetKey,
     toolchain_type: &Label,
 ) -> Result<Option<Arc<ToolchainDecl>>, Error> {
-    let registered = ctx.get(RegisteredToolchains).await?;
     let config = &key.configuration;
-    let wanted = canonical_type(ctx, toolchain_type).await?;
+    let extra = match config
+        .settings
+        .get("//command_line_option:extra_toolchains")
+    {
+        Some(fjfj_graph::SettingValue::List(items)) => Some(items.clone()),
+        _ => None,
+    };
+    let registered = ctx.get(RegisteredToolchains { extra }).await?;
+    let wanted = follow_aliases(ctx, toolchain_type).await?;
     for label in registered.iter() {
         let candidate = ctx
             .get(ConfiguredTargetKey {
@@ -128,7 +147,7 @@ pub(crate) async fn resolve(
             continue;
         };
         if decl.toolchain_type != wanted
-            && canonical_type(ctx, &decl.toolchain_type).await? != wanted
+            && follow_aliases(ctx, &decl.toolchain_type).await? != wanted
         {
             continue;
         }

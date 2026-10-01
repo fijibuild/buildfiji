@@ -107,14 +107,31 @@ fn wrong(function: &str, value: Value<'_>) -> starlark::Error {
     ))
 }
 
-/// `pattern` with `%s` replaced.
+/// `pattern` with `%s` replaced; `%%` is a `%`.
 fn formatted(function: &str, pattern: &str, text: &str) -> starlark::Result<String> {
-    if pattern.matches("%s").count() != 1 {
+    let mut out = String::with_capacity(pattern.len() + text.len());
+    let mut holes = 0;
+    let mut chars = pattern.chars().peekable();
+    while let Some(c) = chars.next() {
+        match (c, chars.peek()) {
+            ('%', Some('s')) => {
+                chars.next();
+                holes += 1;
+                out.push_str(text);
+            }
+            ('%', Some('%')) => {
+                chars.next();
+                out.push('%');
+            }
+            _ => out.push(c),
+        }
+    }
+    if holes != 1 {
         return Err(fatal(format!(
             "{function}: format '{pattern}' must contain exactly one '%s'"
         )));
     }
-    Ok(pattern.replacen("%s", text, 1))
+    Ok(out)
 }
 
 fn flag(

@@ -74,6 +74,10 @@ impl<'v, V: ValueLike<'v>> StructGen<V> {
         let at = self.names.binary_search_by(|n| n.as_str().cmp(name)).ok()?;
         Some(self.values[at].to_value())
     }
+
+    fn is_output_groups(&self) -> bool {
+        instance_of(self.provider.first().map(|p| p.to_value())) == "OutputGroupInfo"
+    }
 }
 
 impl<V> fmt::Display for StructGen<V>
@@ -163,6 +167,24 @@ where
 
     fn dir_attr(&self) -> Vec<String> {
         self.names.clone()
+    }
+
+    /// `"group" in output_groups` and `output_groups["group"]`: an
+    /// `OutputGroupInfo` is also a mapping of its groups.
+    fn is_in(&self, other: Value<'v>) -> starlark::Result<bool> {
+        match (self.is_output_groups(), other.unpack_str()) {
+            (true, Some(name)) => Ok(self.get(name).is_some()),
+            _ => Err(unsupported_binary("in", other.get_type(), "struct")),
+        }
+    }
+
+    fn at(&self, index: Value<'v>, _heap: Heap<'v>) -> starlark::Result<Value<'v>> {
+        match (self.is_output_groups(), index.unpack_str()) {
+            (true, Some(name)) => self
+                .get(name)
+                .ok_or_else(|| fatal(format!("key {name:?} not found in OutputGroupInfo"))),
+            _ => Err(fatal("type 'struct' is not indexable")),
+        }
     }
 
     fn set_attr(&self, _attribute: &str, _new_value: Value<'v>) -> starlark::Result<()> {

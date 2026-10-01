@@ -65,3 +65,19 @@ fn value_of<'v>(module: &Module<'v>, field: Field) -> Value<'v> {
         }
     }
 }
+
+/// The `value` of a `config_common.FeatureFlagInfo` instance, which is what a
+/// `config_setting` compares a `flag_values` entry that is not a build setting to.
+pub fn feature_flag_value(provider: &StoredProvider) -> Option<String> {
+    let value = provider.value.value();
+    let kind = crate::structs::provider_of(value)??;
+    if !kind.ptr_eq(super::target::builtin_by_path(
+        "config_common.FeatureFlagInfo",
+    )?) {
+        return None;
+    }
+    crate::structs::fields_of(value)?
+        .into_iter()
+        .find(|(name, _)| *name == "value")
+        .and_then(|(_, v)| v.unpack_str().map(str::to_owned))
+}

@@ -50,7 +50,7 @@ pub trait RuleSource: Send + Sync {
     fn mappings(&self) -> Arc<RepoMappings>;
 }
 
-pub use native_providers::{Field, native_provider};
+pub use native_providers::{Field, feature_flag_value, native_provider};
 pub use run::{
     DepEdge, RuleRequest, RuleResult, labels_of_attrs, resolved_attrs, rule_schema, run_rule,
 };

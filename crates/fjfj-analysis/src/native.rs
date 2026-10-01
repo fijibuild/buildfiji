@@ -502,7 +502,27 @@ async fn config_setting(
     }
     if let Some(AttrValue::LabelKeyedStringDict(flags)) = attr(attrs, "flag_values") {
         for (flag, wanted) in flags {
-            let current = crate::transition::setting_in(ctx, config, flag).await?;
+            let current = if crate::transition::is_build_setting(ctx, flag).await? {
+                crate::transition::setting_in(ctx, config, flag).await?
+            } else {
+                // A rule that gives `config_common.FeatureFlagInfo`.
+                let flag_key = ConfiguredTargetKey {
+                    label: flag.clone(),
+                    configuration: config.clone(),
+                };
+                let flag_target = ctx.get(flag_key).await?;
+                let value = flag_target
+                    .providers
+                    .iter()
+                    .find_map(fjfj_starlark::feature_flag_value)
+                    .ok_or_else(|| {
+                        Error::msg(format!(
+                            "{} is not a build setting or a feature flag",
+                            label_text(flag)
+                        ))
+                    })?;
+                fjfj_graph::SettingValue::Str(value)
+            };
             check(
                 format!("flag:{}={wanted}", label_text(flag)),
                 crate::transition::matches_text(&current, wanted),

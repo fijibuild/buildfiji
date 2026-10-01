@@ -21,8 +21,12 @@ use std::collections::BTreeMap;
 /// have when nothing sets them.
 fn native_default(name: &str) -> Option<SettingValue> {
     Some(match name {
-        "copt" | "cxxopt" | "conlyopt" | "linkopt" | "host_copt" | "host_cxxopt"
-        | "host_conlyopt" | "host_linkopt" => SettingValue::List(Vec::new()),
+        "extra_toolchains" | "copt" | "cxxopt" | "conlyopt" | "linkopt" | "host_copt"
+        | "host_cxxopt" | "host_conlyopt" | "host_linkopt" => SettingValue::List(Vec::new()),
+        "stamp" | "legacy_external_runfiles" | "incompatible_default_to_explicit_init_py" => {
+            SettingValue::Bool(false)
+        }
+        "build_runfile_links" | "enable_runfiles" => SettingValue::Bool(true),
         _ => return None,
     })
 }
@@ -35,26 +39,35 @@ fn setting_label(text: &str, repo: &str) -> Result<Label, Error> {
 
 /// What a build setting holds when nothing sets it, and its type.
 async fn user_default(ctx: &Ctx, label: &Label) -> Result<(SettingKind, SettingValue), Error> {
+    default_of(ctx, label).await?.ok_or_else(|| {
+        Error::msg(format!(
+            "{} is not a build setting",
+            fjfj_graph::expand::label_text(label)
+        ))
+    })
+}
+
+/// [`user_default`], or `None` when the target is not a build setting.
+async fn default_of(
+    ctx: &Ctx,
+    label: &Label,
+) -> Result<Option<(SettingKind, SettingValue)>, Error> {
     let package = ctx
         .get(PackageKey {
             repo: label.repo.clone(),
             package: label.package.clone(),
         })
         .await?;
-    let not_a_setting = || {
-        Error::msg(format!(
-            "{} is not a build setting",
-            fjfj_graph::expand::label_text(label)
-        ))
+    let Some(target) = package.target(&label.name) else {
+        return Ok(None);
     };
-    let target = package.target(&label.name).ok_or_else(not_a_setting)?;
     let TargetKind::Rule {
         rule_class,
         defined_in,
         attrs,
     } = &target.kind
     else {
-        return Err(not_a_setting());
+        return Ok(None);
     };
     let default = attrs
         .iter()
@@ -66,10 +79,10 @@ async fn user_default(ctx: &Ctx, label: &Label) -> Result<(SettingKind, SettingV
         Some(bzl) => {
             let env = ctx.data::<Env>()?;
             let module = module_of(&env, bzl).await?;
-            rule_schema(&module, rule_class)
-                .and_then(|s| s.build_setting)
-                .ok_or_else(not_a_setting)?
-                .kind
+            match rule_schema(&module, rule_class).and_then(|s| s.build_setting) {
+                Some(setting) => setting.kind,
+                None => return Ok(None),
+            }
         }
     };
     let value = match default {
@@ -78,9 +91,15 @@ async fn user_default(ctx: &Ctx, label: &Label) -> Result<(SettingKind, SettingV
         Some(AttrValue::String(s)) => SettingValue::Str(s.clone()),
         Some(AttrValue::StringList(items)) => SettingValue::List(items.clone()),
         Some(AttrValue::Label(l)) => SettingValue::Str(fjfj_graph::expand::label_text(l)),
-        _ => return Err(not_a_setting()),
+        _ => return Ok(None),
     };
-    Ok((kind, value))
+    Ok(Some((kind, value)))
+}
+
+/// Whether `label` (after aliases) is a build setting.
+pub(crate) async fn is_build_setting(ctx: &Ctx, label: &Label) -> Result<bool, Error> {
+    let label = crate::toolchain::follow_aliases(ctx, label).await?;
+    Ok(default_of(ctx, &label).await?.is_some())
 }
 
 async fn module_of(env: &Env, bzl: &Label) -> Result<FrozenModule, Error> {
@@ -122,6 +141,7 @@ pub(crate) async fn setting_in(
     configuration: &Configuration,
     label: &Label,
 ) -> Result<SettingValue, Error> {
+    let label = &crate::toolchain::follow_aliases(ctx, label).await?;
     let name = fjfj_graph::expand::label_text(label);
     let (kind, default) = user_default(ctx, label).await?;
     match configuration.settings.get(&name) {

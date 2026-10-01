@@ -32,6 +32,8 @@ pub(crate) struct CtxState {
     pub(crate) build_file: String,
     pub(crate) configuration: Configuration,
     pub(crate) main_repo_name: String,
+    /// What `@name` means in each repository, for labels written as text.
+    pub(crate) mappings: Arc<crate::label::RepoMappings>,
     pub(crate) schema: Arc<RuleSchema>,
     /// `ctx.build_setting_value`, for a build setting.
     pub(crate) build_setting_value: Option<fjfj_graph::SettingValue>,
@@ -692,11 +694,17 @@ impl<'v> StarlarkValue<'v> for ToolchainsValue {
                         index.get_type()
                     ))
                 })?;
-                Label::parse(
+                // Written in the rule's repository, so `@name` is as it maps it.
+                Label::parse_mapped(
                     text,
                     LabelContext {
                         repo: &self.state.label.repo,
                         package: &self.state.label.package,
+                    },
+                    &mut |apparent| {
+                        self.state
+                            .mappings
+                            .resolve_apparent(&self.state.label.repo, apparent)
                     },
                 )
                 .map_err(|e| fatal(format!("invalid toolchain type '{text}': {e}")))?

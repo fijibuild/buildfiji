@@ -256,6 +256,18 @@ fn target_members(builder: &mut MethodsBuilder) {
         ))
     }
 
+    /// `DefaultInfo.files_to_run`, which a `Target` also has.
+    #[starlark(attribute)]
+    fn files_to_run<'v>(this: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
+        let default = target(this)
+            .find(
+                builtin("DefaultInfo").expect("DefaultInfo is a builtin"),
+                heap,
+            )
+            .expect("every target has a DefaultInfo");
+        default.get_attr_error("files_to_run", heap)
+    }
+
     #[starlark(attribute)]
     fn files<'v>(this: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
         let info = &target(this).info;
