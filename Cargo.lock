@@ -1020,6 +1020,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "fjfj-analysis"
+version = "0.0.1"
+dependencies = [
+ "fjfj-bzlmod",
+ "fjfj-engine",
+ "fjfj-graph",
+ "fjfj-loading",
+ "fjfj-repo",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "fjfj-archive"
 version = "0.0.1"
 dependencies = [

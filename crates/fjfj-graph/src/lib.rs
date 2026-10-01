@@ -6,6 +6,9 @@
 
 use std::fmt;
 
+pub mod action;
+pub mod artifact;
+pub mod config;
 pub mod label;
 pub mod native_rules;
 pub mod package;
@@ -15,6 +18,9 @@ pub mod rule;
 pub mod schema;
 pub mod visibility;
 
+pub use action::{Action, ActionKind};
+pub use artifact::{Artifact, NestedSet, Root};
+pub use config::{CompilationMode, Configuration};
 pub use label::LabelError;
 pub use parse::{LabelContext, LabelParseError};
 
@@ -74,17 +80,4 @@ impl Digest {
             size_bytes: b.len() as u64,
         }
     }
-}
-
-/// An action: the unit of execution. Mirrors REAPI `Command` closely so that
-/// local and remote execution share one representation.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct Action {
-    pub owner: Label,
-    pub mnemonic: String,
-    pub argv: Vec<String>,
-    pub env: Vec<(String, String)>,
-    pub inputs: Vec<Digest>,
-    pub outputs: Vec<String>,
-    pub execution_properties: Vec<(String, String)>,
 }

@@ -13,6 +13,7 @@ repository = "https://github.com/fijibuild/buildfiji"
 # Internal crates
 fjfj-archive = { path = "crates/fjfj-archive" }
 fjfj-bazel-compat = { path = "crates/fjfj-bazel-compat" }
+fjfj-analysis = { path = "crates/fjfj-analysis" }
 fjfj-bzlmod = { path = "crates/fjfj-bzlmod" }
 fjfj-cli = { path = "crates/fjfj-cli" }
 fjfj-engine = { path = "crates/fjfj-engine" }

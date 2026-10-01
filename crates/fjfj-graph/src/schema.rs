@@ -80,6 +80,9 @@ pub struct RuleSchema {
     pub executable: bool,
     /// A `.bzl` rule, whose call words a few errors its own way.
     pub starlark: bool,
+    /// The `.bzl` that made the class (a `rule()`'s), for analysis to find its
+    /// implementation; `None` for a native class.
+    pub defined_in: Option<crate::Label>,
     /// Implicit outputs given as templates: the output's name in the
     /// rule's `outputs` and its template (`%{name}.txt`).
     pub outputs: Vec<(String, String)>,
@@ -129,6 +132,7 @@ impl RuleSchema {
             test: false,
             executable: false,
             starlark: false,
+            defined_in: None,
             outputs: Vec::new(),
         }
     }
@@ -171,6 +175,7 @@ impl RuleSchema {
             test,
             executable: executable || test,
             starlark: true,
+            defined_in: None,
             outputs,
         })
     }

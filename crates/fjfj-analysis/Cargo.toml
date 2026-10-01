@@ -1,0 +1,19 @@
+[package]
+name = "fjfj-analysis"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+fjfj-engine.workspace = true
+fjfj-graph.workspace = true
+fjfj-loading.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+fjfj-bzlmod.workspace = true
+fjfj-repo.workspace = true
+tempfile.workspace = true

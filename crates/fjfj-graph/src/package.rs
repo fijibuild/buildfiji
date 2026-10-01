@@ -17,6 +17,8 @@ use std::collections::BTreeMap;
 pub enum TargetKind {
     Rule {
         rule_class: String,
+        /// The `.bzl` whose `rule()` made the class; `None` for a native one.
+        defined_in: Option<Label>,
         /// The attributes the BUILD file set, in the order it wrote them,
         /// `name` and `visibility` excluded. What it did not set is the rule
         /// class's default, which the class knows.
@@ -267,7 +269,7 @@ impl<'a> PackageBuilder<'a> {
         visibility: Option<Visibility>,
         location: &str,
     ) -> Result<(), PackageError> {
-        match self.add_rule_with(name, rule_class, Vec::new(), visibility, location)? {
+        match self.add_rule_with(name, rule_class, None, Vec::new(), visibility, location)? {
             None => Ok(()),
             Some(crossing) => Err(crossing),
         }
@@ -281,6 +283,7 @@ impl<'a> PackageBuilder<'a> {
         &mut self,
         name: &str,
         rule_class: &str,
+        defined_in: Option<Label>,
         attrs: Vec<(String, AttrValue)>,
         visibility: Option<Visibility>,
         location: &str,
@@ -295,6 +298,7 @@ impl<'a> PackageBuilder<'a> {
             name: name.to_owned(),
             kind: TargetKind::Rule {
                 rule_class: rule_class.to_owned(),
+                defined_in,
                 attrs,
             },
             visibility,

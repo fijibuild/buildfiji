@@ -89,7 +89,10 @@ fn a_call_is_a_target_with_its_class_and_what_it_set() {
         "load(':u.bzl', 'r')\nr(name = 'a', n = 3, tags = ['t'], visibility = ['//visibility:public'])\nr(name = 'b', s = None)\n",
     );
     let a = p.target("a").unwrap();
-    let TargetKind::Rule { rule_class, attrs } = &a.kind else {
+    let TargetKind::Rule {
+        rule_class, attrs, ..
+    } = &a.kind
+    else {
         panic!("{a:?}")
     };
     assert_eq!(rule_class, "r");

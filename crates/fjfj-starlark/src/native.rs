@@ -1459,7 +1459,10 @@ mod tests {
             a.visibility,
             Some(fjfj_graph::visibility::Visibility::public())
         );
-        let TargetKind::Rule { rule_class, attrs } = &a.kind else {
+        let TargetKind::Rule {
+            rule_class, attrs, ..
+        } = &a.kind
+        else {
             panic!()
         };
         assert_eq!(rule_class, "filegroup");
@@ -1484,7 +1487,10 @@ mod tests {
         let p = package(
             "alias(name = \"al\", actual = \":a\", visibility = [\"//visibility:public\"], tags = [\"x\"], testonly = True, deprecation = \"d\")\nfilegroup(name = \"a\")",
         );
-        let TargetKind::Rule { rule_class, attrs } = &p.target("al").unwrap().kind else {
+        let TargetKind::Rule {
+            rule_class, attrs, ..
+        } = &p.target("al").unwrap().kind
+        else {
             panic!()
         };
         assert_eq!(rule_class, "alias");

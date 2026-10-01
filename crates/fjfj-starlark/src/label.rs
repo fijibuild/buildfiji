@@ -207,6 +207,8 @@ pub(crate) struct BzlEval<'a> {
     /// Where a running module extension's inputs are kept: a `Label` it makes
     /// of `@dep//...` is one.
     pub(crate) recorder: Option<crate::repo_ctx::Recorder>,
+    /// The file being evaluated, when it is one's code that runs.
+    file: Option<Label>,
 }
 
 impl<'a> BzlEval<'a> {
@@ -220,6 +222,7 @@ impl<'a> BzlEval<'a> {
             loading: false,
             extension: None,
             recorder: None,
+            file: None,
         }
     }
 }
@@ -282,6 +285,7 @@ fn evaluate_bzl_with(input: &BzlFile<'_>, builtins: bool) -> starlark::Result<Fr
         loading: true,
         extension: None,
         recorder: None,
+        file: Some(input.file.clone()),
     };
     Module::with_temp_heap(|module| {
         if builtins {
@@ -316,6 +320,13 @@ pub(crate) fn evaluating_bzl(eval: &Evaluator<'_, '_, '_>) -> bool {
     eval.extra
         .and_then(|e| e.downcast_ref::<BzlEval>())
         .is_some_and(|e| e.loading)
+}
+
+/// The `.bzl` file whose code `eval` is running at its top level.
+pub(crate) fn evaluating_file(eval: &Evaluator<'_, '_, '_>) -> Option<Label> {
+    eval.extra
+        .and_then(|e| e.downcast_ref::<BzlEval>())
+        .and_then(|e| e.file.clone())
 }
 
 /// Whether the `.bzl` being evaluated assigns a top-level name that starts

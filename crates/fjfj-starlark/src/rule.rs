@@ -485,8 +485,9 @@ fn make_rule<'v>(
         }
         own.extend(build_setting_attrs(&setting));
     }
-    let schema =
+    let mut schema =
         RuleSchema::starlark(own, test, executable, templates).map_err(|e| fatal(e.to_string()))?;
+    schema.defined_in = crate::label::evaluating_file(eval);
 
     if let Some(fragments) = arg("fragments") {
         strings_of("fragments", fragments, heap)?;

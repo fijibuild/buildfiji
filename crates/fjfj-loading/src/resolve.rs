@@ -24,7 +24,7 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
 /// Where packages come from; the repo is made first if it must be.
-pub trait PackageSource {
+pub trait PackageSource: Send + Sync {
     /// The files of repo `repo` (canonical), or why it could not be had.
     fn lookup(&self, repo: &str) -> Result<Arc<PackageLookup>, String>;
 
@@ -59,7 +59,10 @@ fn label_text(label: &Label) -> String {
 /// Whether the rule is tagged `manual`, by the BUILD file or by default (a
 /// `toolchain` or `config_setting` is, unless it says otherwise).
 fn is_manual(target: &Target) -> bool {
-    let TargetKind::Rule { rule_class, attrs } = &target.kind else {
+    let TargetKind::Rule {
+        rule_class, attrs, ..
+    } = &target.kind
+    else {
         return false;
     };
     match attrs.iter().find(|(name, _)| name == "tags") {
@@ -91,6 +94,68 @@ fn input_files(package: &Package) -> BTreeSet<String> {
         .filter(|l| package.target(&l.name).is_none())
         .map(|l| l.name.clone())
         .collect()
+}
+
+/// Whether `label` names a target of `loaded` (its package, in `lookup`'s
+/// repo): a declared one, a file a rule names, or the BUILD file. If not, the
+/// words Bazel says it in.
+pub fn declared_target(
+    loaded: &Package,
+    lookup: &PackageLookup,
+    label: &Label,
+) -> Result<(), String> {
+    if loaded.target(&label.name).is_some() || input_files(loaded).contains(&label.name) {
+        return Ok(());
+    }
+    let build = lookup
+        .build_file(&label.package)
+        .map_err(|e| e.to_string())?;
+    if build.file_name().and_then(|n| n.to_str()) == Some(label.name.as_str()) {
+        return Ok(());
+    }
+    let build_rel = match label.package.as_str() {
+        "" => build.file_name().map(|n| n.to_string_lossy().into_owned()),
+        p => build
+            .file_name()
+            .map(|n| format!("{p}/{}", n.to_string_lossy())),
+    }
+    .unwrap_or_default();
+    let on_disk = lookup.package_dir(&label.package).join(&label.name);
+    let hint = if on_disk.is_dir() {
+        format!(
+            "; however, a source directory of this name exists.  (Perhaps add 'exports_files([\"{}\"])' to {build_rel}, or define a filegroup?)",
+            label.name
+        )
+    } else if on_disk.is_file() {
+        format!(
+            "; however, a source file of this name exists.  (Perhaps add 'exports_files([\"{}\"])' to {build_rel}?)",
+            label.name
+        )
+    } else {
+        // Bazel's suggestion ignores case: `A` finds `a`.
+        let lower = label.name.to_lowercase();
+        let names: Vec<&str> = loaded.targets().iter().map(|t| t.name.as_str()).collect();
+        let lowered: Vec<String> = names.iter().map(|n| n.to_lowercase()).collect();
+        match suggest(&lower, lowered.iter().map(String::as_str)) {
+            Some(found) => {
+                let original = names
+                    .iter()
+                    .zip(&lowered)
+                    .find(|(_, l)| l.as_str() == found)
+                    .map(|(n, _)| *n)
+                    .unwrap_or(found);
+                format!(" (did you mean {original}?)")
+            }
+            None => String::new(),
+        }
+    };
+    Err(format!(
+        "no such target '{}': target '{}' not declared in package '{}' defined by {}{hint}",
+        label_text(label),
+        label.name,
+        label.package,
+        build.display()
+    ))
 }
 
 /// A package as loaded, or what went wrong.
@@ -144,59 +209,9 @@ impl Resolver<'_> {
 
     fn target(&self, label: &Label) -> Result<Label, String> {
         let loaded = self.package(&label.repo, &label.package)?;
-        if loaded.target(&label.name).is_some() || input_files(&loaded).contains(&label.name) {
-            return Ok(label.clone());
-        }
         let lookup = self.source.lookup(&label.repo)?;
-        let build = lookup
-            .build_file(&label.package)
-            .map_err(|e| e.to_string())?;
-        if build.file_name().and_then(|n| n.to_str()) == Some(label.name.as_str()) {
-            return Ok(label.clone());
-        }
-        let build_rel = match label.package.as_str() {
-            "" => build.file_name().map(|n| n.to_string_lossy().into_owned()),
-            p => build
-                .file_name()
-                .map(|n| format!("{p}/{}", n.to_string_lossy())),
-        }
-        .unwrap_or_default();
-        let on_disk = lookup.package_dir(&label.package).join(&label.name);
-        let hint = if on_disk.is_dir() {
-            format!(
-                "; however, a source directory of this name exists.  (Perhaps add 'exports_files([\"{}\"])' to {build_rel}, or define a filegroup?)",
-                label.name
-            )
-        } else if on_disk.is_file() {
-            format!(
-                "; however, a source file of this name exists.  (Perhaps add 'exports_files([\"{}\"])' to {build_rel}?)",
-                label.name
-            )
-        } else {
-            // Bazel's suggestion ignores case: `A` finds `a`.
-            let lower = label.name.to_lowercase();
-            let names: Vec<&str> = loaded.targets().iter().map(|t| t.name.as_str()).collect();
-            let lowered: Vec<String> = names.iter().map(|n| n.to_lowercase()).collect();
-            match suggest(&lower, lowered.iter().map(String::as_str)) {
-                Some(found) => {
-                    let original = names
-                        .iter()
-                        .zip(&lowered)
-                        .find(|(_, l)| l.as_str() == found)
-                        .map(|(n, _)| *n)
-                        .unwrap_or(found);
-                    format!(" (did you mean {original}?)")
-                }
-                None => String::new(),
-            }
-        };
-        Err(format!(
-            "no such target '{}': target '{}' not declared in package '{}' defined by {}{hint}",
-            label_text(label),
-            label.name,
-            label.package,
-            build.display()
-        ))
+        declared_target(&loaded, &lookup, label)?;
+        Ok(label.clone())
     }
 
     /// The package that holds `path`: the path itself if it is one, else the

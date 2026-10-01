@@ -223,7 +223,14 @@ pub(crate) fn call_rule<'v>(
         .state
         .borrow_mut()
         .builder
-        .add_rule_with(&name, class, attrs.clone(), visibility, &at)
+        .add_rule_with(
+            &name,
+            class,
+            schema.defined_in.clone(),
+            attrs.clone(),
+            visibility,
+            &at,
+        )
         .map_err(|e| fatal(e.to_string()))?;
     if let Some(crossing) = crossing {
         ctx.event(&at, crossing.to_string());
@@ -1110,7 +1117,10 @@ pub(crate) fn rule_view<'v>(
     target: &fjfj_graph::package::Target,
     heap: Heap<'v>,
 ) -> Value<'v> {
-    let fjfj_graph::package::TargetKind::Rule { rule_class, attrs } = &target.kind else {
+    let fjfj_graph::package::TargetKind::Rule {
+        rule_class, attrs, ..
+    } = &target.kind
+    else {
         return Value::new_none();
     };
     let mut entries: Vec<(&str, Value<'v>)> = vec![
