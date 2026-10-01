@@ -71,3 +71,14 @@ Toolchains — Rust and the Lean release artifacts — are pinned per platform i
 A spike lives in `crates/fjfj-spike-<topic>` as a `rust_binary`, with a
 comment naming its bead, and is removed once its results are recorded in
 `docs/design/`. The design doc cites the commit that still contains it.
+
+## Dogfooding gotchas
+
+- A successful `fjfj build` repoints the workspace `bazel-*` symlinks into
+  `~/.cache/fjfj`, which breaks the next `bazel build //...` until
+  `bazel build //:fjfj` is rerun. Use `fjfj build --symlink_prefix=fjfj- ...`
+  to keep them apart, and `rm -f fjfj-bin fjfj-out fjfj-testlogs fjfj-buildfiji`
+  afterwards: real Bazel does not skip those links and `//...` fails on them.
+- The Bazel-built fjfj is at
+  `~/.cache/bazel/_bazel_nathan/*/execroot/_main/bazel-out/k8-fastbuild/bin/crates/fjfj/fjfj`.
+- A full `fjfj build //...` is about 1.5 minutes warm (5059 actions).

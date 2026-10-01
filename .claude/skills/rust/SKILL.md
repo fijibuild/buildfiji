@@ -72,3 +72,20 @@ name them so the export reads well.
 
 Invariants that the checkers enforce are recorded in Lean under `spec/` (see
 the `lean` skill).
+
+## Profiling a run
+
+- Where time goes per key: `FJFJ_SPAN_TIMES=1 RUST_LOG=info,fjfj_engine=debug`
+  prints a `time.busy`/`time.idle` line for each key computation (the line
+  prefix is the span stack, so the innermost `key{...}` is the one that
+  closed). `RUST_LOG=fjfj_analysis::starlark_rule=debug` logs per-rule phase
+  times ("analysis phases").
+- `perf` needs `kernel.perf_event_paranoid=1` (sudo sysctl, resets on reboot):
+  `perf record -F 19 --call-graph dwarf,8192 -o perf.data fjfj build ...`.
+  Always `perf report --no-inline`: without it addr2line takes 15+ minutes.
+  dwarf stacks are truncated, so inclusive numbers are weak.
+- A flat profile with idle cores means serialisation, not a hot function:
+  `top -H -p <pid>` then `gdb -p <pid> -batch -ex "thread apply all bt 25"`.
+  That is how the engine polling every key on one worker was found.
+- The engine runs each key as its own tokio task; do not poll keys inline in
+  a requester (it serialises analysis onto one worker).
