@@ -275,7 +275,7 @@ pub(crate) struct BuildLoad {
 
 /// Resolves the module graph, makes the repositories `flags` ask for, and hands
 /// back what the lock still needs written once more has run.
-fn begin(
+pub(crate) fn begin(
     flags: &FetchFlags,
     bzlmod: &BzlmodFlags,
     workspace_root: &Path,
@@ -356,7 +356,7 @@ fn run_inner(
 }
 
 /// Writes the lockfile with what the extensions that have run gave it.
-fn finish(resolved: Resolved, repos: &Repos) -> Result<Resolution, CliError> {
+pub(crate) fn finish(resolved: Resolved, repos: &Repos) -> Result<Resolution, CliError> {
     print_warnings(repos);
     if let Some(session) = &resolved.session {
         session.set_module_extensions(

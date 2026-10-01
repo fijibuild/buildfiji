@@ -22,6 +22,7 @@ fjfj-graph = { path = "crates/fjfj-graph" }
 fjfj-loading = { path = "crates/fjfj-loading" }
 fjfj-models = { path = "crates/fjfj-models" }
 fjfj-proto = { path = "crates/fjfj-proto" }
+fjfj-query = { path = "crates/fjfj-query" }
 fjfj-remote = { path = "crates/fjfj-remote" }
 fjfj-repo = { path = "crates/fjfj-repo" }
 fjfj-sandbox = { path = "crates/fjfj-sandbox" }

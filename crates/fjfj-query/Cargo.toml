@@ -1,0 +1,11 @@
+[package]
+name = "fjfj-query"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+fjfj-graph.workspace = true
+regex.workspace = true
+thiserror.workspace = true

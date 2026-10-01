@@ -79,7 +79,7 @@ fn is_manual(target: &Target) -> bool {
 /// The files of `package` that are targets only because something names
 /// them: the labels of its rules that are in the package and are not
 /// otherwise targets.
-fn input_files(package: &Package) -> BTreeSet<String> {
+pub fn input_files(package: &Package) -> BTreeSet<String> {
     let mut labels = Vec::new();
     for target in package.targets() {
         if let TargetKind::Rule { attrs, .. } = &target.kind {

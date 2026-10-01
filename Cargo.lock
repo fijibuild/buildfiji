@@ -1100,6 +1100,7 @@ dependencies = [
  "fjfj-exec",
  "fjfj-graph",
  "fjfj-loading",
+ "fjfj-query",
  "fjfj-remote",
  "fjfj-repo",
  "fjfj-starlark",
@@ -1184,6 +1185,15 @@ dependencies = [
  "tonic",
  "tonic-prost",
  "tonic-prost-build",
+]
+
+[[package]]
+name = "fjfj-query"
+version = "0.0.1"
+dependencies = [
+ "fjfj-graph",
+ "regex",
+ "thiserror",
 ]
 
 [[package]]

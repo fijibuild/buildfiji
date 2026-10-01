@@ -33,6 +33,8 @@ use fjfj_remote::execution_log::{CompactExecutionLogWriter, EntryType, ExecLogEn
 mod build_command;
 mod fetch_command;
 mod mod_command;
+mod query_command;
+mod query_graph;
 mod run_command;
 mod test_command;
 mod workspace;
@@ -68,6 +70,9 @@ pub enum CliError {
     /// The requested command ran but didn't succeed.
     #[error("{0}")]
     Build(anyhow::Error),
+    /// A query could not be evaluated: Bazel exits 7.
+    #[error("{0}")]
+    Query(anyhow::Error),
     /// A repository could not be made: Bazel's `fetch` exits 8 for it.
     #[error("{0}")]
     Fetch(anyhow::Error),
@@ -97,6 +102,7 @@ impl CliError {
             CliError::TestsFailed => ExitCode::TestsFailed,
             CliError::NoTests => ExitCode::NoTestsFound,
             CliError::Fetch(_) => ExitCode::Interrupted,
+            CliError::Query(_) => ExitCode::PartialAnalysisFailure,
             CliError::Internal(_) => ExitCode::InternalError,
         }
     }
@@ -105,9 +111,10 @@ impl CliError {
     /// can act on, `FATAL: ...` for [`CliError::Internal`].
     fn stderr_line(&self) -> String {
         match self {
-            CliError::CommandLine(e) | CliError::Build(e) | CliError::Fetch(e) => {
-                messages::error(e)
-            }
+            CliError::CommandLine(e)
+            | CliError::Build(e)
+            | CliError::Query(e)
+            | CliError::Fetch(e) => messages::error(e),
             CliError::Internal(e) => messages::fatal(e),
             CliError::Reported
             | CliError::Program(_)
@@ -386,6 +393,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
             Ok(())
         }
         Command::Build(args) => build_main(args, "build", false).await.map(|_| ()),
+        Command::Query(args) => query_command::run(args).await,
         Command::Run(args) => run_command::run(args).await,
         Command::Test(args) => test_command::run(args).await,
         Command::Mod(args) => {

@@ -9,4 +9,6 @@ mod resolve;
 
 pub use glob::{GlobError, GlobOptions, glob};
 pub use lookup::{LookupError, PackageLookup};
-pub use resolve::{Failure, PackageSource, Resolved, declared_target, resolve, resolve_with};
+pub use resolve::{
+    Failure, PackageSource, Resolved, declared_target, input_files, resolve, resolve_with,
+};
