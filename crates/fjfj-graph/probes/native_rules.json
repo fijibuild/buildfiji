@@ -1,0 +1,4786 @@
+{
+ "action_listener": {
+  "attributes": [
+   {
+    "name": "aspect_hints",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "deprecation",
+    "shown": false,
+    "type": "STRING"
+   },
+   {
+    "name": "distribs",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "exec_compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "exec_group_compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST_DICT"
+   },
+   {
+    "name": "exec_properties",
+    "shown": true,
+    "type": "STRING_DICT"
+   },
+   {
+    "name": "extra_actions",
+    "shown": true,
+    "stringListValue": [
+     "//:x"
+    ],
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "features",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "generator_function",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_location",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_name",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "licenses",
+    "shown": false,
+    "type": "LICENSE"
+   },
+   {
+    "name": "mnemonics",
+    "shown": true,
+    "stringListValue": [
+     "x"
+    ],
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "name",
+    "shown": true,
+    "stringValue": "x",
+    "type": "STRING"
+   },
+   {
+    "name": "package_metadata",
+    "shown": false,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "restricted_to",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "tags",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "target_compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "booleanValue": false,
+    "intValue": 0,
+    "name": "testonly",
+    "shown": false,
+    "stringValue": "false",
+    "type": "BOOLEAN"
+   },
+   {
+    "name": "transitive_configs",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "visibility",
+    "shown": true,
+    "stringListValue": [
+     "//visibility:private"
+    ],
+    "type": "STRING_LIST"
+   }
+  ],
+  "forced": [
+   "deprecation",
+   "licenses",
+   "package_metadata",
+   "testonly"
+  ],
+  "given": {
+   "extra_actions": "[\"//:x\"]",
+   "mnemonics": "[\"x\"]"
+  },
+  "keys": [
+   "aspect_hints",
+   "compatible_with",
+   "distribs",
+   "exec_compatible_with",
+   "exec_group_compatible_with",
+   "exec_properties",
+   "extra_actions",
+   "features",
+   "generator_function",
+   "generator_location",
+   "generator_name",
+   "kind",
+   "mnemonics",
+   "name",
+   "restricted_to",
+   "tags",
+   "target_compatible_with",
+   "transitive_configs",
+   "visibility"
+  ],
+  "mandatory": [
+   "extra_actions",
+   "mnemonics"
+  ],
+  "order": [
+   "name",
+   "kind",
+   "visibility",
+   "transitive_configs",
+   "deprecation",
+   "tags",
+   "generator_name",
+   "generator_function",
+   "generator_location",
+   "testonly",
+   "features",
+   "compatible_with",
+   "restricted_to",
+   "package_metadata",
+   "aspect_hints",
+   "distribs",
+   "target_compatible_with",
+   "exec_properties",
+   "exec_compatible_with",
+   "exec_group_compatible_with",
+   "mnemonics",
+   "extra_actions"
+  ]
+ },
+ "alias": {
+  "attributes": [
+   {
+    "name": "actual",
+    "shown": true,
+    "stringValue": "//:x",
+    "type": "LABEL"
+   },
+   {
+    "name": "aspect_hints",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "deprecation",
+    "shown": false,
+    "type": "STRING"
+   },
+   {
+    "name": "features",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "generator_function",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_location",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_name",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "name",
+    "shown": true,
+    "stringValue": "x",
+    "type": "STRING"
+   },
+   {
+    "name": "package_metadata",
+    "shown": false,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "restricted_to",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "tags",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "target_compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "booleanValue": false,
+    "intValue": 0,
+    "name": "testonly",
+    "shown": false,
+    "stringValue": "false",
+    "type": "BOOLEAN"
+   },
+   {
+    "name": "transitive_configs",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "visibility",
+    "shown": true,
+    "stringListValue": [
+     "//visibility:private"
+    ],
+    "type": "STRING_LIST"
+   }
+  ],
+  "forced": [
+   "deprecation",
+   "package_metadata",
+   "testonly"
+  ],
+  "given": {
+   "actual": "\"x\""
+  },
+  "keys": [
+   "actual",
+   "aspect_hints",
+   "compatible_with",
+   "features",
+   "generator_function",
+   "generator_location",
+   "generator_name",
+   "kind",
+   "name",
+   "restricted_to",
+   "tags",
+   "target_compatible_with",
+   "transitive_configs",
+   "visibility"
+  ],
+  "mandatory": [
+   "actual"
+  ],
+  "order": [
+   "name",
+   "kind",
+   "visibility",
+   "transitive_configs",
+   "deprecation",
+   "tags",
+   "generator_name",
+   "generator_function",
+   "generator_location",
+   "testonly",
+   "features",
+   "compatible_with",
+   "restricted_to",
+   "package_metadata",
+   "aspect_hints",
+   "target_compatible_with",
+   "actual"
+  ]
+ },
+ "cc_binary": {
+  "error": "removed",
+  "given": {}
+ },
+ "cc_import": {
+  "error": "removed",
+  "given": {}
+ },
+ "cc_libc_top_alias": {
+  "attributes": [
+   {
+    "name": "aspect_hints",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "deprecation",
+    "shown": false,
+    "type": "STRING"
+   },
+   {
+    "name": "features",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "generator_function",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_location",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_name",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "name",
+    "shown": true,
+    "stringValue": "x",
+    "type": "STRING"
+   },
+   {
+    "name": "package_metadata",
+    "shown": false,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "restricted_to",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "tags",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "target_compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "booleanValue": false,
+    "intValue": 0,
+    "name": "testonly",
+    "shown": false,
+    "stringValue": "false",
+    "type": "BOOLEAN"
+   },
+   {
+    "name": "transitive_configs",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "visibility",
+    "shown": true,
+    "stringListValue": [
+     "//visibility:private"
+    ],
+    "type": "STRING_LIST"
+   }
+  ],
+  "forced": [
+   "deprecation",
+   "package_metadata",
+   "testonly"
+  ],
+  "given": {},
+  "keys": [
+   "aspect_hints",
+   "compatible_with",
+   "features",
+   "generator_function",
+   "generator_location",
+   "generator_name",
+   "kind",
+   "name",
+   "restricted_to",
+   "tags",
+   "target_compatible_with",
+   "transitive_configs",
+   "visibility"
+  ],
+  "mandatory": [],
+  "order": [
+   "name",
+   "kind",
+   "visibility",
+   "transitive_configs",
+   "deprecation",
+   "tags",
+   "generator_name",
+   "generator_function",
+   "generator_location",
+   "testonly",
+   "features",
+   "compatible_with",
+   "restricted_to",
+   "package_metadata",
+   "aspect_hints",
+   "target_compatible_with"
+  ]
+ },
+ "cc_library": {
+  "error": "removed",
+  "given": {}
+ },
+ "cc_shared_library": {
+  "error": "removed",
+  "given": {}
+ },
+ "cc_static_library": {
+  "error": "removed",
+  "given": {}
+ },
+ "cc_test": {
+  "error": "removed",
+  "given": {}
+ },
+ "cc_toolchain": {
+  "error": "removed",
+  "given": {}
+ },
+ "cc_toolchain_alias": {
+  "error": "removed",
+  "given": {}
+ },
+ "cc_toolchain_suite": {
+  "error": "macro",
+  "rule_class": "filegroup"
+ },
+ "config_feature_flag": {
+  "attributes": [
+   {
+    "name": "allowed_values",
+    "shown": true,
+    "stringListValue": [
+     "x"
+    ],
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "aspect_hints",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "default_value",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "deprecation",
+    "shown": false,
+    "type": "STRING"
+   },
+   {
+    "name": "distribs",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "features",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "generator_function",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_location",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_name",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "licenses",
+    "shown": false,
+    "type": "LICENSE"
+   },
+   {
+    "name": "name",
+    "shown": true,
+    "stringValue": "x",
+    "type": "STRING"
+   },
+   {
+    "name": "package_metadata",
+    "shown": false,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "scope",
+    "shown": true,
+    "stringValue": "universal",
+    "type": "STRING"
+   },
+   {
+    "name": "tags",
+    "shown": true,
+    "stringListValue": [
+     "manual"
+    ],
+    "type": "STRING_LIST"
+   },
+   {
+    "booleanValue": false,
+    "intValue": 0,
+    "name": "testonly",
+    "shown": false,
+    "stringValue": "false",
+    "type": "BOOLEAN"
+   },
+   {
+    "name": "visibility",
+    "shown": true,
+    "stringListValue": [
+     "//visibility:private"
+    ],
+    "type": "STRING_LIST"
+   }
+  ],
+  "forced": [
+   "deprecation",
+   "licenses",
+   "package_metadata",
+   "testonly"
+  ],
+  "given": {
+   "allowed_values": "[\"x\"]"
+  },
+  "keys": [
+   "allowed_values",
+   "aspect_hints",
+   "default_value",
+   "distribs",
+   "features",
+   "generator_function",
+   "generator_location",
+   "generator_name",
+   "kind",
+   "name",
+   "scope",
+   "tags",
+   "visibility"
+  ],
+  "mandatory": [
+   "allowed_values"
+  ],
+  "order": [
+   "name",
+   "kind",
+   "visibility",
+   "deprecation",
+   "tags",
+   "generator_name",
+   "generator_function",
+   "generator_location",
+   "testonly",
+   "features",
+   "package_metadata",
+   "aspect_hints",
+   "distribs",
+   "allowed_values",
+   "default_value",
+   "scope"
+  ]
+ },
+ "config_setting": {
+  "attributes": [
+   {
+    "name": "aspect_hints",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "constraint_values",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "define_values",
+    "shown": true,
+    "type": "STRING_DICT"
+   },
+   {
+    "name": "deprecation",
+    "shown": false,
+    "type": "STRING"
+   },
+   {
+    "name": "distribs",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "features",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "flag_values",
+    "shown": true,
+    "type": "LABEL_KEYED_STRING_DICT"
+   },
+   {
+    "name": "generator_function",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_location",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_name",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "licenses",
+    "shown": false,
+    "type": "LICENSE"
+   },
+   {
+    "name": "name",
+    "shown": true,
+    "stringValue": "x",
+    "type": "STRING"
+   },
+   {
+    "name": "package_metadata",
+    "shown": false,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "tags",
+    "shown": true,
+    "stringListValue": [
+     "manual"
+    ],
+    "type": "STRING_LIST"
+   },
+   {
+    "booleanValue": false,
+    "intValue": 0,
+    "name": "testonly",
+    "shown": false,
+    "stringValue": "false",
+    "type": "BOOLEAN"
+   },
+   {
+    "name": "transitive_configs",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "values",
+    "shown": true,
+    "type": "STRING_DICT"
+   },
+   {
+    "name": "visibility",
+    "shown": true,
+    "stringListValue": [
+     "//visibility:public"
+    ],
+    "type": "STRING_LIST"
+   }
+  ],
+  "forced": [
+   "deprecation",
+   "licenses",
+   "package_metadata",
+   "testonly"
+  ],
+  "given": {},
+  "keys": [
+   "aspect_hints",
+   "constraint_values",
+   "define_values",
+   "distribs",
+   "features",
+   "flag_values",
+   "generator_function",
+   "generator_location",
+   "generator_name",
+   "kind",
+   "name",
+   "tags",
+   "transitive_configs",
+   "values",
+   "visibility"
+  ],
+  "mandatory": [],
+  "order": [
+   "name",
+   "kind",
+   "visibility",
+   "transitive_configs",
+   "deprecation",
+   "tags",
+   "generator_name",
+   "generator_function",
+   "generator_location",
+   "testonly",
+   "features",
+   "package_metadata",
+   "aspect_hints",
+   "distribs",
+   "values",
+   "define_values",
+   "flag_values",
+   "constraint_values"
+  ]
+ },
+ "constraint_setting": {
+  "attributes": [
+   {
+    "name": "aspect_hints",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "default_constraint_value",
+    "shown": false,
+    "type": "STRING"
+   },
+   {
+    "name": "deprecation",
+    "shown": false,
+    "type": "STRING"
+   },
+   {
+    "name": "distribs",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "features",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "generator_function",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_location",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_name",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "licenses",
+    "shown": false,
+    "type": "LICENSE"
+   },
+   {
+    "name": "name",
+    "shown": true,
+    "stringValue": "x",
+    "type": "STRING"
+   },
+   {
+    "name": "refines_constraint_value",
+    "shown": false,
+    "type": "LABEL"
+   },
+   {
+    "name": "tags",
+    "shown": true,
+    "stringListValue": [
+     "manual"
+    ],
+    "type": "STRING_LIST"
+   },
+   {
+    "booleanValue": false,
+    "intValue": 0,
+    "name": "testonly",
+    "shown": false,
+    "stringValue": "false",
+    "type": "BOOLEAN"
+   },
+   {
+    "name": "transitive_configs",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "visibility",
+    "shown": true,
+    "stringListValue": [
+     "//visibility:private"
+    ],
+    "type": "STRING_LIST"
+   }
+  ],
+  "forced": [
+   "default_constraint_value",
+   "deprecation",
+   "licenses",
+   "testonly"
+  ],
+  "given": {},
+  "keys": [
+   "aspect_hints",
+   "distribs",
+   "features",
+   "generator_function",
+   "generator_location",
+   "generator_name",
+   "kind",
+   "name",
+   "tags",
+   "transitive_configs",
+   "visibility"
+  ],
+  "mandatory": [],
+  "order": [
+   "name",
+   "kind",
+   "visibility",
+   "transitive_configs",
+   "deprecation",
+   "tags",
+   "generator_name",
+   "generator_function",
+   "generator_location",
+   "testonly",
+   "features",
+   "aspect_hints",
+   "distribs",
+   "default_constraint_value"
+  ]
+ },
+ "constraint_value": {
+  "attributes": [
+   {
+    "name": "aspect_hints",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "constraint_setting",
+    "shown": true,
+    "stringValue": "//:x",
+    "type": "LABEL"
+   },
+   {
+    "name": "deprecation",
+    "shown": false,
+    "type": "STRING"
+   },
+   {
+    "name": "distribs",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "features",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "generator_function",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_location",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_name",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "licenses",
+    "shown": false,
+    "type": "LICENSE"
+   },
+   {
+    "name": "name",
+    "shown": true,
+    "stringValue": "x",
+    "type": "STRING"
+   },
+   {
+    "name": "tags",
+    "shown": true,
+    "stringListValue": [
+     "manual"
+    ],
+    "type": "STRING_LIST"
+   },
+   {
+    "booleanValue": false,
+    "intValue": 0,
+    "name": "testonly",
+    "shown": false,
+    "stringValue": "false",
+    "type": "BOOLEAN"
+   },
+   {
+    "name": "transitive_configs",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "visibility",
+    "shown": true,
+    "stringListValue": [
+     "//visibility:private"
+    ],
+    "type": "STRING_LIST"
+   }
+  ],
+  "forced": [
+   "deprecation",
+   "licenses",
+   "testonly"
+  ],
+  "given": {
+   "constraint_setting": "\"x\""
+  },
+  "keys": [
+   "aspect_hints",
+   "constraint_setting",
+   "distribs",
+   "features",
+   "generator_function",
+   "generator_location",
+   "generator_name",
+   "kind",
+   "name",
+   "tags",
+   "transitive_configs",
+   "visibility"
+  ],
+  "mandatory": [
+   "constraint_setting"
+  ],
+  "order": [
+   "name",
+   "kind",
+   "visibility",
+   "transitive_configs",
+   "deprecation",
+   "tags",
+   "generator_name",
+   "generator_function",
+   "generator_location",
+   "testonly",
+   "features",
+   "aspect_hints",
+   "distribs",
+   "constraint_setting"
+  ]
+ },
+ "environment": {
+  "attributes": [
+   {
+    "name": "aspect_hints",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "deprecation",
+    "shown": false,
+    "type": "STRING"
+   },
+   {
+    "name": "distribs",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "features",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "fulfills",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "generator_function",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_location",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_name",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "licenses",
+    "shown": false,
+    "type": "LICENSE"
+   },
+   {
+    "name": "name",
+    "shown": true,
+    "stringValue": "x",
+    "type": "STRING"
+   },
+   {
+    "name": "package_metadata",
+    "shown": false,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "tags",
+    "shown": true,
+    "stringListValue": [
+     "manual"
+    ],
+    "type": "STRING_LIST"
+   },
+   {
+    "booleanValue": false,
+    "intValue": 0,
+    "name": "testonly",
+    "shown": false,
+    "stringValue": "false",
+    "type": "BOOLEAN"
+   },
+   {
+    "name": "transitive_configs",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "visibility",
+    "shown": true,
+    "stringListValue": [
+     "//visibility:private"
+    ],
+    "type": "STRING_LIST"
+   }
+  ],
+  "forced": [
+   "deprecation",
+   "licenses",
+   "package_metadata",
+   "testonly"
+  ],
+  "given": {},
+  "keys": [
+   "aspect_hints",
+   "distribs",
+   "features",
+   "fulfills",
+   "generator_function",
+   "generator_location",
+   "generator_name",
+   "kind",
+   "name",
+   "tags",
+   "transitive_configs",
+   "visibility"
+  ],
+  "mandatory": [],
+  "order": [
+   "name",
+   "kind",
+   "visibility",
+   "transitive_configs",
+   "deprecation",
+   "tags",
+   "generator_name",
+   "generator_function",
+   "generator_location",
+   "testonly",
+   "features",
+   "package_metadata",
+   "aspect_hints",
+   "distribs",
+   "fulfills"
+  ]
+ },
+ "extra_action": {
+  "attributes": [
+   {
+    "name": "aspect_hints",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "cmd",
+    "shown": true,
+    "stringValue": "x",
+    "type": "STRING"
+   },
+   {
+    "name": "compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "data",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "deprecation",
+    "shown": false,
+    "type": "STRING"
+   },
+   {
+    "name": "distribs",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "exec_compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "exec_group_compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST_DICT"
+   },
+   {
+    "name": "exec_properties",
+    "shown": true,
+    "type": "STRING_DICT"
+   },
+   {
+    "name": "features",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "generator_function",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_location",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_name",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "licenses",
+    "shown": false,
+    "type": "LICENSE"
+   },
+   {
+    "name": "name",
+    "shown": true,
+    "stringValue": "x",
+    "type": "STRING"
+   },
+   {
+    "name": "out_templates",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "package_metadata",
+    "shown": false,
+    "type": "LABEL_LIST"
+   },
+   {
+    "booleanValue": false,
+    "intValue": 0,
+    "name": "requires_action_output",
+    "shown": true,
+    "stringValue": "false",
+    "type": "BOOLEAN"
+   },
+   {
+    "name": "restricted_to",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "tags",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "target_compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "booleanValue": false,
+    "intValue": 0,
+    "name": "testonly",
+    "shown": false,
+    "stringValue": "false",
+    "type": "BOOLEAN"
+   },
+   {
+    "name": "toolchains",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "tools",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "transitive_configs",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "visibility",
+    "shown": true,
+    "stringListValue": [
+     "//visibility:private"
+    ],
+    "type": "STRING_LIST"
+   }
+  ],
+  "forced": [
+   "deprecation",
+   "licenses",
+   "package_metadata",
+   "testonly"
+  ],
+  "given": {
+   "cmd": "\"x\""
+  },
+  "keys": [
+   "aspect_hints",
+   "cmd",
+   "compatible_with",
+   "data",
+   "distribs",
+   "exec_compatible_with",
+   "exec_group_compatible_with",
+   "exec_properties",
+   "features",
+   "generator_function",
+   "generator_location",
+   "generator_name",
+   "kind",
+   "name",
+   "out_templates",
+   "requires_action_output",
+   "restricted_to",
+   "tags",
+   "target_compatible_with",
+   "toolchains",
+   "tools",
+   "transitive_configs",
+   "visibility"
+  ],
+  "mandatory": [
+   "cmd"
+  ],
+  "order": [
+   "name",
+   "kind",
+   "visibility",
+   "transitive_configs",
+   "deprecation",
+   "tags",
+   "generator_name",
+   "generator_function",
+   "generator_location",
+   "testonly",
+   "features",
+   "compatible_with",
+   "restricted_to",
+   "package_metadata",
+   "aspect_hints",
+   "distribs",
+   "target_compatible_with",
+   "data",
+   "exec_properties",
+   "exec_compatible_with",
+   "exec_group_compatible_with",
+   "toolchains",
+   "tools",
+   "out_templates",
+   "cmd",
+   "requires_action_output"
+  ]
+ },
+ "fdo_prefetch_hints": {
+  "error": "removed",
+  "given": {}
+ },
+ "fdo_profile": {
+  "error": "removed",
+  "given": {}
+ },
+ "filegroup": {
+  "attributes": [
+   {
+    "name": "aspect_hints",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "data",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "deprecation",
+    "shown": false,
+    "type": "STRING"
+   },
+   {
+    "name": "distribs",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "features",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "generator_function",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_location",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_name",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "licenses",
+    "shown": false,
+    "type": "LICENSE"
+   },
+   {
+    "name": "name",
+    "shown": true,
+    "stringValue": "x",
+    "type": "STRING"
+   },
+   {
+    "name": "output_group",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "output_licenses",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "package_metadata",
+    "shown": false,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "restricted_to",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "srcs",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "tags",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "target_compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "booleanValue": false,
+    "intValue": 0,
+    "name": "testonly",
+    "shown": false,
+    "stringValue": "false",
+    "type": "BOOLEAN"
+   },
+   {
+    "name": "transitive_configs",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "visibility",
+    "shown": true,
+    "stringListValue": [
+     "//visibility:private"
+    ],
+    "type": "STRING_LIST"
+   }
+  ],
+  "forced": [
+   "deprecation",
+   "licenses",
+   "package_metadata",
+   "testonly"
+  ],
+  "given": {},
+  "keys": [
+   "aspect_hints",
+   "compatible_with",
+   "data",
+   "distribs",
+   "features",
+   "generator_function",
+   "generator_location",
+   "generator_name",
+   "kind",
+   "name",
+   "output_group",
+   "output_licenses",
+   "restricted_to",
+   "srcs",
+   "tags",
+   "target_compatible_with",
+   "transitive_configs",
+   "visibility"
+  ],
+  "mandatory": [],
+  "order": [
+   "name",
+   "kind",
+   "visibility",
+   "transitive_configs",
+   "deprecation",
+   "tags",
+   "generator_name",
+   "generator_function",
+   "generator_location",
+   "testonly",
+   "features",
+   "compatible_with",
+   "restricted_to",
+   "package_metadata",
+   "aspect_hints",
+   "distribs",
+   "target_compatible_with",
+   "srcs",
+   "output_group",
+   "data",
+   "output_licenses"
+  ]
+ },
+ "genquery": {
+  "attributes": [
+   {
+    "name": "aspect_hints",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "booleanValue": false,
+    "intValue": 0,
+    "name": "compressed_output",
+    "shown": true,
+    "stringValue": "false",
+    "type": "BOOLEAN"
+   },
+   {
+    "name": "data",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "deprecation",
+    "shown": false,
+    "type": "STRING"
+   },
+   {
+    "name": "deps",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "distribs",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "exec_compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "exec_group_compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST_DICT"
+   },
+   {
+    "name": "exec_properties",
+    "shown": true,
+    "type": "STRING_DICT"
+   },
+   {
+    "name": "expression",
+    "shown": true,
+    "stringValue": "x",
+    "type": "STRING"
+   },
+   {
+    "name": "features",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "generator_function",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_location",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_name",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "licenses",
+    "shown": false,
+    "type": "LICENSE"
+   },
+   {
+    "name": "name",
+    "shown": true,
+    "stringValue": "x",
+    "type": "STRING"
+   },
+   {
+    "name": "opts",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "package_metadata",
+    "shown": false,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "restricted_to",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "scope",
+    "shown": true,
+    "stringListValue": [
+     "//:x"
+    ],
+    "type": "LABEL_LIST"
+   },
+   {
+    "booleanValue": true,
+    "intValue": 1,
+    "name": "strict",
+    "shown": true,
+    "stringValue": "true",
+    "type": "BOOLEAN"
+   },
+   {
+    "name": "tags",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "target_compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "booleanValue": false,
+    "intValue": 0,
+    "name": "testonly",
+    "shown": false,
+    "stringValue": "false",
+    "type": "BOOLEAN"
+   },
+   {
+    "name": "transitive_configs",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "visibility",
+    "shown": true,
+    "stringListValue": [
+     "//visibility:private"
+    ],
+    "type": "STRING_LIST"
+   }
+  ],
+  "forced": [
+   "deprecation",
+   "licenses",
+   "package_metadata",
+   "testonly"
+  ],
+  "given": {
+   "expression": "\"x\"",
+   "scope": "[\"//:x\"]"
+  },
+  "keys": [
+   "aspect_hints",
+   "compatible_with",
+   "compressed_output",
+   "data",
+   "deps",
+   "distribs",
+   "exec_compatible_with",
+   "exec_group_compatible_with",
+   "exec_properties",
+   "expression",
+   "features",
+   "generator_function",
+   "generator_location",
+   "generator_name",
+   "kind",
+   "name",
+   "opts",
+   "restricted_to",
+   "scope",
+   "strict",
+   "tags",
+   "target_compatible_with",
+   "transitive_configs",
+   "visibility"
+  ],
+  "mandatory": [
+   "expression",
+   "scope"
+  ],
+  "order": [
+   "name",
+   "kind",
+   "visibility",
+   "transitive_configs",
+   "deprecation",
+   "tags",
+   "generator_name",
+   "generator_function",
+   "generator_location",
+   "testonly",
+   "features",
+   "compatible_with",
+   "restricted_to",
+   "package_metadata",
+   "aspect_hints",
+   "distribs",
+   "target_compatible_with",
+   "deps",
+   "data",
+   "exec_properties",
+   "exec_compatible_with",
+   "exec_group_compatible_with",
+   "scope",
+   "strict",
+   "expression",
+   "opts",
+   "compressed_output"
+  ]
+ },
+ "genrule": {
+  "attributes": [
+   {
+    "name": "aspect_hints",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "cmd",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "cmd_bash",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "cmd_bat",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "cmd_ps",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "deprecation",
+    "shown": false,
+    "type": "STRING"
+   },
+   {
+    "name": "distribs",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "exec_compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "exec_group_compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST_DICT"
+   },
+   {
+    "name": "exec_properties",
+    "shown": true,
+    "type": "STRING_DICT"
+   },
+   {
+    "booleanValue": false,
+    "intValue": 0,
+    "name": "executable",
+    "shown": true,
+    "stringValue": "false",
+    "type": "BOOLEAN"
+   },
+   {
+    "name": "features",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "generator_function",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_location",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_name",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "booleanValue": false,
+    "intValue": 0,
+    "name": "heuristic_label_expansion",
+    "shown": true,
+    "stringValue": "false",
+    "type": "BOOLEAN"
+   },
+   {
+    "name": "licenses",
+    "shown": false,
+    "type": "LICENSE"
+   },
+   {
+    "booleanValue": false,
+    "intValue": 0,
+    "name": "local",
+    "shown": true,
+    "stringValue": "false",
+    "type": "BOOLEAN"
+   },
+   {
+    "name": "message",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "name",
+    "shown": true,
+    "stringValue": "x",
+    "type": "STRING"
+   },
+   {
+    "name": "output_licenses",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "booleanValue": false,
+    "intValue": 0,
+    "name": "output_to_bindir",
+    "shown": true,
+    "stringValue": "false",
+    "type": "BOOLEAN"
+   },
+   {
+    "name": "outs",
+    "shown": true,
+    "stringListValue": [
+     "//:x.out"
+    ],
+    "type": "OUTPUT_LIST"
+   },
+   {
+    "name": "package_metadata",
+    "shown": false,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "restricted_to",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "srcs",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "intValue": 0,
+    "name": "stamp",
+    "shown": true,
+    "stringValue": "no",
+    "type": "TRISTATE"
+   },
+   {
+    "name": "tags",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "target_compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "booleanValue": false,
+    "intValue": 0,
+    "name": "testonly",
+    "shown": false,
+    "stringValue": "false",
+    "type": "BOOLEAN"
+   },
+   {
+    "name": "toolchains",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "tools",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "transitive_configs",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "visibility",
+    "shown": true,
+    "stringListValue": [
+     "//visibility:private"
+    ],
+    "type": "STRING_LIST"
+   }
+  ],
+  "forced": [
+   "deprecation",
+   "licenses",
+   "package_metadata",
+   "testonly"
+  ],
+  "given": {
+   "outs": "[\"x.out\"]"
+  },
+  "keys": [
+   "aspect_hints",
+   "cmd",
+   "cmd_bash",
+   "cmd_bat",
+   "cmd_ps",
+   "compatible_with",
+   "distribs",
+   "exec_compatible_with",
+   "exec_group_compatible_with",
+   "exec_properties",
+   "executable",
+   "features",
+   "generator_function",
+   "generator_location",
+   "generator_name",
+   "heuristic_label_expansion",
+   "kind",
+   "local",
+   "message",
+   "name",
+   "output_licenses",
+   "output_to_bindir",
+   "outs",
+   "restricted_to",
+   "srcs",
+   "stamp",
+   "tags",
+   "target_compatible_with",
+   "toolchains",
+   "tools",
+   "transitive_configs",
+   "visibility"
+  ],
+  "mandatory": [
+   "outs"
+  ],
+  "order": [
+   "name",
+   "kind",
+   "visibility",
+   "transitive_configs",
+   "deprecation",
+   "tags",
+   "generator_name",
+   "generator_function",
+   "generator_location",
+   "testonly",
+   "features",
+   "compatible_with",
+   "restricted_to",
+   "package_metadata",
+   "aspect_hints",
+   "distribs",
+   "target_compatible_with",
+   "exec_properties",
+   "exec_compatible_with",
+   "exec_group_compatible_with",
+   "toolchains",
+   "srcs",
+   "tools",
+   "outs",
+   "cmd",
+   "cmd_bash",
+   "cmd_bat",
+   "cmd_ps",
+   "output_to_bindir",
+   "local",
+   "message",
+   "output_licenses",
+   "executable",
+   "heuristic_label_expansion",
+   "stamp"
+  ]
+ },
+ "java_binary": {
+  "attributes": [
+   {
+    "name": "aspect_hints",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "deprecation",
+    "shown": false,
+    "type": "STRING"
+   },
+   {
+    "name": "distribs",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "exec_compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "exec_group_compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST_DICT"
+   },
+   {
+    "name": "exec_properties",
+    "shown": true,
+    "type": "STRING_DICT"
+   },
+   {
+    "name": "features",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "generator_function",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_location",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_name",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "licenses",
+    "shown": false,
+    "type": "LICENSE"
+   },
+   {
+    "name": "name",
+    "shown": true,
+    "stringValue": "x",
+    "type": "STRING"
+   },
+   {
+    "name": "package_metadata",
+    "shown": false,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "restricted_to",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "tags",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "target_compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "booleanValue": false,
+    "intValue": 0,
+    "name": "testonly",
+    "shown": false,
+    "stringValue": "false",
+    "type": "BOOLEAN"
+   },
+   {
+    "name": "transitive_configs",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "visibility",
+    "shown": true,
+    "stringListValue": [
+     "//visibility:private"
+    ],
+    "type": "STRING_LIST"
+   }
+  ],
+  "forced": [
+   "deprecation",
+   "licenses",
+   "package_metadata",
+   "testonly"
+  ],
+  "given": {},
+  "keys": [
+   "aspect_hints",
+   "compatible_with",
+   "distribs",
+   "exec_compatible_with",
+   "exec_group_compatible_with",
+   "exec_properties",
+   "features",
+   "generator_function",
+   "generator_location",
+   "generator_name",
+   "kind",
+   "name",
+   "restricted_to",
+   "tags",
+   "target_compatible_with",
+   "transitive_configs",
+   "visibility"
+  ],
+  "mandatory": [],
+  "order": [
+   "name",
+   "kind",
+   "visibility",
+   "transitive_configs",
+   "deprecation",
+   "tags",
+   "generator_name",
+   "generator_function",
+   "generator_location",
+   "testonly",
+   "features",
+   "compatible_with",
+   "restricted_to",
+   "package_metadata",
+   "aspect_hints",
+   "distribs",
+   "target_compatible_with",
+   "exec_properties",
+   "exec_compatible_with",
+   "exec_group_compatible_with"
+  ]
+ },
+ "java_import": {
+  "attributes": [
+   {
+    "name": "aspect_hints",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "deprecation",
+    "shown": false,
+    "type": "STRING"
+   },
+   {
+    "name": "distribs",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "exec_compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "exec_group_compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST_DICT"
+   },
+   {
+    "name": "exec_properties",
+    "shown": true,
+    "type": "STRING_DICT"
+   },
+   {
+    "name": "features",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "generator_function",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_location",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_name",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "licenses",
+    "shown": false,
+    "type": "LICENSE"
+   },
+   {
+    "name": "name",
+    "shown": true,
+    "stringValue": "x",
+    "type": "STRING"
+   },
+   {
+    "name": "package_metadata",
+    "shown": false,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "restricted_to",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "tags",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "target_compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "booleanValue": false,
+    "intValue": 0,
+    "name": "testonly",
+    "shown": false,
+    "stringValue": "false",
+    "type": "BOOLEAN"
+   },
+   {
+    "name": "transitive_configs",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "visibility",
+    "shown": true,
+    "stringListValue": [
+     "//visibility:private"
+    ],
+    "type": "STRING_LIST"
+   }
+  ],
+  "forced": [
+   "deprecation",
+   "licenses",
+   "package_metadata",
+   "testonly"
+  ],
+  "given": {},
+  "keys": [
+   "aspect_hints",
+   "compatible_with",
+   "distribs",
+   "exec_compatible_with",
+   "exec_group_compatible_with",
+   "exec_properties",
+   "features",
+   "generator_function",
+   "generator_location",
+   "generator_name",
+   "kind",
+   "name",
+   "restricted_to",
+   "tags",
+   "target_compatible_with",
+   "transitive_configs",
+   "visibility"
+  ],
+  "mandatory": [],
+  "order": [
+   "name",
+   "kind",
+   "visibility",
+   "transitive_configs",
+   "deprecation",
+   "tags",
+   "generator_name",
+   "generator_function",
+   "generator_location",
+   "testonly",
+   "features",
+   "compatible_with",
+   "restricted_to",
+   "package_metadata",
+   "aspect_hints",
+   "distribs",
+   "target_compatible_with",
+   "exec_properties",
+   "exec_compatible_with",
+   "exec_group_compatible_with"
+  ]
+ },
+ "java_library": {
+  "attributes": [
+   {
+    "name": "aspect_hints",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "deprecation",
+    "shown": false,
+    "type": "STRING"
+   },
+   {
+    "name": "distribs",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "exec_compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "exec_group_compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST_DICT"
+   },
+   {
+    "name": "exec_properties",
+    "shown": true,
+    "type": "STRING_DICT"
+   },
+   {
+    "name": "features",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "generator_function",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_location",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_name",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "licenses",
+    "shown": false,
+    "type": "LICENSE"
+   },
+   {
+    "name": "name",
+    "shown": true,
+    "stringValue": "x",
+    "type": "STRING"
+   },
+   {
+    "name": "package_metadata",
+    "shown": false,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "restricted_to",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "tags",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "target_compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "booleanValue": false,
+    "intValue": 0,
+    "name": "testonly",
+    "shown": false,
+    "stringValue": "false",
+    "type": "BOOLEAN"
+   },
+   {
+    "name": "transitive_configs",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "visibility",
+    "shown": true,
+    "stringListValue": [
+     "//visibility:private"
+    ],
+    "type": "STRING_LIST"
+   }
+  ],
+  "forced": [
+   "deprecation",
+   "licenses",
+   "package_metadata",
+   "testonly"
+  ],
+  "given": {},
+  "keys": [
+   "aspect_hints",
+   "compatible_with",
+   "distribs",
+   "exec_compatible_with",
+   "exec_group_compatible_with",
+   "exec_properties",
+   "features",
+   "generator_function",
+   "generator_location",
+   "generator_name",
+   "kind",
+   "name",
+   "restricted_to",
+   "tags",
+   "target_compatible_with",
+   "transitive_configs",
+   "visibility"
+  ],
+  "mandatory": [],
+  "order": [
+   "name",
+   "kind",
+   "visibility",
+   "transitive_configs",
+   "deprecation",
+   "tags",
+   "generator_name",
+   "generator_function",
+   "generator_location",
+   "testonly",
+   "features",
+   "compatible_with",
+   "restricted_to",
+   "package_metadata",
+   "aspect_hints",
+   "distribs",
+   "target_compatible_with",
+   "exec_properties",
+   "exec_compatible_with",
+   "exec_group_compatible_with"
+  ]
+ },
+ "java_package_configuration": {
+  "attributes": [
+   {
+    "name": "aspect_hints",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "deprecation",
+    "shown": false,
+    "type": "STRING"
+   },
+   {
+    "name": "distribs",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "exec_compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "exec_group_compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST_DICT"
+   },
+   {
+    "name": "exec_properties",
+    "shown": true,
+    "type": "STRING_DICT"
+   },
+   {
+    "name": "features",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "generator_function",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_location",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_name",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "licenses",
+    "shown": false,
+    "type": "LICENSE"
+   },
+   {
+    "name": "name",
+    "shown": true,
+    "stringValue": "x",
+    "type": "STRING"
+   },
+   {
+    "name": "package_metadata",
+    "shown": false,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "restricted_to",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "tags",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "target_compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "booleanValue": false,
+    "intValue": 0,
+    "name": "testonly",
+    "shown": false,
+    "stringValue": "false",
+    "type": "BOOLEAN"
+   },
+   {
+    "name": "transitive_configs",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "visibility",
+    "shown": true,
+    "stringListValue": [
+     "//visibility:private"
+    ],
+    "type": "STRING_LIST"
+   }
+  ],
+  "forced": [
+   "deprecation",
+   "licenses",
+   "package_metadata",
+   "testonly"
+  ],
+  "given": {},
+  "keys": [
+   "aspect_hints",
+   "compatible_with",
+   "distribs",
+   "exec_compatible_with",
+   "exec_group_compatible_with",
+   "exec_properties",
+   "features",
+   "generator_function",
+   "generator_location",
+   "generator_name",
+   "kind",
+   "name",
+   "restricted_to",
+   "tags",
+   "target_compatible_with",
+   "transitive_configs",
+   "visibility"
+  ],
+  "mandatory": [],
+  "order": [
+   "name",
+   "kind",
+   "visibility",
+   "transitive_configs",
+   "deprecation",
+   "tags",
+   "generator_name",
+   "generator_function",
+   "generator_location",
+   "testonly",
+   "features",
+   "compatible_with",
+   "restricted_to",
+   "package_metadata",
+   "aspect_hints",
+   "distribs",
+   "target_compatible_with",
+   "exec_properties",
+   "exec_compatible_with",
+   "exec_group_compatible_with"
+  ]
+ },
+ "java_plugin": {
+  "attributes": [
+   {
+    "name": "aspect_hints",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "deprecation",
+    "shown": false,
+    "type": "STRING"
+   },
+   {
+    "name": "distribs",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "exec_compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "exec_group_compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST_DICT"
+   },
+   {
+    "name": "exec_properties",
+    "shown": true,
+    "type": "STRING_DICT"
+   },
+   {
+    "name": "features",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "generator_function",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_location",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_name",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "licenses",
+    "shown": false,
+    "type": "LICENSE"
+   },
+   {
+    "name": "name",
+    "shown": true,
+    "stringValue": "x",
+    "type": "STRING"
+   },
+   {
+    "name": "package_metadata",
+    "shown": false,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "restricted_to",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "tags",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "target_compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "booleanValue": false,
+    "intValue": 0,
+    "name": "testonly",
+    "shown": false,
+    "stringValue": "false",
+    "type": "BOOLEAN"
+   },
+   {
+    "name": "transitive_configs",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "visibility",
+    "shown": true,
+    "stringListValue": [
+     "//visibility:private"
+    ],
+    "type": "STRING_LIST"
+   }
+  ],
+  "forced": [
+   "deprecation",
+   "licenses",
+   "package_metadata",
+   "testonly"
+  ],
+  "given": {},
+  "keys": [
+   "aspect_hints",
+   "compatible_with",
+   "distribs",
+   "exec_compatible_with",
+   "exec_group_compatible_with",
+   "exec_properties",
+   "features",
+   "generator_function",
+   "generator_location",
+   "generator_name",
+   "kind",
+   "name",
+   "restricted_to",
+   "tags",
+   "target_compatible_with",
+   "transitive_configs",
+   "visibility"
+  ],
+  "mandatory": [],
+  "order": [
+   "name",
+   "kind",
+   "visibility",
+   "transitive_configs",
+   "deprecation",
+   "tags",
+   "generator_name",
+   "generator_function",
+   "generator_location",
+   "testonly",
+   "features",
+   "compatible_with",
+   "restricted_to",
+   "package_metadata",
+   "aspect_hints",
+   "distribs",
+   "target_compatible_with",
+   "exec_properties",
+   "exec_compatible_with",
+   "exec_group_compatible_with"
+  ]
+ },
+ "java_plugins_flag_alias": {
+  "attributes": [
+   {
+    "name": "aspect_hints",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "deprecation",
+    "shown": false,
+    "type": "STRING"
+   },
+   {
+    "name": "distribs",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "features",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "generator_function",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_location",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_name",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "licenses",
+    "shown": false,
+    "type": "LICENSE"
+   },
+   {
+    "name": "name",
+    "shown": true,
+    "stringValue": "x",
+    "type": "STRING"
+   },
+   {
+    "name": "package_metadata",
+    "shown": false,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "restricted_to",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "tags",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "target_compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "booleanValue": false,
+    "intValue": 0,
+    "name": "testonly",
+    "shown": false,
+    "stringValue": "false",
+    "type": "BOOLEAN"
+   },
+   {
+    "name": "transitive_configs",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "visibility",
+    "shown": true,
+    "stringListValue": [
+     "//visibility:private"
+    ],
+    "type": "STRING_LIST"
+   }
+  ],
+  "forced": [
+   "deprecation",
+   "licenses",
+   "package_metadata",
+   "testonly"
+  ],
+  "given": {},
+  "keys": [
+   "aspect_hints",
+   "compatible_with",
+   "distribs",
+   "features",
+   "generator_function",
+   "generator_location",
+   "generator_name",
+   "kind",
+   "name",
+   "restricted_to",
+   "tags",
+   "target_compatible_with",
+   "transitive_configs",
+   "visibility"
+  ],
+  "mandatory": [],
+  "order": [
+   "name",
+   "kind",
+   "visibility",
+   "transitive_configs",
+   "deprecation",
+   "tags",
+   "generator_name",
+   "generator_function",
+   "generator_location",
+   "testonly",
+   "features",
+   "compatible_with",
+   "restricted_to",
+   "package_metadata",
+   "aspect_hints",
+   "distribs",
+   "target_compatible_with"
+  ]
+ },
+ "java_runtime": {
+  "attributes": [
+   {
+    "name": "aspect_hints",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "deprecation",
+    "shown": false,
+    "type": "STRING"
+   },
+   {
+    "name": "distribs",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "exec_compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "exec_group_compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST_DICT"
+   },
+   {
+    "name": "exec_properties",
+    "shown": true,
+    "type": "STRING_DICT"
+   },
+   {
+    "name": "features",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "generator_function",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_location",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_name",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "licenses",
+    "shown": false,
+    "type": "LICENSE"
+   },
+   {
+    "name": "name",
+    "shown": true,
+    "stringValue": "x",
+    "type": "STRING"
+   },
+   {
+    "name": "package_metadata",
+    "shown": false,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "restricted_to",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "tags",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "target_compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "booleanValue": false,
+    "intValue": 0,
+    "name": "testonly",
+    "shown": false,
+    "stringValue": "false",
+    "type": "BOOLEAN"
+   },
+   {
+    "name": "transitive_configs",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "visibility",
+    "shown": true,
+    "stringListValue": [
+     "//visibility:private"
+    ],
+    "type": "STRING_LIST"
+   }
+  ],
+  "forced": [
+   "deprecation",
+   "licenses",
+   "package_metadata",
+   "testonly"
+  ],
+  "given": {},
+  "keys": [
+   "aspect_hints",
+   "compatible_with",
+   "distribs",
+   "exec_compatible_with",
+   "exec_group_compatible_with",
+   "exec_properties",
+   "features",
+   "generator_function",
+   "generator_location",
+   "generator_name",
+   "kind",
+   "name",
+   "restricted_to",
+   "tags",
+   "target_compatible_with",
+   "transitive_configs",
+   "visibility"
+  ],
+  "mandatory": [],
+  "order": [
+   "name",
+   "kind",
+   "visibility",
+   "transitive_configs",
+   "deprecation",
+   "tags",
+   "generator_name",
+   "generator_function",
+   "generator_location",
+   "testonly",
+   "features",
+   "compatible_with",
+   "restricted_to",
+   "package_metadata",
+   "aspect_hints",
+   "distribs",
+   "target_compatible_with",
+   "exec_properties",
+   "exec_compatible_with",
+   "exec_group_compatible_with"
+  ]
+ },
+ "java_test": {
+  "attributes": [
+   {
+    "name": "aspect_hints",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "deprecation",
+    "shown": false,
+    "type": "STRING"
+   },
+   {
+    "name": "distribs",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "exec_compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "exec_group_compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST_DICT"
+   },
+   {
+    "name": "exec_properties",
+    "shown": true,
+    "type": "STRING_DICT"
+   },
+   {
+    "name": "features",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "booleanValue": false,
+    "intValue": 0,
+    "name": "flaky",
+    "shown": true,
+    "stringValue": "false",
+    "type": "BOOLEAN"
+   },
+   {
+    "name": "generator_function",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_location",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_name",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "licenses",
+    "shown": false,
+    "type": "LICENSE"
+   },
+   {
+    "booleanValue": false,
+    "intValue": 0,
+    "name": "local",
+    "shown": true,
+    "stringValue": "false",
+    "type": "BOOLEAN"
+   },
+   {
+    "name": "name",
+    "shown": true,
+    "stringValue": "x",
+    "type": "STRING"
+   },
+   {
+    "name": "package_metadata",
+    "shown": false,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "restricted_to",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "intValue": 0,
+    "name": "shard_count",
+    "shown": true,
+    "type": "INTEGER"
+   },
+   {
+    "name": "size",
+    "shown": true,
+    "stringValue": "small",
+    "type": "STRING"
+   },
+   {
+    "name": "tags",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "target_compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "booleanValue": true,
+    "intValue": 1,
+    "name": "testonly",
+    "shown": true,
+    "stringValue": "true",
+    "type": "BOOLEAN"
+   },
+   {
+    "name": "timeout",
+    "shown": true,
+    "stringValue": "short",
+    "type": "STRING"
+   },
+   {
+    "name": "transitive_configs",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "visibility",
+    "shown": true,
+    "stringListValue": [
+     "//visibility:private"
+    ],
+    "type": "STRING_LIST"
+   }
+  ],
+  "forced": [
+   "deprecation",
+   "licenses",
+   "package_metadata"
+  ],
+  "given": {
+   "size": "\"small\"",
+   "timeout": "\"short\""
+  },
+  "keys": [
+   "aspect_hints",
+   "compatible_with",
+   "distribs",
+   "exec_compatible_with",
+   "exec_group_compatible_with",
+   "exec_properties",
+   "features",
+   "flaky",
+   "generator_function",
+   "generator_location",
+   "generator_name",
+   "kind",
+   "local",
+   "name",
+   "restricted_to",
+   "shard_count",
+   "size",
+   "tags",
+   "target_compatible_with",
+   "testonly",
+   "timeout",
+   "transitive_configs",
+   "visibility"
+  ],
+  "mandatory": [],
+  "order": [
+   "name",
+   "kind",
+   "visibility",
+   "transitive_configs",
+   "deprecation",
+   "tags",
+   "generator_name",
+   "generator_function",
+   "generator_location",
+   "testonly",
+   "features",
+   "compatible_with",
+   "restricted_to",
+   "package_metadata",
+   "aspect_hints",
+   "distribs",
+   "target_compatible_with",
+   "exec_properties",
+   "exec_compatible_with",
+   "exec_group_compatible_with",
+   "size",
+   "timeout",
+   "flaky",
+   "shard_count",
+   "local"
+  ]
+ },
+ "java_toolchain": {
+  "attributes": [
+   {
+    "name": "aspect_hints",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "deprecation",
+    "shown": false,
+    "type": "STRING"
+   },
+   {
+    "name": "distribs",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "exec_compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "exec_group_compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST_DICT"
+   },
+   {
+    "name": "exec_properties",
+    "shown": true,
+    "type": "STRING_DICT"
+   },
+   {
+    "name": "features",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "generator_function",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_location",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_name",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "licenses",
+    "shown": false,
+    "type": "LICENSE"
+   },
+   {
+    "name": "name",
+    "shown": true,
+    "stringValue": "x",
+    "type": "STRING"
+   },
+   {
+    "name": "package_metadata",
+    "shown": false,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "restricted_to",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "tags",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "target_compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "booleanValue": false,
+    "intValue": 0,
+    "name": "testonly",
+    "shown": false,
+    "stringValue": "false",
+    "type": "BOOLEAN"
+   },
+   {
+    "name": "transitive_configs",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "visibility",
+    "shown": true,
+    "stringListValue": [
+     "//visibility:private"
+    ],
+    "type": "STRING_LIST"
+   }
+  ],
+  "forced": [
+   "deprecation",
+   "licenses",
+   "package_metadata",
+   "testonly"
+  ],
+  "given": {},
+  "keys": [
+   "aspect_hints",
+   "compatible_with",
+   "distribs",
+   "exec_compatible_with",
+   "exec_group_compatible_with",
+   "exec_properties",
+   "features",
+   "generator_function",
+   "generator_location",
+   "generator_name",
+   "kind",
+   "name",
+   "restricted_to",
+   "tags",
+   "target_compatible_with",
+   "transitive_configs",
+   "visibility"
+  ],
+  "mandatory": [],
+  "order": [
+   "name",
+   "kind",
+   "visibility",
+   "transitive_configs",
+   "deprecation",
+   "tags",
+   "generator_name",
+   "generator_function",
+   "generator_location",
+   "testonly",
+   "features",
+   "compatible_with",
+   "restricted_to",
+   "package_metadata",
+   "aspect_hints",
+   "distribs",
+   "target_compatible_with",
+   "exec_properties",
+   "exec_compatible_with",
+   "exec_group_compatible_with"
+  ]
+ },
+ "label_flag": {
+  "attributes": [
+   {
+    "name": "aspect_hints",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "build_setting_default",
+    "shown": true,
+    "stringValue": "//:x",
+    "type": "STRING"
+   },
+   {
+    "name": "compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "deprecation",
+    "shown": false,
+    "type": "STRING"
+   },
+   {
+    "name": "features",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "generator_function",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_location",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_name",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "help",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "name",
+    "shown": true,
+    "stringValue": "x",
+    "type": "STRING"
+   },
+   {
+    "name": "package_metadata",
+    "shown": false,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "restricted_to",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "scope",
+    "shown": true,
+    "stringValue": "universal",
+    "type": "STRING"
+   },
+   {
+    "name": "tags",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "target_compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "booleanValue": false,
+    "intValue": 0,
+    "name": "testonly",
+    "shown": false,
+    "stringValue": "false",
+    "type": "BOOLEAN"
+   },
+   {
+    "name": "transitive_configs",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "visibility",
+    "shown": true,
+    "stringListValue": [
+     "//visibility:private"
+    ],
+    "type": "STRING_LIST"
+   }
+  ],
+  "forced": [
+   "deprecation",
+   "package_metadata",
+   "testonly"
+  ],
+  "given": {
+   "build_setting_default": "\"x\""
+  },
+  "keys": [
+   "aspect_hints",
+   "build_setting_default",
+   "compatible_with",
+   "features",
+   "generator_function",
+   "generator_location",
+   "generator_name",
+   "help",
+   "kind",
+   "name",
+   "restricted_to",
+   "scope",
+   "tags",
+   "target_compatible_with",
+   "transitive_configs",
+   "visibility"
+  ],
+  "mandatory": [
+   "build_setting_default"
+  ],
+  "order": [
+   "name",
+   "kind",
+   "visibility",
+   "transitive_configs",
+   "deprecation",
+   "tags",
+   "generator_name",
+   "generator_function",
+   "generator_location",
+   "testonly",
+   "features",
+   "compatible_with",
+   "restricted_to",
+   "package_metadata",
+   "aspect_hints",
+   "target_compatible_with",
+   "scope",
+   "build_setting_default",
+   "help"
+  ]
+ },
+ "label_setting": {
+  "attributes": [
+   {
+    "name": "aspect_hints",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "build_setting_default",
+    "shown": true,
+    "stringValue": "//:x",
+    "type": "STRING"
+   },
+   {
+    "name": "compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "deprecation",
+    "shown": false,
+    "type": "STRING"
+   },
+   {
+    "name": "features",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "generator_function",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_location",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_name",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "help",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "name",
+    "shown": true,
+    "stringValue": "x",
+    "type": "STRING"
+   },
+   {
+    "name": "package_metadata",
+    "shown": false,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "restricted_to",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "scope",
+    "shown": true,
+    "stringValue": "universal",
+    "type": "STRING"
+   },
+   {
+    "name": "tags",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "target_compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "booleanValue": false,
+    "intValue": 0,
+    "name": "testonly",
+    "shown": false,
+    "stringValue": "false",
+    "type": "BOOLEAN"
+   },
+   {
+    "name": "transitive_configs",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "visibility",
+    "shown": true,
+    "stringListValue": [
+     "//visibility:private"
+    ],
+    "type": "STRING_LIST"
+   }
+  ],
+  "forced": [
+   "deprecation",
+   "package_metadata",
+   "testonly"
+  ],
+  "given": {
+   "build_setting_default": "\"x\""
+  },
+  "keys": [
+   "aspect_hints",
+   "build_setting_default",
+   "compatible_with",
+   "features",
+   "generator_function",
+   "generator_location",
+   "generator_name",
+   "help",
+   "kind",
+   "name",
+   "restricted_to",
+   "scope",
+   "tags",
+   "target_compatible_with",
+   "transitive_configs",
+   "visibility"
+  ],
+  "mandatory": [
+   "build_setting_default"
+  ],
+  "order": [
+   "name",
+   "kind",
+   "visibility",
+   "transitive_configs",
+   "deprecation",
+   "tags",
+   "generator_name",
+   "generator_function",
+   "generator_location",
+   "testonly",
+   "features",
+   "compatible_with",
+   "restricted_to",
+   "package_metadata",
+   "aspect_hints",
+   "target_compatible_with",
+   "scope",
+   "build_setting_default",
+   "help"
+  ]
+ },
+ "memprof_profile": {
+  "error": "removed",
+  "given": {}
+ },
+ "objc_import": {
+  "error": "removed",
+  "given": {}
+ },
+ "objc_library": {
+  "error": "removed",
+  "given": {}
+ },
+ "platform": {
+  "attributes": [
+   {
+    "name": "allowed_toolchain_types",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "aspect_hints",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "booleanValue": false,
+    "intValue": 0,
+    "name": "check_toolchain_types",
+    "shown": true,
+    "stringValue": "false",
+    "type": "BOOLEAN"
+   },
+   {
+    "name": "constraint_values",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "deprecation",
+    "shown": false,
+    "type": "STRING"
+   },
+   {
+    "name": "distribs",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "exec_properties",
+    "shown": true,
+    "type": "STRING_DICT"
+   },
+   {
+    "name": "features",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "flags",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "generator_function",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_location",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_name",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "licenses",
+    "shown": false,
+    "type": "LICENSE"
+   },
+   {
+    "name": "missing_toolchain_error",
+    "shown": true,
+    "stringValue": "For more information on platforms or toolchains see https://bazel.build/concepts/platforms-intro.",
+    "type": "STRING"
+   },
+   {
+    "name": "name",
+    "shown": true,
+    "stringValue": "x",
+    "type": "STRING"
+   },
+   {
+    "name": "parents",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "remote_execution_properties",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "required_settings",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "tags",
+    "shown": true,
+    "stringListValue": [
+     "manual"
+    ],
+    "type": "STRING_LIST"
+   },
+   {
+    "booleanValue": false,
+    "intValue": 0,
+    "name": "testonly",
+    "shown": false,
+    "stringValue": "false",
+    "type": "BOOLEAN"
+   },
+   {
+    "name": "transitive_configs",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "visibility",
+    "shown": true,
+    "stringListValue": [
+     "//visibility:private"
+    ],
+    "type": "STRING_LIST"
+   }
+  ],
+  "forced": [
+   "deprecation",
+   "licenses",
+   "testonly"
+  ],
+  "given": {},
+  "keys": [
+   "allowed_toolchain_types",
+   "aspect_hints",
+   "check_toolchain_types",
+   "constraint_values",
+   "distribs",
+   "exec_properties",
+   "features",
+   "flags",
+   "generator_function",
+   "generator_location",
+   "generator_name",
+   "kind",
+   "missing_toolchain_error",
+   "name",
+   "parents",
+   "remote_execution_properties",
+   "required_settings",
+   "tags",
+   "transitive_configs",
+   "visibility"
+  ],
+  "mandatory": [],
+  "order": [
+   "name",
+   "kind",
+   "visibility",
+   "transitive_configs",
+   "deprecation",
+   "tags",
+   "generator_name",
+   "generator_function",
+   "generator_location",
+   "testonly",
+   "features",
+   "aspect_hints",
+   "distribs",
+   "constraint_values",
+   "parents",
+   "remote_execution_properties",
+   "exec_properties",
+   "flags",
+   "required_settings",
+   "missing_toolchain_error",
+   "check_toolchain_types",
+   "allowed_toolchain_types"
+  ]
+ },
+ "propeller_optimize": {
+  "error": "removed",
+  "given": {}
+ },
+ "starlark_doc_extract": {
+  "attributes": [
+   {
+    "booleanValue": false,
+    "intValue": 0,
+    "name": "allow_unused_doc_comments",
+    "shown": true,
+    "stringValue": "false",
+    "type": "BOOLEAN"
+   },
+   {
+    "name": "aspect_hints",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "data",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "deprecation",
+    "shown": false,
+    "type": "STRING"
+   },
+   {
+    "name": "deps",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "distribs",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "exec_compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "exec_group_compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST_DICT"
+   },
+   {
+    "name": "exec_properties",
+    "shown": true,
+    "type": "STRING_DICT"
+   },
+   {
+    "name": "features",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "generator_function",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_location",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_name",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "licenses",
+    "shown": false,
+    "type": "LICENSE"
+   },
+   {
+    "name": "name",
+    "shown": true,
+    "stringValue": "x",
+    "type": "STRING"
+   },
+   {
+    "name": "package_metadata",
+    "shown": false,
+    "type": "LABEL_LIST"
+   },
+   {
+    "booleanValue": false,
+    "intValue": 0,
+    "name": "render_main_repo_name",
+    "shown": true,
+    "stringValue": "false",
+    "type": "BOOLEAN"
+   },
+   {
+    "name": "restricted_to",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "src",
+    "shown": true,
+    "stringValue": "//:x",
+    "type": "LABEL"
+   },
+   {
+    "name": "symbol_names",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "tags",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "target_compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "booleanValue": false,
+    "intValue": 0,
+    "name": "testonly",
+    "shown": false,
+    "stringValue": "false",
+    "type": "BOOLEAN"
+   },
+   {
+    "name": "transitive_configs",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "visibility",
+    "shown": true,
+    "stringListValue": [
+     "//visibility:private"
+    ],
+    "type": "STRING_LIST"
+   }
+  ],
+  "forced": [
+   "deprecation",
+   "licenses",
+   "package_metadata",
+   "testonly"
+  ],
+  "given": {
+   "src": "\"x\""
+  },
+  "keys": [
+   "allow_unused_doc_comments",
+   "aspect_hints",
+   "compatible_with",
+   "data",
+   "deps",
+   "distribs",
+   "exec_compatible_with",
+   "exec_group_compatible_with",
+   "exec_properties",
+   "features",
+   "generator_function",
+   "generator_location",
+   "generator_name",
+   "kind",
+   "name",
+   "render_main_repo_name",
+   "restricted_to",
+   "src",
+   "symbol_names",
+   "tags",
+   "target_compatible_with",
+   "transitive_configs",
+   "visibility"
+  ],
+  "mandatory": [
+   "src"
+  ],
+  "order": [
+   "name",
+   "kind",
+   "visibility",
+   "transitive_configs",
+   "deprecation",
+   "tags",
+   "generator_name",
+   "generator_function",
+   "generator_location",
+   "testonly",
+   "features",
+   "compatible_with",
+   "restricted_to",
+   "package_metadata",
+   "aspect_hints",
+   "distribs",
+   "target_compatible_with",
+   "deps",
+   "data",
+   "exec_properties",
+   "exec_compatible_with",
+   "exec_group_compatible_with",
+   "src",
+   "symbol_names",
+   "render_main_repo_name",
+   "allow_unused_doc_comments"
+  ]
+ },
+ "test_suite": {
+  "attributes": [
+   {
+    "name": "aspect_hints",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "deprecation",
+    "shown": false,
+    "type": "STRING"
+   },
+   {
+    "name": "distribs",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "features",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "generator_function",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_location",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_name",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "licenses",
+    "shown": false,
+    "type": "LICENSE"
+   },
+   {
+    "name": "name",
+    "shown": true,
+    "stringValue": "x",
+    "type": "STRING"
+   },
+   {
+    "name": "package_metadata",
+    "shown": false,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "restricted_to",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "tags",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "target_compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "booleanValue": true,
+    "intValue": 1,
+    "name": "testonly",
+    "shown": true,
+    "stringValue": "true",
+    "type": "BOOLEAN"
+   },
+   {
+    "name": "tests",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "transitive_configs",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "visibility",
+    "shown": true,
+    "stringListValue": [
+     "//visibility:private"
+    ],
+    "type": "STRING_LIST"
+   }
+  ],
+  "forced": [
+   "deprecation",
+   "licenses",
+   "package_metadata"
+  ],
+  "given": {},
+  "keys": [
+   "aspect_hints",
+   "compatible_with",
+   "distribs",
+   "features",
+   "generator_function",
+   "generator_location",
+   "generator_name",
+   "kind",
+   "name",
+   "restricted_to",
+   "tags",
+   "target_compatible_with",
+   "testonly",
+   "tests",
+   "transitive_configs",
+   "visibility"
+  ],
+  "mandatory": [],
+  "order": [
+   "name",
+   "kind",
+   "visibility",
+   "transitive_configs",
+   "deprecation",
+   "tags",
+   "generator_name",
+   "generator_function",
+   "generator_location",
+   "testonly",
+   "features",
+   "compatible_with",
+   "restricted_to",
+   "package_metadata",
+   "aspect_hints",
+   "distribs",
+   "target_compatible_with",
+   "tests"
+  ]
+ },
+ "toolchain": {
+  "attributes": [
+   {
+    "name": "aspect_hints",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "deprecation",
+    "shown": false,
+    "type": "STRING"
+   },
+   {
+    "name": "distribs",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "exec_compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "features",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "generator_function",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_location",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_name",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "licenses",
+    "shown": false,
+    "type": "LICENSE"
+   },
+   {
+    "name": "name",
+    "shown": true,
+    "stringValue": "x",
+    "type": "STRING"
+   },
+   {
+    "name": "package_metadata",
+    "shown": false,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "tags",
+    "shown": true,
+    "stringListValue": [
+     "manual"
+    ],
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "target_compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "target_settings",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "booleanValue": false,
+    "intValue": 0,
+    "name": "testonly",
+    "shown": false,
+    "stringValue": "false",
+    "type": "BOOLEAN"
+   },
+   {
+    "name": "toolchain",
+    "shown": true,
+    "stringValue": "//:x",
+    "type": "STRING"
+   },
+   {
+    "name": "toolchain_type",
+    "shown": true,
+    "stringValue": "//:x",
+    "type": "LABEL"
+   },
+   {
+    "name": "transitive_configs",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "booleanValue": false,
+    "intValue": 0,
+    "name": "use_target_platform_constraints",
+    "shown": true,
+    "stringValue": "false",
+    "type": "BOOLEAN"
+   },
+   {
+    "name": "visibility",
+    "shown": true,
+    "stringListValue": [
+     "//visibility:private"
+    ],
+    "type": "STRING_LIST"
+   }
+  ],
+  "forced": [
+   "deprecation",
+   "licenses",
+   "package_metadata",
+   "testonly"
+  ],
+  "given": {
+   "toolchain": "\"x\"",
+   "toolchain_type": "\"x\""
+  },
+  "keys": [
+   "aspect_hints",
+   "distribs",
+   "exec_compatible_with",
+   "features",
+   "generator_function",
+   "generator_location",
+   "generator_name",
+   "kind",
+   "name",
+   "tags",
+   "target_compatible_with",
+   "target_settings",
+   "toolchain",
+   "toolchain_type",
+   "transitive_configs",
+   "use_target_platform_constraints",
+   "visibility"
+  ],
+  "mandatory": [
+   "toolchain",
+   "toolchain_type"
+  ],
+  "order": [
+   "name",
+   "kind",
+   "visibility",
+   "transitive_configs",
+   "deprecation",
+   "tags",
+   "generator_name",
+   "generator_function",
+   "generator_location",
+   "testonly",
+   "features",
+   "package_metadata",
+   "aspect_hints",
+   "distribs",
+   "toolchain_type",
+   "exec_compatible_with",
+   "target_compatible_with",
+   "use_target_platform_constraints",
+   "target_settings",
+   "toolchain"
+  ]
+ },
+ "toolchain_type": {
+  "attributes": [
+   {
+    "name": "aspect_hints",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "deprecation",
+    "shown": false,
+    "type": "STRING"
+   },
+   {
+    "name": "features",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "generator_function",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_location",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "generator_name",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "name",
+    "shown": true,
+    "stringValue": "x",
+    "type": "STRING"
+   },
+   {
+    "name": "no_match_error",
+    "shown": true,
+    "stringValue": "",
+    "type": "STRING"
+   },
+   {
+    "name": "package_metadata",
+    "shown": false,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "restricted_to",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "name": "tags",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "target_compatible_with",
+    "shown": true,
+    "type": "LABEL_LIST"
+   },
+   {
+    "booleanValue": false,
+    "intValue": 0,
+    "name": "testonly",
+    "shown": false,
+    "stringValue": "false",
+    "type": "BOOLEAN"
+   },
+   {
+    "name": "transitive_configs",
+    "shown": true,
+    "type": "STRING_LIST"
+   },
+   {
+    "name": "visibility",
+    "shown": true,
+    "stringListValue": [
+     "//visibility:private"
+    ],
+    "type": "STRING_LIST"
+   }
+  ],
+  "forced": [
+   "deprecation",
+   "package_metadata",
+   "testonly"
+  ],
+  "given": {},
+  "keys": [
+   "aspect_hints",
+   "compatible_with",
+   "features",
+   "generator_function",
+   "generator_location",
+   "generator_name",
+   "kind",
+   "name",
+   "no_match_error",
+   "restricted_to",
+   "tags",
+   "target_compatible_with",
+   "transitive_configs",
+   "visibility"
+  ],
+  "mandatory": [],
+  "order": [
+   "name",
+   "kind",
+   "visibility",
+   "transitive_configs",
+   "deprecation",
+   "tags",
+   "generator_name",
+   "generator_function",
+   "generator_location",
+   "testonly",
+   "features",
+   "compatible_with",
+   "restricted_to",
+   "package_metadata",
+   "aspect_hints",
+   "target_compatible_with",
+   "no_match_error"
+  ]
+ }
+}

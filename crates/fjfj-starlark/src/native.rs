@@ -45,6 +45,7 @@ use crate::json::JsonModule;
 use crate::label::{RepoMappings, label_globals, relative_to_package};
 use crate::load_visibility::visibility_globals;
 use crate::macros::{MacroState, macro_globals, run_finalizers};
+use crate::native_rule_fns::generated_native_rules;
 use crate::proto::ProtoModule;
 use crate::provider::provider_globals;
 use crate::rule::rule_globals;
@@ -102,6 +103,7 @@ pub(crate) fn module_globals(builder: &mut GlobalsBuilder) {
 pub fn build_globals() -> Globals {
     GlobalsBuilder::extended_by(&[LibraryExtension::Print])
         .with(native_functions)
+        .with(generated_native_rules)
         .with(build_only_functions)
         .with(depset_globals)
         .with(module_globals)
@@ -179,6 +181,7 @@ pub fn bzl_globals() -> Globals {
     let mut builder = GlobalsBuilder::extended_by(&[LibraryExtension::Print]);
     builder.namespace("native", |native| {
         native_functions(native);
+        generated_native_rules(native);
         // What Bazel says it is; a module extension and a repository rule
         // read it (`bazel_features` does).
         native.set("bazel_version", "9.2.0");
@@ -1623,6 +1626,60 @@ mod tests {
         package(
             "filegroup(name = \"a\", tags = [\"x\", \"x\"], visibility = [\"//visibility:public\", \"//visibility:public\"])",
         );
+    }
+
+    /// Probed on Bazel 9.2.0: the native rule classes beyond `filegroup` and
+    /// `alias` take what their schema says, and report a missing mandatory
+    /// attribute and a wrong type as events.
+    #[test]
+    fn the_generated_native_rules_check_their_attributes_as_bazel_does() {
+        for (build, want) in [
+            (
+                "toolchain(name = \"x\")",
+                &[
+                    "BUILD.bazel:1:10: //:x: missing value for mandatory attribute 'toolchain_type' in 'toolchain' rule",
+                    "BUILD.bazel:1:10: //:x: missing value for mandatory attribute 'toolchain' in 'toolchain' rule",
+                ][..],
+            ),
+            (
+                "genrule(name = \"x\")",
+                &[
+                    "BUILD.bazel:1:8: //:x: missing value for mandatory attribute 'outs' in 'genrule' rule",
+                ][..],
+            ),
+            (
+                "genrule(name = \"x\", outs = \"o\", cmd = \"true\")",
+                &[
+                    "BUILD.bazel:1:8: //:x: expected value of type 'list(output)' for attribute 'outs' of 'genrule', but got \"o\" (string)",
+                    "BUILD.bazel:1:8: //:x: missing value for mandatory attribute 'outs' in 'genrule' rule",
+                ][..],
+            ),
+            (
+                "genrule(name = \"x\", outs = [\"o\"], stamp = 2)",
+                &[
+                    "BUILD.bazel:1:8: //:x: expected value of type 'tristate' for TriState values is not one of [-1, 0, 1], but got 2 (int)",
+                ][..],
+            ),
+            (
+                "java_library(name = \"x\", srcs = [\"a.java\"], bogus = 1)",
+                &[
+                    "BUILD.bazel:1:13: //:x: no such attribute 'srcs' in 'java_library' rule",
+                    "BUILD.bazel:1:13: //:x: no such attribute 'bogus' in 'java_library' rule",
+                ][..],
+            ),
+        ] {
+            assert_eq!(events(build), want, "{build}");
+        }
+        // Accepted, with a tristate given as a bool, and `manual` by default.
+        let p = package(
+            "genrule(name = \"g\", outs = [\"o\"], cmd = \"true\", stamp = True)\n\
+             toolchain_type(name = \"t\")\nconfig_setting(name = \"c\")\n\
+             platform(name = \"p\")\nconstraint_setting(name = \"s\")\n\
+             constraint_value(name = \"v\", constraint_setting = \":s\")",
+        );
+        for name in ["g", "t", "c", "p", "s", "v", "o"] {
+            assert!(p.target(name).is_some(), "{name}");
+        }
     }
 
     #[test]

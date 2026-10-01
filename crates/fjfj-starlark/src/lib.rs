@@ -51,6 +51,7 @@ mod macros_matrix;
 mod macros_tests;
 mod module_ctx;
 mod native;
+mod native_rule_fns;
 mod proto;
 mod provider;
 #[cfg(test)]

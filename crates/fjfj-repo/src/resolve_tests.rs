@@ -28,6 +28,7 @@ const FILES: &[(&str, &str)] = &[
         "c/BUILD.bazel",
         "filegroup(name = 'c', srcs = [])\n\
          filegroup(name = 'hidden', srcs = ['h.txt'], tags = ['manual'])\n\
+         config_setting(name = 'cs')\n\
          exports_files(['e.txt'])\n\
          package_group(name = 'pg', packages = ['//...'])\n",
     ),
@@ -104,8 +105,9 @@ fn patterns_select_what_bazel_selects() {
                 "//c:pg",
             ],
         ),
-        // Named, a `manual` rule is selected.
+        // Named, a `manual` rule is selected; a `config_setting` is one by default.
         ("", &["//c:hidden"], &["//c:hidden"]),
+        ("", &["//c:cs"], &["//c:cs"]),
         ("", &["//c/..."], &["//c:c"]),
         (
             "",

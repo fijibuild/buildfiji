@@ -32,8 +32,7 @@ use crate::native::{BuildContext, context_for, location};
 use crate::select;
 use fjfj_graph::package::{PackageError, check_subpackage_crossing};
 use fjfj_graph::rule::{
-    ALIAS, AttrType, AttrValue, FILEGROUP, RuleClass, Selector, SelectorList, default_condition,
-    label_relative_to,
+    AttrType, AttrValue, RuleClass, Selector, SelectorList, default_condition, label_relative_to,
 };
 use fjfj_graph::schema::{RuleSchema, SchemaAttr, TEST_SIZES, TEST_TIMEOUTS};
 use fjfj_graph::visibility::Visibility;
@@ -44,19 +43,19 @@ use starlark::values::dict::{AllocDict, DictRef};
 use starlark::values::none::NoneType;
 use starlark::values::tuple::AllocTuple;
 use starlark::values::{Heap, StringValue, Value};
-use std::sync::{Arc, LazyLock};
+use std::collections::HashMap;
+use std::sync::{Arc, LazyLock, Mutex};
 
-/// The schema of `filegroup` and `alias`, built once.
+/// The schema of a native rule, built once.
 pub(crate) fn native_schema(class: &'static RuleClass) -> Arc<RuleSchema> {
-    static FILEGROUP_SCHEMA: LazyLock<Arc<RuleSchema>> =
-        LazyLock::new(|| Arc::new(RuleSchema::native(&FILEGROUP)));
-    static ALIAS_SCHEMA: LazyLock<Arc<RuleSchema>> =
-        LazyLock::new(|| Arc::new(RuleSchema::native(&ALIAS)));
-    if class.name == ALIAS.name {
-        ALIAS_SCHEMA.clone()
-    } else {
-        FILEGROUP_SCHEMA.clone()
-    }
+    static SCHEMAS: LazyLock<Mutex<HashMap<&'static str, Arc<RuleSchema>>>> =
+        LazyLock::new(|| Mutex::new(HashMap::new()));
+    SCHEMAS
+        .lock()
+        .unwrap()
+        .entry(class.name)
+        .or_insert_with(|| Arc::new(RuleSchema::native(class)))
+        .clone()
 }
 
 /// Which words a rule call's errors are in: the natives' or a `rule()`'s.
@@ -691,6 +690,22 @@ fn convert_at<'v>(
                 return Err(format!(
                     "expected one of [False, True, 0, 1] for {at}, but got {}",
                     describe(value)
+                ));
+            }
+        },
+        AttrType::Tristate => match (value.unpack_bool(), int32(value)) {
+            (Some(b), _) => AttrValue::Int(i32::from(b)),
+            (None, Ok(i @ -1..=1)) => AttrValue::Int(i),
+            (None, Ok(i)) => {
+                return Err(format!(
+                    "expected value of type 'tristate' for TriState values is not one of \
+                     [-1, 0, 1], but got {i} (int)"
+                ));
+            }
+            (None, Err(IntFail::NotInt)) => return Err(wrong_type("int")),
+            (None, Err(IntFail::Range(n))) => {
+                return Err(format!(
+                    "for {at}, got {n}, want value in signed 32-bit range"
                 ));
             }
         },

@@ -143,6 +143,8 @@ impl SelectorList {
 pub enum AttrType {
     Bool,
     Int,
+    /// An int that is -1, 0 or 1, or a bool (`genrule`'s `stamp`).
+    Tristate,
     String,
     StringList,
     IntList,
@@ -163,7 +165,7 @@ impl AttrType {
     pub fn name(self) -> &'static str {
         match self {
             AttrType::Bool => "bool",
-            AttrType::Int => "int",
+            AttrType::Int | AttrType::Tristate => "int",
             AttrType::String => "string",
             AttrType::StringList => "list(string)",
             AttrType::IntList => "list(int)",
@@ -184,7 +186,7 @@ impl AttrType {
     pub fn zero(self) -> Option<AttrValue> {
         Some(match self {
             AttrType::Bool => AttrValue::Bool(false),
-            AttrType::Int => AttrValue::Int(0),
+            AttrType::Int | AttrType::Tristate => AttrValue::Int(0),
             AttrType::String => AttrValue::String(String::new()),
             AttrType::StringList => AttrValue::StringList(vec![]),
             AttrType::IntList => AttrValue::IntList(vec![]),
@@ -205,8 +207,13 @@ pub enum AttrDefault {
     /// Nothing: `native.existing_rule` leaves the key out.
     Unset,
     False,
+    True,
     EmptyString,
     EmptyList,
+    EmptyDict,
+    Int(i32),
+    Str(&'static str),
+    Strs(&'static [&'static str]),
 }
 
 impl AttrDefault {
@@ -215,9 +222,16 @@ impl AttrDefault {
         match (self, ty) {
             (AttrDefault::Unset, _) => None,
             (AttrDefault::False, _) => Some(AttrValue::Bool(false)),
+            (AttrDefault::True, _) => Some(AttrValue::Bool(true)),
             (AttrDefault::EmptyString, _) => Some(AttrValue::String(String::new())),
             (AttrDefault::EmptyList, AttrType::LabelList) => Some(AttrValue::LabelList(vec![])),
             (AttrDefault::EmptyList, _) => Some(AttrValue::StringList(vec![])),
+            (AttrDefault::EmptyDict, _) => ty.zero(),
+            (AttrDefault::Int(i), _) => Some(AttrValue::Int(i)),
+            (AttrDefault::Str(s), _) => Some(AttrValue::String(s.to_owned())),
+            (AttrDefault::Strs(list), _) => Some(AttrValue::StringList(
+                list.iter().map(|s| (*s).to_owned()).collect(),
+            )),
         }
     }
 }
@@ -414,7 +428,25 @@ pub fn native_rule(name: &str) -> Option<&'static RuleClass> {
     match name {
         "filegroup" => Some(&FILEGROUP),
         "alias" => Some(&ALIAS),
-        _ => None,
+        _ => crate::native_rules::CLASSES
+            .iter()
+            .find(|class| class.name == name)
+            .copied(),
+    }
+}
+
+/// An optional attribute of a native rule class.
+pub(crate) const fn a(name: &'static str, ty: AttrType, default: AttrDefault) -> AttrSpec {
+    attr(name, ty, default)
+}
+
+/// A mandatory attribute of a native rule class.
+pub(crate) const fn m(name: &'static str, ty: AttrType) -> AttrSpec {
+    AttrSpec {
+        name,
+        ty,
+        mandatory: true,
+        default: AttrDefault::Unset,
     }
 }
 

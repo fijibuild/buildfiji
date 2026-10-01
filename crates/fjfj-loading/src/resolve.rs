@@ -18,7 +18,7 @@ use crate::{LookupError, PackageLookup};
 use fjfj_graph::Label;
 use fjfj_graph::package::{Package, Target, TargetKind};
 use fjfj_graph::pattern::{Pattern, TargetPattern};
-use fjfj_graph::rule::{AttrValue, suggest};
+use fjfj_graph::rule::{AttrDefault, AttrValue, native_rule, suggest};
 use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
@@ -56,12 +56,20 @@ fn label_text(label: &Label) -> String {
     }
 }
 
+/// Whether the rule is tagged `manual`, by the BUILD file or by default (a
+/// `toolchain` or `config_setting` is, unless it says otherwise).
 fn is_manual(target: &Target) -> bool {
-    match &target.kind {
-        TargetKind::Rule { attrs, .. } => attrs.iter().any(|(name, value)| {
-            name == "tags" && matches!(value, AttrValue::StringList(tags) if tags.iter().any(|t| t == "manual"))
-        }),
-        _ => false,
+    let TargetKind::Rule { rule_class, attrs } = &target.kind else {
+        return false;
+    };
+    match attrs.iter().find(|(name, _)| name == "tags") {
+        Some((_, AttrValue::StringList(tags))) => tags.iter().any(|t| t == "manual"),
+        Some(_) => false,
+        None => native_rule(rule_class)
+            .and_then(|class| class.attr("tags"))
+            .is_some_and(
+                |tags| matches!(tags.default, AttrDefault::Strs(list) if list.contains(&"manual")),
+            ),
     }
 }
 

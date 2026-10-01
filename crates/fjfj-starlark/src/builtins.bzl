@@ -22,6 +22,16 @@ OutputGroupInfo = provider(
     doc = "The output groups of a target.",
 )
 
+AnalysisFailureInfo = provider(
+    doc = "Why a target failed analysis.",
+    fields = ["causes"],
+)
+
+AnalysisTestResultInfo = provider(
+    doc = "The result of an analysis test.",
+    fields = ["success", "message"],
+)
+
 InstrumentedFilesInfo = provider(
     doc = "The files that coverage instruments.",
     fields = ["instrumented_files", "metadata_files"],
@@ -178,3 +188,9 @@ android_common = struct(
     create_dex_merger_actions = _unavailable("android_common.create_dex_merger_actions", "buildfiji-136.15"),
     resource_source_directory = _unavailable("android_common.resource_source_directory", "buildfiji-136.15"),
 )
+
+# What Bazel 9.2.0's `proto_common_do_not_use` has, which rules_java reads.
+proto_common_do_not_use = struct(INCOMPATIBLE_ENABLE_PROTO_TOOLCHAIN_RESOLUTION = True)
+
+# A built-in function in Bazel; its transition is buildfiji-136.6's.
+exec_transition = _unavailable("exec_transition", "buildfiji-136.6")

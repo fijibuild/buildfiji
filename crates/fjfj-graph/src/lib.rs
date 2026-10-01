@@ -7,6 +7,7 @@
 use std::fmt;
 
 pub mod label;
+pub mod native_rules;
 pub mod package;
 pub mod parse;
 pub mod pattern;

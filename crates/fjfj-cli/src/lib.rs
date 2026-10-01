@@ -559,6 +559,9 @@ async fn run(cli: Cli) -> Result<(), CliError> {
                     resolution.selection.keys().count()
                 ))
                 .map_err(|e| CliError::Internal(anyhow::anyhow!("console write failed: {e}")))?;
+            for label in &targets.targets {
+                tracing::debug!(%label, "target selected");
+            }
             console
                 .line(&format!("INFO: Found {} targets...", targets.targets.len()))
                 .map_err(|e| CliError::Internal(anyhow::anyhow!("console write failed: {e}")))?;

@@ -357,7 +357,7 @@ fn wanted<'v>(builder: &Builder, kw: Kw, value: Value<'v>, heap: Heap<'v>) -> Op
         AllowSingleFile | Cfg | ForDependencyResolution | Materializer => None,
         Default => match builder.ty {
             AttrType::Bool => value.unpack_bool().is_none().then_some("bool"),
-            AttrType::Int => (value.get_type() != "int").then_some("int"),
+            AttrType::Int | AttrType::Tristate => (value.get_type() != "int").then_some("int"),
             AttrType::String => value.unpack_str().is_none().then_some("string"),
             AttrType::IntList | AttrType::StringList => (!sequence_ok(value)).then_some("sequence"),
             AttrType::Label => (!value.is_none()
@@ -919,7 +919,7 @@ fn convert_default<'v>(
     }
     let value = match builder.ty {
         AttrType::Bool => AttrValue::Bool(default.unpack_bool().unwrap_or(false)),
-        AttrType::Int => AttrValue::Int(int32(default, &param)?),
+        AttrType::Int | AttrType::Tristate => AttrValue::Int(int32(default, &param)?),
         AttrType::String => AttrValue::String(default.unpack_str().unwrap_or_default().to_owned()),
         AttrType::IntList => {
             let items = sequence(default, heap).unwrap_or_default();
