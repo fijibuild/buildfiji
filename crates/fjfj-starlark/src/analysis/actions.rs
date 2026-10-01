@@ -296,6 +296,23 @@ fn actions_members(builder: &mut MethodsBuilder) {
         )
     }
 
+    /// `ctx.actions.declare_shareable_artifact(path)`: a file in the output
+    /// directory at a path from its root, not from the rule's package, which
+    /// rules_cc uses for the files that are shared between targets.
+    fn declare_shareable_artifact<'v>(
+        this: Value<'v>,
+        path: &str,
+        eval: &mut Evaluator<'v, '_, '_>,
+    ) -> starlark::Result<Value<'v>> {
+        let s = state(this);
+        let artifact = Artifact {
+            root: fjfj_graph::artifact::Root::derived(s.bin_dir()),
+            path: path.to_owned(),
+        };
+        s.declared.lock().unwrap().insert(artifact.exec_path());
+        Ok(alloc_file(eval.heap(), artifact, s.label.clone()))
+    }
+
     /// `ctx.actions.args()`.
     fn args<'v>(this: Value<'v>, heap: starlark::values::Heap<'v>) -> starlark::Result<Value<'v>> {
         let _ = this;

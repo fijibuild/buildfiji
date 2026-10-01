@@ -264,7 +264,10 @@ const BUILTINS_SOURCE: &str = include_str!("builtins.bzl");
 
 /// fjfj's own `.bzl` files other than the builtins, which the builtins `load()`
 /// as `@_builtins//:<name>`.
-const BUILTIN_FILES: &[(&str, &str)] = &[("cc_features.bzl", include_str!("cc_features.bzl"))];
+const BUILTIN_FILES: &[(&str, &str)] = &[
+    ("cc_features.bzl", include_str!("cc_features.bzl")),
+    ("cc_actions.bzl", include_str!("cc_actions.bzl")),
+];
 
 /// The loads of the builtins: the files of [`BUILTIN_FILES`].
 struct BuiltinLoads;

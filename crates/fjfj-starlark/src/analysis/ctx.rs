@@ -260,6 +260,13 @@ fn ctx_members(builder: &mut MethodsBuilder) {
             .map_err(fatal)
     }
 
+    /// `ctx.exec_groups`: no exec group is declared yet (buildfiji-136.7).
+    #[starlark(attribute)]
+    fn exec_groups<'v>(this: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
+        let _ = this;
+        Ok(heap.alloc(AllocDict(Vec::<(Value<'v>, Value<'v>)>::new())))
+    }
+
     /// The features the rule asks for: its `features` attribute (the package's
     /// and `--features` are not merged in yet).
     #[starlark(attribute)]

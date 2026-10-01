@@ -620,3 +620,88 @@ r = rule(implementation = _impl, subrules = [sub])
     let out = run_rule(&request(src, "r", Vec::new(), vec![helper])).unwrap();
     assert_eq!(out.printed, ["t 7 h None", "ok"]);
 }
+
+/// Names and actions of the C++ internals: categories name their files by the
+/// toolchain's patterns or the defaults, a compile action runs the tool with
+/// the expanded flags, and the link arguments are an `Args`.
+#[test]
+fn the_cc_internals_name_files_and_make_compile_actions() {
+    let src = r#"
+def _flag_group(flags):
+    return struct(flags = flags, flag_groups = [], iterate_over = None, expand_if_available = None, expand_if_not_available = None, expand_if_true = None, expand_if_false = None, expand_if_equal = None)
+
+def _impl(ctx):
+    internals = cc_common.internal_DO_NOT_USE()
+    gcc = struct(path = "/usr/bin/gcc", tool = None, with_features = [], execution_requirements = [])
+    features = [struct(name = "f", enabled = True, requires = [], implies = [], provides = [], env_sets = [], flag_sets = [
+        struct(actions = ["c++-compile"], with_features = [], flag_groups = [_flag_group(["-c", "%{source_file}", "-o", "%{output_file}"])]),
+    ])]
+    config = struct(
+        _features_DO_NOT_USE = features,
+        _action_configs_DO_NOT_USE = [struct(action_name = "c++-compile", config_name = "c++-compile", enabled = True, tools = [gcc], flag_sets = [], implies = [])],
+        _artifact_name_patterns_DO_NOT_USE = [struct(category_name = "static_library", prefix = "", extension = ".lib")],
+    )
+    engine = internals.cc_toolchain_features(toolchain_config_info = config, tools_directory = "tc")
+    toolchain = struct(_toolchain_features = engine, _compiler_files = depset([ctx.file.src]))
+    print(internals.get_artifact_name_for_category(cc_toolchain = toolchain, category = "OBJECT_FILE", output_name = "d/foo.pic"))
+    print(internals.get_artifact_name_for_category(cc_toolchain = toolchain, category = "STATIC_LIBRARY", output_name = "x"))
+    print(internals.get_artifact_name_for_category(cc_toolchain = toolchain, category = "DYNAMIC_LIBRARY", output_name = "x"))
+    print(internals.get_artifact_name_extension_for_category(toolchain, "PIC_OBJECT_FILE"))
+    fc = engine.configure_features(requested_features = engine.default_features_and_action_configs())
+    obj = internals.declare_compile_output_file(ctx = ctx, label = ctx.label, output_name = "foo.o", configuration = ctx.configuration)
+    print(obj.short_path, internals.actions2ctx_cheat(ctx.actions).label.name, internals.rule_class(ctx))
+    internals.create_cc_compile_action(
+        action_construction_context = ctx,
+        cc_compilation_context = struct(headers = depset()),
+        cc_toolchain = toolchain,
+        feature_configuration = fc,
+        source = ctx.file.src,
+        output_file = obj,
+        compile_build_variables = internals.cc_toolchain_variables(vars = {"source_file": ctx.file.src.path, "output_file": obj.path}),
+    )
+    args = internals.get_link_args(feature_configuration = fc, action_name = "c++-compile", build_variables = internals.cc_toolchain_variables(vars = {"source_file": "s", "output_file": "o"}), parameter_file_type = None)
+    print(type(args))
+    return []
+r = rule(implementation = _impl, attrs = {"src": attr.label(allow_single_file = True)}, fragments = ["cpp"])
+"#;
+    let src_file = DepInfo {
+        label: label("", "a.cc"),
+        rule_class: None,
+        generated: false,
+        files: vec![Artifact::source("", "", "a.cc")],
+        executable: None,
+        runfiles: Default::default(),
+        providers: Vec::new(),
+    };
+    let attrs = vec![("src".to_owned(), AttrValue::Label(label("", "a.cc")))];
+    let out = run_rule(&request(src, "r", attrs, vec![src_file])).unwrap();
+    assert_eq!(
+        out.printed,
+        [
+            "d/foo.pic.o",
+            "x.lib",
+            "libx.so",
+            ".pic.o",
+            "_objs/t/foo.o t r",
+            "Args"
+        ]
+    );
+    let [compile] = &out.actions[..] else {
+        panic!("{:?}", out.actions)
+    };
+    assert_eq!(compile.mnemonic, "CppCompile");
+    assert_eq!(compile.progress_message.as_deref(), Some("Compiling a.cc"));
+    let ActionKind::Spawn { argv, .. } = &compile.kind else {
+        panic!()
+    };
+    assert_eq!(
+        argv,
+        &[
+            "/usr/bin/gcc",
+            "-c",
+            "a.cc",
+            "-o",
+            &format!("{BIN}/_objs/t/foo.o")
+        ]
+    );
+}

@@ -204,6 +204,7 @@ pub fn bzl_globals() -> Globals {
         .with(select_globals)
         .with(set_globals)
         .with(internal_globals)
+        .with(internal_ctx_globals)
         .build()
 }
 
@@ -217,6 +218,27 @@ fn internal_globals(builder: &mut GlobalsBuilder) {
         Ok(starlark::values::list::ListRef::freeze_in_place(
             heap, value,
         ))
+    }
+}
+
+/// What the builtins (and nothing else) use, continued.
+#[starlark_module]
+fn internal_ctx_globals(builder: &mut GlobalsBuilder) {
+    /// The `ctx` that owns `actions`.
+    fn fjfj_actions_ctx<'v>(actions: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
+        crate::analysis::ctx_of_actions(actions, heap)
+            .ok_or_else(|| crate::args::fatal("actions2ctx_cheat: not a ctx.actions"))
+    }
+
+    /// An empty `Args`, as `ctx.actions.args()` gives.
+    fn fjfj_new_args<'v>(heap: Heap<'v>) -> starlark::Result<Value<'v>> {
+        Ok(crate::analysis::new_args(heap))
+    }
+
+    /// The class name of the rule `ctx` is of.
+    fn fjfj_rule_kind<'v>(ctx: Value<'v>) -> starlark::Result<String> {
+        crate::analysis::rule_kind_of(ctx)
+            .ok_or_else(|| crate::args::fatal("rule_class: not a ctx"))
     }
 }
 

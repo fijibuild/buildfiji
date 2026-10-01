@@ -11,6 +11,24 @@ mod actions;
 mod args_object;
 mod ctx;
 pub(crate) use ctx::{CtxState, alloc_ctx, attr_named};
+
+use starlark::values::{Heap, Value, ValueLike};
+
+/// The `ctx` whose `actions` this is (what `actions2ctx_cheat` of rules_cc is).
+pub(crate) fn ctx_of_actions<'v>(actions: Value<'v>, heap: Heap<'v>) -> Option<Value<'v>> {
+    let actions = actions.downcast_ref::<actions::ActionsValue>()?;
+    Some(alloc_ctx(heap, actions.state.clone()))
+}
+
+/// An `Args` that belongs to no `ctx.actions` (there is nothing in it that does).
+pub(crate) fn new_args<'v>(heap: Heap<'v>) -> Value<'v> {
+    heap.alloc(args_object::ArgsValue::new())
+}
+
+/// The class of the rule a `ctx` is of.
+pub(crate) fn rule_kind_of<'v>(ctx: Value<'v>) -> Option<String> {
+    Some(ctx.downcast_ref::<ctx::CtxValue>()?.state.rule_kind.clone())
+}
 mod file;
 mod fragments;
 mod native_providers;

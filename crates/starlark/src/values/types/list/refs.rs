@@ -84,6 +84,13 @@ impl<'v> ListRef<'v> {
         if x.unpack_frozen().is_some() {
             return x;
         }
+        // An empty dict becomes the shared frozen one (a non-empty dict is
+        // returned as is: only what rules_cc freezes empty is needed).
+        if let Some(dict) = crate::values::dict::DictRef::from_value(x)
+            && dict.len() == 0
+        {
+            return FrozenValue::new_empty_dict().to_value();
+        }
         let Some(list) = x.downcast_ref::<ListGen<ListData>>() else {
             return x;
         };

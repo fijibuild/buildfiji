@@ -328,6 +328,10 @@ trait DictLike<'v>: Debug + Allocative {
     unsafe fn content_unchecked(&self) -> &SmallMap<Value<'v>, Value<'v>>;
     unsafe fn iter_stop(&self);
     fn set_at(&self, index: Hashed<Value<'v>>, value: Value<'v>) -> crate::Result<()>;
+    /// fjfj: a dict that cannot change is hashable, as in Bazel.
+    fn is_immutable(&self) -> bool {
+        false
+    }
 }
 
 impl<'v> DictLike<'v> for RefCell<Dict<'v>> {
@@ -373,6 +377,10 @@ impl<'v> DictLike<'v> for RefCell<Dict<'v>> {
 }
 
 impl<'v> DictLike<'v> for FrozenDictData {
+    fn is_immutable(&self) -> bool {
+        true
+    }
+
     type ContentRef<'a>
         = &'a SmallMap<Value<'v>, Value<'v>>
     where
@@ -434,6 +442,27 @@ where
 
     fn to_bool(&self) -> bool {
         !self.0.content().is_empty()
+    }
+
+    /// fjfj: Bazel hashes a dict that is immutable (the order of the entries does
+    /// not matter, as for equality).
+    fn write_hash(&self, hasher: &mut starlark_map::StarlarkHasher) -> crate::Result<()> {
+        if !self.0.is_immutable() {
+            return Err(crate::Error::new_other(
+                crate::values::error::ControlError::NotHashableValue("dict".to_owned()),
+            ));
+        }
+        let content = self.0.content();
+        let mut sum: u64 = 0;
+        for (k, v) in content.iter() {
+            let mut entry = starlark_map::StarlarkHasher::new();
+            k.write_hash(&mut entry)?;
+            v.write_hash(&mut entry)?;
+            sum = sum.wrapping_add(entry.finish());
+        }
+        content.len().hash(hasher);
+        sum.hash(hasher);
+        Ok(())
     }
 
     fn equals(&self, other: Value<'v>) -> crate::Result<bool> {
