@@ -84,6 +84,10 @@ pub struct ConfiguredTarget {
     pub printed: Vec<String>,
     /// For a `toolchain`: what it offers and what it needs.
     pub toolchain_decl: Option<ToolchainDecl>,
+    /// For a `constraint_value`: the `constraint_setting` it is a value of.
+    pub constraint_setting: Option<Label>,
+    /// For a `platform`: the constraints it has, a value for each setting.
+    pub platform: Option<PlatformDecl>,
     /// For a `config_setting`: whether it matches this configuration.
     pub config_matching: Option<crate::select::ConfigMatching>,
     /// The actions this target registered.
@@ -107,6 +111,8 @@ impl ConfiguredTarget {
             providers: Vec::new(),
             printed: Vec::new(),
             toolchain_decl: None,
+            constraint_setting: None,
+            platform: None,
             config_matching: None,
             actions: Vec::new(),
             deps: Vec::new(),
@@ -195,4 +201,18 @@ pub struct ToolchainDecl {
     pub exec_compatible_with: Vec<Label>,
     pub target_compatible_with: Vec<Label>,
     pub target_settings: Vec<Label>,
+}
+
+/// What a `platform` says: a `constraint_value` for each `constraint_setting`
+/// it constrains, its parents' included.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct PlatformDecl {
+    pub constraints: BTreeMap<Label, Label>,
+}
+
+impl PlatformDecl {
+    /// The values, which is what a configuration holds of a platform.
+    pub fn values(&self) -> std::collections::BTreeSet<Label> {
+        self.constraints.values().cloned().collect()
+    }
 }

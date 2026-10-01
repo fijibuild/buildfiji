@@ -56,7 +56,27 @@ pub fn transition_spec(
     Some(TransitionSpec { inputs, outputs })
 }
 
-fn to_starlark<'v>(heap: Heap<'v>, value: &SettingValue) -> Value<'v> {
+fn to_starlark<'v>(heap: Heap<'v>, name: &str, value: &SettingValue) -> Value<'v> {
+    // `--platforms` holds labels.
+    if name == "//command_line_option:platforms"
+        && let SettingValue::List(items) = value
+    {
+        let labels: Vec<Value<'v>> = items
+            .iter()
+            .filter_map(|text| {
+                fjfj_graph::Label::parse(
+                    text,
+                    fjfj_graph::LabelContext {
+                        repo: "",
+                        package: "",
+                    },
+                )
+                .ok()
+            })
+            .map(|l| heap.alloc(crate::label::StarlarkLabel::from(l)))
+            .collect();
+        return heap.alloc(starlark::values::list::AllocList(labels));
+    }
     match value {
         SettingValue::Bool(b) => Value::new_bool(*b),
         SettingValue::Int(i) => heap.alloc(*i),
@@ -77,11 +97,21 @@ fn from_starlark(name: &str, value: Value<'_>) -> Result<SettingValue, String> {
     if let Some(s) = value.unpack_str() {
         return Ok(SettingValue::Str(s.to_owned()));
     }
+    // `--platforms` takes a single label too.
+    if name == "//command_line_option:platforms"
+        && let Some(label) = crate::label::label_of_value(value)
+    {
+        return Ok(SettingValue::List(vec![fjfj_graph::expand::label_text(
+            &label,
+        )]));
+    }
     if let Some(items) = crate::args::sequence(value) {
         let mut out = Vec::new();
         for item in items {
-            match item.unpack_str() {
-                Some(s) => out.push(s.to_owned()),
+            match item.unpack_str().map(str::to_owned).or_else(|| {
+                crate::label::label_of_value(item).map(|l| fjfj_graph::expand::label_text(&l))
+            }) {
+                Some(s) => out.push(s),
                 None => {
                     return Err(format!(
                         "transition output '{name}' has a list with a {}, want strings",
@@ -129,7 +159,7 @@ pub fn apply_transition(
         let input = heap.alloc(starlark::values::dict::AllocDict(
             settings
                 .iter()
-                .map(|(k, v)| (heap.alloc(k.as_str()), to_starlark(heap, v))),
+                .map(|(k, v)| (heap.alloc(k.as_str()), to_starlark(heap, k, v))),
         ));
         let mut fields = Vec::new();
         for (name, value) in attrs {

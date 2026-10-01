@@ -15,6 +15,11 @@ use std::time::{Duration, Instant};
 #[derive(Debug, Clone)]
 pub(crate) struct Options {
     pub configuration: Configuration,
+    /// `--platforms`: the target platform, a label as written.
+    pub platform: Option<String>,
+    /// `--extra_toolchains`: patterns of toolchains to consider before the
+    /// registered ones.
+    pub extra_toolchains: Vec<String>,
     pub keep_going: bool,
     pub symlink_prefix: String,
     /// `--jobs`; the number of CPUs if unset.
@@ -258,19 +263,60 @@ async fn analyse(
 pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> Report {
     let started = Instant::now();
     let mut report = Report::new(request.layout.clone());
+    let mut registered = repos.registered_toolchains();
+    registered.splice(
+        0..0,
+        request
+            .options
+            .extra_toolchains
+            .iter()
+            .map(|pattern| (String::new(), pattern.clone())),
+    );
     let analysis = engine(Env {
         source: repos.clone(),
         rules: repos.clone(),
         main_repo_name: MAIN_REPO_DIR.to_owned(),
-        registered_toolchains: repos.registered_toolchains(),
+        registered_toolchains: registered,
     });
     let handle = tokio::runtime::Handle::current();
-    let (roots, all) = handle.block_on(analyse(
-        &analysis,
-        targets,
-        &request.options.configuration,
-        &mut report,
-    ));
+    let mut configuration = request.options.configuration.clone();
+    if let Some(text) = &request.options.platform {
+        let platform = fjfj_graph::Label::parse(
+            text,
+            fjfj_graph::LabelContext {
+                repo: "",
+                package: "",
+            },
+        )
+        .map_err(|e| e.to_string())
+        .and_then(|label| {
+            handle
+                .block_on(fjfj_analysis::platform_constraints(&analysis, &label))
+                .map(|constraints| (label, constraints))
+        });
+        match platform {
+            Ok((label, constraints)) => {
+                configuration.constraints = constraints;
+                configuration.settings.insert(
+                    format!("{}platforms", fjfj_graph::config::COMMAND_LINE_OPTION),
+                    fjfj_graph::SettingValue::List(vec![fjfj_graph::expand::label_text(&label)]),
+                );
+            }
+            Err(message) => {
+                report.analysis_errors.push((
+                    fjfj_graph::Label {
+                        repo: String::new(),
+                        package: String::new(),
+                        name: text.clone(),
+                    },
+                    message,
+                ));
+                report.elapsed = started.elapsed();
+                return report;
+            }
+        }
+    }
+    let (roots, all) = handle.block_on(analyse(&analysis, targets, &configuration, &mut report));
     report.printed = all.iter().flat_map(|t| t.printed.clone()).collect();
     report.configured = all.iter().filter(|t| t.rule_class.is_some()).count();
     report.packages = all

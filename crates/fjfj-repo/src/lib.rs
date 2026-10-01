@@ -131,9 +131,9 @@ struct State {
     generated: BTreeMap<String, Generated>,
     /// The extensions that have run, and those running now.
     ran: BTreeSet<usize>,
-    running: BTreeSet<usize>,
-    /// Repositories being made now.
-    making: BTreeSet<String>,
+    running: BTreeMap<usize, std::thread::ThreadId>,
+    /// Repositories being made now, and by which thread.
+    making: BTreeMap<String, std::thread::ThreadId>,
     /// Repos replaced by a directory, by canonical name.
     overridden: BTreeMap<String, PathBuf>,
     /// What each extension that ran gives `MODULE.bazel.lock`.
@@ -163,6 +163,9 @@ struct Inner {
     extensions: Vec<ExtensionInstance>,
     loader: OnceLock<BzlLoader>,
     state: Mutex<State>,
+    /// Signalled when a repository or extension stops being made, for the
+    /// threads that wait for it.
+    progress: std::sync::Condvar,
     /// What extensions and rules print, in order, until the call that made
     /// them hands it on.
     prints: Prints,
@@ -285,6 +288,7 @@ impl Repos {
             extensions,
             loader: OnceLock::new(),
             state: Mutex::new(state),
+            progress: std::sync::Condvar::new(),
             prints: Prints::default(),
         });
         let loader = BzlLoader::with_provider(Box::new(Provider(Arc::downgrade(&inner))), true);
@@ -571,16 +575,29 @@ impl Inner {
 
     /// Make the repository `name`, running its rule, unless it has been made.
     fn make(self: &Arc<Self>, name: &str) -> Result<(), FetchError> {
-        if self.state.lock().unwrap().lookups.contains_key(name) {
-            return Ok(());
+        let me = std::thread::current().id();
+        let mut state = self.state.lock().unwrap();
+        loop {
+            if state.lookups.contains_key(name) {
+                return Ok(());
+            }
+            match state.making.get(name) {
+                // Needed by the very call that is making it.
+                Some(maker) if *maker == me => {
+                    return failed(format!(
+                        "Circular definition of repository '@@{name}': it is needed to make itself"
+                    ));
+                }
+                // Another thread is on it: wait for the outcome.
+                Some(_) => state = self.progress.wait(state).unwrap(),
+                None => break,
+            }
         }
-        if !self.state.lock().unwrap().making.insert(name.to_owned()) {
-            return failed(format!(
-                "Circular definition of repository '@@{name}': it is needed to make itself"
-            ));
-        }
+        state.making.insert(name.to_owned(), me);
+        drop(state);
         let made = self.make_unguarded(name);
         self.state.lock().unwrap().making.remove(name);
+        self.progress.notify_all();
         made
     }
 
@@ -1137,17 +1154,25 @@ impl Inner {
     /// Run extension `at` if it has not been, over every usage of it.
     fn ensure_ran(self: &Arc<Self>, at: usize) -> Result<(), FetchError> {
         let extension = &self.extensions[at];
+        let me = std::thread::current().id();
         {
             let mut state = self.state.lock().unwrap();
-            if state.ran.contains(&at) {
-                return Ok(());
+            loop {
+                if state.ran.contains(&at) {
+                    return Ok(());
+                }
+                match state.running.get(&at) {
+                    Some(runner) if *runner == me => {
+                        return failed(format!(
+                            "Circular definition of module extension {}: it is needed to run itself",
+                            extension.id
+                        ));
+                    }
+                    Some(_) => state = self.progress.wait(state).unwrap(),
+                    None => break,
+                }
             }
-            if !state.running.insert(at) {
-                return failed(format!(
-                    "Circular definition of module extension {}: it is needed to run itself",
-                    extension.id
-                ));
-            }
+            state.running.insert(at, me);
         }
         let result = self.run_extension(at);
         let mut state = self.state.lock().unwrap();
@@ -1155,6 +1180,8 @@ impl Inner {
         if result.is_ok() {
             state.ran.insert(at);
         }
+        drop(state);
+        self.progress.notify_all();
         result
     }
 

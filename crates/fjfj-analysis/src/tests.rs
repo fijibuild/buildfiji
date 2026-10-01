@@ -505,3 +505,34 @@ keep = rule(implementation = _top, attrs = {"deps": attr.label_list(cfg = same)}
     let k = analyse(&repos, "//:k").await.unwrap();
     assert_eq!(paths(&k.files), [format!("{BIN}/leaf")]);
 }
+
+/// Probed with `--platforms` on `bazel build`: a child's value of a setting
+/// replaces its parent's.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_platform_has_its_parents_constraints_overridden_by_its_own() {
+    let (_dir, repos) = workspace(&[
+        ("MODULE.bazel", ""),
+        (
+            "BUILD.bazel",
+            r#"
+constraint_setting(name = "os")
+constraint_value(name = "linux", constraint_setting = ":os")
+constraint_value(name = "osx", constraint_setting = ":os")
+constraint_setting(name = "cpu")
+constraint_value(name = "arm", constraint_setting = ":cpu")
+platform(name = "parent", constraint_values = [":linux", ":arm"])
+platform(name = "child", parents = [":parent"], constraint_values = [":osx"])
+"#,
+        ),
+    ]);
+    let child = analyse(&repos, "//:child").await.unwrap();
+    let have: Vec<String> = child
+        .platform
+        .as_ref()
+        .unwrap()
+        .values()
+        .iter()
+        .map(|l| l.name.clone())
+        .collect();
+    assert_eq!(have, ["arm", "osx"]);
+}

@@ -89,6 +89,7 @@ pub(crate) async fn analyze(
         "toolchain" => toolchain_rule(key, attrs, target),
         "constraint_setting" => constraint_setting(key, target),
         "constraint_value" => constraint_value(ctx, key, attrs, target).await,
+        "platform" => platform(ctx, key, attrs, target).await,
         // Rules that give providers for other rules to read and no files.
         other if native_rule(other).is_some() => Ok(target),
         other => Err(Error::msg(format!(
@@ -333,6 +334,55 @@ fn constraint_setting(
     Ok(target)
 }
 
+/// `platform`: the constraint values it has, each overriding its parents' value
+/// of the same setting.
+async fn platform(
+    ctx: &Ctx,
+    key: &ConfiguredTargetKey,
+    attrs: &Attrs,
+    mut target: ConfiguredTarget,
+) -> Result<ConfiguredTarget, Error> {
+    let mut decl = crate::target::PlatformDecl::default();
+    let parents = targets(ctx, key, labels(&key.label, attrs, "parents")?).await?;
+    for (_, parent) in &parents {
+        let Some(parent) = &parent.platform else {
+            return Err(Error::msg(format!(
+                "{}: '{}' in parents is not a platform",
+                label_text(&key.label),
+                label_text(&parent.label)
+            )));
+        };
+        decl.constraints.extend(parent.constraints.clone());
+    }
+    let values = targets(ctx, key, labels(&key.label, attrs, "constraint_values")?).await?;
+    for (k, value) in &values {
+        let Some(setting) = &value.constraint_setting else {
+            return Err(Error::msg(format!(
+                "{}: '{}' is not a constraint_value",
+                label_text(&key.label),
+                label_text(&k.label)
+            )));
+        };
+        if let Some(earlier) = decl.constraints.get(setting)
+            && earlier != &k.label
+            && values.iter().any(|(o, _)| o.label == *earlier)
+        {
+            return Err(Error::msg(format!(
+                "{}: Duplicate constraint values detected: constraint_setting {} has [{}, {}] set on the same platform",
+                label_text(&key.label),
+                label_text(setting),
+                label_text(earlier),
+                label_text(&k.label)
+            )));
+        }
+        decl.constraints.insert(setting.clone(), k.label.clone());
+    }
+    target.deps.extend(parents.into_iter().map(|(k, _)| k));
+    target.deps.extend(values.into_iter().map(|(k, _)| k));
+    target.platform = Some(decl);
+    Ok(target)
+}
+
 /// `constraint_value`: its `ConstraintValueInfo`, which holds its setting's.
 async fn constraint_value(
     ctx: &Ctx,
@@ -363,6 +413,7 @@ async fn constraint_value(
     )
     .map_err(Error::msg)?;
     target.providers.push(info);
+    target.constraint_setting = Some(k.label.clone());
     target.deps.push(k);
     Ok(target)
 }

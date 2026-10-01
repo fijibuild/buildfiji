@@ -9,6 +9,8 @@ use crate::flag_registry::FlagRegistry;
 /// unimplemented-flag gate.
 pub const IMPLEMENTED: &[&str] = &[
     "compilation_mode",
+    "platforms",
+    "extra_toolchains",
     "cpu",
     "define",
     "jobs",
@@ -43,6 +45,10 @@ pub struct BuildFlags {
     /// `--jobs`: a number, `auto`, or `HOST_CPUS*0.5`.
     pub jobs: Option<String>,
     pub symlink_prefix: Option<String>,
+    /// `--platforms`: the target platform.
+    pub platforms: Option<String>,
+    /// `--extra_toolchains`, in order.
+    pub extra_toolchains: Vec<String>,
     pub show_result: Option<String>,
     /// `--copt` and the like, by flag name, each value in order.
     pub options: Vec<(String, String)>,
@@ -103,6 +109,13 @@ pub fn extract(args: &[String], command: &str) -> (BuildFlags, Vec<String>) {
         match name {
             "compilation_mode" => flags.compilation_mode = Some(value),
             "cpu" => flags.cpu = Some(value),
+            "platforms" => flags.platforms = Some(value),
+            "extra_toolchains" => flags.extra_toolchains.extend(
+                value
+                    .split(',')
+                    .filter(|p| !p.is_empty())
+                    .map(str::to_owned),
+            ),
             "define" => match value.split_once('=') {
                 Some((k, v)) => {
                     flags.defines.retain(|(name, _)| name != k);

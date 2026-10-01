@@ -154,6 +154,13 @@ async fn read(
                 configuration.compilation_mode.name().to_owned(),
             )),
             "cpu" => Ok(SettingValue::Str(configuration.cpu.clone())),
+            "platforms" => Ok(configuration
+                .settings
+                .get(name)
+                .cloned()
+                .unwrap_or_else(|| {
+                    SettingValue::List(vec!["@@bazel_tools//tools:host_platform".to_owned()])
+                })),
             "define" => Err(Error::msg(
                 "Starlark transition on --define not supported - try using build settings \
                  (https://bazel.build/rules/config#user-defined-build-settings).",
@@ -199,6 +206,22 @@ async fn write(
                 return Ok(());
             }
             _ => {}
+        }
+        if option == "platforms" {
+            let SettingValue::List(labels) = &value else {
+                return Err(Error::msg("--platforms takes a list of labels"));
+            };
+            let [text] = &labels[..] else {
+                return Err(Error::msg(
+                    "Multiple platforms are not supported: --platforms takes exactly one",
+                ));
+            };
+            let label = setting_label(text, "")?;
+            let constraints = crate::platform_constraints_in(ctx, &label).await?;
+            configuration.constraints = constraints;
+            configuration.settings.insert(name.to_owned(), value);
+            configuration.affected.insert(name.to_owned());
+            return Ok(());
         }
         if native_default(option).is_none() {
             return Err(Error::msg(format!(

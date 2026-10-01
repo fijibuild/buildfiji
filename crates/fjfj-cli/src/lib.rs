@@ -686,6 +686,8 @@ async fn build_main(
     }
     let build = build_command::Options {
         configuration,
+        platform: build_flags.platforms.clone(),
+        extra_toolchains: build_flags.extra_toolchains.clone(),
         keep_going: diagnostics.keep_going,
         symlink_prefix: build_flags
             .symlink_prefix
@@ -1086,6 +1088,8 @@ mod tests {
                 cpu: "k8".into(),
                 ..fjfj_graph::Configuration::default()
             },
+            platform: None,
+            extra_toolchains: Vec::new(),
             keep_going: true,
             symlink_prefix: "bazel-".into(),
             jobs: None,
@@ -1183,6 +1187,8 @@ my_test = rule(implementation = _impl, test = True, attrs = {"exit": attr.int()}
                 cpu: "k8".into(),
                 ..fjfj_graph::Configuration::default()
             },
+            platform: None,
+            extra_toolchains: Vec::new(),
             keep_going: true,
             symlink_prefix: "bazel-".into(),
             jobs: None,
