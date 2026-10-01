@@ -42,7 +42,7 @@ writes the table. Placeholders in a case: `@URL@`, `@SHA:name@`, `@INT:name@`,
 (`lock_cases*.json`), `python3 multi_runcase.py lock_casesN.json OUT.json` runs
 them with `--lockfile_mode=update` and keeps the `moduleExtensions` Bazel wrote
 (`lock_ext`), and `python3 lock_matrix.py lock_cases1.json OUT1.json ...` writes
-`src/lock_matrix.rs`.
+`src/lock_matrix.rs` (`APPEND=1` adds only the rows it does not have: `lock_cases6.json`, buildfiji-mum.8.8).
 
 How the digests were found: Bazel's classes are in `A-server.jar` and its
 embedded JRE (`install_base/embedded_tools/jdk/bin/java`, no compiler) runs them. A

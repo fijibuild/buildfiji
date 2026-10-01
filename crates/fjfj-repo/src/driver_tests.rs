@@ -104,8 +104,16 @@ fn a_repository_fetched_again_starts_from_nothing() {
     let left = dir.path().join("ob/external/+ext+one");
     std::fs::create_dir_all(&left).unwrap();
     std::fs::write(left.join("stale.txt"), "left over").unwrap();
+    // An archive's read-only directory does not stop it.
+    std::fs::create_dir_all(left.join("ro")).unwrap();
+    std::fs::write(left.join("ro/f"), "x").unwrap();
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(left.join("ro"), std::fs::Permissions::from_mode(0o555)).unwrap();
+    }
     let made = repos.fetch("+ext+one", None).unwrap();
     assert!(!made.join("stale.txt").exists());
+    assert!(!made.join("ro").exists());
     assert!(made.join("name.txt").exists());
 }
 

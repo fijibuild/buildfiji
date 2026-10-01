@@ -113,6 +113,10 @@ impl FileLoader for Importing<'_> {
             .loader
             .parse(&self.importer, path)
             .map_err(|message| starlark::Error::new_other(anyhow::anyhow!("{message}")))?;
+        self.loader
+            .repos
+            .mappings()
+            .note_load(&self.importer, &file);
         {
             let mut loads = self.loads.borrow_mut();
             if !loads.contains(&file) {
@@ -264,6 +268,7 @@ impl BzlLoader {
         };
         let mappings = self.repos.mappings();
         let file = Label::parse_mapped(written, ctx, &mut |apparent| {
+            mappings.note_lookup(importer, apparent);
             mappings.resolve_apparent(&importer.repo, apparent)
         })
         .map_err(|e| format!("in load statement: {e}"))?;

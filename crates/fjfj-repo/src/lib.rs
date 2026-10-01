@@ -610,10 +610,7 @@ impl Inner {
         let output = self.options.output_base.join("external").join(name);
         // Bazel starts a repository from nothing: what an earlier fetch left (a
         // symlink the rule makes would be "File exists") is deleted first.
-        if std::fs::symlink_metadata(&output).is_ok() {
-            let _ = std::fs::remove_file(&output);
-            let _ = std::fs::remove_dir_all(&output);
-        }
+        remove_tree(&output);
         let env = self.env(name, &repo_name, output.clone(), attrs);
         let mappings = self.mappings();
         run_repository_rule(&module, &rule, env, &mappings, Some(&self.prints))
@@ -672,8 +669,7 @@ impl Inner {
             ));
         }
         let output = self.options.output_base.join("external").join(name);
-        let _ = std::fs::remove_file(&output);
-        let _ = std::fs::remove_dir_all(&output);
+        remove_tree(&output);
         if let Some(parent) = output.parent() {
             std::fs::create_dir_all(parent).map_err(|e| FetchError {
                 message: e.to_string(),
@@ -976,10 +972,27 @@ impl Inner {
             .transitive_digest(file)
             .map(|d| b64(&d))
             .unwrap_or_default();
-        let recorded: Vec<Json> = made
-            .recorded
+        // The repo names the files looked up as they loaded, sorted, come first;
+        // then what the implementation read, in the order it first did.
+        let mapped: Vec<(String, String, String)> =
+            self.mappings().lookups_under(file).into_iter().collect();
+        let recorded: Vec<Json> = mapped
             .iter()
-            .filter_map(|input| self.recorded_text(input))
+            .map(|(repo, apparent, canonical)| {
+                format!("REPO_MAPPING:{repo},{apparent} {canonical}")
+            })
+            .chain(
+                made.recorded
+                    .iter()
+                    .filter_map(|input| self.recorded_text(input)),
+            )
+            .fold(Vec::<String>::new(), |mut all, text| {
+                if !all.contains(&text) {
+                    all.push(text);
+                }
+                all
+            })
+            .into_iter()
             .map(Json::String)
             .collect();
         let specs: Vec<(String, Json)> = made
@@ -1044,6 +1057,11 @@ impl Inner {
             Some(format!("@@{repo}//{}", rest.display()))
         };
         match input {
+            RecordedInput::RepoMapping {
+                repo,
+                apparent,
+                canonical,
+            } => Some(format!("REPO_MAPPING:{repo},{apparent} {canonical}")),
             RecordedInput::Env { name, value } => {
                 let value = match value {
                     None => "\\0".to_owned(),
@@ -1353,6 +1371,37 @@ fn arch_factor() -> &'static str {
     match std::env::consts::ARCH {
         "x86_64" => "amd64",
         other => other,
+    }
+}
+
+/// Deletes what is at `path` (a file, a link, or a tree), including the
+/// read-only directories an archive leaves, as Bazel's `deleteTree` does.
+fn remove_tree(path: &Path) {
+    use std::os::unix::fs::PermissionsExt as _;
+    fn writable(dir: &Path) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            if entry.file_type().is_ok_and(|t| t.is_dir()) {
+                writable(&entry.path());
+            }
+        }
+        let _ = std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700));
+    }
+    let Ok(meta) = std::fs::symlink_metadata(path) else {
+        return;
+    };
+    if !meta.is_dir() {
+        let _ = std::fs::remove_file(path);
+        return;
+    }
+    if std::fs::remove_dir_all(path).is_err() {
+        // A directory without write permission cannot lose its entries: open
+        // every one up from the top, then try again. (`read_dir` needs `r-x`.)
+        let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700));
+        writable(path);
+        let _ = std::fs::remove_dir_all(path);
     }
 }
 

@@ -123,6 +123,13 @@ pub enum RecordedInput {
     /// the sorted names: the count, then each name's length and bytes, as
     /// protobuf varints).
     Dirents { path: PathBuf, sha256: String },
+    /// A repo name a label written in `repo` used, and the canonical repo it
+    /// named (`\0` if none).
+    RepoMapping {
+        repo: String,
+        apparent: String,
+        canonical: String,
+    },
 }
 
 impl RecordedInput {
@@ -133,6 +140,18 @@ impl RecordedInput {
             (RecordedInput::Dirents { path: a, .. }, RecordedInput::Dirents { path: b, .. }) => {
                 a == b
             }
+            (
+                RecordedInput::RepoMapping {
+                    repo: a,
+                    apparent: x,
+                    ..
+                },
+                RecordedInput::RepoMapping {
+                    repo: b,
+                    apparent: y,
+                    ..
+                },
+            ) => a == b && x == y,
             _ => false,
         }
     }

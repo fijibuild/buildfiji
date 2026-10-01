@@ -407,11 +407,42 @@ fn default_attr(spec: &AttrSpec) -> Option<RepoAttr> {
 }
 
 /// Check a tag against its class and fill in what it left out.
+/// The strings of a tag attribute of type `ty` that are read as labels.
+fn label_texts(ty: AttrType, value: &TagValue) -> Vec<&str> {
+    fn text(v: &TagValue) -> Option<&str> {
+        match v {
+            TagValue::String(s) => Some(s.as_str()),
+            _ => None,
+        }
+    }
+    match (ty, value) {
+        (AttrType::Label, v) => text(v).into_iter().collect(),
+        (AttrType::LabelList, TagValue::List(items)) => {
+            items.iter().filter_map(|i| text(i)).collect()
+        }
+        (AttrType::StringKeyedLabelDict | AttrType::LabelListDict, TagValue::Dict(items)) => {
+            let mut out = Vec::new();
+            for (_, v) in items {
+                match v {
+                    TagValue::List(items) => out.extend(items.iter().filter_map(|i| text(i))),
+                    other => out.extend(text(other)),
+                }
+            }
+            out
+        }
+        (AttrType::LabelKeyedStringDict, TagValue::Dict(items)) => {
+            items.iter().filter_map(|(k, _)| text(k)).collect()
+        }
+        _ => Vec::new(),
+    }
+}
+
 fn check_tag(
     class_attrs: &[AttrSpec],
     tag: &TagUse,
     repo: &str,
     mappings: &RepoMappings,
+    recorder: &crate::repo_ctx::Recorder,
 ) -> Result<Vec<(String, RepoAttr)>, String> {
     let prefix = format!("in '{}' tag, ", tag.class);
     for (name, _) in &tag.attrs {
@@ -430,6 +461,19 @@ fn check_tag(
                         spec.name
                     )
                 })?;
+                // The repo names a label in a tag uses are looked up in the
+                // mapping of the module that wrote it.
+                for text in label_texts(spec.ty, value) {
+                    if let Some(apparent) = crate::label::apparent_repo(text) {
+                        recorder.push(crate::repo_ctx::RecordedInput::RepoMapping {
+                            repo: repo.to_owned(),
+                            apparent: apparent.to_owned(),
+                            canonical: mappings
+                                .find_apparent(repo, apparent)
+                                .unwrap_or_else(|| "\\0".to_owned()),
+                        });
+                    }
+                }
                 out.push((spec.name.clone(), converted));
             }
             None if spec.mandatory => {
@@ -1383,7 +1427,7 @@ pub fn run_module_extension(
                         tag.class, tag.location
                     )));
                 };
-                let attrs = check_tag(specs, tag, &used.repo, mappings).map_err(err)?;
+                let attrs = check_tag(specs, tag, &used.repo, mappings, &recorder).map_err(err)?;
                 tags.push(TagData {
                     class: tag.class.clone(),
                     attrs,
@@ -1406,6 +1450,7 @@ pub fn run_module_extension(
         });
         let mut running = BzlEval::running(mappings);
         running.extension = Some(RefCell::new(ExtensionState::default()));
+        running.recorder = Some(recorder.clone());
         let mut eval = Evaluator::new(&scratch);
         eval.extra = Some(&running);
         if let Some(print) = print {

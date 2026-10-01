@@ -2,7 +2,7 @@
 ../src/lock_matrix.rs from `multi_runcase.py` runs of lock_cases*.py (cases with
 "lock": true, whose output has `lock_ext`: the `moduleExtensions` Bazel wrote)."""
 import json, re, sys
-ENV = {"getenv": {"FJFJ_PROBE_A": "1"}, "getenv_value_with_space": {"FJFJ_SP": "a b  c"}}
+ENV = {"getenv": {"FJFJ_PROBE_A": "1"}, "mapping_with_env": {"FJFJ_PROBE_A": "1"}, "getenv_value_with_space": {"FJFJ_SP": "a b  c"}}
 SKIP = {"override_repo", "watch_tree", "file_in_other_repo"}  # gaps: see the lock section of the design doc
 def raw(s):
     n = 1
@@ -44,6 +44,15 @@ for cf, of in zip(args[0::2], args[1::2]):
     },""" % (raw(o["name"]), registry, ", ".join("(%s, %s)" % (raw(f), raw(t)) for f, t in c["root"].items()),
              ", ".join(raw(f) for f in c["fetch"]), env, raw(expected), raw(facts),
              ", ".join(raw(w) for w in warnings), ("Some(%s)" % raw(error)) if error else "None"))
+import os
+if os.environ.get("APPEND"):
+    old = open("../src/lock_matrix.rs").read()
+    names = set(re.findall(r'name: r#*"(\w+)"', old))
+    body = [r for r, n in zip(rows, [re.search(r'name: r#*"(\w+)"', r).group(1) for r in rows]) if n not in names]
+    head, tail = old.rsplit("];", 1)
+    open("../src/lock_matrix.rs", "w").write(head + "\n".join(body) + "\n];" + tail)
+    print(len(body), "appended")
+    raise SystemExit
 open("../src/lock_matrix.rs", "w").write("""//! Generated from probes of Bazel 9.2.0 (`bazel build` with `--lockfile_mode=update`):
 //! the `moduleExtensions` it wrote; see `lock_tests.rs`.
 

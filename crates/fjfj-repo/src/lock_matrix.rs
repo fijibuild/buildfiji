@@ -2618,4 +2618,249 @@ collect = module_extension(implementation = _impl)
             r#"at index 1 of root_module_direct_deps, got element of type int, want string"#,
         ),
     },
+    LockRow {
+        name: r#"mapping_label"#,
+        registry: &[],
+        root: &[
+            (
+                r#"MODULE.bazel"#,
+                r#"module(name = "root")
+e = use_extension("//:ext.bzl", "collect")
+use_repo(e, "x")
+"#,
+            ),
+            (
+                r#"ext.bzl"#,
+                r#"def _r(rctx):
+    rctx.file("BUILD.bazel", "filegroup(name = 'f')")
+
+made = repository_rule(implementation = _r, attrs = {"v": attr.string(), "n": attr.int(), "b": attr.bool(), "l": attr.string_list(), "d": attr.string_dict(), "lab": attr.label(), "labs": attr.label_list(), "ld": attr.label_keyed_string_dict(), "sld": attr.string_list_dict(), "il": attr.int_list(), "o": attr.output()})
+
+def _impl(mctx):
+    Label("@bazel_tools//:x")
+    Label("@nosuch//:y")
+    Label("@root//:z")
+    made(name = "x")
+
+collect = module_extension(implementation = _impl)
+"#,
+            ),
+            (
+                r#"data.txt"#,
+                r#"hello
+"#,
+            ),
+            (r#"sub/BUILD.bazel"#, r#""#),
+        ],
+        fetch: &[r#"+collect+x"#],
+        env: &[],
+        expected: r#"{"//:ext.bzl%collect":{"general":{"bzlTransitiveDigest":"EJX686tWW8Bw8m77UaGhdBrOTBhJZvYGOD+YXfrMZGY=","usagesDigest":"F+8iDTzTJ/5jCXyE+lMDbP4LtQig4r6YwvJE56X/qgA=","recordedInputs":["REPO_MAPPING:,bazel_tools bazel_tools","REPO_MAPPING:,nosuch \\0","REPO_MAPPING:,root "],"generatedRepoSpecs":{"x":{"repoRuleId":"@@//:ext.bzl%made","attributes":{}}}}}}"#,
+        facts: r#"{}"#,
+        warnings: &[],
+        error: None,
+    },
+    LockRow {
+        name: r#"mapping_load"#,
+        registry: &[],
+        root: &[
+            (
+                r#"MODULE.bazel"#,
+                r#"module(name = "root")
+e = use_extension("//:ext.bzl", "collect")
+use_repo(e, "x")
+"#,
+            ),
+            (
+                r#"ext.bzl"#,
+                r#"load("@bazel_tools//tools/build_defs/repo:utils.bzl", "maybe")
+def _r(rctx):
+    rctx.file("BUILD.bazel", "filegroup(name = 'f')")
+
+made = repository_rule(implementation = _r, attrs = {"v": attr.string(), "n": attr.int(), "b": attr.bool(), "l": attr.string_list(), "d": attr.string_dict(), "lab": attr.label(), "labs": attr.label_list(), "ld": attr.label_keyed_string_dict(), "sld": attr.string_list_dict(), "il": attr.int_list(), "o": attr.output()})
+
+def _impl(mctx):
+    made(name = "x")
+
+collect = module_extension(implementation = _impl)
+"#,
+            ),
+            (
+                r#"data.txt"#,
+                r#"hello
+"#,
+            ),
+            (r#"sub/BUILD.bazel"#, r#""#),
+        ],
+        fetch: &[r#"+collect+x"#],
+        env: &[],
+        expected: r#"{"//:ext.bzl%collect":{"general":{"bzlTransitiveDigest":"vMas1xvo8adzEWhwlEBLgSKgVpC8bXHQX6xy9VukMR8=","usagesDigest":"F+8iDTzTJ/5jCXyE+lMDbP4LtQig4r6YwvJE56X/qgA=","recordedInputs":["REPO_MAPPING:,bazel_tools bazel_tools"],"generatedRepoSpecs":{"x":{"repoRuleId":"@@//:ext.bzl%made","attributes":{}}}}}}"#,
+        facts: r#"{}"#,
+        warnings: &[],
+        error: None,
+    },
+    LockRow {
+        name: r#"mapping_transitive"#,
+        registry: &[],
+        root: &[
+            (
+                r#"MODULE.bazel"#,
+                r#"module(name = "root")
+e = use_extension("//:ext.bzl", "collect")
+use_repo(e, "x")
+"#,
+            ),
+            (
+                r#"ext.bzl"#,
+                r#"load("//:helper.bzl", "H")
+def _r(rctx):
+    rctx.file("BUILD.bazel", "filegroup(name = 'f')")
+
+made = repository_rule(implementation = _r, attrs = {"v": attr.string(), "n": attr.int(), "b": attr.bool(), "l": attr.string_list(), "d": attr.string_dict(), "lab": attr.label(), "labs": attr.label_list(), "ld": attr.label_keyed_string_dict(), "sld": attr.string_list_dict(), "il": attr.int_list(), "o": attr.output()})
+
+def _impl(mctx):
+    made(name = "x")
+
+collect = module_extension(implementation = _impl)
+"#,
+            ),
+            (
+                r#"data.txt"#,
+                r#"hello
+"#,
+            ),
+            (r#"sub/BUILD.bazel"#, r#""#),
+            (
+                r#"helper.bzl"#,
+                r#"load("@bazel_tools//tools/build_defs/repo:utils.bzl", "maybe")
+H = Label("@nosuch2//:q")
+H2 = Label("@@canon//:q")
+H3 = Label("//:own")
+"#,
+            ),
+        ],
+        fetch: &[r#"+collect+x"#],
+        env: &[],
+        expected: r#"{"//:ext.bzl%collect":{"general":{"bzlTransitiveDigest":"ODP5aF+lOY/w2ctAelNwaHAvqc3PEzBMswHtEkqUXh0=","usagesDigest":"F+8iDTzTJ/5jCXyE+lMDbP4LtQig4r6YwvJE56X/qgA=","recordedInputs":["REPO_MAPPING:,bazel_tools bazel_tools","REPO_MAPPING:,nosuch2 \\0"],"generatedRepoSpecs":{"x":{"repoRuleId":"@@//:ext.bzl%made","attributes":{}}}}}}"#,
+        facts: r#"{}"#,
+        warnings: &[],
+        error: None,
+    },
+    LockRow {
+        name: r#"mapping_with_env"#,
+        registry: &[],
+        root: &[
+            (
+                r#"MODULE.bazel"#,
+                r#"module(name = "root")
+e = use_extension("//:ext.bzl", "collect")
+use_repo(e, "x")
+"#,
+            ),
+            (
+                r#"ext.bzl"#,
+                r#"def _r(rctx):
+    rctx.file("BUILD.bazel", "filegroup(name = 'f')")
+
+made = repository_rule(implementation = _r, attrs = {"v": attr.string(), "n": attr.int(), "b": attr.bool(), "l": attr.string_list(), "d": attr.string_dict(), "lab": attr.label(), "labs": attr.label_list(), "ld": attr.label_keyed_string_dict(), "sld": attr.string_list_dict(), "il": attr.int_list(), "o": attr.output()})
+
+def _impl(mctx):
+    mctx.getenv("FJFJ_PROBE_A")
+    Label("@nosuch//:y")
+    mctx.read(mctx.path(Label("//:data.txt")))
+    made(name = "x")
+
+collect = module_extension(implementation = _impl)
+"#,
+            ),
+            (
+                r#"data.txt"#,
+                r#"hello
+"#,
+            ),
+            (r#"sub/BUILD.bazel"#, r#""#),
+        ],
+        fetch: &[r#"+collect+x"#],
+        env: &[(r#"FJFJ_PROBE_A"#, r#"1"#)],
+        expected: r#"{"//:ext.bzl%collect":{"general":{"bzlTransitiveDigest":"eYN0IRr1w274l92BPhyjpFmcHbr+Nj2K8JmJC9pYpEM=","usagesDigest":"F+8iDTzTJ/5jCXyE+lMDbP4LtQig4r6YwvJE56X/qgA=","recordedInputs":["ENV:FJFJ_PROBE_A 1","REPO_MAPPING:,nosuch \\0","FILE:@@//data.txt 5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03"],"generatedRepoSpecs":{"x":{"repoRuleId":"@@//:ext.bzl%made","attributes":{}}}}}}"#,
+        facts: r#"{}"#,
+        warnings: &[],
+        error: None,
+    },
+    LockRow {
+        name: r#"mapping_attr_default"#,
+        registry: &[],
+        root: &[
+            (
+                r#"MODULE.bazel"#,
+                r#"module(name = "root")
+e = use_extension("//:ext.bzl", "collect")
+use_repo(e, "x")
+"#,
+            ),
+            (
+                r#"ext.bzl"#,
+                r#"def _r(rctx):
+    rctx.file("BUILD.bazel", "filegroup(name = 'f')")
+
+made = repository_rule(implementation = _r, attrs = {"v": attr.string(), "n": attr.int(), "b": attr.bool(), "l": attr.string_list(), "d": attr.string_dict(), "lab": attr.label(), "labs": attr.label_list(), "ld": attr.label_keyed_string_dict(), "sld": attr.string_list_dict(), "il": attr.int_list(), "o": attr.output()})
+
+def _impl(mctx):
+    made(name = "x")
+
+collect = module_extension(implementation = _impl, tag_classes = {"t": tag_class(attrs = {"l": attr.label_list(default = ["@nosuch3//:x"])})})
+"#,
+            ),
+            (
+                r#"data.txt"#,
+                r#"hello
+"#,
+            ),
+            (r#"sub/BUILD.bazel"#, r#""#),
+        ],
+        fetch: &[r#"+collect+x"#],
+        env: &[],
+        expected: r#"{"//:ext.bzl%collect":{"general":{"bzlTransitiveDigest":"Lnv/5lpcMVDY9v5pBrtUWmS76R5yFtey9uilj/DXgUs=","usagesDigest":"F+8iDTzTJ/5jCXyE+lMDbP4LtQig4r6YwvJE56X/qgA=","recordedInputs":[],"generatedRepoSpecs":{"x":{"repoRuleId":"@@//:ext.bzl%made","attributes":{}}}}}}"#,
+        facts: r#"{}"#,
+        warnings: &[],
+        error: None,
+    },
+    LockRow {
+        name: r#"mapping_tag_label"#,
+        registry: &[],
+        root: &[
+            (
+                r#"MODULE.bazel"#,
+                r#"module(name = "root")
+e = use_extension("//:ext.bzl", "collect")
+use_repo(e, "x")
+e.t(lab = "@bazel_tools//:x", labs = ["@root//:y", "//:z"])
+"#,
+            ),
+            (
+                r#"ext.bzl"#,
+                r#"def _r(rctx):
+    rctx.file("BUILD.bazel", "filegroup(name = 'f')")
+
+made = repository_rule(implementation = _r, attrs = {"v": attr.string(), "n": attr.int(), "b": attr.bool(), "l": attr.string_list(), "d": attr.string_dict(), "lab": attr.label(), "labs": attr.label_list(), "ld": attr.label_keyed_string_dict(), "sld": attr.string_list_dict(), "il": attr.int_list(), "o": attr.output()})
+
+def _impl(mctx):
+    made(name = "x")
+
+collect = module_extension(implementation = _impl, tag_classes = {"t": tag_class(attrs = {"lab": attr.label(), "labs": attr.label_list()})})
+"#,
+            ),
+            (
+                r#"data.txt"#,
+                r#"hello
+"#,
+            ),
+            (r#"sub/BUILD.bazel"#, r#""#),
+        ],
+        fetch: &[r#"+collect+x"#],
+        env: &[],
+        expected: r#"{"//:ext.bzl%collect":{"general":{"bzlTransitiveDigest":"ICkc3oMJXpZ/Hol0pDXWJqFe+tYNCgrgoWOo7VexjsI=","usagesDigest":"Jr2TN3jqy4bswBcGO0MQCt0f3jEuvZwReR++qd5vTj4=","recordedInputs":["REPO_MAPPING:,bazel_tools bazel_tools","REPO_MAPPING:,root "],"generatedRepoSpecs":{"x":{"repoRuleId":"@@//:ext.bzl%made","attributes":{}}}}}}"#,
+        facts: r#"{}"#,
+        warnings: &[],
+        error: None,
+    },
 ];

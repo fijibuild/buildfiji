@@ -64,6 +64,22 @@ use std::hash::Hash;
 #[derive(Debug, Clone, Default)]
 pub struct RepoMappings {
     by_repo: HashMap<String, BTreeMap<String, String>>,
+    /// What `.bzl` files looked up, shared by every copy of the mappings.
+    lookups: std::sync::Arc<LookupLog>,
+}
+
+/// An apparent repo name a `.bzl` file looked up through its repo's mapping:
+/// the file's repo, the name, and the canonical repo it named (`\0` if none).
+pub type RepoLookup = (String, String, String);
+
+/// The repo-name lookups each `.bzl` file made while it loaded (a `load()`
+/// label) or ran (`Label("@dep//...")`), and which files each one loaded. A
+/// module extension's `recordedInputs` has `REPO_MAPPING:` for those of the
+/// files it was built from.
+#[derive(Debug, Default)]
+pub struct LookupLog {
+    by_file: std::sync::Mutex<BTreeMap<String, std::collections::BTreeSet<RepoLookup>>>,
+    loads: std::sync::Mutex<BTreeMap<String, std::collections::BTreeSet<String>>>,
 }
 
 impl RepoMappings {
@@ -92,6 +108,49 @@ impl RepoMappings {
             mappings.insert(repo, rows);
         }
         mappings
+    }
+
+    /// Note that the file `file` (as [`bzl_name`] writes it) wrote the repo name
+    /// `apparent` in a label.
+    pub(crate) fn note_lookup(&self, file: &Label, apparent: &str) {
+        let canonical = self
+            .find_apparent(&file.repo, apparent)
+            .unwrap_or_else(|| "\\0".to_owned());
+        self.lookups
+            .by_file
+            .lock()
+            .unwrap()
+            .entry(bzl_name(file))
+            .or_default()
+            .insert((file.repo.clone(), apparent.to_owned(), canonical));
+    }
+
+    /// Note that the file `importer` loads `loaded`.
+    pub(crate) fn note_load(&self, importer: &Label, loaded: &Label) {
+        self.lookups
+            .loads
+            .lock()
+            .unwrap()
+            .entry(bzl_name(importer))
+            .or_default()
+            .insert(bzl_name(loaded));
+    }
+
+    /// The lookups made by `root` and every file it loads, directly or not.
+    pub fn lookups_under(&self, root: &Label) -> std::collections::BTreeSet<RepoLookup> {
+        let loads = self.lookups.loads.lock().unwrap();
+        let by_file = self.lookups.by_file.lock().unwrap();
+        let mut seen = std::collections::BTreeSet::new();
+        let mut todo = vec![bzl_name(root)];
+        let mut found = std::collections::BTreeSet::new();
+        while let Some(file) = todo.pop() {
+            if !seen.insert(file.clone()) {
+                continue;
+            }
+            found.extend(by_file.get(&file).into_iter().flatten().cloned());
+            todo.extend(loads.get(&file).into_iter().flatten().cloned());
+        }
+        found
     }
 
     /// The canonical repo `apparent` names in `from`, if it names one.
@@ -145,6 +204,9 @@ pub(crate) struct BzlEval<'a> {
     loading: bool,
     /// A module extension is running, and what it has made so far.
     pub(crate) extension: Option<std::cell::RefCell<crate::module_ctx::ExtensionState>>,
+    /// Where a running module extension's inputs are kept: a `Label` it makes
+    /// of `@dep//...` is one.
+    pub(crate) recorder: Option<crate::repo_ctx::Recorder>,
 }
 
 impl<'a> BzlEval<'a> {
@@ -157,6 +219,7 @@ impl<'a> BzlEval<'a> {
             assigned: Vec::new(),
             loading: false,
             extension: None,
+            recorder: None,
         }
     }
 }
@@ -218,6 +281,7 @@ fn evaluate_bzl_with(input: &BzlFile<'_>, builtins: bool) -> starlark::Result<Fr
         assigned: assigned_names(&ast),
         loading: true,
         extension: None,
+        recorder: None,
     };
     Module::with_temp_heap(|module| {
         if builtins {
@@ -270,6 +334,16 @@ fn mappings_of<'a>(eval: &Evaluator<'_, 'a, '_>) -> Option<&'a RepoMappings> {
     } else {
         extra.downcast_ref::<BzlEval>().map(|env| env.mappings)
     }
+}
+
+/// The repo name a label written as `text` leaves to the mapping: `dep` in
+/// `@dep//a:b` or `@dep`.
+pub(crate) fn apparent_repo(text: &str) -> Option<&str> {
+    let rest = text.strip_prefix('@')?;
+    if rest.starts_with('@') {
+        return None;
+    }
+    Some(rest.split_once("//").map_or(rest, |(repo, _)| repo))
 }
 
 /// The `.bzl` file whose code is making the current call, and the mappings.
@@ -616,6 +690,25 @@ pub(crate) fn label_globals(builder: &mut starlark::environment::GlobalsBuilder)
             eval,
         )?;
         let (file, mappings) = caller(eval, "Label")?;
+        if let Some(apparent) = bound[0]
+            .and_then(|v| v.unpack_str())
+            .and_then(apparent_repo)
+        {
+            let recorder = eval
+                .extra
+                .and_then(|e| e.downcast_ref::<BzlEval>())
+                .and_then(|env| env.recorder.as_ref());
+            match recorder {
+                Some(recorder) => recorder.push(crate::repo_ctx::RecordedInput::RepoMapping {
+                    repo: file.repo.clone(),
+                    apparent: apparent.to_owned(),
+                    canonical: mappings
+                        .find_apparent(&file.repo, apparent)
+                        .unwrap_or_else(|| "\\0".to_owned()),
+                }),
+                None => mappings.note_lookup(&file, apparent),
+            }
+        }
         label_of(
             bound[0].expect("required"),
             "Label",
