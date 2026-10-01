@@ -24,8 +24,16 @@ pub fn meter() -> opentelemetry::metrics::Meter {
 /// only the fmt layer is installed and [`meter`] returns OTel's no-op meter.
 pub fn init() -> Result<TelemetryGuard> {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    // FJFJ_SPAN_TIMES=1 prints how long each span took when it closes, for
+    // finding where a run spends its time.
+    let span_events = if std::env::var_os("FJFJ_SPAN_TIMES").is_some() {
+        tracing_subscriber::fmt::format::FmtSpan::CLOSE
+    } else {
+        tracing_subscriber::fmt::format::FmtSpan::NONE
+    };
     let fmt = tracing_subscriber::fmt::layer()
         .with_target(false)
+        .with_span_events(span_events)
         .with_writer(std::io::stderr);
     let registry = tracing_subscriber::registry().with(filter).with(fmt);
 

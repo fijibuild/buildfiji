@@ -150,7 +150,12 @@ fn run(row: &ExtRow) -> Outcome {
                 for entry in entries.flatten() {
                     // `@bazel_tools` is there, as in Bazel, and not something
                     // the workspace made.
-                    if entry.file_name() == "bazel_tools" {
+                    if entry.file_name() == "bazel_tools"
+                        || entry
+                            .file_name()
+                            .to_string_lossy()
+                            .ends_with(".fjfj-marker")
+                    {
                         continue;
                     }
                     let mut tree = BTreeMap::new();

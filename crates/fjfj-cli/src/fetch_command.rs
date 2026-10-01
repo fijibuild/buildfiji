@@ -334,6 +334,18 @@ pub(crate) fn begin(
     };
     let mut repos = Repos::from_resolution(options, resolved.resolution.clone())
         .map_err(|e| CliError::Build(anyhow::anyhow!(e.message)))?;
+    // Extension results the lockfile already has stand while their inputs do.
+    if let Some(session) = &resolved.session
+        && session.mode() != fjfj_bzlmod::lockfile::LockfileMode::Refresh
+    {
+        repos.set_previous_extensions(
+            session
+                .previous_extensions()
+                .into_iter()
+                .map(|(id, factors, entry)| fjfj_repo::LockedExtension { id, factors, entry })
+                .collect(),
+        );
+    }
     let outcome = fetch_repos(flags, &mut repos);
     if outcome.is_err() {
         print_warnings(&repos);

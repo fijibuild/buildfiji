@@ -64,7 +64,7 @@ use fjfj_starlark::{
     BzlLoader, Downloader, ExtensionInput, FactValue, GeneratedRepo, MetaDeps, MetadataOut,
     ModuleUse, RecordedInput, RepoAttr, RepoEnv, RepoMappings, RepoProvider, TagUse, TagValue,
     convert_repo_attrs, has_module_extension, has_repository_rule, repository_rule_defaults,
-    run_module_extension, run_repository_rule,
+    repository_rule_is_local, run_module_extension, run_repository_rule,
 };
 use starlark::PrintHandler;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -138,6 +138,9 @@ struct State {
     overridden: BTreeMap<String, PathBuf>,
     /// What each extension that ran gives `MODULE.bazel.lock`.
     locked: Vec<LockedExtension>,
+    /// What the lockfile of the last run had for extensions: a run whose
+    /// inputs have not changed is not made again.
+    previous: Vec<LockedExtension>,
     /// The `facts` extensions kept, by extension id.
     facts: Vec<(String, Json)>,
     /// What was worth a warning, each as Bazel words it after `WARNING: `.
@@ -438,6 +441,13 @@ impl Repos {
         self.inner.state.lock().unwrap().facts.clone()
     }
 
+    /// The extension results the lockfile already has. An extension whose
+    /// implementation, usages and recorded inputs are as they were is not run
+    /// again; its repositories are the ones the lockfile names.
+    pub fn set_previous_extensions(&self, previous: Vec<LockedExtension>) {
+        self.inner.state.lock().unwrap().previous = previous;
+    }
+
     /// What the extensions that have run give `MODULE.bazel.lock`.
     pub fn locked_extensions(&self) -> Vec<LockedExtension> {
         self.inner.state.lock().unwrap().locked.clone()
@@ -718,20 +728,48 @@ impl Inner {
             attrs.push((key.clone(), value.clone()));
         }
         let output = self.options.output_base.join("external").join(name);
+        // A repository made by an earlier run, from the same rule, attributes and
+        // inputs, is not made again.
+        let marker = self
+            .options
+            .output_base
+            .join("external")
+            .join(format!("{name}.fjfj-marker"));
+        let local = repository_rule_is_local(&module, &rule);
+        let key = self.marker_key(&rule_id, &file, &repo_name, &attrs);
+        if !local
+            && key.is_some()
+            && output.exists()
+            && self.marker_is_current(&marker, key.as_deref().unwrap_or_default())
+        {
+            return self.finish_repo(name, &output);
+        }
+        let _ = std::fs::remove_file(&marker);
         // Bazel starts a repository from nothing: what an earlier fetch left (a
         // symlink the rule makes would be "File exists") is deleted first.
         remove_tree(&output);
         let env = self.env(name, &repo_name, output.clone(), attrs);
+        let recorder = env.recorded.clone();
         let mappings = self.mappings();
         run_repository_rule(&module, &rule, env, &mappings, Some(&self.prints))
             .map_err(|e| FetchError { message: e.message })?;
+        self.finish_repo(name, &output)?;
+        if !local && let Some(key) = key {
+            self.write_marker(&marker, &key, &recorder.inputs());
+        }
+        Ok(())
+    }
+
+    /// The repository at `output` is there: it has its boundary file and is
+    /// known to the lookups.
+    fn finish_repo(&self, name: &str, output: &Path) -> Result<(), FetchError> {
         // A repository has a boundary file. One that is a link to a directory of
         // the user's (`local_repository`) is not ours to write one into.
         let has_boundary = ["MODULE.bazel", "REPO.bazel", "WORKSPACE", "WORKSPACE.bazel"]
             .iter()
             .any(|f| output.join(f).exists());
         if !has_boundary {
-            let is_link = std::fs::symlink_metadata(&output).is_ok_and(|m| m.is_symlink());
+            let is_link = std::fs::symlink_metadata(output).is_ok_and(|m| m.is_symlink());
             if is_link {
                 return failed(format!(
                     "No MODULE.bazel, REPO.bazel, or WORKSPACE file found in {}",
@@ -740,7 +778,7 @@ impl Inner {
             }
             let _ = std::fs::write(output.join("REPO.bazel"), "");
         }
-        let lookup = PackageLookup::new(&output).map_err(|e| FetchError {
+        let lookup = PackageLookup::new(output).map_err(|e| FetchError {
             message: e.to_string(),
         })?;
         self.state
@@ -749,6 +787,55 @@ impl Inner {
             .lookups
             .insert(name.to_owned(), Arc::new(lookup));
         Ok(())
+    }
+
+    /// What a made repository depends on besides the files it read: the rule
+    /// (its `.bzl` files), the attributes, and fjfj's own marker format.
+    fn marker_key(
+        &self,
+        rule_id: &str,
+        file: &str,
+        repo_name: &str,
+        attrs: &[(String, RepoAttr)],
+    ) -> Option<String> {
+        use sha2::Digest as _;
+        let label = self.parse_label(file);
+        let digest = self.loader().transitive_digest(&label)?;
+        let mut hash = sha2::Sha256::new();
+        hash.update(b"fjfj-marker-1\0");
+        hash.update(rule_id.as_bytes());
+        hash.update(b"\0");
+        hash.update(repo_name.as_bytes());
+        hash.update(b"\0");
+        hash.update(digest);
+        hash.update(format!("{attrs:?}").as_bytes());
+        Some(hash.finalize().iter().map(|b| format!("{b:02x}")).collect())
+    }
+
+    fn marker_is_current(&self, marker: &Path, key: &str) -> bool {
+        let Ok(text) = std::fs::read_to_string(marker) else {
+            return false;
+        };
+        let mut lines = text.lines();
+        lines.next() == Some("fjfj-marker 1")
+            && lines.next() == Some(key)
+            && lines.all(|input| self.input_is_current(input))
+    }
+
+    /// Note that the repository was made from `key`, reading `inputs`. Nothing
+    /// is written if an input cannot be checked again.
+    fn write_marker(&self, marker: &Path, key: &str, inputs: &[RecordedInput]) {
+        let mut text = format!("fjfj-marker 1\n{key}\n");
+        for input in inputs {
+            match self.recorded_text(input) {
+                Some(line) if !line.contains('\n') && !line.starts_with("DIRENTS:") => {
+                    text.push_str(&line);
+                    text.push('\n');
+                }
+                _ => return,
+            }
+        }
+        let _ = std::fs::write(marker, text);
     }
 
     /// Where a `MODULE.bazel` call of module `key` was, as Bazel says it: a
@@ -1151,6 +1238,128 @@ impl Inner {
         })
     }
 
+    /// The lockfile's result for `extension`, if the implementation, the usages
+    /// and everything the run read are as they were.
+    fn locked_hit(&self, extension: &ExtensionInstance, file: &Label) -> Option<LockedHit> {
+        let id = self.resolution.extension_lock_id(extension)?;
+        let previous = self.state.lock().unwrap().previous.clone();
+        let here = |factors: &str| {
+            factors == "general"
+                || factors == format!("os:{}", os_factor())
+                || factors == format!("arch:{}", arch_factor())
+                || factors == format!("os:{},arch:{}", os_factor(), arch_factor())
+        };
+        let candidates: Vec<LockedExtension> = previous
+            .into_iter()
+            .filter(|p| p.id == id && here(&p.factors))
+            .collect();
+        if candidates.is_empty() {
+            tracing::debug!(id, "no locked result for the extension");
+            return None;
+        }
+        let b64 = |bytes: &[u8]| {
+            use base64::Engine as _;
+            base64::engine::general_purpose::STANDARD.encode(bytes)
+        };
+        let Some(bzl_digest) = self.loader().transitive_digest(file).map(|d| b64(&d)) else {
+            tracing::debug!(id, "the extension's .bzl digest is not known");
+            return None;
+        };
+        let usages = self.resolution.extension_usages_digest(extension);
+        candidates.into_iter().find(|candidate| {
+            let Json::Object(fields) = &candidate.entry else {
+                return false;
+            };
+            let field = |name: &str| fields.iter().find(|(k, _)| k == name).map(|(_, v)| v);
+            if !matches!(field("bzlTransitiveDigest"), Some(Json::String(d)) if *d == bzl_digest) {
+                tracing::debug!(id, "the extension's .bzl files changed");
+                return false;
+            }
+            if !matches!(field("usagesDigest"), Some(Json::String(d)) if *d == usages) {
+                tracing::debug!(id, "the extension's usages changed");
+                return false;
+            }
+            let Some(Json::Array(inputs)) = field("recordedInputs") else {
+                return false;
+            };
+            for input in inputs {
+                if !matches!(input, Json::String(t) if self.input_is_current(t)) {
+                    tracing::debug!(id, ?input, "an input of the extension changed");
+                    return false;
+                }
+            }
+            true
+        })
+        .map(|entry| LockedHit { entry })
+    }
+
+    /// Whether what `recordedInputs` noted is still so.
+    fn input_is_current(&self, text: &str) -> bool {
+        let file_path = |written: &str| -> Option<PathBuf> {
+            let rest = written.strip_prefix("@@")?;
+            let (repo, path) = rest.split_once("//")?;
+            Some(if repo.is_empty() {
+                self.options.workspace_root.join(path)
+            } else {
+                self.options
+                    .output_base
+                    .join("external")
+                    .join(repo)
+                    .join(path)
+            })
+        };
+        if let Some(rest) = text.strip_prefix("REPO_MAPPING:") {
+            let Some((head, canonical)) = rest.split_once(' ') else {
+                return false;
+            };
+            let Some((repo, apparent)) = head.split_once(',') else {
+                return false;
+            };
+            let now = self
+                .mappings()
+                .find_apparent(repo, apparent)
+                .unwrap_or_else(|| "\\0".to_owned());
+            return now == canonical;
+        }
+        if let Some(rest) = text.strip_prefix("ENV:") {
+            let Some((name, value)) = rest.split_once(' ') else {
+                return false;
+            };
+            let recorded = if value == "\\0" {
+                None
+            } else {
+                Some(
+                    value
+                        .replace("\\s", " ")
+                        .replace("\\n", "\n")
+                        .replace("\\\\", "\\"),
+                )
+            };
+            return self.options.environ.get(name) == recorded.as_ref();
+        }
+        if let Some(rest) = text.strip_prefix("FILE:") {
+            let Some((written, hash)) = rest.rsplit_once(' ') else {
+                return false;
+            };
+            let Some(path) = file_path(written) else {
+                return false;
+            };
+            return match std::fs::read(&path) {
+                Ok(bytes) => {
+                    use sha2::Digest as _;
+                    sha2::Sha256::digest(&bytes)
+                        .iter()
+                        .map(|b| format!("{b:02x}"))
+                        .collect::<String>()
+                        == hash
+                }
+                Err(_) => false,
+            };
+        }
+        // Anything else (a directory's names) is not checked here: run again.
+        false
+    }
+
     /// `recordedInputs` text for what an extension read: `ENV:`, `FILE:` and
     /// `DIRENTS:`, the paths as `@@repo//path` (and none for a path that is in
     /// no repository).
@@ -1274,6 +1483,40 @@ impl Inner {
                  requested at {location}"
             ));
         }
+        if let Some(hit) = self.locked_hit(extension, &file) {
+            let repos = hit.repos();
+            let names: Vec<String> = repos.iter().map(|r| r.name.clone()).collect();
+            for (key, index) in &extension.usages {
+                let usage = &module_of(key).extension_usages[*index];
+                for (local, exported) in &usage.imports {
+                    if !names.contains(exported) {
+                        return failed(format!(
+                            "module extension {extension_id} does not generate repository \
+                             \"{exported}\", yet it is imported as \"{local}\" in the usage at {}",
+                            self.located(key, &usage.location)
+                        ));
+                    }
+                }
+            }
+            let rows = self.resolution.extension_repo_mapping(extension, &names);
+            let mut state = self.state.lock().unwrap();
+            state.locked.push(hit.entry);
+            let mut mappings = (*state.mappings).clone();
+            for repo in repos {
+                let canonical = extension.repo_name(&repo.name);
+                mappings.insert(canonical.clone(), rows.clone());
+                state.generated.insert(
+                    canonical,
+                    Generated {
+                        repo,
+                        extension: extension_id.clone(),
+                        raw_attrs: None,
+                    },
+                );
+            }
+            state.mappings = Arc::new(mappings);
+            return Ok(());
+        }
         // One entry per module that uses it, the root first: its usages'
         // tags in the order written.
         let mut uses: Vec<(ModuleUse, bool)> = Vec::new();
@@ -1389,6 +1632,193 @@ impl Inner {
         state.mappings = Arc::new(mappings);
         Ok(())
     }
+}
+
+/// A lockfile entry that is still good, and the repositories it names.
+struct LockedHit {
+    entry: LockedExtension,
+}
+
+impl LockedHit {
+    /// The repositories of `generatedRepoSpecs`.
+    fn repos(&self) -> Vec<fjfj_starlark::GeneratedRepo> {
+        let Json::Object(fields) = &self.entry.entry else {
+            return Vec::new();
+        };
+        let Some((_, Json::Object(specs))) = fields.iter().find(|(k, _)| k == "generatedRepoSpecs")
+        else {
+            return Vec::new();
+        };
+        specs
+            .iter()
+            .filter_map(|(name, spec)| {
+                let Json::Object(spec) = spec else {
+                    return None;
+                };
+                let rule = match spec.iter().find(|(k, _)| k == "repoRuleId") {
+                    Some((_, Json::String(rule))) => rule.clone(),
+                    _ => return None,
+                };
+                let attrs = match spec.iter().find(|(k, _)| k == "attributes") {
+                    Some((_, Json::Object(attrs))) => attrs
+                        .iter()
+                        .filter_map(|(k, v)| Some((k.clone(), repo_attr_from_json(v)?)))
+                        .collect(),
+                    _ => Vec::new(),
+                };
+                Some(fjfj_starlark::GeneratedRepo {
+                    name: name.clone(),
+                    rule,
+                    attrs,
+                    location: String::new(),
+                })
+            })
+            .collect()
+    }
+}
+
+/// The inverse of [`quoted`].
+fn unquoted(s: &str) -> String {
+    if s.len() > 1 && s.starts_with('\'') && s.ends_with('\'') {
+        s[1..s.len() - 1].to_owned()
+    } else {
+        s.to_owned()
+    }
+}
+
+fn label_from(text: &str) -> Option<Label> {
+    if !text.starts_with("@@") {
+        return None;
+    }
+    Label::parse(
+        text,
+        fjfj_graph::LabelContext {
+            repo: "",
+            package: "",
+        },
+    )
+    .ok()
+}
+
+/// The inverse of [`repo_attr_json`], as far as the lockfile's text tells:
+/// a string that starts with `@@` is a label.
+fn repo_attr_from_json(value: &Json) -> Option<RepoAttr> {
+    fn string(v: &Json) -> Option<&str> {
+        match v {
+            Json::String(s) => Some(s.as_str()),
+            _ => None,
+        }
+    }
+    Some(match value {
+        Json::Null => return None,
+        Json::Bool(b) => RepoAttr::Bool(*b),
+        Json::Number(n) => RepoAttr::Int(n.as_i64()?),
+        Json::String(s) => match label_from(s) {
+            Some(label) => RepoAttr::Label(label),
+            None => RepoAttr::String(unquoted(s)),
+        },
+        Json::Array(items) => {
+            if items.iter().all(|i| matches!(i, Json::Number(_))) && !items.is_empty() {
+                RepoAttr::IntList(
+                    items
+                        .iter()
+                        .filter_map(|i| match i {
+                            Json::Number(n) => n.as_i64(),
+                            _ => None,
+                        })
+                        .collect(),
+                )
+            } else if !items.is_empty()
+                && items
+                    .iter()
+                    .all(|i| string(i).is_some_and(|s| s.starts_with("@@")))
+            {
+                RepoAttr::LabelList(
+                    items
+                        .iter()
+                        .filter_map(|i| string(i).and_then(label_from))
+                        .collect(),
+                )
+            } else {
+                RepoAttr::StringList(
+                    items
+                        .iter()
+                        .filter_map(|i| string(i).map(unquoted))
+                        .collect(),
+                )
+            }
+        }
+        Json::Object(entries) => {
+            let keys_are_labels =
+                !entries.is_empty() && entries.iter().all(|(k, _)| k.starts_with("@@"));
+            if keys_are_labels {
+                RepoAttr::LabelKeyedStringDict(
+                    entries
+                        .iter()
+                        .filter_map(|(k, v)| Some((label_from(k)?, unquoted(string(v)?))))
+                        .collect(),
+                )
+            } else if entries
+                .iter()
+                .all(|(_, v)| matches!(v, Json::String(s) if !s.starts_with("@@")))
+            {
+                RepoAttr::StringDict(
+                    entries
+                        .iter()
+                        .filter_map(|(k, v)| Some((unquoted(k), unquoted(string(v)?))))
+                        .collect(),
+                )
+            } else if entries
+                .iter()
+                .all(|(_, v)| matches!(v, Json::String(s) if s.starts_with("@@")))
+            {
+                RepoAttr::StringKeyedLabelDict(
+                    entries
+                        .iter()
+                        .filter_map(|(k, v)| Some((unquoted(k), label_from(string(v)?)?)))
+                        .collect(),
+                )
+            } else {
+                // Lists as values: of strings, or of labels.
+                let all_labels = entries.iter().all(|(_, v)| {
+                    matches!(v, Json::Array(items) if items.iter().all(|i| string(i).is_some_and(|s| s.starts_with("@@"))))
+                });
+                if all_labels {
+                    RepoAttr::LabelListDict(
+                        entries
+                            .iter()
+                            .filter_map(|(k, v)| match v {
+                                Json::Array(items) => Some((
+                                    unquoted(k),
+                                    items
+                                        .iter()
+                                        .filter_map(|i| string(i).and_then(label_from))
+                                        .collect(),
+                                )),
+                                _ => None,
+                            })
+                            .collect(),
+                    )
+                } else {
+                    RepoAttr::StringListDict(
+                        entries
+                            .iter()
+                            .filter_map(|(k, v)| match v {
+                                Json::Array(items) => Some((
+                                    unquoted(k),
+                                    items
+                                        .iter()
+                                        .filter_map(|i| string(i).map(unquoted))
+                                        .collect(),
+                                )),
+                                _ => None,
+                            })
+                            .collect(),
+                    )
+                }
+            }
+        }
+    })
 }
 
 /// `moduleExtensions` of `MODULE.bazel.lock` for the extensions that ran: each

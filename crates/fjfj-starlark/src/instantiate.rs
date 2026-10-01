@@ -163,12 +163,8 @@ pub(crate) fn call_rule<'v>(
             continue;
         }
         for group in duplicate_groups(value) {
-            let mut seen: Vec<&Label> = Vec::new();
-            if let Some(again) = group.iter().find(|l| {
-                let dup = seen.contains(l);
-                seen.push(l);
-                dup
-            }) {
+            let mut seen: std::collections::HashSet<&Label> = std::collections::HashSet::new();
+            if let Some(again) = group.iter().find(|l| !seen.insert(*l)) {
                 ctx.event(
                     &at,
                     format!(
@@ -180,17 +176,27 @@ pub(crate) fn call_rule<'v>(
             }
         }
     }
-    let is_package = |p: &str| ctx.lookup.is_package(p);
+    // Whether a directory is a package is asked once per package.
+    let is_package = |p: &str| {
+        if let Some(known) = ctx.package_cache.borrow().get(p) {
+            return *known;
+        }
+        let answer = ctx.lookup.is_package(p);
+        ctx.package_cache.borrow_mut().insert(p.to_owned(), answer);
+        answer
+    };
     for (attr, value) in &attrs {
         if attr == "visibility" || attr == "transitive_configs" {
             continue;
         }
-        let mut checked: Vec<Label> = Vec::new();
+        let mut checked: std::collections::HashSet<Label> = std::collections::HashSet::new();
         for label in label_groups(value).into_iter().flatten() {
-            if label.repo != ctx.repo || label.package != ctx.package || checked.contains(&label) {
+            if label.repo != ctx.repo
+                || label.package != ctx.package
+                || !checked.insert(label.clone())
+            {
                 continue;
             }
-            checked.push(label.clone());
             // A macro's labels are not looked at (what Bazel does).
             if !ctx.macros.borrow().inside()
                 && let Err(e) =

@@ -4,9 +4,8 @@ use crate::ast::{Arg, Call, Expr, Function, Op};
 use crate::graph::{Edge, Graph, Node, NodeKind};
 use fjfj_graph::Label;
 use regex::Regex;
-use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 /// The set a query denotes, in label order.
 pub type Set = BTreeSet<Label>;
@@ -31,7 +30,7 @@ impl Default for Options {
 pub struct Evaluator<'g> {
     graph: &'g dyn Graph,
     options: Options,
-    nodes: RefCell<HashMap<Label, Arc<Node>>>,
+    nodes: Mutex<HashMap<Label, Arc<Node>>>,
 }
 
 impl<'g> Evaluator<'g> {
@@ -39,7 +38,7 @@ impl<'g> Evaluator<'g> {
         Evaluator {
             graph,
             options,
-            nodes: RefCell::new(HashMap::new()),
+            nodes: Mutex::new(HashMap::new()),
         }
     }
 
@@ -53,12 +52,42 @@ impl<'g> Evaluator<'g> {
 
     /// The node of `label`, loaded once.
     pub fn node(&self, label: &Label) -> Result<Arc<Node>, String> {
-        if let Some(done) = self.nodes.borrow().get(label) {
+        if let Some(done) = self.nodes.lock().expect("nodes").get(label) {
             return Ok(done.clone());
         }
         let node = self.graph.node(label)?;
-        self.nodes.borrow_mut().insert(label.clone(), node.clone());
+        self.nodes
+            .lock()
+            .expect("nodes")
+            .insert(label.clone(), node.clone());
         Ok(node)
+    }
+
+    /// Load `labels` together. What fails here fails again, in order, when
+    /// the evaluator asks for the node.
+    fn preload<'a>(&self, labels: impl IntoIterator<Item = &'a Label>) {
+        let wanted: Vec<&Label> = labels
+            .into_iter()
+            .filter(|l| !self.nodes.lock().expect("nodes").contains_key(*l))
+            .collect();
+        if wanted.len() < 2 {
+            return;
+        }
+        let next = std::sync::atomic::AtomicUsize::new(0);
+        let threads = std::thread::available_parallelism()
+            .map_or(4, |n| n.get())
+            .min(16);
+        std::thread::scope(|scope| {
+            for _ in 0..threads.min(wanted.len()) {
+                scope.spawn(|| {
+                    loop {
+                        let at = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        let Some(label) = wanted.get(at) else { break };
+                        let _ = self.node(label);
+                    }
+                });
+            }
+        });
     }
 
     /// The edges of `node` the options keep, without repeats.
@@ -320,6 +349,7 @@ impl<'g> Evaluator<'g> {
         let mut frontier: Vec<Label> = roots.iter().cloned().collect();
         let mut level = 0;
         while !frontier.is_empty() && depth.is_none_or(|d| level < d) {
+            self.preload(&frontier);
             let mut next = Vec::new();
             for label in &frontier {
                 let node = self.node(label)?;

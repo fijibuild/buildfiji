@@ -219,6 +219,7 @@ pub fn evaluate_build_file(input: &BuildFile<'_>) -> Result<BuildFileOutput, Bui
         package: input.package,
         lookup: input.lookup,
         mappings: input.mappings,
+        package_cache: RefCell::new(HashMap::new()),
         module: input.module.clone(),
         state: RefCell::new(BuildState {
             builder: PackageBuilder::new(input.repo, input.package, &is_package),
@@ -264,6 +265,8 @@ pub(crate) struct BuildContext<'a> {
     pub(crate) package: &'a str,
     pub(crate) lookup: &'a PackageLookup,
     pub(crate) mappings: &'a RepoMappings,
+    /// Which directories are packages, as `lookup` answered.
+    pub(crate) package_cache: RefCell<HashMap<String, bool>>,
     pub(crate) module: Option<(String, String)>,
     pub(crate) state: RefCell<BuildState<'a>>,
     printed: RefCell<Vec<String>>,

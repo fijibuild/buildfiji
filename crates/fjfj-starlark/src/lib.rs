@@ -100,7 +100,7 @@ pub use native::{
 };
 pub use repo_ctx::{
     RecordedInput, Recorder, RepoAttr, RepoEnv, RepoError, repository_rule_defaults,
-    run_repository_rule,
+    repository_rule_is_local, run_repository_rule,
 };
 pub use repo_download::{Downloader, HttpRequest};
 pub use structs::{FrozenStruct, Struct, StructGen};

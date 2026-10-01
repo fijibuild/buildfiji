@@ -1662,6 +1662,20 @@ fn run_process(
 
 // ---- running a rule -------------------------------------------------------------------
 
+/// Whether the repository rule `rule_name` of `module` was declared `local =
+/// True`: it looks at the machine, and its repository is made again each run.
+pub fn repository_rule_is_local(module: &FrozenModule, rule_name: &str) -> bool {
+    let Ok((rule, _)) = module.get_any_visibility(rule_name) else {
+        return true;
+    };
+    let Some(value) = rule.value().unpack_frozen() else {
+        return true;
+    };
+    crate::ext::repository_rule_arg(value.to_value(), "local")
+        .and_then(|v| v.unpack_bool())
+        .unwrap_or(false)
+}
+
 /// Run the implementation of the repository rule `rule_name` of `module`
 /// with `env`, which is what fetching the repository does. `print` gets what
 /// the implementation prints.

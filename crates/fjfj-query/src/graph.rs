@@ -73,7 +73,7 @@ pub struct Node {
 }
 
 /// Where a query's targets come from.
-pub trait Graph {
+pub trait Graph: Sync {
     /// The targets a pattern (`//a:b`, `//a/...`, `//a:all`) selects, or
     /// Bazel's error.
     fn pattern(&self, text: &str) -> Result<Vec<Label>, String>;

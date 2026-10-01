@@ -416,6 +416,23 @@ impl LockSession {
         }
     }
 
+    /// The extension results the previous lockfile had: an extension's id, the
+    /// factors it ran under and the entry.
+    pub fn previous_extensions(&self) -> Vec<(String, String, Json)> {
+        let Some(Json::Object(by_id)) = self.previous.as_ref().map(|p| &p.module_extensions) else {
+            return Vec::new();
+        };
+        let mut out = Vec::new();
+        for (id, factors) in by_id {
+            if let Json::Object(factors) = factors {
+                for (factor, entry) in factors {
+                    out.push((id.clone(), factor.clone(), entry.clone()));
+                }
+            }
+        }
+        out
+    }
+
     /// Serve registry files whose hash the lockfile has from this repository
     /// cache, and put what is fetched in it.
     pub fn set_repository_cache(&self, dir: std::path::PathBuf) {
