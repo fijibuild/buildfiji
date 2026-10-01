@@ -8,7 +8,8 @@ use fjfj_graph::rule::AttrValue;
 use fjfj_graph::rule::Cfg;
 use fjfj_graph::{Label, NestedSet};
 use fjfj_starlark::{
-    DepInfo, Edge, RuleRequest, labels_of_attrs, resolved_attrs, rule_schema, run_rule,
+    DepInfo, Edge, RuleRequest, computed_defaults, labels_of_attrs, resolved_attrs, rule_schema,
+    run_rule,
 };
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -104,6 +105,25 @@ pub(crate) async fn analyze(
                 }
             },
             other => set.push((name.clone(), other.clone())),
+        }
+    }
+
+    // Defaults that are functions of the other attributes.
+    if schema.attrs.iter().any(|a| a.def.computed_default) {
+        let mut known = resolved_attrs(&schema, &set);
+        known.push(("name".to_owned(), AttrValue::String(key.label.name.clone())));
+        let (module, mappings, repo) = (module.clone(), rules.mappings(), bzl.repo.clone());
+        let rule = rule_class.to_owned();
+        let computed = tokio::task::spawn_blocking(move || {
+            computed_defaults(&module, &rule, &known, &mappings, &repo)
+        })
+        .await
+        .map_err(|e| Error::msg(format!("computing defaults panicked: {e}")))?
+        .map_err(|message| Error::msg(format!("{}: {message}", label_text(label))))?;
+        for (name, value) in computed {
+            if !set.iter().any(|(n, _)| *n == name) {
+                set.push((name, value));
+            }
         }
     }
 

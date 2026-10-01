@@ -251,12 +251,21 @@ fn ctx_members(builder: &mut MethodsBuilder) {
     #[starlark(attribute)]
     fn attr<'v>(this: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
         let s = state(this);
-        let fields = s
+        let mut fields: Vec<(String, Value<'v>)> = s
             .attrs
             .iter()
             .filter(|(name, _)| !s.schema_hidden(name))
             .map(|(name, value)| (name.clone(), s.attr_value(heap, value)))
             .collect();
+        // A label attribute that has no value is `None`.
+        for attr in &s.schema.attrs {
+            if matches!(attr.def.ty, fjfj_graph::rule::AttrType::Label)
+                && !fields.iter().any(|(n, _)| *n == attr.name)
+                && !s.schema_hidden(&attr.name)
+            {
+                fields.push((attr.name.clone(), Value::new_none()));
+            }
+        }
         Ok(new_struct(heap, fields))
     }
 

@@ -37,7 +37,10 @@ pub use run::{
 pub use target::{DepInfo, StoredProvider};
 pub use transition::{Edge, TransitionSpec, apply_transition, transition_spec};
 
+mod computed;
 mod transition;
+
+pub use computed::computed_defaults;
 
 #[cfg(test)]
 mod tests;

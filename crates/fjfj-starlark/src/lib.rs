@@ -82,8 +82,8 @@ mod test_support;
 
 pub use analysis::{
     DepEdge, DepInfo, Edge, Field, RuleRequest, RuleResult, RuleSource, StoredProvider,
-    TransitionSpec, apply_transition, labels_of_attrs, native_provider, resolved_attrs,
-    rule_schema, run_rule, transition_spec,
+    TransitionSpec, apply_transition, computed_defaults, labels_of_attrs, native_provider,
+    resolved_attrs, rule_schema, run_rule, transition_spec,
 };
 pub use depset::{Depset, DepsetGen, FrozenDepset, Order, depset_to_list, is_depset, new_depset};
 pub use dialect::{FileKind, build_dialect, bzl_dialect, parse};

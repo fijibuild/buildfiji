@@ -536,3 +536,43 @@ platform(name = "child", parents = [":parent"], constraint_values = [":osx"])
         .collect();
     assert_eq!(have, ["arm", "osx"]);
 }
+
+/// A default that is a function of the other attributes (rules_cc's
+/// `_def_parser`) is called with the ones its parameters name.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_default_that_is_a_function_is_called_with_the_attributes_it_names() {
+    let (_dir, repos) = workspace(&[
+        ("MODULE.bazel", ""),
+        (
+            "defs.bzl",
+            r#"
+def _default(name, tags):
+    if "skip" in tags:
+        return None
+    return Label("//:" + name + "_helper")
+
+def _impl(ctx):
+    out = ctx.actions.declare_file(ctx.label.name + ".txt")
+    ctx.actions.write(out, str(ctx.attr._helper.label if ctx.attr._helper else None))
+    return [DefaultInfo(files = depset([out]))]
+
+r = rule(implementation = _impl, attrs = {"_helper": attr.label(default = _default)})
+"#,
+        ),
+        (
+            "BUILD.bazel",
+            "load(':defs.bzl', 'r')\nfilegroup(name = 'a_helper')\nr(name = 'a')\nr(name = 'b', tags = ['skip'])\n",
+        ),
+    ]);
+    let a = analyse(&repos, "//:a").await.unwrap();
+    let ActionKind::WriteFile { contents, .. } = &a.actions[0].kind else {
+        panic!("{:?}", a.actions)
+    };
+    assert_eq!(String::from_utf8_lossy(contents), "@@//:a_helper");
+    assert!(a.deps.iter().any(|d| d.label.name == "a_helper"));
+    let b = analyse(&repos, "//:b").await.unwrap();
+    let ActionKind::WriteFile { contents, .. } = &b.actions[0].kind else {
+        panic!("{:?}", b.actions)
+    };
+    assert_eq!(String::from_utf8_lossy(contents), "None");
+}

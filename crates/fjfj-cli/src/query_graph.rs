@@ -27,7 +27,9 @@ pub(crate) struct QueryGraph {
 
 impl QueryGraph {
     pub(crate) fn new(repos: Arc<Repos>) -> QueryGraph {
-        let mut apparent: BTreeMap<String, String> = BTreeMap::new();
+        // Every repo sees `@bazel_tools`.
+        let mut apparent: BTreeMap<String, String> =
+            BTreeMap::from([("bazel_tools".to_owned(), "bazel_tools".to_owned())]);
         for (name, canonical) in repos.mappings().entries("") {
             if !canonical.is_empty() {
                 apparent.entry(canonical).or_insert(name);
@@ -79,6 +81,32 @@ impl QueryGraph {
         set: &[(String, AttrValue)],
     ) -> Result<Node, String> {
         let schema = self.schema(class, defined_in)?;
+        // Defaults that are functions of the other attributes.
+        let computed: Vec<(String, AttrValue)> = match defined_in {
+            Some(bzl) if schema.attrs.iter().any(|a| a.def.computed_default) => {
+                let module = self.repos.module(bzl)?;
+                let mut known: Vec<(String, AttrValue)> = Vec::new();
+                for attr in &schema.attrs {
+                    if let Some(v) = set
+                        .iter()
+                        .find(|(n, _)| *n == attr.name)
+                        .map(|(_, v)| v.clone())
+                        .or_else(|| attr.def.default_value())
+                    {
+                        known.push((attr.name.clone(), v));
+                    }
+                }
+                known.push(("name".to_owned(), AttrValue::String(label.name.clone())));
+                fjfj_starlark::computed_defaults(
+                    &module,
+                    class,
+                    &known,
+                    &self.repos.mappings(),
+                    &bzl.repo,
+                )?
+            }
+            _ => Vec::new(),
+        };
         let mut attrs = Vec::new();
         let mut edges = Vec::new();
         let rule_attr = |name: &str| set.iter().find(|(n, _)| n == name).map(|(_, v)| v);
@@ -87,9 +115,14 @@ impl QueryGraph {
             let value = match attr.name.as_str() {
                 "name" => Some(AttrValue::String(label.name.clone())),
                 "visibility" => None,
-                _ => rule_attr(&attr.name)
-                    .cloned()
-                    .or_else(|| attr.def.default_value().or_else(|| attr.def.ty.zero())),
+                _ => rule_attr(&attr.name).cloned().or_else(|| {
+                    computed
+                        .iter()
+                        .find(|(n, _)| *n == attr.name)
+                        .map(|(_, v)| v.clone())
+                        .or_else(|| attr.def.default_value())
+                        .or_else(|| attr.def.ty.zero())
+                }),
             };
             if attr.name == "visibility" {
                 attrs.push(NodeAttr {
@@ -260,8 +293,6 @@ impl QueryGraph {
         } else {
             match self.apparent.get(repo) {
                 Some(a) => format!("@{a}"),
-                // A repo with a plain name, like `bazel_tools`, reads as itself.
-                None if !repo.contains(['+', '~']) => format!("@{repo}"),
                 None => format!("@@{repo}"),
             }
         }

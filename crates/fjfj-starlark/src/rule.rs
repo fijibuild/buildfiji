@@ -165,6 +165,20 @@ pub(crate) fn implementation_of<'v>(value: Value<'v>) -> Option<Value<'v>> {
     }
 }
 
+/// The function that computes the default of the attribute `attr` of the rule
+/// `value`, if its default is one.
+pub(crate) fn computed_default_of<'v>(value: Value<'v>, attr: &str) -> Option<Value<'v>> {
+    fn of<'v, V: ValueLike<'v>>(rule: &RuleGen<V>, attr: &str) -> Option<Value<'v>> {
+        let at = rule.attr_names.iter().position(|n| n == attr)?;
+        crate::attr::view(rule.attrs[at].to_value())?.computed
+    }
+    if let Some(live) = value.downcast_ref::<Rule<'v>>() {
+        of(live, attr)
+    } else {
+        value.downcast_ref::<FrozenRule>().and_then(|f| of(f, attr))
+    }
+}
+
 /// The transition on the edge to the attribute `attr` of the rule `value`, or
 /// with `None` the one the rule applies to itself (`rule(cfg = ...)`).
 pub(crate) fn transition_of<'v>(value: Value<'v>, attr: Option<&str>) -> Option<Value<'v>> {
