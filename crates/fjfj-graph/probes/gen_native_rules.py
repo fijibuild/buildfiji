@@ -71,6 +71,10 @@ def attrs_of(cls, v):
         if a is None:
             continue
         ty = "LabelList" if name in LABELS else TYPES[a["type"]]
+        # `existing_rule` shows the default as text, but the attribute is a
+        # label (`bazel query --output=xml` shows <label> and a rule-input).
+        if cls in ("label_flag", "label_setting") and name == "build_setting_default":
+            ty = "Label"
         if name in mandatory:
             lines.append(f'        m({rust_str(name)}, {ty}),')
         else:

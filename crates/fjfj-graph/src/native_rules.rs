@@ -505,7 +505,7 @@ pub static LABEL_FLAG: RuleClass = RuleClass {
         a("aspect_hints", LabelList, D::EmptyList),
         a("target_compatible_with", LabelList, D::EmptyList),
         a("scope", String, D::Str("universal")),
-        m("build_setting_default", String),
+        m("build_setting_default", Label),
         a("help", String, D::EmptyString),
     ],
 };
@@ -528,7 +528,7 @@ pub static LABEL_SETTING: RuleClass = RuleClass {
         a("aspect_hints", LabelList, D::EmptyList),
         a("target_compatible_with", LabelList, D::EmptyList),
         a("scope", String, D::Str("universal")),
-        m("build_setting_default", String),
+        m("build_setting_default", Label),
         a("help", String, D::EmptyString),
     ],
 };

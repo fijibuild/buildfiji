@@ -223,3 +223,23 @@ proto_common_do_not_use = struct(INCOMPATIBLE_ENABLE_PROTO_TOOLCHAIN_RESOLUTION 
 
 # A built-in function in Bazel; its transition is buildfiji-136.6's.
 exec_transition = _unavailable("exec_transition", "buildfiji-136.6")
+
+# What rules_python's `py_internal_renamed.bzl` re-exports: a native object in
+# Bazel that only the python rules may use. Loading needs the symbol; calling
+# a member is buildfiji-136.16's.
+py_internal = struct(
+    cc_toolchain_build_info_files = _unavailable("py_internal.cc_toolchain_build_info_files", "buildfiji-136.16"),
+    copy_without_caching = _unavailable("py_internal.copy_without_caching", "buildfiji-136.16"),
+    create_repo_mapping_manifest = _unavailable("py_internal.create_repo_mapping_manifest", "buildfiji-136.16"),
+    declare_shareable_artifact = _unavailable("py_internal.declare_shareable_artifact", "buildfiji-136.16"),
+    get_label_repo_runfiles_path = _unavailable("py_internal.get_label_repo_runfiles_path", "buildfiji-136.16"),
+    get_legacy_external_runfiles = _unavailable("py_internal.get_legacy_external_runfiles", "buildfiji-136.16"),
+    is_bzlmod_enabled = lambda ctx: True,
+    is_tool_configuration = _unavailable("py_internal.is_tool_configuration", "buildfiji-136.16"),
+    link = _unavailable("py_internal.link", "buildfiji-136.16"),
+    linkstamp_file = _unavailable("py_internal.linkstamp_file", "buildfiji-136.16"),
+    regex_match = _unavailable("py_internal.regex_match", "buildfiji-136.16"),
+    runfiles_enabled = _unavailable("py_internal.runfiles_enabled", "buildfiji-136.16"),
+    share_native_deps = _unavailable("py_internal.share_native_deps", "buildfiji-136.16"),
+    stamp_binaries = _unavailable("py_internal.stamp_binaries", "buildfiji-136.16"),
+)

@@ -240,9 +240,25 @@ impl Repos {
 
     /// The repositories of the workspace whose module graph is `resolution`.
     pub fn from_resolution(options: Options, resolution: Resolution) -> Result<Repos, FetchError> {
-        let lookup = PackageLookup::new(&options.workspace_root).map_err(|e| FetchError {
-            message: e.to_string(),
-        })?;
+        // A `//...` walk does not enter the convenience symlinks, which lead into
+        // the output base: `bazel-bin`, `bazel-out`, `bazel-testlogs` and
+        // `bazel-<workspace>`.
+        let workspace_dir = options
+            .workspace_root
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let lookup = PackageLookup::new(&options.workspace_root)
+            .map_err(|e| FetchError {
+                message: e.to_string(),
+            })?
+            .with_skipped_root_dirs([
+                "bazel-bin".to_owned(),
+                "bazel-out".to_owned(),
+                "bazel-testlogs".to_owned(),
+                "bazel-genfiles".to_owned(),
+                format!("bazel-{workspace_dir}"),
+            ]);
         // `@bazel_tools` is served from the output base, where its files are put.
         let tools_dir = options.output_base.join("external").join("bazel_tools");
         materialize_bazel_tools(&tools_dir).map_err(|e| FetchError {
