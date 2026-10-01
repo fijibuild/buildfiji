@@ -161,6 +161,7 @@ pub(crate) async fn register(
     let file = |name: &str| Artifact {
         root: root.clone(),
         path: format!("{dir}/{name}"),
+        tree: false,
     };
     let (log, xml) = (file("test.log"), file("test.xml"));
     let tmp = {

@@ -5,7 +5,7 @@ use crate::args::fatal;
 use crate::depset::{Order, new_depset};
 use crate::label::StarlarkLabel;
 use crate::provider::same_provider;
-use crate::structs::{new_instance, provider_of};
+use crate::structs::{new_instance, new_struct, provider_of};
 use allocative::Allocative;
 use fjfj_graph::{Artifact, Label};
 use starlark::environment::{Methods, MethodsBuilder, MethodsStatic};
@@ -118,6 +118,33 @@ pub(crate) fn default_info<'v>(
     let exe = executable
         .map(|a| alloc_file(heap, a.clone(), owner.clone()))
         .unwrap_or_else(Value::new_none);
+    // What `files_to_run` says of an executable: it and its runfiles tree.
+    let files_to_run = {
+        let sibling = |suffix: &str| {
+            executable.map_or_else(Value::new_none, |e| {
+                alloc_file(
+                    heap,
+                    Artifact {
+                        root: e.root.clone(),
+                        path: format!("{}{suffix}", e.path),
+                        tree: false,
+                    },
+                    owner.clone(),
+                )
+            })
+        };
+        new_struct(
+            heap,
+            vec![
+                ("executable".to_owned(), exe),
+                ("repo_mapping_manifest".to_owned(), sibling(".repo_mapping")),
+                (
+                    "runfiles_manifest".to_owned(),
+                    sibling(".runfiles_manifest"),
+                ),
+            ],
+        )
+    };
     let runfiles = super::runfiles::alloc_runfiles(heap, runfiles.clone(), owner.clone());
     new_instance(
         heap,
@@ -128,7 +155,7 @@ pub(crate) fn default_info<'v>(
             ("executable".to_owned(), exe),
             ("data_runfiles".to_owned(), runfiles),
             ("default_runfiles".to_owned(), runfiles),
-            ("files_to_run".to_owned(), Value::new_none()),
+            ("files_to_run".to_owned(), files_to_run),
         ],
     )
 }

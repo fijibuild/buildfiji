@@ -286,6 +286,11 @@ impl Scheduler {
                 std::fs::create_dir_all(dir)
                     .map_err(|e| fail(format!("cannot create {}: {e}", dir.display())))?;
             }
+            // A tree artifact exists, empty, before the action fills it.
+            if out.tree {
+                std::fs::create_dir_all(&at)
+                    .map_err(|e| fail(format!("cannot create {}: {e}", at.display())))?;
+            }
         }
         match &action.kind {
             ActionKind::WriteFile {

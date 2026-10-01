@@ -85,17 +85,56 @@ fn files_of<'v>(
         )));
     };
     let _ = eval;
-    items
-        .into_iter()
-        .map(|item| {
-            artifact_of(item).ok_or_else(|| {
-                fatal(format!(
-                    "expected value of type 'File' for element of {name}, but got {}",
-                    describe(item)
-                ))
-            })
-        })
-        .collect()
+    let mut out = Vec::with_capacity(items.len());
+    for item in items {
+        if let Some(artifact) = artifact_of(item) {
+            out.push(artifact);
+        } else if let Some(files) = files_to_run_inputs(item) {
+            out.extend(files);
+        } else if is_depset(item) {
+            // `tools = [files_to_run, a_depset]`.
+            for element in depset_to_list(item).expect("a depset")? {
+                match artifact_of(element) {
+                    Some(artifact) => out.push(artifact),
+                    None => {
+                        return Err(fatal(format!(
+                            "expected value of type 'File' for element of {name}, but got {}",
+                            describe(element)
+                        )));
+                    }
+                }
+            }
+        } else {
+            return Err(fatal(format!(
+                "expected value of type 'File' for element of {name}, but got {}",
+                describe(item)
+            )));
+        }
+    }
+    Ok(out)
+}
+
+/// What an action that uses a `FilesToRunProvider` needs: the executable, and
+/// the runfiles tree that makes it runnable.
+fn files_to_run_inputs(value: Value<'_>) -> Option<Vec<Artifact>> {
+    let fields = crate::structs::fields_of(value)?;
+    let field = |name: &str| fields.iter().find(|(n, _)| *n == name).map(|(_, v)| *v);
+    field("runfiles_manifest")?;
+    field("repo_mapping_manifest")?;
+    let mut out = Vec::new();
+    for name in ["executable", "runfiles_manifest", "repo_mapping_manifest"] {
+        if let Some(artifact) = field(name).and_then(artifact_of) {
+            out.push(artifact);
+        }
+    }
+    if let Some(exe) = field("executable").and_then(artifact_of) {
+        out.push(Artifact {
+            root: exe.root.clone(),
+            path: format!("{}.runfiles", exe.path),
+            tree: false,
+        });
+    }
+    Some(out)
 }
 
 fn string_dict(
@@ -166,6 +205,7 @@ impl CtxState {
         Artifact {
             root: sibling.root.clone(),
             path,
+            tree: false,
         }
     }
 
@@ -250,6 +290,7 @@ fn actions_members(builder: &mut MethodsBuilder) {
                 Artifact {
                     root: sibling.root,
                     path,
+                    tree: false,
                 }
             }
             None => s.derived(filename),
@@ -296,6 +337,41 @@ fn actions_members(builder: &mut MethodsBuilder) {
         )
     }
 
+    /// `ctx.actions.declare_directory(filename, *, sibling = None)`: a tree
+    /// artifact, a directory an action fills.
+    fn declare_directory<'v>(
+        this: Value<'v>,
+        args: &Arguments<'v, '_>,
+        eval: &mut Evaluator<'v, '_, '_>,
+    ) -> starlark::Result<Value<'v>> {
+        let s = state(this);
+        let bound = bind(
+            "declare_directory",
+            Wording::Signature,
+            &[
+                param("filename", true, true),
+                param("sibling", false, false),
+            ],
+            args,
+            eval,
+        )?;
+        let filename = bound[0]
+            .and_then(|v| v.unpack_str())
+            .ok_or_else(|| fatal("in call to declare_directory(), parameter 'filename' got value of type that is not 'string'"))?;
+        let mut artifact = match bound[1].filter(|v| !v.is_none()) {
+            Some(sibling) => {
+                let sibling = artifact_of(sibling).ok_or_else(|| {
+                    fatal("in call to declare_directory(), parameter 'sibling' got value of type that is not 'File'")
+                })?;
+                s.derived_next_to(&sibling, filename)
+            }
+            None => s.derived(filename),
+        };
+        artifact.tree = true;
+        s.declared.lock().unwrap().insert(artifact.exec_path());
+        Ok(alloc_file(eval.heap(), artifact, s.label.clone()))
+    }
+
     /// `ctx.actions.declare_shareable_artifact(path)`: a file in the output
     /// directory at a path from its root, not from the rule's package, which
     /// rules_cc uses for the files that are shared between targets.
@@ -308,6 +384,7 @@ fn actions_members(builder: &mut MethodsBuilder) {
         let artifact = Artifact {
             root: fjfj_graph::artifact::Root::derived(s.bin_dir()),
             path: path.to_owned(),
+            tree: false,
         };
         s.declared.lock().unwrap().insert(artifact.exec_path());
         Ok(alloc_file(eval.heap(), artifact, s.label.clone()))
@@ -663,6 +740,11 @@ fn spawn<'v>(
     } else {
         let executable = if let Some(file) = artifact_of(last) {
             inputs.push(file.clone());
+            file.exec_path()
+        } else if let Some(files) = files_to_run_inputs(last)
+            && let Some(file) = files.first().cloned()
+        {
+            inputs.extend(files);
             file.exec_path()
         } else if let Some(path) = last.unpack_str() {
             path.to_owned()

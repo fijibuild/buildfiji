@@ -109,6 +109,7 @@ pub(crate) fn register(
     let at = |suffix: &str| Artifact {
         root: exe.root.clone(),
         path: format!("{}{suffix}", exe.path),
+        tree: false,
     };
     let (dir, manifest, repo_mapping) = (
         at(".runfiles"),

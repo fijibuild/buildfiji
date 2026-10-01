@@ -705,3 +705,55 @@ r = rule(implementation = _impl, attrs = {"src": attr.label(allow_single_file = 
         ]
     );
 }
+
+/// A tree artifact is a directory (`declare_directory`), and an executable's
+/// `files_to_run` brings its runfiles tree to an action that uses it.
+#[test]
+fn directories_are_declared_and_files_to_run_is_a_tool() {
+    let src = r#"
+def _impl(ctx):
+    out = ctx.actions.declare_directory("out")
+    plain = ctx.actions.declare_file("plain")
+    print(out.is_directory, plain.is_directory, out.path)
+    tool = ctx.attr.tool[DefaultInfo].files_to_run
+    print(tool.executable.basename, tool.runfiles_manifest.basename)
+    ctx.actions.run(executable = tool, outputs = [out], tools = [depset([plain])], arguments = ["x"])
+    return []
+r = rule(implementation = _impl, attrs = {"tool": attr.label(executable = True, cfg = "exec")})
+"#;
+    let exe = Artifact::derived("bazel-out/k8-opt-exec/bin", "", "", "tool");
+    let tool = DepInfo {
+        label: label("", "tool"),
+        rule_class: Some("sh_binary".to_owned()),
+        generated: false,
+        files: vec![exe.clone()],
+        executable: Some(exe.clone()),
+        runfiles: Default::default(),
+        providers: Vec::new(),
+    };
+    let attrs = vec![("tool".to_owned(), AttrValue::Label(label("", "tool")))];
+    let out = run_rule(&request(src, "r", attrs, vec![tool])).unwrap();
+    assert_eq!(
+        out.printed,
+        [
+            format!("True False {BIN}/out"),
+            "tool tool.runfiles_manifest".to_owned()
+        ]
+    );
+    let [run] = &out.actions[..] else {
+        panic!("{:?}", out.actions)
+    };
+    assert!(run.outputs[0].tree);
+    let mut inputs: Vec<String> = run.inputs.iter().map(|i| i.exec_path()).collect();
+    inputs.sort();
+    assert_eq!(
+        inputs,
+        [
+            format!("{BIN}/plain"),
+            "bazel-out/k8-opt-exec/bin/tool".to_owned(),
+            "bazel-out/k8-opt-exec/bin/tool.repo_mapping".to_owned(),
+            "bazel-out/k8-opt-exec/bin/tool.runfiles".to_owned(),
+            "bazel-out/k8-opt-exec/bin/tool.runfiles_manifest".to_owned(),
+        ]
+    );
+}

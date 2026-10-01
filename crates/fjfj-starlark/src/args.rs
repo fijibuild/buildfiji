@@ -140,7 +140,14 @@ pub(crate) fn bind<'v>(
 }
 
 pub(crate) fn describe(value: Value<'_>) -> String {
-    format!("{} ({})", value.to_repr(), value.get_type())
+    // A depset or a long list would fill the screen with its elements.
+    let repr = value.to_repr();
+    let shown: String = if repr.chars().count() > 300 {
+        repr.chars().take(300).chain("...".chars()).collect()
+    } else {
+        repr
+    };
+    format!("{shown} ({})", value.get_type())
 }
 
 /// The items of a list or tuple.

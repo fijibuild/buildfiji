@@ -51,6 +51,9 @@ pub struct Artifact {
     pub root: Root,
     /// Relative to the root, `/` separated.
     pub path: String,
+    /// A directory an action fills (`declare_directory`): a tree artifact.
+    #[serde(default)]
+    pub tree: bool,
 }
 
 impl Artifact {
@@ -58,6 +61,7 @@ impl Artifact {
         Artifact {
             root: Root::source_of(repo),
             path: join(package, name),
+            tree: false,
         }
     }
 
@@ -71,6 +75,7 @@ impl Artifact {
             } else {
                 format!("external/{repo}/{path}")
             },
+            tree: false,
         }
     }
 
