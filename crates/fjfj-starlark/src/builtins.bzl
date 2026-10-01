@@ -116,7 +116,46 @@ _ExecutionInfo = provider(doc = "How a test runs.", fields = ["requirements", "e
 _TestEnvironment = provider(doc = "The environment of a test.", fields = ["environment", "inherited_environment"])
 _Objc = provider(doc = "Objective-C information.")
 _XcodeProperties = provider(doc = "Xcode properties.")
-_XcodeVersionConfig = provider(doc = "An xcode_config.")
+def _xcode_version_config_init(
+        ios_sdk_version,
+        ios_minimum_os_version,
+        visionos_sdk_version,
+        visionos_minimum_os_version,
+        watchos_sdk_version,
+        watchos_minimum_os_version,
+        tvos_sdk_version,
+        tvos_minimum_os_version,
+        macos_sdk_version,
+        macos_minimum_os_version,
+        xcode_version = None,
+        availability = "unknown",
+        xcode_version_flag = None,
+        include_xcode_execution_info = False):
+    sdk = {
+        "ios": ios_sdk_version,
+        "visionos": visionos_sdk_version,
+        "watchos": watchos_sdk_version,
+        "tvos": tvos_sdk_version,
+        "macos": macos_sdk_version,
+        "catalyst": macos_sdk_version,
+    }
+    minimum = {
+        "ios": ios_minimum_os_version,
+        "visionos": visionos_minimum_os_version,
+        "watchos": watchos_minimum_os_version,
+        "tvos": tvos_minimum_os_version,
+        "macos": macos_minimum_os_version,
+        "catalyst": macos_minimum_os_version,
+    }
+    return {
+        "xcode_version": lambda: xcode_version,
+        "availability": lambda: availability,
+        "minimum_os_for_platform_type": lambda platform_type: minimum[platform_type],
+        "sdk_version_for_platform": lambda platform: sdk[platform.platform_type],
+        "execution_info": lambda: {"requires-darwin": ""} if include_xcode_execution_info else {},
+    }
+
+_XcodeVersionConfig, _ = provider(doc = "An xcode_config.", init = _xcode_version_config_init)
 
 platform_common = struct(
     ConstraintSettingInfo = _ConstraintSettingInfo,
@@ -206,7 +245,7 @@ apple_common = struct(
     XcodeVersionConfig = _XcodeVersionConfig,
     apple_host_system_env = _unavailable("apple_common.apple_host_system_env", "buildfiji-136.15"),
     apple_toolchain = lambda: struct(developer_dir = _unavailable("apple_common.apple_toolchain().developer_dir", "buildfiji-136.15"), platform_developer_framework_dir = _unavailable("apple_common.apple_toolchain().platform_developer_framework_dir", "buildfiji-136.15"), sdk_dir = _unavailable("apple_common.apple_toolchain().sdk_dir", "buildfiji-136.15")),
-    dotted_version = lambda version: struct(_version = version, compare_to = _unavailable("DottedVersion.compare_to", "buildfiji-136.15")),
+    dotted_version = lambda version: str(version) if version else None,
     new_objc_provider = _unavailable("apple_common.new_objc_provider", "buildfiji-136.15"),
     platform = _APPLE_PLATFORM,
     platform_type = _APPLE_PLATFORM_TYPE,
@@ -253,3 +292,42 @@ def _filegroup(ctx):
 _native_implementations = {
     "filegroup": _filegroup,
 }
+
+# `ctx.fragments` (buildfiji-136.18): the options of the configuration as the
+# structs Bazel's configuration fragments are. `options` is what the Rust side
+# knows of the configuration; a field a rule reads that is not here is an
+# error of the rule's, so it is added when one reads it.
+def _make_fragments(options):
+    macos = apple_common.platform.macos
+    apple = struct(
+        xcode_version_flag = None,
+        ios_sdk_version_flag = None,
+        macos_sdk_version_flag = None,
+        tvos_sdk_version_flag = None,
+        watchos_sdk_version_flag = None,
+        ios_minimum_os_flag = None,
+        macos_minimum_os_flag = None,
+        tvos_minimum_os_flag = None,
+        watchos_minimum_os_flag = None,
+        prefer_mutual_xcode = True,
+        include_xcode_exec_requirements = False,
+        single_arch_platform = macos,
+        single_arch_cpu = "x86_64",
+    )
+    cpp = struct(
+        minimum_os_version = lambda: None,
+        compilation_mode = lambda: options["compilation_mode"],
+        copts = [],
+        cxxopts = [],
+        conlyopts = [],
+        linkopts = [],
+    )
+    return struct(
+        apple = apple,
+        cpp = cpp,
+        platform = struct(),
+        java = struct(),
+        proto = struct(),
+        py = struct(),
+        coverage = struct(),
+    )

@@ -397,3 +397,54 @@ fn args_are_expanded_as_bazel_expands_them() {
     );
     assert!(paths(&spawn.inputs).contains(&format!("{BIN}/o-0.params")));
 }
+
+/// `ctx.fragments` are the structs of the builtins, made from the
+/// configuration (buildfiji-136.18); a late-bound default is the label of its
+/// option's default (buildfiji-bo8).
+#[test]
+fn fragments_and_late_bound_defaults() {
+    let src = r#"
+def _impl(ctx):
+    cpp = ctx.fragments.cpp
+    apple = ctx.fragments.apple
+    config = apple_common.XcodeVersionConfig(
+        ios_sdk_version = "1", ios_minimum_os_version = "2",
+        visionos_sdk_version = "3", visionos_minimum_os_version = "4",
+        watchos_sdk_version = "5", watchos_minimum_os_version = "6",
+        tvos_sdk_version = "7", tvos_minimum_os_version = "8",
+        macos_sdk_version = "10.11", macos_minimum_os_version = "10.12",
+    )
+    print(cpp.compilation_mode(), cpp.minimum_os_version(), apple.single_arch_platform.platform_type,
+          config.minimum_os_for_platform_type(apple.single_arch_platform.platform_type))
+    return [DefaultInfo()]
+r = rule(
+    implementation = _impl,
+    fragments = ["apple", "cpp"],
+    attrs = {"_xcode": attr.label(default = configuration_field("apple", "xcode_config_label"))},
+)
+"#;
+    let req = request(src, "r", Vec::new(), Vec::new());
+    assert_eq!(
+        run_rule(&req).unwrap().printed,
+        ["fastbuild None macos 10.12"]
+    );
+    let defaults = computed_defaults(
+        &req.module,
+        "r",
+        &[],
+        &crate::test_support::probe_mappings(),
+        "",
+    )
+    .unwrap();
+    assert_eq!(
+        defaults,
+        [(
+            "_xcode".to_owned(),
+            AttrValue::Label(Label {
+                repo: "bazel_tools".into(),
+                package: "tools/objc".into(),
+                name: "host_xcodes".into()
+            })
+        )]
+    );
+}

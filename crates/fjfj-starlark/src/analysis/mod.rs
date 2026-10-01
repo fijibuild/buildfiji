@@ -11,6 +11,7 @@ mod actions;
 mod args_object;
 mod ctx;
 mod file;
+mod fragments;
 mod native_providers;
 pub(crate) mod run;
 mod runfiles;

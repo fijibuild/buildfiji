@@ -11,7 +11,7 @@ use starlark::docs::{DocItem, DocMember};
 use starlark::environment::{FrozenModule, Module};
 use starlark::eval::Evaluator;
 use starlark::values::list::AllocList;
-use starlark::values::{Heap, Value};
+use starlark::values::{Heap, Value, ValueLike};
 
 fn to_starlark<'v>(heap: Heap<'v>, value: &AttrValue) -> Value<'v> {
     match value {
@@ -28,6 +28,21 @@ fn to_starlark<'v>(heap: Heap<'v>, value: &AttrValue) -> Value<'v> {
         )),
         _ => Value::new_none(),
     }
+}
+
+/// What a `configuration_field(fragment, name)` is with no option set to say
+/// otherwise (probed with `bazel query`). The fields not listed are unset by
+/// default (buildfiji-bo8 has the rest to probe).
+pub fn late_bound_default(fragment: &str, name: &str) -> Option<Label> {
+    let (package, target) = match (fragment, name) {
+        ("apple", "xcode_config_label") => ("tools/objc", "host_xcodes"),
+        _ => return None,
+    };
+    Some(Label {
+        repo: "bazel_tools".to_owned(),
+        package: package.to_owned(),
+        name: target.to_owned(),
+    })
 }
 
 /// The default of each attribute of `rule_name` whose default is a function:
@@ -70,8 +85,11 @@ pub fn computed_defaults(
                 continue;
             };
             // `configuration_field(...)` depends on the build's options, not on
-            // other attributes (buildfiji-bo8).
-            if function.get_type() == "LateBoundDefault" {
+            // other attributes: its label is the option's default.
+            if let Some(late) = function.downcast_ref::<crate::decl::LateBoundDefault>() {
+                if let Some(label) = late_bound_default(&late.fragment, &late.name) {
+                    out.push((name.to_owned(), AttrValue::Label(label)));
+                }
                 continue;
             }
             let params: Vec<String> = match function.documentation() {

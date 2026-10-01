@@ -187,6 +187,15 @@ fn ctx_members(builder: &mut MethodsBuilder) {
         }
     }
 
+    /// The configuration fragments.
+    #[starlark(attribute)]
+    fn fragments<'v>(this: Value<'v>) -> starlark::Result<Value<'v>> {
+        let config = &state(this).configuration;
+        super::fragments::fragments_of(&config.cpu, config.compilation_mode.name())
+            .map(|made| made.to_value())
+            .map_err(fatal)
+    }
+
     #[starlark(attribute)]
     fn workspace_name<'v>(this: Value<'v>) -> starlark::Result<String> {
         Ok(state(this).main_repo_name.clone())
