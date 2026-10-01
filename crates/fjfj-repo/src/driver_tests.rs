@@ -95,6 +95,47 @@ fn two_extensions_of_one_file_are_two_extensions() {
 }
 
 #[test]
+fn a_repository_fetched_again_starts_from_nothing() {
+    let (dir, mut repos) = repos(
+        "module(name = 'm')\next = use_extension('//:ext.bzl', 'ext')\nuse_repo(ext, 'one')\n",
+    );
+    repos.run_extensions(None).unwrap();
+    // What an earlier process left in the output base.
+    let left = dir.path().join("ob/external/+ext+one");
+    std::fs::create_dir_all(&left).unwrap();
+    std::fs::write(left.join("stale.txt"), "left over").unwrap();
+    let made = repos.fetch("+ext+one", None).unwrap();
+    assert!(!made.join("stale.txt").exists());
+    assert!(made.join("name.txt").exists());
+}
+
+#[test]
+fn a_path_formats_as_its_text_with_str_and_percent_s_and_format() {
+    let (dir, mut repos) = repos(
+        "module(name = 'm')\next = use_extension('//:ext.bzl', 'ext')\nuse_repo(ext, 'one')\n",
+    );
+    std::fs::write(
+        dir.path().join("ws/ext.bzl"),
+        r#"
+def _repo(ctx):
+    ctx.file("args", "x")
+    p = ctx.path("args")
+    ctx.file("out.txt", "|".join([str(p), "{}".format(p), "%s" % p, "{!s}".format(p), repr(p)]))
+repo = repository_rule(_repo)
+def _impl(mctx):
+    repo(name = "one")
+ext = module_extension(_impl)
+"#,
+    )
+    .unwrap();
+    repos.run_extensions(None).unwrap();
+    let made = repos.fetch("+ext+one", None).unwrap();
+    let out = std::fs::read_to_string(made.join("out.txt")).unwrap();
+    let at = made.join("args").display().to_string();
+    assert_eq!(out, [at.as_str(); 4].join("|") + "|\"" + &at + "\"");
+}
+
+#[test]
 fn a_name_that_is_not_a_generated_repository_cannot_be_fetched() {
     let (_dir, mut repos) = repos("module(name = 'm')\n");
     repos.run_extensions(None).unwrap();

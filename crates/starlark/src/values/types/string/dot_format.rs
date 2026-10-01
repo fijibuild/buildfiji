@@ -71,7 +71,7 @@ pub(crate) fn format_one<'v>(
         None => {
             let mut result = String::with_capacity(before.len() + after.len() + 10);
             result.push_str(before);
-            arg.collect_repr(&mut result);
+            arg.collect_str(&mut result);
             result.push_str(after);
             heap.alloc_str(&result)
         }

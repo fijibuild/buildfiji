@@ -608,6 +608,12 @@ impl Inner {
             attrs.push((key.clone(), value.clone()));
         }
         let output = self.options.output_base.join("external").join(name);
+        // Bazel starts a repository from nothing: what an earlier fetch left (a
+        // symlink the rule makes would be "File exists") is deleted first.
+        if std::fs::symlink_metadata(&output).is_ok() {
+            let _ = std::fs::remove_file(&output);
+            let _ = std::fs::remove_dir_all(&output);
+        }
         let env = self.env(name, &repo_name, output.clone(), attrs);
         let mappings = self.mappings();
         run_repository_rule(&module, &rule, env, &mappings, Some(&self.prints))
