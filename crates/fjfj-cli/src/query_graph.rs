@@ -991,6 +991,63 @@ genrule(name="gen", outs=["gen.txt"], cmd="echo > $@")
     }
 
     #[test]
+    fn xml_is_what_bazel_prints() {
+        let (dir, repos) = workspace();
+        let graph = QueryGraph::new(repos);
+        let xml = query(
+            &graph,
+            "//a:a.txt + //a:gen.out + //a:sel + //a:ts + //c/d:pg + //b:gen",
+            Format::Xml,
+            Order::Auto,
+            Options::default(),
+        )
+        .replace(&dir.path().join("ws").display().to_string(), "<ws>");
+        assert_eq!(
+            xml,
+            r#"<?xml version="1.1" encoding="UTF-8" standalone="no"?>
+<query version="2">
+    <source-file location="<ws>/a/a.txt:1:1" name="//a:a.txt">
+        <visibility-label name="//visibility:public"/>
+    </source-file>
+    <generated-file generating-rule="//a:gen" location="<ws>/a/BUILD:7:8" name="//a:gen.out"/>
+    <rule class="mylib" location="<ws>/a/BUILD:10:6" name="//a:sel">
+        <string name="name" value="sel"/>
+        <list name="deps">
+            <label value="//b:lib"/>
+            <label value="//c:tool"/>
+        </list>
+        <rule-input name="//a:cfg"/>
+        <rule-input name="//b:lib"/>
+        <rule-input name="//c:tool"/>
+    </rule>
+    <rule class="test_suite" location="<ws>/a/BUILD:11:11" name="//a:ts">
+        <string name="name" value="ts"/>
+        <list name="tests">
+            <label value="//a:gen"/>
+        </list>
+        <rule-input name="//a:gen"/>
+    </rule>
+    <rule class="genrule" location="<ws>/b/BUILD:4:8" name="//b:gen">
+        <string name="name" value="gen"/>
+        <list name="outs">
+            <output value="//b:gen.txt"/>
+        </list>
+        <string name="cmd" value="echo &gt; $@"/>
+        <rule-input name="@bazel_tools//tools/genrule:genrule-setup.sh"/>
+        <rule-output name="//b:gen.txt"/>
+    </rule>
+    <package-group location="<ws>/c/d/BUILD:3:14" name="//c/d:pg">
+        <list name="includes"/>
+        <list name="packages">
+            <string value="//a/..."/>
+        </list>
+    </package-group>
+</query>
+"#
+        );
+    }
+
+    #[test]
     fn errors_are_bazels() {
         let (_dir, repos) = workspace();
         let graph = QueryGraph::new(repos);
