@@ -142,7 +142,13 @@ impl CtxState {
         } else {
             "linux"
         };
+        let option = |name: &str| config.options.get(name).cloned().unwrap_or_default();
         vec![
+            ("copt", option("copt")),
+            ("cxxopt", option("cxxopt")),
+            ("conlyopt", option("conlyopt")),
+            ("linkopt", option("linkopt")),
+            ("strip", option("strip")),
             ("cpu", config.cpu.clone()),
             (
                 "compilation_mode",

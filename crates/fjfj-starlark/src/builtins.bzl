@@ -319,13 +319,65 @@ def _make_fragments(options):
         single_arch_platform = macos,
         single_arch_cpu = "x86_64",
     )
+    mode = options["compilation_mode"]
+
+    # The options are joined by spaces; a value with one is split (buildfiji-136.16.1).
+    def words(name):
+        return options[name].split(" ") if options[name] else []
+
     cpp = struct(
+        # Members Bazel hides behind an allowlist have the value of their flag's
+        # default; the others were probed on Bazel 9.2.0.
+        apple_generate_dsym = False,
+        build_test_dwp = lambda: False,
+        compilation_mode = lambda: mode,
+        conlyopts = words("conlyopt"),
+        copts = words("copt"),
+        cs_fdo_instrument = lambda: None,
+        cs_fdo_path = lambda: None,
+        custom_malloc = None,
+        cxxopts = words("cxxopt"),
+        disable_nocopts = lambda: True,
+        do_not_use_macos_set_install_name = False,
+        dynamic_mode = lambda: "DEFAULT",
+        experimental_cc_implementation_deps = lambda: False,
+        experimental_cpp_modules = lambda: False,
+        experimental_link_static_libraries_once = lambda: False,
+        fdo_instrument = lambda: None,
+        fdo_path = lambda: None,
+        fission_active_for_current_compilation_mode = lambda: False,
+        force_pic = lambda: False,
+        generate_llvm_lcov = lambda: False,
+        grte_top = lambda: None,
+        include_scanning = lambda: False,
+        incompatible_remove_legacy_whole_archive = lambda: True,
+        incompatible_use_specific_tool_files = lambda: True,
+        interface_shared_objects = lambda: True,
+        legacy_whole_archive = lambda: True,
+        linkopts = words("linkopt"),
+        lto_backend_options = [],
+        lto_index_options = lambda: [],
         minimum_os_version = lambda: None,
-        compilation_mode = lambda: options["compilation_mode"],
-        copts = [],
-        cxxopts = [],
-        conlyopts = [],
-        linkopts = [],
+        objc_enable_binary_stripping = lambda: False,
+        objc_generate_linkmap = False,
+        objc_should_generate_dotd_files = lambda: True,
+        objc_should_strip_binary = False,
+        objccopts = [],
+        process_headers_in_dependencies = lambda: False,
+        propeller_optimize_absolute_cc_profile = lambda: None,
+        propeller_optimize_absolute_ld_profile = lambda: None,
+        proto_profile = lambda: False,
+        save_feature_state = lambda: False,
+        save_temps = lambda: False,
+        share_native_deps = lambda: True,
+        should_generate_dotd_files = lambda: True,
+        # --strip=sometimes strips in fastbuild.
+        should_strip_binaries = lambda: options["strip"] == "always" or (options["strip"] != "never" and mode == "fastbuild"),
+        start_end_lib = lambda: True,
+        strip_opts = lambda: [],
+        use_llvm_coverage_map_format = lambda: False,
+        _dont_enable_host_nonhost = True,
+        _fdo_prefetch_hints_label = None,
     )
     return struct(
         apple = apple,

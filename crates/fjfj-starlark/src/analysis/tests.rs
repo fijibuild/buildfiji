@@ -484,3 +484,29 @@ r = rule(
     };
     assert_eq!(substitutions, &[("{A}".to_owned(), "username".to_owned())]);
 }
+
+/// The members of the cpp fragment that rules_cc reads, with the values Bazel
+/// 9.2.0 gives them (the ones it does not hide, probed; the rest are their
+/// flags' defaults) and the options of the configuration.
+#[test]
+fn the_cpp_fragment_has_the_members_rules_read() {
+    let src = r#"
+def _impl(ctx):
+    cpp = ctx.fragments.cpp
+    print(cpp.copts, cpp.cxxopts, cpp.conlyopts, cpp.linkopts, cpp.dynamic_mode(), cpp.apple_generate_dsym)
+    print(cpp.should_strip_binaries(), cpp.start_end_lib(), cpp.force_pic(), cpp.compilation_mode(), cpp.use_llvm_coverage_map_format())
+    return []
+r = rule(implementation = _impl, fragments = ["cpp"])
+"#;
+    let mut req = request(src, "r", Vec::new(), Vec::new());
+    req.configuration
+        .options
+        .insert("copt".into(), "-O2 -g".into());
+    assert_eq!(
+        run_rule(&req).unwrap().printed,
+        [
+            "[\"-O2\", \"-g\"] [] [] [] DEFAULT False",
+            "True True False fastbuild False"
+        ]
+    );
+}
