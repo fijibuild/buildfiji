@@ -36,6 +36,16 @@ pub(crate) const IMPLEMENTED: &[&str] = &[
     "experimental_isolated_extension_usages",
 ];
 
+/// The flags `build` shares with `fetch`: where repositories come from.
+pub(crate) const BUILD_IMPLEMENTED: &[&str] = &[
+    "repository_cache",
+    "distdir",
+    "override_repository",
+    "credential_helper",
+    "credential_helper_timeout",
+    "experimental_isolated_extension_usages",
+];
+
 /// What `fetch` was asked for.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct FetchFlags {
@@ -174,6 +184,40 @@ pub(crate) fn run(
             "fjfj fetch needs --repo=@name or --all"
         )));
     }
+    run_inner(flags, bzlmod, workspace_root, module_bazel_text).map(|_| ())
+}
+
+/// What `build` does about external repositories: the module graph is resolved,
+/// the repositories its target patterns name (`@name//...`) are made, and the
+/// lockfile is written as `--lockfile_mode` says. Which other repositories a
+/// build needs is the loading phase's to say once it asks for them.
+pub(crate) fn run_for_build(
+    flags: &FetchFlags,
+    bzlmod: &BzlmodFlags,
+    workspace_root: &Path,
+    module_bazel_text: &str,
+) -> Result<Resolution, CliError> {
+    run_inner(flags, bzlmod, workspace_root, module_bazel_text)
+}
+
+/// The repositories external target patterns name, as `fetch --repo` writes them.
+pub(crate) fn repos_named_by<'a>(repos: impl Iterator<Item = &'a str>) -> Vec<String> {
+    let mut named: Vec<String> = Vec::new();
+    for repo in repos.filter(|r| !r.is_empty()) {
+        let asked = format!("@{repo}");
+        if !named.contains(&asked) {
+            named.push(asked);
+        }
+    }
+    named
+}
+
+fn run_inner(
+    flags: &FetchFlags,
+    bzlmod: &BzlmodFlags,
+    workspace_root: &Path,
+    module_bazel_text: &str,
+) -> Result<Resolution, CliError> {
     let resolved = crate::resolve_bzlmod_session(
         module_bazel_text,
         workspace_root,
@@ -236,7 +280,8 @@ pub(crate) fn run(
         );
         session.set_facts(repos.locked_facts());
     }
-    crate::write_lockfile(&resolved)
+    crate::write_lockfile(&resolved)?;
+    Ok(resolved.resolution)
 }
 
 /// What `fetch` makes: `--all`, or each `--repo`.

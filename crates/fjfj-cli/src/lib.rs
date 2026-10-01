@@ -258,6 +258,30 @@ async fn resolve_workspace_bzlmod(flags: &BzlmodFlags) -> Result<Resolution, Cli
         .map_err(|e| CliError::Internal(anyhow::anyhow!("bzlmod resolution task panicked: {e}")))?
 }
 
+/// Resolves the module graph and makes the repositories `build`'s patterns
+/// name; blocking work, run where `reqwest::blocking` can start (see
+/// [`resolve_workspace_bzlmod`]).
+async fn fetch_repositories_for_build(
+    repo_flags: fetch_command::FetchFlags,
+    bzlmod: &BzlmodFlags,
+) -> Result<Resolution, CliError> {
+    let workspace_root = std::env::current_dir()
+        .map_err(|e| CliError::Internal(anyhow::anyhow!("couldn't get current directory: {e}")))?;
+    let module_bazel_text =
+        std::fs::read_to_string(workspace_root.join("MODULE.bazel")).map_err(|e| {
+            CliError::CommandLine(anyhow::anyhow!(
+                "no MODULE.bazel found in {}: {e}",
+                workspace_root.display()
+            ))
+        })?;
+    let bzlmod = bzlmod.clone();
+    tokio::task::spawn_blocking(move || {
+        fetch_command::run_for_build(&repo_flags, &bzlmod, &workspace_root, &module_bazel_text)
+    })
+    .await
+    .map_err(|e| CliError::Internal(anyhow::anyhow!("build's repository task panicked: {e}")))?
+}
+
 pub fn main() -> std::process::ExitCode {
     let cli = Cli::parse(); // exits 2 itself on a flag-syntax error
     let rt = match tokio::runtime::Runtime::new() {
@@ -336,6 +360,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
                 bes_flags::IMPLEMENTED,
                 bzlmod_flags::IMPLEMENTED,
                 console_flags::IMPLEMENTED,
+                fetch_command::BUILD_IMPLEMENTED,
             ];
             let implemented: Vec<&'static str> = BUILD_IMPLEMENTED
                 .iter()
@@ -351,6 +376,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
             let (remote, rest) = remote_flags::extract(&rest, "build");
             let (bes, rest) = bes_flags::extract(&rest, "build");
             let (bzlmod, rest) = bzlmod_flags::extract(&rest, "build");
+            let (mut repo_flags, rest) = fetch_command::extract(&rest)?;
             let (console_flags, rest) = console_flags::extract(&rest, "build");
             // Everything left is a bare positional now that `validate`
             // above has ruled out any unimplemented or unrecognized flag.
@@ -458,7 +484,13 @@ async fn run(cli: Cli) -> Result<(), CliError> {
                     message: "Resolving MODULE.bazel".to_owned(),
                 })
                 .map_err(|e| CliError::Internal(anyhow::anyhow!("console write failed: {e}")))?;
-            let resolution = resolve_workspace_bzlmod(&bzlmod).await?;
+            repo_flags.repos = fetch_command::repos_named_by(
+                patterns
+                    .iter()
+                    .filter(|p| !p.negative)
+                    .filter_map(|p| p.repo.as_deref()),
+            );
+            let resolution = fetch_repositories_for_build(repo_flags, &bzlmod).await?;
             tracing::info!(
                 selected_modules = resolution.selection.keys().count(),
                 "bzlmod module graph resolved"
@@ -817,5 +849,42 @@ mod tests {
             panic!("accepted");
         };
         assert_eq!(e.exit_code(), ExitCode::Interrupted);
+    }
+
+    #[test]
+    fn build_makes_the_repositories_its_patterns_name_and_writes_the_lock_as_the_mode_says() {
+        let named = fetch_command::repos_named_by(["r1", "", "@ext+gen+r1", "r1"].into_iter());
+        assert_eq!(named, ["@r1", "@@ext+gen+r1"]);
+        let dir = Scratch::new("build-repos");
+        let module = "module(name = 'root', version = '0')\n\
+            bazel_dep(name = 'ext', version = '2.0')\n\
+            e = use_extension('@ext//:ext.bzl', 'gen')\n\
+            use_repo(e, 'r1')\n";
+        std::fs::write(dir.0.join("BUILD.bazel"), "").unwrap();
+        let mut args = fixture_registry_flags();
+        args.push("--lockfile_mode=update".to_owned());
+        let (bzlmod, _) = bzlmod_flags::extract(&args, "build");
+        let flags = fetch_command::FetchFlags {
+            repos: named[..1].to_vec(),
+            output_base: Some(dir.0.join("ob")),
+            repository_cache: Some(None),
+            ..fetch_command::FetchFlags::default()
+        };
+        let resolution = fetch_command::run_for_build(&flags, &bzlmod, &dir.0, module).unwrap();
+        assert!(resolution.selection.keys().count() >= 2);
+        assert!(dir.0.join("ob/external/ext++gen+r1/BUILD.bazel").is_file());
+        let lock = std::fs::read_to_string(dir.0.join("MODULE.bazel.lock")).unwrap();
+        assert!(lock.contains("\"@@ext+//:ext.bzl%gen\""), "{lock}");
+        // No pattern names a repository: nothing is made, and the lock is still written.
+        let other = Scratch::new("build-none");
+        std::fs::write(other.0.join("BUILD.bazel"), "").unwrap();
+        let none = fetch_command::FetchFlags {
+            output_base: Some(other.0.join("ob")),
+            repository_cache: Some(None),
+            ..fetch_command::FetchFlags::default()
+        };
+        fetch_command::run_for_build(&none, &bzlmod, &other.0, module).unwrap();
+        assert!(!other.0.join("ob/external/ext++gen+r1").exists());
+        assert!(other.0.join("MODULE.bazel.lock").is_file());
     }
 }
