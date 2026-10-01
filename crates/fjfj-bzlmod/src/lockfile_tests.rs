@@ -366,8 +366,11 @@ fn a_registry_file_with_a_recorded_hash_comes_from_the_repository_cache() {
     );
     assert_eq!(asked.load(Ordering::SeqCst), 0, "no request for it");
 
-    // An entry that hashes to something else is refused.
+    // An entry that hashes to something else is refused. (Within a run the
+    // fetcher remembers what it served, so this asks anew.)
     std::fs::write(&entry, "tampered").unwrap();
+    let (inner, _) = served(&[]);
+    let fetcher = s.fetcher(REG, inner);
     let err = fetcher.fetch(&url).unwrap_err().to_string();
     assert!(
         err.contains("Checksum was") && err.contains(&format!("but wanted {hex}")),

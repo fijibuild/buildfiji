@@ -364,9 +364,6 @@ pub struct LockSession {
     /// What the previous lockfile was like, for the `error` mode refusal.
     unusable: Option<Unusable>,
     touched: Mutex<BTreeMap<String, FileHash>>,
-    /// What this run has already fetched, by URL: resolution asks for a file
-    /// more than once.
-    bodies: Mutex<BTreeMap<String, Option<Vec<u8>>>>,
     /// The module extensions this run evaluated, and those the module graph
     /// uses (what stays of the previous lockfile's).
     extensions: Mutex<Option<(Json, Vec<String>)>>,
@@ -400,7 +397,6 @@ impl LockSession {
             previous,
             unusable,
             touched: Mutex::new(BTreeMap::new()),
-            bodies: Mutex::new(BTreeMap::new()),
             extensions: Mutex::new(None),
             facts: Mutex::new(Vec::new()),
             repository_cache: Mutex::new(None),
@@ -481,6 +477,7 @@ impl LockSession {
     pub fn fetcher(self: &Arc<Self>, registry: &str, inner: Box<dyn Fetcher>) -> Box<dyn Fetcher> {
         Box::new(LockedFetcher {
             session: Arc::clone(self),
+            bodies: Mutex::new(BTreeMap::new()),
             registry: registry.to_owned(),
             inner,
         })
@@ -599,18 +596,20 @@ impl LockSession {
 
 struct LockedFetcher {
     session: Arc<LockSession>,
+    /// What this fetcher has already fetched, by URL: resolution asks for a
+    /// file more than once.
+    bodies: Mutex<BTreeMap<String, Option<Vec<u8>>>>,
     registry: String,
     inner: Box<dyn Fetcher>,
 }
 
 impl Fetcher for LockedFetcher {
     fn fetch(&self, url: &str) -> Result<Option<Vec<u8>>> {
-        if let Some(done) = self.session.bodies.lock().expect("lock").get(url) {
+        if let Some(done) = self.bodies.lock().expect("lock").get(url) {
             return Ok(done.clone());
         }
         let fetched = self.fetch_once(url)?;
-        self.session
-            .bodies
+        self.bodies
             .lock()
             .expect("lock")
             .insert(url.to_owned(), fetched.clone());
