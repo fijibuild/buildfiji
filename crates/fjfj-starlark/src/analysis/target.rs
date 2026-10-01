@@ -127,6 +127,21 @@ impl<'v> StarlarkValue<'v> for TargetValue {
         Some(RES.methods())
     }
 
+    fn write_hash(
+        &self,
+        hasher: &mut starlark::collections::StarlarkHasher,
+    ) -> starlark::Result<()> {
+        use std::hash::Hash;
+        self.info.label.hash(hasher);
+        Ok(())
+    }
+
+    fn equals(&self, other: Value<'v>) -> starlark::Result<bool> {
+        Ok(other
+            .downcast_ref::<TargetValue>()
+            .is_some_and(|o| o.info.label == self.info.label))
+    }
+
     fn at(&self, index: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
         match self.find(index, heap) {
             Some(found) => Ok(found),

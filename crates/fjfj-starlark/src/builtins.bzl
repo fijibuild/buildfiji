@@ -118,8 +118,23 @@ config_common = struct(
     toolchain_type = _toolchain_type,
 )
 
+# Coverage is not collected yet (buildfiji-fyz.9); the provider is, with what the
+# call says it would instrument, so a rule that asks for it loads.
+def _instrumented_files_info(
+        ctx,
+        source_attributes = [],
+        dependency_attributes = [],
+        extensions = None,
+        metadata_files = [],
+        baseline_coverage_files = None,
+        **kwargs):
+    return InstrumentedFilesInfo(
+        instrumented_files = depset(),
+        metadata_files = depset(metadata_files),
+    )
+
 coverage_common = struct(
-    instrumented_files_info = _unavailable("coverage_common.instrumented_files_info", "buildfiji-136.4"),
+    instrumented_files_info = _instrumented_files_info,
 )
 
 testing = struct(

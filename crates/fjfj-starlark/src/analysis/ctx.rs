@@ -321,6 +321,7 @@ fn ctx_members(builder: &mut MethodsBuilder) {
                 param("collect_default", true, false),
                 param("symlinks", true, false),
                 param("root_symlinks", true, false),
+                param("skip_conflict_checking", false, false),
             ],
             args,
             eval,

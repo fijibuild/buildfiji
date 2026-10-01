@@ -387,10 +387,12 @@ pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> R
             }
         }
         let built = report.failures.iter().all(|f| !needed.contains(&f.owner));
+        // Only what was built is listed, not the sources among a target's files.
         let files = target
             .files
             .to_vec()
             .iter()
+            .filter(|a| !a.is_source())
             .map(|a| shown(prefix, &request.options.configuration, a))
             .collect();
         report.results.push(TargetResult {

@@ -360,8 +360,13 @@ fn actions_members(builder: &mut MethodsBuilder) {
         };
         let message = optional_string("symlink", "progress_message", bound[4])?
             .or_else(|| Some(format!("Creating symlink {}", basename(&output))));
+        let executable = flag("symlink", "is_executable", bound[3])?;
         s.register(
-            "Symlink",
+            if executable {
+                "ExecutableSymlink"
+            } else {
+                "Symlink"
+            },
             message,
             ActionKind::Symlink {
                 target: target.exec_path(),
