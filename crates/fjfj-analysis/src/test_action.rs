@@ -6,8 +6,9 @@
 
 use crate::target::{ConfiguredTarget, ConfiguredTargetKey};
 use fjfj_engine::{Ctx, Error};
+use fjfj_graph::expand::{Expander, Prerequisite};
 use fjfj_graph::rule::AttrValue;
-use fjfj_graph::{Action, ActionKind, Artifact, Label, TestInfo};
+use fjfj_graph::{Action, ActionKind, Artifact, Label, LabelContext, TestInfo};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 
@@ -143,10 +144,55 @@ pub(crate) async fn register(
     let mut argv = vec![script, short.clone()];
     if let Some(AttrValue::StringList(args)) =
         attrs.iter().find(|(n, _)| n == "args").map(|(_, v)| v)
+        && !args.is_empty()
     {
+        // `$(location x)` is where the runfiles tree has x; the targets it can
+        // name are the ones the test reads.
+        let mut read: Vec<&Label> = Vec::new();
+        for name in ["data", "srcs", "deps"] {
+            if let Some((_, value)) = attrs.iter().find(|(n, _)| n == name) {
+                value.labels(&mut read);
+            }
+        }
+        let mut prerequisites = Vec::new();
+        for label in read.into_iter().cloned() {
+            let done = ctx
+                .get(ConfiguredTargetKey {
+                    label: label.clone(),
+                    configuration: key.configuration.clone(),
+                })
+                .await?;
+            prerequisites.push(Prerequisite {
+                label,
+                files: done.files.to_vec(),
+            });
+        }
+        let config = &key.configuration;
+        let env = ctx.data::<crate::target::Env>()?;
+        let expander = Expander {
+            rule_class: target.rule_class.as_deref().unwrap_or("test"),
+            attribute: "args",
+            label,
+            srcs: &[],
+            outs: &[],
+            prerequisites: &prerequisites,
+            bin_dir: &config.bin_dir(),
+            target_cpu: &config.cpu,
+            compilation_mode: config.compilation_mode.name(),
+            defines: &config.defines,
+            main_repo_name: &env.main_repo_name,
+            context: LabelContext {
+                repo: &label.repo,
+                package: &label.package,
+            },
+        };
         for arg in args {
+            let arg = arg.replace("$(location", "$(rootpath");
+            let arg = expander
+                .expand(&arg)
+                .map_err(|e| Error::msg(e.to_string()))?;
             argv.extend(
-                tokenize(arg).map_err(|e| Error::msg(format!("{}: in args: {e}", label.name)))?,
+                tokenize(&arg).map_err(|e| Error::msg(format!("{}: in args: {e}", label.name)))?,
             );
         }
     }
