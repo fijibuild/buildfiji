@@ -219,3 +219,57 @@ async fn write_file_and_symlink_actions_make_their_outputs() {
     );
     assert_eq!(outcome.spawned, 0);
 }
+
+#[tokio::test]
+async fn an_action_whose_inputs_and_outputs_are_unchanged_does_not_run_again() {
+    let (_dir, layout) = layout();
+    std::fs::write(layout.workspace.join("in.txt"), "one\n").unwrap();
+    layout.prepare().unwrap();
+    let out = out("a.txt");
+    let src = Artifact::source("", "", "in.txt");
+    let actions = || {
+        vec![shell(
+            &format!(
+                "cat in.txt > {}; echo ran >> {}.log",
+                out.exec_path(),
+                out.exec_path()
+            ),
+            vec![src.clone()],
+            vec![out.clone()],
+        )]
+    };
+    let made = layout.execroot().join(out.exec_path());
+
+    let first = run(&layout, actions(), std::slice::from_ref(&out), false).await;
+    assert_eq!((first.ran, first.cached, first.spawned), (1, 0, 1));
+    assert_eq!(std::fs::read_to_string(&made).unwrap(), "one\n");
+
+    // Nothing changed: nothing runs, in this process or a later one.
+    let again = run(&layout, actions(), std::slice::from_ref(&out), false).await;
+    assert_eq!((again.ran, again.cached, again.spawned), (0, 1, 0));
+
+    // The input changed.
+    std::fs::write(layout.workspace.join("in.txt"), "two\n").unwrap();
+    let third = run(&layout, actions(), std::slice::from_ref(&out), false).await;
+    assert_eq!((third.ran, third.cached), (1, 0));
+    assert_eq!(std::fs::read_to_string(&made).unwrap(), "two\n");
+
+    // The output was removed, or tampered with.
+    std::fs::remove_file(&made).unwrap();
+    let fourth = run(&layout, actions(), std::slice::from_ref(&out), false).await;
+    assert_eq!((fourth.ran, fourth.cached), (1, 0));
+    std::fs::set_permissions(&made, std::os::unix::fs::PermissionsExt::from_mode(0o644)).unwrap();
+    std::fs::write(&made, "changed\n").unwrap();
+    let fifth = run(&layout, actions(), std::slice::from_ref(&out), false).await;
+    assert_eq!((fifth.ran, fifth.cached), (1, 0));
+    assert_eq!(std::fs::read_to_string(&made).unwrap(), "two\n");
+
+    // The command changed.
+    let changed = vec![shell(
+        &format!("cat in.txt in.txt > {}", out.exec_path()),
+        vec![Artifact::source("", "", "in.txt")],
+        vec![out.clone()],
+    )];
+    let sixth = run(&layout, changed, std::slice::from_ref(&out), false).await;
+    assert_eq!((sixth.ran, sixth.cached), (1, 0));
+}

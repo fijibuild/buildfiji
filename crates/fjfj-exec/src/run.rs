@@ -9,6 +9,7 @@
 //! A failed action fails the actions that read its outputs. Without
 //! `keep_going` it also stops the build from starting any other.
 
+use crate::cache::ActionCache;
 use crate::execroot::Layout;
 use fjfj_graph::{Action, ActionKind, Artifact};
 use futures::future::{BoxFuture, FutureExt, Shared, join_all};
@@ -62,6 +63,9 @@ pub struct Outcome {
     pub spawned: usize,
     /// Actions of any kind that ran.
     pub ran: usize,
+    /// Actions that did not need to run: their inputs were as the last run
+    /// had them and their outputs were still there.
+    pub cached: usize,
     pub failures: Vec<Failure>,
 }
 
@@ -92,6 +96,8 @@ struct Scheduler {
     stopped: AtomicBool,
     spawned: AtomicUsize,
     ran: AtomicUsize,
+    cached: AtomicUsize,
+    cache: ActionCache,
     failures: Mutex<Vec<Failure>>,
     progress: Arc<dyn Progress>,
 }
@@ -120,6 +126,8 @@ pub async fn execute(
         stopped: AtomicBool::new(false),
         spawned: AtomicUsize::new(0),
         ran: AtomicUsize::new(0),
+        cached: AtomicUsize::new(0),
+        cache: ActionCache::load(layout.output_base.join("fjfj-action-cache.json")),
         failures: Mutex::new(Vec::new()),
         progress,
     });
@@ -130,9 +138,11 @@ pub async fn execute(
     wanted.sort_unstable();
     wanted.dedup();
     join_all(wanted.into_iter().map(|id| scheduler.run(id))).await;
+    let _ = scheduler.cache.save();
     Outcome {
         spawned: scheduler.spawned.load(Ordering::Relaxed),
         ran: scheduler.ran.load(Ordering::Relaxed),
+        cached: scheduler.cached.load(Ordering::Relaxed),
         failures: std::mem::take(&mut *scheduler.failures.lock().unwrap()),
     }
 }
@@ -180,9 +190,20 @@ impl Scheduler {
                 output: String::new(),
             }));
         }
+        let execroot = self.layout.execroot();
+        let key = self.cache.key(&execroot, &action);
+        if let Some(key) = &key
+            && self.cache.is_current(&execroot, &action, key)
+        {
+            self.cached.fetch_add(1, Ordering::Relaxed);
+            return Ok(());
+        }
         self.progress.started(&action);
         match self.execute_one(&action).await {
             Ok(()) => {
+                if let Some(key) = key {
+                    self.cache.record(&execroot, &action, key);
+                }
                 self.ran.fetch_add(1, Ordering::Relaxed);
                 Ok(())
             }
