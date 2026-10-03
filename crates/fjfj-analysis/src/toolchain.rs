@@ -8,11 +8,15 @@
 //! - a type with none is an error unless the rule said it is optional.
 
 use crate::expand_label_text;
-use crate::target::{ConfiguredTargetKey, Env, ToolchainDecl};
+use crate::target::{ConfiguredTargetKey, Env, PackageKey, ToolchainDecl};
 use fjfj_engine::{Ctx, Error, Key};
 use fjfj_graph::Label;
+use fjfj_graph::package::{Package, PackageBuilder};
 use fjfj_graph::pattern::{PatternContext, TargetPattern};
-use std::sync::Arc;
+use fjfj_loading::{PackageLookup, PackageSource};
+use fjfj_starlark::RepoMappings;
+use std::collections::{BTreeSet, HashMap};
+use std::sync::{Arc, Mutex};
 
 /// Every registered `toolchain` target, in the order they are tried.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -35,62 +39,126 @@ impl Key for RegisteredToolchains {
             .map(|pattern| (String::new(), pattern))
             .chain(env.registered_toolchains.iter().cloned())
             .collect();
-        let source = env.source.clone();
         let mappings = env.rules.mappings();
-        tokio::task::spawn_blocking(move || {
-            let mut labels: Vec<Label> = Vec::new();
-            // A package's BUILD file is evaluated once, however many toolchains it declares.
-            let mut packages = std::collections::HashMap::new();
-            for (module_repo, text) in &patterns {
-                let context = PatternContext {
-                    repo: module_repo,
-                    offset: "",
-                };
-                let parsed = TargetPattern::parse(text, context, &mut |apparent| {
-                    mappings
-                        .find_apparent(module_repo, apparent)
-                        .unwrap_or_else(|| apparent.to_owned())
-                })
-                .map_err(|e| Error::msg(format!("register_toolchains('{text}'): {e}")))?;
-                let found = fjfj_loading::resolve_with(&[parsed], &*source, true);
-                if let Some(failure) = found.failures.first() {
-                    return Err(Error::msg(format!(
-                        "register_toolchains('{text}'): {}",
-                        failure.message
-                    )));
-                }
-                for label in found.targets {
-                    // Only the `toolchain` rules: a wildcard names everything,
-                    // and a rule that itself needs a toolchain must not be
-                    // analysed to find out which there are.
-                    let package = packages
-                        .entry((label.repo.clone(), label.package.clone()))
-                        .or_insert_with(|| source.package(&label.repo, &label.package).ok());
-                    let is_toolchain = package
-                        .as_ref()
-                        .and_then(|p| {
-                            p.target(&label.name).map(|t| {
-                                matches!(
-                                    &t.kind,
-                                    fjfj_graph::package::TargetKind::Rule {
-                                        rule_class,
-                                        defined_in: None,
-                                        ..
-                                    } if rule_class == "toolchain"
-                                )
-                            })
-                        })
-                        .unwrap_or(false);
-                    if is_toolchain && !labels.contains(&label) {
-                        labels.push(label);
-                    }
-                }
+        // Expansion is synchronous, so it runs against the packages fetched so
+        // far and notes the ones it lacked; those are then fetched from the
+        // engine, in parallel and shared with analysis, and it runs again.
+        let mut known: HashMap<(String, String), Result<Arc<Package>, String>> = HashMap::new();
+        loop {
+            let source = Prefetched {
+                inner: env.source.clone(),
+                known: std::mem::take(&mut known),
+                missing: Mutex::new(BTreeSet::new()),
+            };
+            let patterns = patterns.clone();
+            let mappings = mappings.clone();
+            let (source, expanded) = tokio::task::spawn_blocking(move || {
+                let expanded = expand(&patterns, &mappings, &source);
+                (source, expanded)
+            })
+            .await
+            .map_err(|e| Error::msg(format!("expanding toolchains panicked: {e}")))?;
+            let Prefetched {
+                known: fetched,
+                missing,
+                ..
+            } = source;
+            let missing: Vec<(String, String)> =
+                missing.into_inner().unwrap().into_iter().collect();
+            if missing.is_empty() {
+                return expanded;
             }
-            Ok(labels)
-        })
-        .await
-        .map_err(|e| Error::msg(format!("expanding toolchains panicked: {e}")))?
+            known = fetched;
+            let keys = missing
+                .iter()
+                .map(|(repo, package)| PackageKey {
+                    repo: repo.clone(),
+                    package: package.clone(),
+                })
+                .collect();
+            for (at, loaded) in missing.into_iter().zip(ctx.get_all(keys).await) {
+                known.insert(at, loaded.map(|p| (*p).clone()).map_err(|e| e.to_string()));
+            }
+        }
     }
+}
+
+/// Packages the engine has already loaded; one it has not is recorded as
+/// missing and stands in as an empty package, so a pass finds all it needs.
+struct Prefetched {
+    inner: Arc<dyn PackageSource>,
+    known: HashMap<(String, String), Result<Arc<Package>, String>>,
+    missing: Mutex<BTreeSet<(String, String)>>,
+}
+
+impl PackageSource for Prefetched {
+    fn lookup(&self, repo: &str) -> Result<Arc<PackageLookup>, String> {
+        self.inner.lookup(repo)
+    }
+
+    fn package(&self, repo: &str, package: &str) -> Result<Arc<Package>, String> {
+        let at = (repo.to_owned(), package.to_owned());
+        if let Some(found) = self.known.get(&at) {
+            return found.clone();
+        }
+        self.missing.lock().unwrap().insert(at);
+        Ok(Arc::new(
+            PackageBuilder::new(repo, package, &|_: &str| false).build(),
+        ))
+    }
+}
+
+/// The `toolchain` targets `patterns` name, in order.
+fn expand(
+    patterns: &[(String, String)],
+    mappings: &RepoMappings,
+    source: &dyn PackageSource,
+) -> Result<Vec<Label>, Error> {
+    let mut labels: Vec<Label> = Vec::new();
+    for (module_repo, text) in patterns {
+        let context = PatternContext {
+            repo: module_repo,
+            offset: "",
+        };
+        let parsed = TargetPattern::parse(text, context, &mut |apparent| {
+            mappings
+                .find_apparent(module_repo, apparent)
+                .unwrap_or_else(|| apparent.to_owned())
+        })
+        .map_err(|e| Error::msg(format!("register_toolchains('{text}'): {e}")))?;
+        let found = fjfj_loading::resolve_with(&[parsed], source, true);
+        if let Some(failure) = found.failures.first() {
+            return Err(Error::msg(format!(
+                "register_toolchains('{text}'): {}",
+                failure.message
+            )));
+        }
+        for label in found.targets {
+            // Only the `toolchain` rules: a wildcard names everything, and a
+            // rule that itself needs a toolchain must not be analysed to find
+            // out which there are.
+            let is_toolchain = source
+                .package(&label.repo, &label.package)
+                .ok()
+                .and_then(|p| {
+                    p.target(&label.name).map(|t| {
+                        matches!(
+                            &t.kind,
+                            fjfj_graph::package::TargetKind::Rule {
+                                rule_class,
+                                defined_in: None,
+                                ..
+                            } if rule_class == "toolchain"
+                        )
+                    })
+                })
+                .unwrap_or(false);
+            if is_toolchain && !labels.contains(&label) {
+                labels.push(label);
+            }
+        }
+    }
+    Ok(labels)
 }
 
 /// The target a label stands for: an alias of one is that one (a toolchain
