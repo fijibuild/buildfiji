@@ -13,6 +13,7 @@ pub const IMPLEMENTED: &[&str] = &[
     "extra_toolchains",
     "extra_execution_platforms",
     "host_platform",
+    "action_env",
     "aspects",
     "output_groups",
     "cpu",
@@ -61,6 +62,8 @@ pub struct BuildFlags {
     pub extra_execution_platforms: Vec<String>,
     /// `--host_platform`: the platform the host is.
     pub host_platform: Option<String>,
+    /// `--action_env`: `NAME=VALUE` or `NAME`, in order.
+    pub action_env: Vec<String>,
     /// `--aspects`: `<bzl label>%<aspect name>` for each, in order.
     pub aspects: Vec<String>,
     /// `--output_groups`: the groups to build, each as written (`+name`, `-name`).
@@ -151,6 +154,7 @@ pub fn extract(args: &[String], command: &str) -> (BuildFlags, Vec<String>) {
                     .map(str::to_owned),
             ),
             "host_platform" => flags.host_platform = Some(value),
+            "action_env" => flags.action_env.push(value),
             "extra_toolchains" => flags.extra_toolchains.extend(
                 value
                     .split(',')
@@ -239,6 +243,16 @@ mod tests {
             ]
         );
         assert_eq!(rest, ["//pkg:x"]);
+    }
+
+    #[test]
+    fn action_env_keeps_each_entry_in_order() {
+        let (flags, rest) = extract(
+            &args(&["--action_env=A=1", "--action_env", "B", "//x"]),
+            "build",
+        );
+        assert_eq!(flags.action_env, ["A=1", "B"]);
+        assert_eq!(rest, ["//x"]);
     }
 
     #[test]

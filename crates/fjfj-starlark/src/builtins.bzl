@@ -529,7 +529,7 @@ def _make_fragments(options):
 def _make_configuration(options):
     return struct(
         coverage_enabled = False,
-        default_shell_env = {},
+        default_shell_env = dict([line.split("=", 1) for line in options["default_shell_env"].split("\n")]),
         host_path_separator = ":",
         short_id = options["short_id"],
         test_env = {},

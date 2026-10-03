@@ -59,6 +59,20 @@ pub(crate) fn configuration_from(
         configuration.cpu = cpu.clone();
     }
     configuration.defines = flags.defines.iter().cloned().collect();
+    for entry in &flags.action_env {
+        match entry.split_once('=') {
+            Some((name, value)) => {
+                configuration
+                    .action_env
+                    .insert(name.to_owned(), value.to_owned());
+            }
+            None => {
+                if let Ok(value) = std::env::var(entry) {
+                    configuration.action_env.insert(entry.clone(), value);
+                }
+            }
+        }
+    }
     for (name, value) in &flags.options {
         let entry = configuration.options.entry(name.clone()).or_default();
         if !entry.is_empty() {

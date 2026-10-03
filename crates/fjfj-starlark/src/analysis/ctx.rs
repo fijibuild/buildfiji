@@ -162,6 +162,15 @@ impl CtxState {
                 config.compilation_mode.name().to_owned(),
             ),
             ("os", os.to_owned()),
+            (
+                "default_shell_env",
+                config
+                    .default_shell_env()
+                    .iter()
+                    .map(|(k, v)| format!("{k}={v}"))
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            ),
             ("short_id", config.mnemonic()),
             ("exec", if config.exec { "1" } else { "" }.to_owned()),
         ]

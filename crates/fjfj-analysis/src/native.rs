@@ -201,7 +201,6 @@ async fn forward(
 
 /// The shell Bazel runs a genrule's command with, and what it sources first.
 const SHELL: &str = "/bin/bash";
-const SHELL_PATH: &str = "/bin:/usr/bin:/usr/local/bin";
 
 async fn genrule(
     ctx: &Ctx,
@@ -328,7 +327,7 @@ async fn genrule(
                 "-c".to_owned(),
                 format!("source {script}; {expanded}"),
             ],
-            env: BTreeMap::from([("PATH".to_owned(), SHELL_PATH.to_owned())]),
+            env: config.default_shell_env(),
             execution_requirements,
         },
         inputs,

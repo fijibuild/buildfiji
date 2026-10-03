@@ -97,6 +97,9 @@ pub struct Configuration {
     /// `--test_env`: set for every test, a name inherited from the client
     /// already given its value.
     pub test_env: BTreeMap<String, String>,
+    /// `--action_env`: set for every action that uses the default shell
+    /// environment, a name inherited from the client already given its value.
+    pub action_env: BTreeMap<String, String>,
     /// `--test_arg`: appended to the arguments of every test.
     pub test_args: Vec<String>,
     /// Built to run on the execution platform: a tool, not a target.
@@ -139,6 +142,20 @@ pub fn host_cpu() -> &'static str {
     }
 }
 
+/// `PATH` of the default shell environment: fixed, as with
+/// `--incompatible_strict_action_env`.
+const SHELL_PATH: &str = "/bin:/usr/bin:/usr/local/bin";
+
+impl Configuration {
+    /// The environment of an action that uses the default shell environment
+    /// (`ctx.configuration.default_shell_env`): `PATH`, then `--action_env`.
+    pub fn default_shell_env(&self) -> BTreeMap<String, String> {
+        let mut env = BTreeMap::from([("PATH".to_owned(), SHELL_PATH.to_owned())]);
+        env.extend(self.action_env.clone());
+        env
+    }
+}
+
 impl Default for Configuration {
     fn default() -> Configuration {
         Configuration {
@@ -148,6 +165,7 @@ impl Default for Configuration {
             constraints: std::collections::BTreeSet::new(),
             options: BTreeMap::new(),
             test_env: BTreeMap::new(),
+            action_env: BTreeMap::new(),
             test_args: Vec::new(),
             exec: false,
             settings: BTreeMap::new(),
@@ -165,6 +183,7 @@ impl Configuration {
             cpu: self.cpu.clone(),
             compilation_mode: CompilationMode::Opt,
             constraints: self.constraints.clone(),
+            action_env: self.action_env.clone(),
             exec: true,
             ..Configuration::default()
         }
@@ -275,6 +294,18 @@ mod tests {
     }
 
     #[test]
+    fn action_env_follows_path_in_the_default_shell_env_and_reaches_tools() {
+        let mut config = Configuration::default();
+        config.action_env.insert("A".into(), "1".into());
+        let env = config.default_shell_env();
+        assert_eq!(env["A"], "1");
+        assert_eq!(env["PATH"], "/bin:/usr/bin:/usr/local/bin");
+        config.action_env.insert("PATH".into(), "/x".into());
+        assert_eq!(config.default_shell_env()["PATH"], "/x");
+        assert_eq!(config.to_exec().action_env, config.action_env);
+    }
+
+    #[test]
     fn the_mode_and_exec_show_in_the_name() {
         let config = Configuration {
             cpu: "k8".into(),
@@ -283,6 +314,7 @@ mod tests {
             constraints: std::collections::BTreeSet::new(),
             options: BTreeMap::new(),
             test_env: BTreeMap::new(),
+            action_env: BTreeMap::new(),
             test_args: Vec::new(),
             exec: true,
             settings: BTreeMap::new(),

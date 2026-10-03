@@ -31,7 +31,6 @@ use std::fmt;
 use std::sync::Arc;
 
 const SHELL: &str = "/bin/bash";
-const SHELL_PATH: &str = "/bin:/usr/bin:/usr/local/bin";
 
 #[derive(ProvidesStaticType, NoSerialize, Allocative)]
 pub(crate) struct ActionsValue {
@@ -776,7 +775,7 @@ fn spawn<'v>(
     let default_env = flag(function, "use_default_shell_env", bound[6])?;
     let mut env = BTreeMap::new();
     if default_env {
-        env.insert("PATH".to_owned(), SHELL_PATH.to_owned());
+        env.extend(s.configuration.default_shell_env());
     }
     env.extend(string_dict(function, "env", bound[7])?);
     let execution_requirements = string_dict(function, "execution_requirements", bound[8])?;
