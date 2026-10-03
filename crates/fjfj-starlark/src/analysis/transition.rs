@@ -56,7 +56,7 @@ pub fn transition_spec(
     Some(TransitionSpec { inputs, outputs })
 }
 
-fn to_starlark<'v>(heap: Heap<'v>, name: &str, value: &SettingValue) -> Value<'v> {
+pub(super) fn to_starlark<'v>(heap: Heap<'v>, name: &str, value: &SettingValue) -> Value<'v> {
     // `--platforms` holds labels.
     if name == "//command_line_option:platforms"
         && let SettingValue::List(items) = value

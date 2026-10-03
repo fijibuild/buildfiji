@@ -13,6 +13,7 @@ use fjfj_bazel_compat::QueryArgs;
 use fjfj_graph::config::Configuration;
 use fjfj_graph::{Action, ActionKind, Label};
 use fjfj_query::{Evaluator, Graph, Options};
+use fjfj_starlark::RuleSource;
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
@@ -30,11 +31,30 @@ impl Kind {
         }
     }
 
-    /// The `--output` values, the first being the default.
+    /// The `--output` values, in the order Bazel lists them.
     fn formats(self) -> &'static [&'static str] {
         match self {
-            Kind::Cquery => &["label", "label_kind"],
+            Kind::Cquery => &[
+                "label_kind",
+                "label",
+                "transitions",
+                "proto",
+                "streamed_proto",
+                "textproto",
+                "jsonproto",
+                "build",
+                "graph",
+                "starlark",
+                "files",
+            ],
             Kind::Aquery => &["text"],
+        }
+    }
+
+    fn default_format(self) -> &'static str {
+        match self {
+            Kind::Cquery => "label",
+            Kind::Aquery => "text",
         }
     }
 }
@@ -43,10 +63,51 @@ fn bad(message: impl Into<String>) -> CliError {
     CliError::CommandLine(anyhow::anyhow!(message.into()))
 }
 
+/// The code `--output=starlark` runs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Formatter {
+    /// `--starlark:expr`, an expression of `target`.
+    Expr(String),
+    /// `--starlark:file`: its name and its text, defining `format(target)`.
+    File(String, String),
+}
+
+/// What `--output` and the flags around it asked for.
+#[derive(Debug)]
+struct Flags {
+    format: String,
+    options: Options,
+    expr: Option<String>,
+    file: Option<String>,
+}
+
+impl Flags {
+    fn formatter(&self) -> Result<Formatter, CliError> {
+        match (&self.expr, &self.file) {
+            (Some(_), Some(_)) => Err(CliError::Query(anyhow::anyhow!(
+                "You must not specify both --starlark:expr and --starlark:file"
+            ))),
+            (Some(expr), None) => Ok(Formatter::Expr(expr.clone())),
+            (None, Some(file)) => std::fs::read_to_string(file)
+                .map(|text| Formatter::File(file.clone(), text))
+                .map_err(|_| {
+                    CliError::Query(anyhow::anyhow!(
+                        "invalid --starlark:file: failed to read {file}"
+                    ))
+                }),
+            (None, None) => Ok(Formatter::Expr("str(target.label)".to_owned())),
+        }
+    }
+}
+
 /// `--output` and the query flags `query` shares, with the rest returned.
-fn extract(kind: Kind, args: &[String]) -> Result<(String, Options, Vec<String>), CliError> {
-    let mut format = kind.formats()[0].to_owned();
-    let mut options = Options::default();
+fn extract(kind: Kind, args: &[String]) -> Result<(Flags, Vec<String>), CliError> {
+    let mut flags = Flags {
+        format: kind.default_format().to_owned(),
+        options: Options::default(),
+        expr: None,
+        file: None,
+    };
     let mut rest = Vec::new();
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
@@ -69,22 +130,28 @@ fn extract(kind: Kind, args: &[String]) -> Result<(String, Options, Vec<String>)
                         kind.formats().join(", ")
                     )));
                 }
-                format = value;
+                flags.format = value;
             }
-            "implicit_deps" => options.implicit_deps = true,
-            "noimplicit_deps" => options.implicit_deps = false,
-            "tool_deps" => options.tool_deps = true,
-            "notool_deps" => options.tool_deps = false,
+            "starlark:expr" if kind == Kind::Cquery => {
+                flags.expr = Some(value.ok_or_else(|| bad("--starlark:expr needs a value"))?);
+            }
+            "starlark:file" if kind == Kind::Cquery => {
+                flags.file = Some(value.ok_or_else(|| bad("--starlark:file needs a value"))?);
+            }
+            "implicit_deps" => flags.options.implicit_deps = true,
+            "noimplicit_deps" => flags.options.implicit_deps = false,
+            "tool_deps" => flags.options.tool_deps = true,
+            "notool_deps" => flags.options.tool_deps = false,
             "keep_going" | "nokeep_going" => {}
             _ => rest.push(arg.clone()),
         }
     }
-    Ok((format, options, rest))
+    Ok((flags, rest))
 }
 
 pub(crate) async fn run(args: QueryArgs, kind: Kind) -> Result<(), CliError> {
     let command = kind.name();
-    let (format, query_options, rest) = extract(kind, &args.expr)?;
+    let (flags, rest) = extract(kind, &args.expr)?;
     let (build_flags, rest) = fjfj_bazel_compat::build_flags::extract(&rest, command);
     let (bzlmod, rest) = bzlmod_flags::extract(&rest, command);
     let (fetch, rest) = fetch_command::extract(&rest)?;
@@ -102,10 +169,14 @@ pub(crate) async fn run(args: QueryArgs, kind: Kind) -> Result<(), CliError> {
     let text = rest.join(" ");
     let expr =
         fjfj_query::parse(&text).map_err(|e| bad(format!("Error while parsing '{text}': {e}")))?;
+    let formatter = (flags.format == "starlark")
+        .then(|| flags.formatter())
+        .transpose()?;
     let query = Query {
         kind,
-        format,
-        options: query_options,
+        format: flags.format,
+        options: flags.options,
+        formatter,
         expr,
     };
     let configuration = build_command::configuration_from(&build_flags).map_err(bad)?;
@@ -176,6 +247,8 @@ struct Query {
     kind: Kind,
     format: String,
     options: Options,
+    /// For `--output=starlark`.
+    formatter: Option<Formatter>,
     expr: fjfj_query::Expr,
 }
 
@@ -206,10 +279,11 @@ fn evaluate(
         )));
     }
     let configured = ConfiguredGraph::new(&graph, &report.analysed);
-    let labels = Evaluator::new(&configured, query.options)
+    let evaluator = Evaluator::new(&configured, query.options);
+    let labels = evaluator
         .eval(&query.expr)
         .map_err(|e| CliError::Query(anyhow::anyhow!(e)))?;
-    Ok(render(query.kind, &query.format, &labels, &configured))
+    render(query, &labels, &evaluator, &configured, repos)
 }
 
 /// The configured targets `labels` stand for, in label then configuration order.
@@ -217,45 +291,73 @@ fn chosen<'a>(
     labels: &BTreeSet<Label>,
     graph: &'a ConfiguredGraph<'_>,
 ) -> Vec<&'a Arc<ConfiguredTarget>> {
-    let mut chosen: Vec<_> = labels.iter().filter_map(|l| graph.target(l)).collect();
-    chosen.sort_by_key(|t| {
-        (
-            build_command::label_name(&t.label),
-            t.configuration.checksum(),
-        )
-    });
-    chosen
+    labels.iter().filter_map(|l| graph.target(l)).collect()
 }
 
 fn render(
-    kind: Kind,
-    format: &str,
+    query: &Query,
     labels: &BTreeSet<Label>,
+    evaluator: &Evaluator<'_>,
     graph: &ConfiguredGraph<'_>,
-) -> String {
-    let mut out = String::new();
-    match kind {
-        Kind::Cquery => {
-            for t in chosen(labels, graph) {
-                // A source file has no configuration.
-                let config = if t.rule_class.is_some() {
-                    t.configuration.checksum()[..7].to_owned()
-                } else {
-                    "null".to_owned()
-                };
-                let name = build_command::label_name(&t.label);
-                match (format, &t.rule_class) {
-                    ("label_kind", Some(class)) => {
-                        out.push_str(&format!("{class} rule {name} ({config})\n"))
-                    }
-                    ("label_kind", None) => {
-                        out.push_str(&format!("source file {name} ({config})\n"))
-                    }
-                    _ => out.push_str(&format!("{name} ({config})\n")),
-                }
+    repos: &fjfj_repo::Repos,
+) -> Result<String, CliError> {
+    let failed = |e: String| CliError::Query(anyhow::anyhow!(e));
+    match query.kind {
+        Kind::Cquery => match query.format.as_str() {
+            "label" | "label_kind" | "graph" => {
+                let format = fjfj_query::output::Format::parse(&query.format)
+                    .expect("a format the query command has");
+                fjfj_query::output::render(
+                    evaluator,
+                    labels,
+                    format,
+                    fjfj_query::output::Order::Auto,
+                    '\n',
+                )
+                .map_err(failed)
             }
-        }
+            "files" => {
+                let mut out = String::new();
+                for target in chosen(labels, graph) {
+                    for file in target.files.to_vec() {
+                        out.push_str(&file.exec_path());
+                        out.push('\n');
+                    }
+                }
+                Ok(out)
+            }
+            "starlark" => {
+                let default = Formatter::Expr("str(target.label)".to_owned());
+                let formatter = query.formatter.as_ref().unwrap_or(&default);
+                let (name, source, expr) = match formatter {
+                    Formatter::Expr(expr) => ("--starlark:expr", expr.as_str(), true),
+                    Formatter::File(name, text) => (name.as_str(), text.as_str(), false),
+                };
+                let targets: Vec<fjfj_starlark::FormatTarget> = chosen(labels, graph)
+                    .into_iter()
+                    .map(|t| fjfj_starlark::FormatTarget {
+                        info: Arc::new(fjfj_analysis::dep_info(
+                            t,
+                            t.rule_class.is_none()
+                                && t.files.to_vec().first().is_some_and(|f| !f.is_source()),
+                        )),
+                        build_options: t.configuration.build_options().into_iter().collect(),
+                    })
+                    .collect();
+                let lines =
+                    fjfj_starlark::format_targets(name, source, expr, &repos.mappings(), &targets)
+                        .map_err(failed)?;
+                Ok(lines.into_iter().map(|l| l + "\n").collect())
+            }
+            "transitions" => Err(CliError::Query(anyhow::anyhow!(
+                "Instead of using --output=transitions, set the --transitions flag explicitly to 'lite' or 'full'"
+            ))),
+            other => Err(CliError::Query(anyhow::anyhow!(
+                "--output={other} is not implemented yet"
+            ))),
+        },
         Kind::Aquery => {
+            let mut out = String::new();
             let mut actions: Vec<(&Action, &Configuration)> = chosen(labels, graph)
                 .into_iter()
                 .flat_map(|t| t.actions.iter().map(|a| (a, &t.configuration)))
@@ -270,9 +372,9 @@ fn render(
             for (action, configuration) in actions {
                 aquery_text(&mut out, action, configuration);
             }
+            Ok(out)
         }
     }
-    out
 }
 
 fn aquery_text(out: &mut String, action: &Action, configuration: &Configuration) {
@@ -340,7 +442,13 @@ mod tests {
     use std::collections::BTreeMap;
 
     /// `fjfj <kind> <expr>` on a workspace of `files`.
-    fn query_on(files: &[(&str, &str)], kind: Kind, format: &str, expr: &str) -> String {
+    fn query_on(
+        files: &[(&str, &str)],
+        kind: Kind,
+        format: &str,
+        expr: &str,
+        formatter: Option<Formatter>,
+    ) -> Result<String, CliError> {
         let dir = tempfile::tempdir().unwrap();
         let ws = dir.path().join("ws");
         for (file, text) in files {
@@ -372,6 +480,7 @@ mod tests {
             kind,
             format: format.to_owned(),
             options: Options::default(),
+            formatter,
             expr: fjfj_query::parse(expr).unwrap(),
         };
         let options = build_options(Configuration::default(), &Default::default());
@@ -379,7 +488,7 @@ mod tests {
             workspace: ws,
             output_base: dir.path().join("exec"),
         };
-        evaluate(&query, &repos, options, layout).unwrap()
+        evaluate(&query, &repos, options, layout)
     }
 
     /// Two targets of one rule, the second reached through a transition that
@@ -414,29 +523,46 @@ r(name = "b", srcs = ["s.txt"])
         ("s.txt", ""),
     ];
 
-    /// Each line without its configuration digits.
+    /// The text with each configuration's seven digits replaced by `7`.
+    fn undigested_text(text: &str) -> String {
+        let mut out = String::new();
+        let mut rest = text;
+        while let Some(at) = rest.find('(') {
+            out.push_str(&rest[..=at]);
+            rest = &rest[at + 1..];
+            let hex = rest.chars().take_while(char::is_ascii_hexdigit).count();
+            if hex == 7 && rest[7..].starts_with(')') {
+                out.push('7');
+                rest = &rest[7..];
+            }
+        }
+        out.push_str(rest);
+        out
+    }
+
     fn undigested(text: &str) -> Vec<String> {
-        text.lines()
-            .map(|l| match l.rsplit_once(" (") {
-                Some((head, tail)) if tail.ends_with(')') && tail != "null)" => {
-                    format!("{head} ({})", tail.len() - 1)
-                }
-                _ => l.to_owned(),
-            })
-            .collect()
+        undigested_text(text).lines().map(str::to_owned).collect()
+    }
+
+    async fn run_query(
+        kind: Kind,
+        format: &'static str,
+        expr: &'static str,
+        formatter: Option<Formatter>,
+    ) -> Result<String, CliError> {
+        tokio::task::spawn_blocking(move || query_on(TRANSITION, kind, format, expr, formatter))
+            .await
+            .unwrap()
+    }
+
+    async fn cquery(expr: &'static str) -> String {
+        run_query(Kind::Cquery, "label", expr, None).await.unwrap()
     }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn cquery_lists_a_target_once_for_each_configuration() {
-        let text =
-            tokio::task::spawn_blocking(|| query_on(TRANSITION, Kind::Cquery, "label", "//:b"))
-                .await
-                .unwrap();
-        assert_eq!(undigested(&text), ["//:b (7)"]);
-        let text =
-            tokio::task::spawn_blocking(|| query_on(TRANSITION, Kind::Cquery, "label", "//..."))
-                .await
-                .unwrap();
+        assert_eq!(undigested(&cquery("//:b").await), ["//:b (7)"]);
+        let text = cquery("//...").await;
         // //:b by itself and //:b below //:a, which transitions it.
         assert_eq!(
             undigested(&text),
@@ -448,20 +574,95 @@ r(name = "b", srcs = ["s.txt"])
 
     #[tokio::test(flavor = "multi_thread")]
     async fn deps_follow_the_edge_into_the_configuration_the_transition_chose() {
-        let all =
-            tokio::task::spawn_blocking(|| query_on(TRANSITION, Kind::Cquery, "label", "//:b"))
-                .await
-                .unwrap();
-        let below = tokio::task::spawn_blocking(|| {
-            query_on(TRANSITION, Kind::Cquery, "label", "deps(//:a) - //:a")
-        })
-        .await
-        .unwrap();
+        let all = cquery("//:b").await;
+        let below = cquery("deps(//:a) - //:a").await;
         assert_eq!(undigested(&below), ["//:b (7)", "//:s.txt (null)"]);
         assert_ne!(
             all.lines().next().unwrap(),
             below.lines().next().unwrap(),
             "//:b below //:a is not the //:b that was built on its own"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn cquery_prints_kinds_graphs_and_files() {
+        let kinds = run_query(Kind::Cquery, "label_kind", "//:a + //:s.txt", None)
+            .await
+            .unwrap();
+        assert_eq!(
+            undigested(&kinds),
+            ["r rule //:a (7)", "source file //:s.txt (null)"]
+        );
+        let graph = run_query(Kind::Cquery, "graph", "deps(//:a)", None)
+            .await
+            .unwrap();
+        let lines = undigested(&graph);
+        assert_eq!(lines[..2], ["digraph mygraph {", "  node [shape=box];"]);
+        // The edges of a node by the name of what they reach.
+        assert_eq!(
+            lines[3..5],
+            [
+                "  \"//:a (7)\" -> \"//:b (7)\"",
+                "  \"//:a (7)\" -> \"//:s.txt (null)\""
+            ]
+        );
+        let files = run_query(Kind::Cquery, "files", "//:a + //:s.txt", None)
+            .await
+            .unwrap();
+        assert_eq!(files, "bazel-out/k8-fastbuild/bin/a.txt\ns.txt\n");
+        let error = run_query(Kind::Cquery, "transitions", "//:a", None)
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("set the --transitions flag"));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn starlark_output_formats_each_target_with_the_users_code() {
+        let expr = |code: &str| Some(Formatter::Expr(code.to_owned()));
+        let by_default = run_query(Kind::Cquery, "starlark", "//:a", None)
+            .await
+            .unwrap();
+        assert_eq!(by_default, "@@//:a\n");
+        let names = run_query(
+            Kind::Cquery,
+            "starlark",
+            "//:a + //:b",
+            expr("target.label.name + ':' + str(len(providers(target)))"),
+        )
+        .await
+        .unwrap();
+        // //:b is also a dependency of //:a, in a configuration of its own.
+        assert_eq!(names, "a:1\nb:1\nb:1\n");
+        // Not a string: shown as str() shows it.
+        let number = run_query(Kind::Cquery, "starlark", "//:a", expr("1 + 1"))
+            .await
+            .unwrap();
+        assert_eq!(number, "2\n");
+        let cpu = run_query(
+            Kind::Cquery,
+            "starlark",
+            "//:a",
+            expr("build_options(target)['//command_line_option:cpu']"),
+        )
+        .await
+        .unwrap();
+        assert_eq!(cpu, format!("{}\n", fjfj_graph::config::host_cpu()));
+        let file = Some(Formatter::File(
+            "fmt.bzl".to_owned(),
+            "def format(target):\n  return 'F:' + target.label.name\n".to_owned(),
+        ));
+        let from_file = run_query(Kind::Cquery, "starlark", "//:a", file)
+            .await
+            .unwrap();
+        assert_eq!(from_file, "F:a\n");
+        let broken = run_query(Kind::Cquery, "starlark", "//:a", expr("target.nope"))
+            .await
+            .unwrap_err();
+        assert!(
+            broken
+                .to_string()
+                .contains("Starlark evaluation error for //:a"),
+            "{broken}"
         );
     }
 
@@ -471,12 +672,35 @@ r(name = "b", srcs = ["s.txt"])
 
     #[test]
     fn output_is_checked_against_the_commands_formats() {
-        let (format, _, rest) =
+        let (flags, rest) =
             extract(Kind::Cquery, &args(&["--output=label_kind", "//a:b"])).unwrap();
-        assert_eq!(format, "label_kind");
+        assert_eq!(flags.format, "label_kind");
         assert_eq!(rest, ["//a:b"]);
         assert!(extract(Kind::Aquery, &args(&["--output=label"])).is_err());
-        assert_eq!(extract(Kind::Aquery, &args(&["//a"])).unwrap().0, "text");
+        assert_eq!(
+            extract(Kind::Aquery, &args(&["//a"])).unwrap().0.format,
+            "text"
+        );
+        assert_eq!(
+            extract(Kind::Cquery, &args(&["//a"])).unwrap().0.format,
+            "label"
+        );
+    }
+
+    #[test]
+    fn the_starlark_flags_must_not_both_be_given() {
+        let (flags, _) = extract(
+            Kind::Cquery,
+            &args(&["--starlark:expr=1", "--starlark:file=f.bzl", "//a"]),
+        )
+        .unwrap();
+        assert!(
+            flags
+                .formatter()
+                .unwrap_err()
+                .to_string()
+                .contains("must not specify both")
+        );
     }
 
     #[test]

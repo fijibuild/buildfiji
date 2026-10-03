@@ -182,7 +182,7 @@ pub fn render(
     match format {
         Format::Label => {
             for label in order(ev, set, wanted)? {
-                line(graph.display(&label));
+                line(graph.output_name(&label));
             }
         }
         Format::LabelKind => {
@@ -190,7 +190,7 @@ pub fn render(
                 line(format!(
                     "{} {}",
                     ev.node(&label)?.kind.description(),
-                    graph.display(&label)
+                    graph.output_name(&label)
                 ));
             }
         }
@@ -201,7 +201,7 @@ pub fn render(
                     "{}: {} {}",
                     node.location,
                     node.kind.description(),
-                    graph.display(&label)
+                    graph.output_name(&label)
                 ));
             }
         }
@@ -211,7 +211,7 @@ pub fn render(
             let mut rows: Vec<(usize, &Label)> = rank.iter().map(|(l, r)| (*r, l)).collect();
             rows.sort();
             for (r, label) in rows {
-                line(format!("{r} {}", graph.display(label)));
+                line(format!("{r} {}", graph.output_name(label)));
             }
         }
         Format::Xml => {
@@ -229,12 +229,16 @@ pub fn render(
             line("digraph mygraph {".to_owned());
             line("  node [shape=box];".to_owned());
             for label in dependency_order(&sub) {
-                line(format!("  \"{}\"", graph.display(&label)));
-                for edge in &sub[&label] {
+                line(format!("  \"{}\"", graph.output_name(&label)));
+                let mut edges: Vec<&Edge> = sub[&label].iter().collect();
+                if graph.sorts_edges() {
+                    edges.sort_by_key(|e| graph.output_name(&e.to));
+                }
+                for edge in edges {
                     line(format!(
                         "  \"{}\" -> \"{}\"",
-                        graph.display(&label),
-                        graph.display(&edge.to)
+                        graph.output_name(&label),
+                        graph.output_name(&edge.to)
                     ));
                     if let Some(condition) = &edge.condition {
                         line(format!("  [label=\"{condition}\"];"));
@@ -269,7 +273,7 @@ fn escape(text: &str) -> String {
 fn xml_element(ev: &Evaluator<'_>, label: &Label) -> Result<Vec<String>, String> {
     let graph = ev.graph();
     let node = ev.node(label)?;
-    let name = escape(&graph.display(label));
+    let name = escape(&graph.output_name(label));
     let location = escape(&node.location);
     let mut out = Vec::new();
     match &node.kind {
@@ -287,7 +291,7 @@ fn xml_element(ev: &Evaluator<'_>, label: &Label) -> Result<Vec<String>, String>
             for l in loads {
                 out.push(format!(
                     "        <load name=\"{}\"/>",
-                    escape(&graph.display(l))
+                    escape(&graph.output_name(l))
                 ));
             }
             for v in &node.visibility {
@@ -301,7 +305,7 @@ fn xml_element(ev: &Evaluator<'_>, label: &Label) -> Result<Vec<String>, String>
         NodeKind::GeneratedFile { rule } => {
             out.push(format!(
                 "    <generated-file generating-rule=\"{}\" location=\"{location}\" name=\"{name}\"/>",
-                escape(&graph.display(rule))
+                escape(&graph.output_name(rule))
             ));
         }
         NodeKind::PackageGroup => {
@@ -316,7 +320,7 @@ fn xml_element(ev: &Evaluator<'_>, label: &Label) -> Result<Vec<String>, String>
                 for i in &includes {
                     out.push(format!(
                         "            <label value=\"{}\"/>",
-                        escape(&graph.display(i))
+                        escape(&graph.output_name(i))
                     ));
                 }
                 out.push("        </list>".to_owned());
@@ -351,13 +355,13 @@ fn xml_element(ev: &Evaluator<'_>, label: &Label) -> Result<Vec<String>, String>
             for to in &inputs {
                 out.push(format!(
                     "        <rule-input name=\"{}\"/>",
-                    escape(&graph.display(to))
+                    escape(&graph.output_name(to))
                 ));
             }
             for o in &node.outputs {
                 out.push(format!(
                     "        <rule-output name=\"{}\"/>",
-                    escape(&graph.display(o))
+                    escape(&graph.output_name(o))
                 ));
             }
             out.push("    </rule>".to_owned());
@@ -388,7 +392,7 @@ fn flatten(value: &AttrValue) -> AttrValue {
 
 fn xml_attr(graph: &dyn crate::graph::Graph, attr: &crate::graph::NodeAttr, out: &mut Vec<String>) {
     let name = escape(&attr.name);
-    let label = |l: &Label| escape(&graph.display(l));
+    let label = |l: &Label| escape(&graph.output_name(l));
     let is_output = matches!(
         attr.ty,
         fjfj_graph::rule::AttrType::Output | fjfj_graph::rule::AttrType::OutputList

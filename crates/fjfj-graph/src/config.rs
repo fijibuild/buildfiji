@@ -189,6 +189,47 @@ impl Configuration {
         }
     }
 
+    /// The options of the configuration as `build_options(target)` of
+    /// `cquery --output=starlark` shows them, by `//command_line_option:name`
+    /// or the label of the build setting. Only what fjfj models is here.
+    pub fn build_options(&self) -> BTreeMap<String, SettingValue> {
+        let option = |name: &str| format!("{COMMAND_LINE_OPTION}{name}");
+        let mut out = BTreeMap::new();
+        out.insert(option("cpu"), SettingValue::Str(self.cpu.clone()));
+        out.insert(
+            option("compilation_mode"),
+            SettingValue::Str(self.compilation_mode.name().to_owned()),
+        );
+        out.insert(
+            option("define"),
+            SettingValue::List(
+                self.defines
+                    .iter()
+                    .map(|(k, v)| format!("{k}={v}"))
+                    .collect(),
+            ),
+        );
+        out.insert(
+            option("action_env"),
+            SettingValue::List(
+                self.action_env
+                    .iter()
+                    .map(|(k, v)| format!("{k}={v}"))
+                    .collect(),
+            ),
+        );
+        for (name, value) in &self.options {
+            out.insert(
+                option(name),
+                SettingValue::List(value.split_whitespace().map(str::to_owned).collect()),
+            );
+        }
+        for (name, value) in &self.settings {
+            out.insert(name.clone(), value.clone());
+        }
+        out
+    }
+
     /// SHA-256 of every field of the configuration, as sixty-four hex digits:
     /// what `cquery` shows the first seven of and `aquery` shows whole. Bazel
     /// hashes the options of every fragment, which fjfj does not model, so the

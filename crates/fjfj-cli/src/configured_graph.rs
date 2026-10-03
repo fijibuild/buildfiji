@@ -27,7 +27,7 @@ pub(crate) struct ConfiguredGraph<'a> {
 /// The label a configured target answers to in a query.
 fn synthetic(label: &Label, at: usize) -> Label {
     Label {
-        repo: format!("{}{SEPARATOR}{at}", label.repo),
+        repo: format!("{}{SEPARATOR}{at:08}", label.repo),
         package: label.package.clone(),
         name: label.name.clone(),
     }
@@ -53,6 +53,9 @@ impl<'a> ConfiguredGraph<'a> {
         loading: &'a QueryGraph,
         analysed: &[Arc<ConfiguredTarget>],
     ) -> ConfiguredGraph<'a> {
+        // In label order, so a label of this graph sorts as its target does.
+        let mut analysed: Vec<&Arc<ConfiguredTarget>> = analysed.iter().collect();
+        analysed.sort_by_cached_key(|t| (t.label.clone(), t.configuration.checksum()));
         let mut targets: Vec<Arc<ConfiguredTarget>> = Vec::new();
         let mut index = HashMap::new();
         let mut by_label: BTreeMap<Label, Vec<usize>> = BTreeMap::new();
@@ -188,5 +191,19 @@ impl Graph for ConfiguredGraph<'_> {
 
     fn display(&self, label: &Label) -> String {
         self.loading.display(&plain(label))
+    }
+
+    fn sorts_edges(&self) -> bool {
+        true
+    }
+
+    /// `//a:b (a7a71fd)`: the target and the first digits of its
+    /// configuration, `(null)` for a file, which has none.
+    fn output_name(&self, label: &Label) -> String {
+        let configuration = match self.target(label) {
+            Some(t) if t.rule_class.is_some() => t.configuration.checksum()[..7].to_owned(),
+            _ => "null".to_owned(),
+        };
+        format!("{} ({configuration})", self.display(label))
     }
 }

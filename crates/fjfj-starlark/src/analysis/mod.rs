@@ -80,6 +80,7 @@ pub(crate) fn rule_kind_of<'v>(ctx: Value<'v>) -> Option<String> {
 }
 mod aspect;
 mod file;
+mod format;
 mod fragments;
 mod native_providers;
 pub(crate) mod run;
@@ -103,6 +104,8 @@ pub trait RuleSource: Send + Sync {
 pub use aspect::{
     AspectRef, AspectRequest, AspectSpec, aspect_applies, aspect_spec, attr_aspects, run_aspect,
 };
+pub(crate) use format::format_functions;
+pub use format::{FormatTarget, format_targets};
 pub use native_providers::{Field, feature_flag_value, native_provider, output_group_files};
 pub use run::{
     DepEdge, RuleRequest, RuleResult, labels_of_attrs, resolved_attrs, rule_schema, run_rule,

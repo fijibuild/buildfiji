@@ -113,6 +113,19 @@ pub trait Graph: Sync {
     /// Whether `to` may be seen from `from`.
     fn visible(&self, from: &Label, to: &Label) -> Result<bool, String>;
 
+    /// How an output format names a node: the label, unless the graph's nodes
+    /// are more than labels (`cquery` adds the configuration).
+    fn output_name(&self, label: &Label) -> String {
+        self.display(label)
+    }
+
+    /// Whether `--output=graph` lists the edges of a node by the name of what
+    /// they lead to, as `cquery` does, rather than in the order they were
+    /// visited.
+    fn sorts_edges(&self) -> bool {
+        false
+    }
+
     /// A label as the user reads it (`@repo//p:t`).
     fn display(&self, label: &Label) -> String {
         if label.repo.is_empty() {

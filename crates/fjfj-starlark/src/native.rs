@@ -178,6 +178,18 @@ fn build_only_functions(builder: &mut GlobalsBuilder) {
     }
 }
 
+/// The globals of the code `cquery --output=starlark` runs: the language, and
+/// `providers` and `build_options` of a target.
+pub(crate) fn format_globals() -> Globals {
+    GlobalsBuilder::extended_by(&[LibraryExtension::Print])
+        .with(depset_globals)
+        .with(label_globals)
+        .with(struct_globals)
+        .with(set_globals)
+        .with(crate::analysis::format_functions)
+        .build()
+}
+
 /// The globals of a `.bzl` file: the same, with the native functions under
 /// `native`.
 pub fn bzl_globals() -> Globals {

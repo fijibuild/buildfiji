@@ -56,6 +56,10 @@ pub struct DepInfo {
 pub(crate) struct TargetValue {
     #[allocative(skip)]
     pub(crate) info: Arc<DepInfo>,
+    /// For `cquery --output=starlark`: the options of the target's
+    /// configuration, which `build_options(target)` returns.
+    #[allocative(skip)]
+    pub(crate) build_options: Option<Arc<Vec<(String, fjfj_graph::SettingValue)>>>,
 }
 
 starlark_simple_value!(TargetValue);
@@ -210,6 +214,24 @@ impl<'v> StarlarkValue<'v> for TargetValue {
 }
 
 impl TargetValue {
+    /// `providers(target)` of `cquery`: each provider the target gave, by
+    /// name, `DefaultInfo` first.
+    pub(super) fn provider_instances<'v>(&self, heap: Heap<'v>) -> Vec<(String, Value<'v>)> {
+        let mut out = Vec::new();
+        if let Some(default) = builtin("DefaultInfo").and_then(|p| self.find(p, heap)) {
+            out.push(("DefaultInfo".to_owned(), default));
+        }
+        for stored in &self.info.providers {
+            // SAFETY: as in `find`, the evaluation took a reference to the heap
+            // that owns the provider.
+            let instance = unsafe { stored.value.unchecked_frozen_value().to_value() };
+            if let Some(provider) = provider_of(instance) {
+                out.push((crate::provider::instance_of(provider), instance));
+            }
+        }
+        out
+    }
+
     fn find<'v>(&self, provider: Value<'v>, heap: Heap<'v>) -> Option<Value<'v>> {
         if same_provider(builtin("DefaultInfo"), Some(provider)) {
             // A file, or an alias of one, is its own executable for `files_to_run`.
@@ -313,5 +335,21 @@ fn target_members(builder: &mut MethodsBuilder) {
 
 /// The `Target` for `info`.
 pub(crate) fn alloc_target<'v>(heap: Heap<'v>, info: Arc<DepInfo>) -> Value<'v> {
-    heap.alloc(TargetValue { info })
+    heap.alloc(TargetValue {
+        info,
+        build_options: None,
+    })
+}
+
+/// The `Target` for `info` as `cquery` shows it, with the options of its
+/// configuration.
+pub(super) fn alloc_configured_target<'v>(
+    heap: Heap<'v>,
+    info: Arc<DepInfo>,
+    build_options: Vec<(String, fjfj_graph::SettingValue)>,
+) -> Value<'v> {
+    heap.alloc(TargetValue {
+        info,
+        build_options: Some(Arc::new(build_options)),
+    })
 }

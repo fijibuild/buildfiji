@@ -20,7 +20,7 @@ fn label_text(label: &Label) -> String {
 }
 
 /// What a rule sees of a target it depends on.
-pub(crate) fn dep_info(target: &ConfiguredTarget, generated: bool) -> DepInfo {
+pub fn dep_info(target: &ConfiguredTarget, generated: bool) -> DepInfo {
     DepInfo {
         label: target.label.clone(),
         rule_class: target.rule_class.clone(),
