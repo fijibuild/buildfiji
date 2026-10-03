@@ -763,3 +763,53 @@ top = rule(implementation = _impl, attrs = {"deps": attr.label_list(aspects = [c
     };
     assert_eq!(aspect.target.label.name, "b");
 }
+
+/// An aspect's `requires` run on the same target first, and what they provide
+/// is there to read on the target the aspect looks at.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_aspect_sees_what_the_aspects_it_requires_provide() {
+    let (_dir, repos) = workspace(&[
+        ("MODULE.bazel", ""),
+        (
+            "defs.bzl",
+            r#"
+InnerInfo = provider(fields = ["name"])
+OuterInfo = provider(fields = ["seen"])
+
+def _inner(target, ctx):
+    return [InnerInfo(name = target.label.name)]
+
+inner = aspect(implementation = _inner)
+
+def _outer(target, ctx):
+    return [OuterInfo(seen = target[InnerInfo].name)]
+
+outer = aspect(implementation = _outer, requires = [inner])
+
+def _impl(ctx):
+    out = ctx.actions.declare_file(ctx.label.name + ".txt")
+    ctx.actions.write(out, ctx.attr.dep[OuterInfo].seen)
+    return [DefaultInfo(files = depset([out]))]
+
+def _plain(ctx):
+    return [DefaultInfo()]
+
+plain = rule(implementation = _plain)
+top = rule(implementation = _impl, attrs = {"dep": attr.label(aspects = [outer])})
+"#,
+        ),
+        (
+            "BUILD.bazel",
+            "load(':defs.bzl', 'plain', 'top')\nplain(name = 'a')\ntop(name = 't', dep = ':a')\n",
+        ),
+    ]);
+    let t = analyse(&repos, "//:t").await.unwrap();
+    let [action] = &t.actions[..] else {
+        panic!("{:?}", t.actions)
+    };
+    assert!(
+        matches!(&action.kind, ActionKind::WriteFile { contents, .. } if contents == b"a"),
+        "{:?}",
+        action.kind
+    );
+}

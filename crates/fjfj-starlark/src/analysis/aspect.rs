@@ -51,6 +51,9 @@ pub struct AspectSpec {
     pub attr_aspects: Vec<String>,
     /// Its own attributes and toolchains.
     pub schema: Arc<RuleSchema>,
+    /// The aspects it `requires`: they run on the same target first, and
+    /// their providers are visible on the target it looks at.
+    pub requires: Vec<AspectRef>,
 }
 
 /// The aspect `name` of `module`.
@@ -67,9 +70,25 @@ pub fn aspect_spec(module: &FrozenModule, name: &str) -> Option<AspectSpec> {
                 .collect()
         })
         .unwrap_or_default();
+    let requires = aspect_arg(value, "requires")
+        .and_then(crate::args::sequence)
+        .map(|items| {
+            items
+                .into_iter()
+                .filter_map(|v| {
+                    let data = aspect_data(v)?;
+                    Some(AspectRef {
+                        bzl: data.defined_in?,
+                        name: data.name?,
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
     Some(AspectSpec {
         attr_aspects,
         schema: data.schema,
+        requires,
     })
 }
 

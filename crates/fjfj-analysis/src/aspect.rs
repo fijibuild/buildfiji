@@ -56,6 +56,24 @@ impl Key for AspectKey {
         let spec = aspect_spec(&module, name).ok_or_else(|| {
             Error::msg(format!("{} is not an aspect of {}", name, label_text(&bzl)))
         })?;
+        // The aspects it requires run on this target first; what they made is
+        // part of the target it looks at.
+        let mut seen = dep_info(&base, false);
+        let required_keys: Vec<AspectKey> = spec
+            .requires
+            .iter()
+            .map(|aspect| AspectKey {
+                target: self.target.clone(),
+                aspect: aspect.clone(),
+            })
+            .collect();
+        for (key, result) in required_keys
+            .iter()
+            .zip(ctx.get_all(required_keys.clone()).await)
+        {
+            seen.providers.extend(result?.providers.iter().cloned());
+            out.aspect_deps.push(key.clone());
+        }
         let follows = |attr: &str| spec.attr_aspects.iter().any(|a| a == "*" || a == attr);
 
         // The targets the rule's attributes name, each with this aspect's
@@ -125,7 +143,7 @@ impl Key for AspectKey {
             aspect: name.clone(),
             aspect_schema: spec.schema.clone(),
             aspect_ids: vec![format!("{}%{}", label_text(&bzl), name)],
-            target: dep_info(&base, false),
+            target: seen,
             rule_kind: info.rule_class.clone(),
             rule_schema: info.schema.clone(),
             rule_attrs: info.attrs.clone(),
