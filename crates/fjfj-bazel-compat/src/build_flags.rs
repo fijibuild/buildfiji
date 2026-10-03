@@ -11,6 +11,8 @@ pub const IMPLEMENTED: &[&str] = &[
     "compilation_mode",
     "platforms",
     "extra_toolchains",
+    "extra_execution_platforms",
+    "host_platform",
     "aspects",
     "output_groups",
     "cpu",
@@ -55,6 +57,10 @@ pub struct BuildFlags {
     pub platforms: Option<String>,
     /// `--extra_toolchains`, in order.
     pub extra_toolchains: Vec<String>,
+    /// `--extra_execution_platforms`, in order.
+    pub extra_execution_platforms: Vec<String>,
+    /// `--host_platform`: the platform the host is.
+    pub host_platform: Option<String>,
     /// `--aspects`: `<bzl label>%<aspect name>` for each, in order.
     pub aspects: Vec<String>,
     /// `--output_groups`: the groups to build, each as written (`+name`, `-name`).
@@ -138,6 +144,13 @@ pub fn extract(args: &[String], command: &str) -> (BuildFlags, Vec<String>) {
                     .filter(|p| !p.is_empty())
                     .map(str::to_owned),
             ),
+            "extra_execution_platforms" => flags.extra_execution_platforms.extend(
+                value
+                    .split(',')
+                    .filter(|p| !p.is_empty())
+                    .map(str::to_owned),
+            ),
+            "host_platform" => flags.host_platform = Some(value),
             "extra_toolchains" => flags.extra_toolchains.extend(
                 value
                     .split(',')

@@ -20,6 +20,11 @@ pub(crate) struct Options {
     /// `--extra_toolchains`: patterns of toolchains to consider before the
     /// registered ones.
     pub extra_toolchains: Vec<String>,
+    /// `--extra_execution_platforms`: patterns of platforms to try before the
+    /// registered ones.
+    pub extra_execution_platforms: Vec<String>,
+    /// `--host_platform`: the platform fjfj runs on, a label as written.
+    pub host_platform: Option<String>,
     /// `--aspects`: aspects to apply to the targets, `<bzl label>%<name>`.
     pub aspects: Vec<String>,
     /// `--output_groups`.
@@ -368,19 +373,71 @@ async fn analyse(
     (roots, aspect_roots, all)
 }
 
+/// The constraint values of the platform fjfj runs on: the machine's, as
+/// `@platforms` names them.
+fn host_constraints(repos: &Repos) -> Option<std::collections::BTreeSet<fjfj_graph::Label>> {
+    let platforms = repos.module_repo("platforms")?;
+    Some(
+        fjfj_graph::config::host_constraints()
+            .into_iter()
+            .map(|(setting, value)| fjfj_graph::Label {
+                repo: platforms.clone(),
+                package: setting.to_owned(),
+                name: value.to_owned(),
+            })
+            .collect(),
+    )
+}
+
 /// Build `targets`. Blocking; run where a Tokio runtime is current.
 pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> Report {
     let started = Instant::now();
     let mut report = Report::new(request.layout.clone());
-    let registered = repos.registered_toolchains();
-    let analysis = engine(Env {
+    let env = |host_constraints| Env {
         source: repos.clone(),
         rules: repos.clone(),
         main_repo_name: MAIN_REPO_DIR.to_owned(),
-        registered_toolchains: registered,
+        registered_toolchains: repos.registered_toolchains(),
         extra_toolchains: request.options.extra_toolchains.clone(),
-    });
+        registered_execution_platforms: repos.registered_execution_platforms(),
+        extra_execution_platforms: request.options.extra_execution_platforms.clone(),
+        host_constraints,
+    };
     let handle = tokio::runtime::Handle::current();
+    // `--host_platform` says what the host is, in place of the machine's own.
+    let mut host = host_constraints(repos);
+    if let Some(text) = &request.options.host_platform {
+        let named = fjfj_graph::Label::parse(
+            text,
+            fjfj_graph::LabelContext {
+                repo: "",
+                package: "",
+            },
+        )
+        .map_err(|e| e.to_string())
+        .and_then(|label| {
+            handle.block_on(fjfj_analysis::platform_constraints(
+                &engine(env(None)),
+                &label,
+            ))
+        });
+        match named {
+            Ok(constraints) => host = Some(constraints),
+            Err(message) => {
+                report.analysis_errors.push((
+                    fjfj_graph::Label {
+                        repo: String::new(),
+                        package: String::new(),
+                        name: text.clone(),
+                    },
+                    message,
+                ));
+                report.elapsed = started.elapsed();
+                return report;
+            }
+        }
+    }
+    let analysis = engine(env(host));
     let mut configuration = request.options.configuration.clone();
     if let Some(text) = &request.options.platform {
         let platform = fjfj_graph::Label::parse(

@@ -64,12 +64,32 @@ async fn analyse_registering(
     configuration: Configuration,
     registered_toolchains: Vec<(String, String)>,
 ) -> Result<Arc<ConfiguredTarget>, String> {
+    analyse_on(
+        repos,
+        label,
+        configuration,
+        registered_toolchains,
+        Vec::new(),
+    )
+    .await
+}
+
+async fn analyse_on(
+    repos: &Arc<Repos>,
+    label: &str,
+    configuration: Configuration,
+    registered_toolchains: Vec<(String, String)>,
+    registered_execution_platforms: Vec<(String, String)>,
+) -> Result<Arc<ConfiguredTarget>, String> {
     let engine = engine(Env {
         source: repos.clone(),
         rules: repos.clone(),
         main_repo_name: "_main".into(),
         registered_toolchains,
         extra_toolchains: Vec::new(),
+        registered_execution_platforms,
+        extra_execution_platforms: Vec::new(),
+        host_constraints: None,
     });
     let (package, name) = label.trim_start_matches("//").split_once(':').unwrap();
     engine
@@ -578,6 +598,77 @@ r(name = "t")
     let error = analyse_registering(&repos, "//:t", config(), registered)
         .await
         .unwrap_err();
+    assert!(error.contains("No matching toolchains found"), "{error}");
+}
+
+/// Bazel picks the execution platform among the registered ones: the first
+/// that meets the target's `exec_compatible_with` and has a toolchain of each
+/// mandatory type whose `exec_compatible_with` it meets.
+#[tokio::test(flavor = "multi_thread")]
+async fn toolchains_are_matched_to_the_execution_platform_the_target_picks() {
+    let (_dir, repos) = workspace(&[
+        ("MODULE.bazel", ""),
+        (
+            "defs.bzl",
+            r#"
+def _tc_impl(ctx):
+    return [platform_common.ToolchainInfo(name = ctx.attr.n)]
+my_toolchain = rule(implementation = _tc_impl, attrs = {"n": attr.string()})
+
+def _impl(ctx):
+    print("toolchain:", ctx.toolchains["//:tt"].name)
+    return []
+r = rule(implementation = _impl, toolchains = ["//:tt"])
+"#,
+        ),
+        (
+            "BUILD.bazel",
+            r#"
+load(":defs.bzl", "my_toolchain", "r")
+toolchain_type(name = "tt")
+constraint_setting(name = "os")
+constraint_value(name = "linux", constraint_setting = ":os")
+constraint_value(name = "windows", constraint_setting = ":os")
+platform(name = "windows_box", constraint_values = [":windows"])
+platform(name = "linux_box", constraint_values = [":linux"])
+my_toolchain(name = "impl_linux", n = "linux")
+my_toolchain(name = "impl_windows", n = "windows")
+toolchain(name = "tc_linux", toolchain_type = ":tt", toolchain = ":impl_linux", exec_compatible_with = [":linux"])
+toolchain(name = "tc_windows", toolchain_type = ":tt", toolchain = ":impl_windows", exec_compatible_with = [":windows"])
+r(name = "any")
+r(name = "wants_linux", exec_compatible_with = [":linux"])
+r(name = "wants_nothing_there", exec_compatible_with = [":os"])
+"#,
+        ),
+    ]);
+    let registered = vec![
+        (String::new(), "//:tc_windows".to_owned()),
+        (String::new(), "//:tc_linux".to_owned()),
+    ];
+    let platforms = vec![
+        (String::new(), "//:windows_box".to_owned()),
+        (String::new(), "//:linux_box".to_owned()),
+    ];
+    let on = |label: &'static str, platforms: Vec<(String, String)>| {
+        analyse_on(&repos, label, config(), registered.clone(), platforms)
+    };
+    // The first platform that has a toolchain is the one.
+    assert_eq!(
+        on("//:any", platforms.clone()).await.unwrap().printed,
+        ["toolchain: windows"]
+    );
+    // The target's own constraints rule platforms out.
+    assert_eq!(
+        on("//:wants_linux", platforms.clone())
+            .await
+            .unwrap()
+            .printed,
+        ["toolchain: linux"]
+    );
+    // No platform has them, or there is none: no toolchain matches.
+    let error = on("//:wants_nothing_there", platforms).await.unwrap_err();
+    assert!(error.contains("No matching toolchains found"), "{error}");
+    let error = on("//:any", Vec::new()).await.unwrap_err();
     assert!(error.contains("No matching toolchains found"), "{error}");
 }
 

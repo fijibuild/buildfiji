@@ -23,6 +23,14 @@ pub struct Env {
     /// `--extra_toolchains` patterns (main repository), tried before those;
     /// a configuration that sets the option replaces them.
     pub extra_toolchains: Vec<String>,
+    /// `register_execution_platforms` patterns, likewise.
+    pub registered_execution_platforms: Vec<(String, String)>,
+    /// `--extra_execution_platforms` patterns, tried before those.
+    pub extra_execution_platforms: Vec<String>,
+    /// The constraint values of the host platform, an execution platform tried
+    /// after the others; `None` for none, in which case a target with no
+    /// execution platform registered runs on its target platform.
+    pub host_constraints: Option<std::collections::BTreeSet<Label>>,
 }
 
 /// An engine that analyses against `env`.

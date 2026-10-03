@@ -136,7 +136,7 @@ impl Key for AspectKey {
             deps.insert(key.label.clone(), dep_info(&*done?, false));
         }
         let (toolchains, toolchain_keys) =
-            resolve_toolchains(ctx, &self.target, &spec.schema.toolchains).await?;
+            resolve_toolchains(ctx, &self.target, &spec.schema.toolchains, &[]).await?;
 
         let request = AspectRequest {
             module,

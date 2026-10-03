@@ -236,7 +236,15 @@ pub(crate) async fn analyze(
     }
 
     // The toolchains it asked for, resolved.
-    let (toolchains, toolchain_keys) = resolve_toolchains(ctx, key, &schema.toolchains).await?;
+    let exec_compatible: Vec<Label> = set
+        .iter()
+        .find_map(|(n, v)| match (n.as_str(), v) {
+            ("exec_compatible_with", AttrValue::LabelList(list)) => Some(list.clone()),
+            _ => None,
+        })
+        .unwrap_or_default();
+    let (toolchains, toolchain_keys) =
+        resolve_toolchains(ctx, key, &schema.toolchains, &exec_compatible).await?;
 
     // The outputs the class declares: `outputs = {...}` templates, and the
     // `attr.output`s the call set.
@@ -352,31 +360,65 @@ pub(crate) async fn analyze(
 /// The toolchains `types` asks for (each with whether it is mandatory), the
 /// implementation resolved for each in `key`'s configuration, and the keys of
 /// those implementations.
+///
+/// The target runs on the first execution platform that has the `exec`
+/// constraints its `exec_compatible_with` asks for and has every mandatory
+/// type resolve; toolchains are matched to that platform and to the target
+/// platform of `key`'s configuration.
 pub(crate) async fn resolve_toolchains(
     ctx: &Ctx,
     key: &ConfiguredTargetKey,
     types: &[(Label, bool)],
+    exec: &[Label],
 ) -> Result<(Vec<(Label, Option<DepInfo>)>, Vec<ConfiguredTargetKey>), Error> {
-    let mut toolchains: Vec<(Label, Option<DepInfo>)> = Vec::new();
-    let mut missing: Vec<Label> = Vec::new();
-    let mut toolchain_keys: Vec<ConfiguredTargetKey> = Vec::new();
-    for (toolchain_type, mandatory) in types {
-        match crate::toolchain::resolve(ctx, key, toolchain_type).await? {
-            Some(decl) => {
-                let implementation = ConfiguredTargetKey {
-                    label: decl.toolchain.clone(),
-                    configuration: key.configuration.clone(),
-                };
-                let done = ctx.get(implementation.clone()).await?;
-                toolchains.push((toolchain_type.clone(), Some(dep_info(&done, false))));
-                toolchain_keys.push(implementation);
-            }
-            None if *mandatory => missing.push(toolchain_type.clone()),
-            None => toolchains.push((toolchain_type.clone(), None)),
+    if types.is_empty() {
+        return Ok((Vec::new(), Vec::new()));
+    }
+    let extra = match key
+        .configuration
+        .settings
+        .get("//command_line_option:extra_execution_platforms")
+    {
+        Some(fjfj_graph::SettingValue::List(items)) => Some(items.clone()),
+        _ => None,
+    };
+    let mut platforms: Vec<std::collections::BTreeSet<Label>> = ctx
+        .get(crate::toolchain::ExecutionPlatforms { extra })
+        .await?
+        .iter()
+        .map(|p| p.constraints.clone())
+        .collect();
+    // With none named, the target platform is where it runs.
+    if platforms.is_empty() {
+        platforms.push(key.configuration.constraints.clone());
+    }
+    let mut missing: Vec<Label> = types.iter().map(|(t, _)| t.clone()).collect();
+    for platform in platforms {
+        if !exec.iter().all(|c| platform.contains(c)) {
+            continue;
         }
+        let mut toolchains: Vec<(Label, Option<DepInfo>)> = Vec::new();
+        let mut unmet: Vec<Label> = Vec::new();
+        let mut toolchain_keys: Vec<ConfiguredTargetKey> = Vec::new();
+        for (toolchain_type, mandatory) in types {
+            match crate::toolchain::resolve(ctx, key, toolchain_type, &platform).await? {
+                Some(decl) => {
+                    let implementation = ConfiguredTargetKey {
+                        label: decl.toolchain.clone(),
+                        configuration: key.configuration.clone(),
+                    };
+                    let done = ctx.get(implementation.clone()).await?;
+                    toolchains.push((toolchain_type.clone(), Some(dep_info(&done, false))));
+                    toolchain_keys.push(implementation);
+                }
+                None if *mandatory => unmet.push(toolchain_type.clone()),
+                None => toolchains.push((toolchain_type.clone(), None)),
+            }
+        }
+        if unmet.is_empty() {
+            return Ok((toolchains, toolchain_keys));
+        }
+        missing = unmet;
     }
-    if !missing.is_empty() {
-        return Err(Error::msg(crate::toolchain::no_match(key, &missing)));
-    }
-    Ok((toolchains, toolchain_keys))
+    Err(Error::msg(crate::toolchain::no_match(key, &missing)))
 }
