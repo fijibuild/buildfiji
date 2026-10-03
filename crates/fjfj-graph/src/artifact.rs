@@ -111,6 +111,10 @@ pub struct Runfiles {
     pub symlinks: Vec<(String, Artifact)>,
     /// Entries `(path under the runfiles root, file)`.
     pub root_symlinks: Vec<(String, Artifact)>,
+    /// Whether the tree gets an empty `__init__.py` above every Python file
+    /// (python's `legacy_create_init`). Worked out when the tree is made, so
+    /// it sees every file merged in after this was set.
+    pub python_inits: bool,
 }
 
 impl Runfiles {
@@ -133,6 +137,7 @@ impl Runfiles {
             files: union(&self.files, &other.files),
             symlinks: union(&self.symlinks, &other.symlinks),
             root_symlinks: union(&self.root_symlinks, &other.root_symlinks),
+            python_inits: self.python_inits || other.python_inits,
         }
     }
 }

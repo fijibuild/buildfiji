@@ -338,39 +338,11 @@ proto_common_do_not_use = struct(INCOMPATIBLE_ENABLE_PROTO_TOOLCHAIN_RESOLUTION 
 # A built-in function in Bazel; its transition is buildfiji-136.6's.
 exec_transition = _unavailable("exec_transition", "buildfiji-136.6")
 
-# The runfiles plus an empty `__init__.py` in every directory of them that has
-# none (python's legacy_create_init), as one shared empty file linked at each.
-# Bazel supplies them as empty files of the runfiles tree; this has no such
-# thing, so each is a symlink to a file the rule declares.
+# Python's legacy_create_init: an empty `__init__.py` above every Python file
+# in the runfiles tree. The tree is made later, from everything merged in by
+# then, so this only marks the runfiles; see runfiles_tree.rs.
 def _merge_runfiles_with_generated_inits(*, ctx, runfiles):
-    present = {}
-    dirs = {}
-    for f in runfiles.files.to_list():
-        path = f.short_path
-        if path.startswith("../"):
-            path = path[3:]
-        else:
-            path = ctx.workspace_name + "/" + path
-        present[path] = True
-        parts = path.split("/")
-        for i in range(2, len(parts)):
-            dirs["/".join(parts[:i])] = True
-    empty = ctx.actions.declare_file(ctx.label.name + ".empty_init.py")
-    ctx.actions.write(empty, "")
-    main_prefix = ctx.workspace_name + "/"
-    symlinks = {}
-    root_symlinks = {}
-    for d in sorted(dirs.keys()):
-        init = d + "/__init__.py"
-        if init in present or (d + "/__init__.pyc") in present:
-            continue
-        if init.startswith(main_prefix):
-            symlinks[init[len(main_prefix):]] = empty
-        else:
-            root_symlinks[init] = empty
-    if not symlinks and not root_symlinks:
-        return runfiles
-    return runfiles.merge(ctx.runfiles(symlinks = symlinks, root_symlinks = root_symlinks))
+    return runfiles.merge(ctx.runfiles(_python_inits = True))
 
 # `ctx.actions.template_dict()`: substitutions for `expand_template` that are
 # computed from lists. `_computed_substitutions` is what `expand_template`

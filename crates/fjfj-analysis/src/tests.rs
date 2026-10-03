@@ -350,6 +350,60 @@ my_bin = rule(implementation = _impl, executable = True, attrs = {"data": attr.l
     assert_eq!(repo_mapping_contents, ",m,_main\n");
 }
 
+/// Python's `legacy_create_init`, probed with `bazel build` of a py_binary: an
+/// empty `__init__.py` in the runfiles root and above each Python file, not in
+/// the main repository's own directory or above files that are not Python.
+#[tokio::test(flavor = "multi_thread")]
+async fn python_inits_go_above_python_files_in_the_runfiles_tree() {
+    let (_dir, repos) = workspace(&[
+        ("MODULE.bazel", ""),
+        (
+            "defs.bzl",
+            r#"
+def _impl(ctx):
+    exe = ctx.actions.declare_file(ctx.label.name)
+    ctx.actions.write(exe, "exit 0\n", is_executable = True)
+    return [DefaultInfo(executable = exe, runfiles = ctx.runfiles(files = ctx.files.data, _python_inits = True))]
+
+my_bin = rule(implementation = _impl, executable = True, attrs = {"data": attr.label_list(allow_files = True)})
+"#,
+        ),
+        (
+            "pkg/BUILD.bazel",
+            "load('//:defs.bzl', 'my_bin')\nexports_files(['a/b/m.py', 'c/d.txt', 'e/__init__.py', 'e/f.py'])\nmy_bin(name = 'bin', data = ['a/b/m.py', 'c/d.txt', 'e/__init__.py', 'e/f.py'])\n",
+        ),
+        ("BUILD.bazel", ""),
+        ("pkg/a/b/m.py", ""),
+        ("pkg/c/d.txt", ""),
+        ("pkg/e/__init__.py", ""),
+        ("pkg/e/f.py", ""),
+    ]);
+    let bin = analyse(&repos, "//pkg:bin").await.unwrap();
+    let tree = bin
+        .actions
+        .iter()
+        .find(|a| a.mnemonic == "SymlinkTree")
+        .unwrap();
+    let ActionKind::RunfilesTree { entries, .. } = &tree.kind else {
+        panic!()
+    };
+    let inits: Vec<&str> = entries
+        .iter()
+        .map(|(p, _)| p.as_str())
+        .filter(|p| p.ends_with("__init__.py"))
+        .collect();
+    assert_eq!(
+        inits,
+        [
+            "_main/pkg/e/__init__.py",
+            "__init__.py",
+            "_main/pkg/__init__.py",
+            "_main/pkg/a/__init__.py",
+            "_main/pkg/a/b/__init__.py",
+        ]
+    );
+}
+
 /// Probed with `bazel build` of the same BUILD file and `register_toolchains`.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_rule_gets_the_first_registered_toolchain_its_platform_fits() {

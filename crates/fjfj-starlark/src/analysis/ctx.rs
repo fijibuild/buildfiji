@@ -518,11 +518,16 @@ fn ctx_members(builder: &mut MethodsBuilder) {
                 param("symlinks", true, false),
                 param("root_symlinks", true, false),
                 param("skip_conflict_checking", false, false),
+                // Builtins only: python's legacy `__init__.py` files.
+                param("_python_inits", false, false),
             ],
             args,
             eval,
         )?;
-        let mut runfiles = fjfj_graph::Runfiles::default();
+        let mut runfiles = fjfj_graph::Runfiles {
+            python_inits: bound[7].and_then(|v| v.unpack_bool()).unwrap_or(false),
+            ..fjfj_graph::Runfiles::default()
+        };
         if let Some(v) = bound[0].filter(|v| !v.is_none()) {
             runfiles.files = super::runfiles::files_in(v, "files")?;
         }

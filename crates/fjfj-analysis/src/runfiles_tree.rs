@@ -52,6 +52,7 @@ pub(crate) fn register(
         files,
         symlinks,
         root_symlinks,
+        python_inits,
     } = target.runfiles.clone();
     let mut entries: Vec<(String, Artifact)> = Vec::new();
     let mut seen = BTreeSet::new();
@@ -69,6 +70,9 @@ pub(crate) fn register(
     }
     for (path, file) in &root_symlinks {
         add(path.clone(), file.clone());
+    }
+    if python_inits {
+        add_python_inits(target, &exe, main_name, &seen, &mut entries);
     }
 
     // The repositories with runfiles: canonical names, the main one as "".
@@ -134,4 +138,64 @@ pub(crate) fn register(
         outputs: vec![dir.clone(), manifest.clone(), repo_mapping.clone()],
     });
     target.extra_outputs = vec![dir, manifest, repo_mapping];
+}
+
+/// An empty `__init__.py` (one shared file, linked) in the runfiles root and in
+/// every directory above a Python file (`.py`, `.pyc` or `.so`) that has none,
+/// except the main repository's own directory: python's `legacy_create_init`.
+fn add_python_inits(
+    target: &mut ConfiguredTarget,
+    exe: &Artifact,
+    main_name: &str,
+    seen: &BTreeSet<String>,
+    entries: &mut Vec<(String, Artifact)>,
+) {
+    let mut dirs: BTreeSet<String> = BTreeSet::new();
+    for (path, _) in entries.iter() {
+        if !(path.ends_with(".py") || path.ends_with(".pyc") || path.ends_with(".so")) {
+            continue;
+        }
+        let parts: Vec<&str> = path.split('/').collect();
+        dirs.insert(String::new());
+        for i in 1..parts.len() {
+            dirs.insert(parts[..i].join("/"));
+        }
+    }
+    dirs.remove(main_name);
+    let inits: Vec<String> = dirs
+        .iter()
+        .map(|dir| {
+            if dir.is_empty() {
+                "__init__.py".to_owned()
+            } else {
+                format!("{dir}/__init__.py")
+            }
+        })
+        .filter(|init| !seen.contains(init) && !seen.contains(&format!("{init}c")))
+        .collect();
+    if inits.is_empty() {
+        return;
+    }
+    let empty = Artifact {
+        root: exe.root.clone(),
+        path: format!("{}.runfiles.empty_init.py", exe.path),
+        tree: false,
+    };
+    target.actions.push(Action {
+        owner: target.label.clone(),
+        owner_kind: target.rule_class.clone().unwrap_or_default(),
+        location: String::new(),
+        configuration: target.configuration.mnemonic(),
+        mnemonic: "FileWrite".to_owned(),
+        progress_message: None,
+        kind: ActionKind::WriteFile {
+            contents: Vec::new(),
+            executable: false,
+        },
+        inputs: Vec::new(),
+        outputs: vec![empty.clone()],
+    });
+    for init in inits {
+        entries.push((init, empty.clone()));
+    }
 }
