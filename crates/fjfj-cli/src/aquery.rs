@@ -87,7 +87,71 @@ pub(crate) fn rows_of<'a>(
                 platform: platform.clone(),
             })
         });
-    own.chain(made).flat_map(expand_runfiles).collect()
+    own.chain(made)
+        .map(|row| expand_param_file(row, target, aspects))
+        .flat_map(expand_runfiles)
+        .collect()
+}
+
+/// A command line that reads its arguments from a file, as Bazel shows it: the
+/// arguments of the file in its place, and the file not among the inputs.
+/// The file is one that an action of the same target writes, a line to an
+/// argument.
+fn expand_param_file<'a>(
+    mut row: Row<'a>,
+    target: &ConfiguredTarget,
+    aspects: &[std::sync::Arc<ConfiguredTarget>],
+) -> Row<'a> {
+    let ActionKind::Spawn { argv, .. } = &row.action.kind else {
+        return row;
+    };
+    let written = |action: &Action| -> Option<(String, String)> {
+        let ActionKind::WriteFile { contents, .. } = &action.kind else {
+            return None;
+        };
+        (action.mnemonic == "ParameterFileWrite").then(|| {
+            (
+                action
+                    .outputs
+                    .first()
+                    .map(Artifact::exec_path)
+                    .unwrap_or_default(),
+                String::from_utf8_lossy(contents).into_owned(),
+            )
+        })
+    };
+    let files: Vec<(String, String)> = target
+        .actions
+        .iter()
+        .chain(aspects.iter().flat_map(|a| a.actions.iter()))
+        .filter_map(written)
+        .collect();
+    let mut expanded = Vec::with_capacity(argv.len());
+    let mut used: Vec<&str> = Vec::new();
+    for arg in argv {
+        match arg
+            .strip_prefix('@')
+            .and_then(|path| files.iter().find(|(p, _)| p == path))
+        {
+            Some((path, contents)) => {
+                expanded.extend(contents.lines().map(str::to_owned));
+                used.push(path);
+            }
+            None => expanded.push(arg.clone()),
+        }
+    }
+    if used.is_empty() {
+        return row;
+    }
+    let mut action = row.action.into_owned();
+    if let ActionKind::Spawn { argv, .. } = &mut action.kind {
+        *argv = expanded;
+    }
+    action
+        .inputs
+        .retain(|a| !used.contains(&a.exec_path().as_str()));
+    row.action = std::borrow::Cow::Owned(action);
+    row
 }
 
 /// What Bazel lists for the runfiles of an executable: an action that writes
@@ -234,7 +298,7 @@ pub(crate) fn shell_quote(arg: &str) -> String {
     let plain = !arg.is_empty()
         && arg
             .chars()
-            .all(|c| c.is_ascii_alphanumeric() || "-_./=:,+@%".contains(c));
+            .all(|c| c.is_ascii_alphanumeric() || "-_./:,+@%".contains(c));
     if plain {
         arg.to_owned()
     } else {
@@ -437,7 +501,16 @@ fn text_one(out: &mut String, row: &Row<'_>, settings: Settings, layout: &Layout
                     "# Configuration: {}\n",
                     row.target.configuration.checksum()
                 ));
-                out.push_str(&format!("# Execution platform: {platform}\n"));
+                // The comment gives the platform's canonical label.
+                let canonical = row
+                    .target
+                    .execution_platform
+                    .clone()
+                    .unwrap_or_else(host_platform);
+                out.push_str(&format!(
+                    "# Execution platform: @@{}//{}:{}\n",
+                    canonical.repo, canonical.package, canonical.name
+                ));
             }
             if !execution_requirements.is_empty() {
                 let list: Vec<String> = execution_requirements

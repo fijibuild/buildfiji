@@ -1717,6 +1717,42 @@ execution_platform: "@@platforms//host:host"
         assert_eq!(attrs.last().unwrap()["name"], "$rule_implementation_hash");
     }
 
+    /// What `bazel aquery` printed for a rule whose arguments go to a
+    /// parameter file: the arguments inline, an `=` quoted, no file among the
+    /// inputs and no action that writes it.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn aquery_shows_the_arguments_of_a_parameter_file_inline() {
+        let files: &[(&str, &str)] = &[
+            ("MODULE.bazel", ""),
+            (
+                "defs.bzl",
+                "def _impl(ctx):\n    out = ctx.actions.declare_file(ctx.label.name + \".out\")\n    args = ctx.actions.args()\n    args.add(\"--x=y\")\n    args.add(\"z\")\n    args.use_param_file(\"@%s\", use_always = True)\n    ctx.actions.run(outputs = [out], executable = \"/bin/echo\", arguments = [args], mnemonic = \"Echo\")\n    return [DefaultInfo(files = depset([out]))]\np = rule(implementation = _impl)\n",
+            ),
+            ("BUILD", "load(\":defs.bzl\", \"p\")\np(name = \"p\")\n"),
+        ];
+        let text = tokio::task::spawn_blocking(|| {
+            query_on(
+                files,
+                Kind::Aquery,
+                "text",
+                "//:p",
+                None,
+                &[],
+                aquery::Settings::default(),
+            )
+            .map(|bytes| String::from_utf8(bytes).unwrap())
+            .unwrap()
+        })
+        .await
+        .unwrap();
+        assert_eq!(actions(&text), ["action 'Echo p.out'"], "{text}");
+        assert!(text.contains("  Inputs: []\n"), "{text}");
+        assert!(
+            text.contains("  Command Line: (exec /bin/echo \\\n    '--x=y' \\\n    z)\n"),
+            "{text}"
+        );
+    }
+
     /// The descriptions of the actions an `aquery` printed.
     fn actions(text: &str) -> Vec<&str> {
         text.lines().filter(|l| l.starts_with("action '")).collect()

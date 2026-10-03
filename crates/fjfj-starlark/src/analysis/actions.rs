@@ -683,13 +683,10 @@ fn transform_status_file<'v>(
     Ok(alloc_file(eval.heap(), output, s.label.clone()))
 }
 
+/// The path of an output from the root of its directory (`pkg/name`), which
+/// is how Bazel's messages for the actions that make files name them.
 fn basename(artifact: &Artifact) -> String {
-    artifact
-        .path
-        .rsplit('/')
-        .next()
-        .unwrap_or(&artifact.path)
-        .to_owned()
+    artifact.path.clone()
 }
 
 /// `run` and `run_shell`, which differ in what runs.
