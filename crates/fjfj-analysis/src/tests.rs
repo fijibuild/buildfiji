@@ -473,6 +473,49 @@ bin = rule(implementation = _bin, executable = True, attrs = {"data": attr.label
     analyse(&repos, "//pkg:b").await.unwrap();
 }
 
+/// Probed with `bazel build`: an executable rule's default runfiles hold the
+/// executable and what `runfiles` named, not its other files; a rule with no
+/// executable has none unless it names them.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_executable_is_among_its_own_default_runfiles() {
+    let (_dir, repos) = workspace(&[
+        ("MODULE.bazel", ""),
+        (
+            "defs.bzl",
+            r#"
+def _exe(ctx):
+    exe = ctx.actions.declare_file(ctx.label.name)
+    ctx.actions.write(exe, "", is_executable = True)
+    x = ctx.actions.declare_file(ctx.label.name + ".x")
+    ctx.actions.write(x, "")
+    return [DefaultInfo(files = depset([x]), executable = exe)]
+
+exe = rule(implementation = _exe, executable = True)
+
+def _plain(ctx):
+    x = ctx.actions.declare_file(ctx.label.name + ".x")
+    ctx.actions.write(x, "")
+    return [DefaultInfo(files = depset([x]))]
+
+plain = rule(implementation = _plain)
+
+def _check(ctx):
+    got = lambda t: [f.basename for f in t[DefaultInfo].default_runfiles.files.to_list()]
+    if got(ctx.attr.exe) != ["e"] or got(ctx.attr.plain) != []:
+        fail("runfiles were " + str(got(ctx.attr.exe)) + " and " + str(got(ctx.attr.plain)))
+    return []
+
+check = rule(implementation = _check, attrs = {"exe": attr.label(), "plain": attr.label()})
+"#,
+        ),
+        (
+            "BUILD.bazel",
+            "load(':defs.bzl', 'check', 'exe', 'plain')\nexe(name = 'e')\nplain(name = 'p')\ncheck(name = 'c', exe = ':e', plain = ':p')\n",
+        ),
+    ]);
+    analyse(&repos, "//:c").await.unwrap();
+}
+
 /// Probed with `bazel build` of the same BUILD file and `register_toolchains`.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_rule_gets_the_first_registered_toolchain_its_platform_fits() {

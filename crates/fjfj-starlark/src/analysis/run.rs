@@ -444,6 +444,13 @@ fn read_default_info(
             runfiles = runfiles.merge(&found);
         }
     }
+    // The executable is among its own runfiles, as Bazel has it (rules_rust
+    // reads a build script's out of a stand-in's `default_runfiles`).
+    if let Some(exe) = &executable
+        && !runfiles.files.contains(exe)
+    {
+        runfiles.files.push(exe.clone());
+    }
     Ok((files, executable, runfiles))
 }
 
