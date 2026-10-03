@@ -428,6 +428,51 @@ check = rule(implementation = _impl, attrs = {"dep": attr.label()})
     analyse(&repos, "//pkg:c").await.unwrap();
 }
 
+/// What rules_shell's `runfiles` library is made of: root symlinks that a
+/// `data` edge and an alias both carry to the binary that wants them.
+#[tokio::test(flavor = "multi_thread")]
+async fn root_symlinks_go_through_data_and_aliases_into_runfiles() {
+    let (_dir, repos) = workspace(&[
+        ("MODULE.bazel", ""),
+        (
+            "defs.bzl",
+            r#"
+def _links(ctx):
+    f = ctx.files.srcs[0]
+    rf = ctx.runfiles(root_symlinks = {"top/" + f.basename: f}, skip_conflict_checking = True)
+    if len(rf.root_symlinks.to_list()) != 1:
+        fail("rule's own runfiles lack the symlink")
+    return [DefaultInfo(runfiles = rf)]
+
+links = rule(implementation = _links, attrs = {"srcs": attr.label_list(allow_files = True)})
+
+def _lib(ctx):
+    return [DefaultInfo(runfiles = ctx.runfiles(collect_default = True))]
+
+lib = rule(implementation = _lib, attrs = {"data": attr.label_list()})
+
+def _bin(ctx):
+    exe = ctx.actions.declare_file(ctx.label.name)
+    ctx.actions.write(exe, "", is_executable = True)
+    rf = ctx.runfiles(collect_default = True)
+    got = [k for k in rf.root_symlinks.to_list()]
+    if len(got) != 1:
+        fail("root symlinks were " + str(got))
+    return [DefaultInfo(executable = exe, runfiles = rf)]
+
+bin = rule(implementation = _bin, executable = True, attrs = {"data": attr.label_list()})
+"#,
+        ),
+        (
+            "pkg/BUILD.bazel",
+            "load('//:defs.bzl', 'bin', 'lib', 'links')\nlinks(name = 'l', srcs = ['x.sh'])\nlib(name = 'impl', data = [':l'])\nalias(name = 'a', actual = ':impl')\nbin(name = 'b', data = [':a'])\n",
+        ),
+        ("BUILD.bazel", ""),
+        ("pkg/x.sh", ""),
+    ]);
+    analyse(&repos, "//pkg:b").await.unwrap();
+}
+
 /// Probed with `bazel build` of the same BUILD file and `register_toolchains`.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_rule_gets_the_first_registered_toolchain_its_platform_fits() {

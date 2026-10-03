@@ -573,8 +573,9 @@ fn ctx_members(builder: &mut MethodsBuilder) {
                 })
                 .collect()
         };
-        runfiles.symlinks = entries(4)?;
-        runfiles.root_symlinks = entries(5)?;
+        // After what `collect_data` and `collect_default` gathered, not in place of it.
+        runfiles.symlinks.extend(entries(4)?);
+        runfiles.root_symlinks.extend(entries(5)?);
         Ok(super::runfiles::alloc_runfiles(
             eval.heap(),
             runfiles,
