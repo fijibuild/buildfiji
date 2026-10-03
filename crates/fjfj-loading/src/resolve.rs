@@ -20,7 +20,7 @@ use fjfj_graph::package::{Package, Target, TargetKind};
 use fjfj_graph::pattern::{Pattern, TargetPattern};
 use fjfj_graph::rule::{AttrDefault, AttrValue, native_rule, suggest};
 use std::cell::RefCell;
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 /// Where packages come from; the repo is made first if it must be.
@@ -76,26 +76,6 @@ fn is_manual(target: &Target) -> bool {
     }
 }
 
-/// The files of `package` that are targets only because something names
-/// them: the labels of its rules that are in the package and are not
-/// otherwise targets.
-pub fn input_files(package: &Package) -> BTreeSet<String> {
-    let mut labels = Vec::new();
-    for target in package.targets() {
-        if let TargetKind::Rule { attrs, .. } = &target.kind {
-            for (_, value) in attrs {
-                value.labels(&mut labels);
-            }
-        }
-    }
-    labels
-        .into_iter()
-        .filter(|l| l.repo == package.repo && l.package == package.name)
-        .filter(|l| package.target(&l.name).is_none())
-        .map(|l| l.name.clone())
-        .collect()
-}
-
 /// Whether `label` names a target of `loaded` (its package, in `lookup`'s
 /// repo): a declared one, a file a rule names, or the BUILD file. If not, the
 /// words Bazel says it in.
@@ -104,7 +84,7 @@ pub fn declared_target(
     lookup: &PackageLookup,
     label: &Label,
 ) -> Result<(), String> {
-    if loaded.target(&label.name).is_some() || input_files(loaded).contains(&label.name) {
+    if loaded.target(&label.name).is_some() || loaded.input_files().contains(&label.name) {
         return Ok(());
     }
     let build = lookup
@@ -203,7 +183,7 @@ impl Resolver<'_> {
             {
                 out.push(label(&name));
             }
-            out.extend(input_files(&loaded).iter().map(|n| label(n)));
+            out.extend(loaded.input_files().iter().map(|n| label(n)));
         }
         Ok(out)
     }

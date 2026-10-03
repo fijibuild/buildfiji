@@ -10,7 +10,8 @@ use crate::Label;
 use crate::label::{self, LabelError};
 use crate::rule::AttrValue;
 use crate::visibility::{PackageGroup, Visibility};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
+use std::sync::OnceLock;
 
 /// What a target is.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -96,9 +97,47 @@ pub struct Package {
     /// The `.bzl` files the BUILD file loads, in the order it does.
     #[serde(default)]
     pub loads: Vec<Label>,
+    /// Derived from `targets`; computed on first use.
+    #[serde(skip)]
+    input_files: InputFiles,
 }
 
+/// The cache behind [`Package::input_files`]; it is derived data, so it
+/// takes no part in equality.
+#[derive(Debug, Clone, Default)]
+struct InputFiles(OnceLock<BTreeSet<String>>);
+
+impl PartialEq for InputFiles {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
+
+impl Eq for InputFiles {}
+
 impl Package {
+    /// The files of this package that are targets only because something
+    /// names them: the labels of its rules that are in the package and are not
+    /// otherwise targets. Computed once per package.
+    pub fn input_files(&self) -> &BTreeSet<String> {
+        self.input_files.0.get_or_init(|| {
+            let mut labels = Vec::new();
+            for target in &self.targets {
+                if let TargetKind::Rule { attrs, .. } = &target.kind {
+                    for (_, value) in attrs {
+                        value.labels(&mut labels);
+                    }
+                }
+            }
+            labels
+                .into_iter()
+                .filter(|l| l.repo == self.repo && l.package == self.name)
+                .filter(|l| !self.index.contains_key(&l.name))
+                .map(|l| l.name.clone())
+                .collect()
+        })
+    }
+
     /// Targets in declaration order.
     pub fn targets(&self) -> &[Target] {
         &self.targets
@@ -431,6 +470,7 @@ impl<'a> PackageBuilder<'a> {
             targets: self.targets,
             index: self.index,
             loads: Vec::new(),
+            input_files: InputFiles::default(),
         }
     }
 

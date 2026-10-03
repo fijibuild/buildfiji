@@ -8,7 +8,7 @@ use fjfj_graph::pattern::{PatternContext, TargetPattern};
 use fjfj_graph::rule::{AttrType, AttrValue, Cfg, default_condition, native_rule};
 use fjfj_graph::schema::RuleSchema;
 use fjfj_graph::visibility::is_visible;
-use fjfj_loading::{PackageSource, input_files, resolve_with};
+use fjfj_loading::{PackageSource, resolve_with};
 use fjfj_query::{Edge, Graph, Node, NodeAttr, NodeKind};
 use fjfj_repo::Repos;
 use fjfj_starlark::{RuleSource, rule_schema};
@@ -624,8 +624,8 @@ impl Graph for QueryGraph {
         let package = self.package(label)?;
         let lookup = self.repos.lookup(&label.repo)?;
         let mut out: BTreeSet<Label> = package.targets().iter().map(|t| package.label(t)).collect();
-        out.extend(input_files(&package).into_iter().map(|name| Label {
-            name,
+        out.extend(package.input_files().iter().map(|name| Label {
+            name: name.clone(),
             ..label.clone()
         }));
         if let Ok(build) = lookup.build_file(&label.package)
