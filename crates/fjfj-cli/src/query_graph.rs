@@ -352,6 +352,12 @@ impl QueryGraph {
             config_deps,
             stack,
             definition_stack,
+            implementation_hash: defined_in.map(|bzl| {
+                use sha2::{Digest, Sha256};
+                hex::encode(Sha256::digest(
+                    format!("{}%{class}", fjfj_graph::expand::label_text(bzl)).as_bytes(),
+                ))
+            }),
             group: None,
         })
     }
@@ -631,6 +637,7 @@ impl QueryGraph {
             config_deps: Vec::new(),
             stack: Vec::new(),
             definition_stack: Vec::new(),
+            implementation_hash: None,
             group: None,
         })
     }
@@ -1383,6 +1390,11 @@ genrule(name="gen", outs=["gen.txt"], cmd="echo > $@")
                 .unwrap()
         );
         assert!(narrow.flag("noproto:locations", None).unwrap());
+        assert!(
+            narrow
+                .flag("proto:include_attribute_source_aspects", None)
+                .unwrap()
+        );
         let rule_narrow = rule(&narrow);
         let names: Vec<&str> = rule_narrow["attribute"]
             .as_array()
@@ -1390,7 +1402,8 @@ genrule(name="gen", outs=["gen.txt"], cmd="echo > $@")
             .iter()
             .map(|a| a["name"].as_str().unwrap())
             .collect();
-        assert_eq!(names, ["name", "opt"]);
+        // Bazel adds the digest of a Starlark rule class whatever is asked for.
+        assert_eq!(names, ["name", "opt", "$rule_implementation_hash"]);
         assert!(rule_narrow.get("ruleInput").is_none());
         assert!(rule_narrow.get("location").is_none());
     }

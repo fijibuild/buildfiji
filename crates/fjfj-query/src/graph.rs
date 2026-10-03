@@ -117,6 +117,9 @@ pub struct Node {
     pub loads: Vec<Label>,
     /// This is the BUILD file of a package.
     pub build_file: bool,
+    /// For a rule of a class written in Starlark: a digest of the class,
+    /// which Bazel shows as the attribute `$rule_implementation_hash`.
+    pub implementation_hash: Option<String>,
     /// For a rule: the `config_setting`s its `select()`s read, once each in the
     /// order they were written (Bazel's `$config_dependencies`).
     pub config_deps: Vec<Label>,

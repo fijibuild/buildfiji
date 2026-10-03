@@ -545,6 +545,20 @@ fn cquery_proto(
         results.push(result);
     }
     let configurations: Vec<Msg> = configurations.into_iter().map(|(_, m)| m).collect();
+    // Without the configurations the output is `query`'s.
+    if !query.proto.include_configurations {
+        let targets: Vec<Msg> = results
+            .iter()
+            .filter_map(|r| r.first_message(1))
+            .cloned()
+            .collect();
+        return Ok(match query.format.as_str() {
+            "proto" => Msg::new().many(1, "target", targets).binary(),
+            "textproto" => Msg::new().many(1, "target", targets).text().into_bytes(),
+            "jsonproto" => Msg::new().many(1, "target", targets).json().into_bytes(),
+            _ => targets.iter().flat_map(|t| t.delimited()).collect(),
+        });
+    }
     let whole = || {
         Msg::new().many(1, "results", results.clone()).many(
             2,
@@ -728,7 +742,7 @@ mod tests {
             options: Options::default(),
             formatter,
             aquery: settings,
-            proto: Default::default(),
+            proto: PROTO.with(|p| p.borrow().clone()),
             graph: Default::default(),
             transitions,
             terminator: '\n',
@@ -1605,6 +1619,48 @@ execution_platform: "@@platforms//host:host"
         // Scopes add up, and the targets in both configurations are there.
         let both = query("//:a,//:b", "//:b").await;
         assert_eq!(both.lines().count(), 2);
+    }
+
+    thread_local! {
+        /// The `--proto:` flags of the next `query_on` on this thread.
+        static PROTO: std::cell::RefCell<fjfj_query::target_proto::ProtoOptions> =
+            std::cell::RefCell::new(Default::default());
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn cquery_proto_without_configurations_is_querys() {
+        let json = |include: bool| async move {
+            let text = tokio::task::spawn_blocking(move || {
+                PROTO.with(|p| p.borrow_mut().include_configurations = include);
+                let text = query_on(
+                    TRANSITION,
+                    Kind::Cquery,
+                    "jsonproto",
+                    "//:a + //:s.txt",
+                    None,
+                    &[],
+                    aquery::Settings::default(),
+                )
+                .map(|bytes| String::from_utf8(bytes).unwrap())
+                .unwrap();
+                PROTO.with(|p| *p.borrow_mut() = Default::default());
+                text
+            })
+            .await
+            .unwrap();
+            serde_json::from_str::<serde_json::Value>(&text).unwrap()
+        };
+        let with = json(true).await;
+        assert!(with.get("results").is_some() && with.get("target").is_none());
+        // `query`'s `QueryResult`: just the targets.
+        let without = json(false).await;
+        assert!(without.get("results").is_none() && without.get("configurations").is_none());
+        let targets = without["target"].as_array().unwrap();
+        assert_eq!(targets.len(), 2);
+        assert_eq!(targets[0]["rule"]["name"], "//:a");
+        // A Starlark rule carries the digest of its class, last.
+        let attrs = targets[0]["rule"]["attribute"].as_array().unwrap();
+        assert_eq!(attrs.last().unwrap()["name"], "$rule_implementation_hash");
     }
 
     /// The descriptions of the actions an `aquery` printed.

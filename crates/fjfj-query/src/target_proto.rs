@@ -27,6 +27,11 @@ pub struct ProtoOptions {
     pub instantiation_stack: bool,
     /// `--[no]proto:definition_stack` (default false).
     pub definition_stack: bool,
+    /// `--[no]proto:include_configurations` (default true, `cquery`): without
+    /// them the output is that of `query`.
+    pub include_configurations: bool,
+    /// `--[no]proto:include_attribute_source_aspects` (default false).
+    pub include_attribute_source_aspects: bool,
 }
 
 impl Default for ProtoOptions {
@@ -39,6 +44,8 @@ impl Default for ProtoOptions {
             output_rule_attrs: None,
             instantiation_stack: false,
             definition_stack: false,
+            include_configurations: true,
+            include_attribute_source_aspects: false,
         }
     }
 }
@@ -65,6 +72,10 @@ impl ProtoOptions {
             "locations" => self.locations = on,
             "instantiation_stack" => self.instantiation_stack = on,
             "definition_stack" => self.definition_stack = on,
+            "include_configurations" => self.include_configurations = on,
+            "include_attribute_source_aspects" => self.include_attribute_source_aspects = on,
+            // Bazel shows the hash whatever this says.
+            "include_synthetic_attribute_hash" => {}
             "output_rule_attrs" => {
                 self.output_rule_attrs = Some(
                     value
@@ -424,11 +435,28 @@ pub fn target(ev: &Evaluator<'_>, label: &Label, options: &ProtoOptions) -> Resu
             if options.locations {
                 rule = rule.one(3, "location", node.shown_location(graph));
             }
-            rule = rule.many(
-                4,
-                "attribute",
-                attrs.iter().map(|a| attribute(graph, a, options)),
-            );
+            let mut shown: Vec<Msg> = attrs
+                .iter()
+                .map(|a| {
+                    let message = attribute(graph, a, options);
+                    if options.include_attribute_source_aspects {
+                        message.one(23, "source_aspect_name", "")
+                    } else {
+                        message
+                    }
+                })
+                .collect();
+            // Last, after the attributes by name and whatever is asked for: a
+            // digest of the rule class.
+            if let Some(hash) = &node.implementation_hash {
+                shown.push(
+                    Msg::new()
+                        .one(1, "name", "$rule_implementation_hash")
+                        .one(2, "type", Val::Enum("STRING", 2))
+                        .one(5, "string_value", hash.as_str()),
+                );
+            }
+            rule = rule.many(4, "attribute", shown);
             if options.rule_inputs_and_outputs {
                 let inputs: BTreeSet<String> = ev
                     .edges(&*graph.declared_node(label)?)

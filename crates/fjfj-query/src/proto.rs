@@ -108,6 +108,14 @@ impl Msg {
         self
     }
 
+    /// The message in the first field `number` that holds one.
+    pub fn first_message(&self, number: u32) -> Option<&Msg> {
+        self.fields.iter().find_map(|f| match &f.value {
+            Val::Msg(m) if f.number == number => Some(m),
+            _ => None,
+        })
+    }
+
     /// Set the singular string field of a proto3 message, which says nothing
     /// for the empty string.
     pub fn text_field(self, number: u32, name: &'static str, value: impl Into<String>) -> Msg {
