@@ -243,8 +243,11 @@ pub(crate) async fn analyze(
             _ => None,
         })
         .unwrap_or_default();
-    let (toolchains, toolchain_keys) =
+    let (toolchains, toolchain_keys, chosen_platform) =
         resolve_toolchains(ctx, key, &schema.toolchains, &exec_compatible).await?;
+    if chosen_platform.is_some() {
+        target.execution_platform = chosen_platform;
+    }
 
     // The outputs the class declares: `outputs = {...}` templates, and the
     // `attr.output`s the call set.
@@ -370,9 +373,16 @@ pub(crate) async fn resolve_toolchains(
     key: &ConfiguredTargetKey,
     types: &[(Label, bool)],
     exec: &[Label],
-) -> Result<(Vec<(Label, Option<DepInfo>)>, Vec<ConfiguredTargetKey>), Error> {
+) -> Result<
+    (
+        Vec<(Label, Option<DepInfo>)>,
+        Vec<ConfiguredTargetKey>,
+        Option<Label>,
+    ),
+    Error,
+> {
     if types.is_empty() {
-        return Ok((Vec::new(), Vec::new()));
+        return Ok((Vec::new(), Vec::new(), None));
     }
     let extra = match key
         .configuration
@@ -382,18 +392,18 @@ pub(crate) async fn resolve_toolchains(
         Some(fjfj_graph::SettingValue::List(items)) => Some(items.clone()),
         _ => None,
     };
-    let mut platforms: Vec<std::collections::BTreeSet<Label>> = ctx
+    let mut platforms: Vec<(Option<Label>, std::collections::BTreeSet<Label>)> = ctx
         .get(crate::toolchain::ExecutionPlatforms { extra })
         .await?
         .iter()
-        .map(|p| p.constraints.clone())
+        .map(|p| (Some(p.label.clone()), p.constraints.clone()))
         .collect();
     // With none named, the target platform is where it runs.
     if platforms.is_empty() {
-        platforms.push(key.configuration.constraints.clone());
+        platforms.push((None, key.configuration.constraints.clone()));
     }
     let mut missing: Vec<Label> = types.iter().map(|(t, _)| t.clone()).collect();
-    for platform in platforms {
+    for (platform_label, platform) in platforms {
         if !exec.iter().all(|c| platform.contains(c)) {
             continue;
         }
@@ -416,7 +426,7 @@ pub(crate) async fn resolve_toolchains(
             }
         }
         if unmet.is_empty() {
-            return Ok((toolchains, toolchain_keys));
+            return Ok((toolchains, toolchain_keys, platform_label));
         }
         missing = unmet;
     }

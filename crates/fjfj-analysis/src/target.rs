@@ -3,6 +3,7 @@
 use crate::native;
 use fjfj_engine::{Ctx, Engine, Error, Key};
 use fjfj_graph::package::{Package, TargetKind};
+use fjfj_graph::rule::AttrValue;
 use fjfj_graph::{Action, Artifact, Configuration, Label, NestedSet};
 use fjfj_loading::PackageSource;
 use fjfj_starlark::{RuleSource, StoredProvider};
@@ -31,6 +32,9 @@ pub struct Env {
     /// after the others; `None` for none, in which case a target with no
     /// execution platform registered runs on its target platform.
     pub host_constraints: Option<std::collections::BTreeSet<Label>>,
+    /// Work out which execution platform each rule's target runs on, for
+    /// `aquery` to show; builds do not need it for a rule without toolchains.
+    pub record_execution_platforms: bool,
 }
 
 /// An engine that analyses against `env`.
@@ -101,6 +105,9 @@ pub struct ConfiguredTarget {
     pub platform: Option<PlatformDecl>,
     /// For a `config_setting`: whether it matches this configuration.
     pub config_matching: Option<crate::select::ConfigMatching>,
+    /// The platform its actions run on, when [`Env::record_execution_platforms`]
+    /// or its toolchains decided it.
+    pub execution_platform: Option<Label>,
     /// The actions this target registered.
     pub actions: Vec<Action>,
     /// The targets it read, for finding every action a build needs.
@@ -158,6 +165,7 @@ impl ConfiguredTarget {
             constraint_setting: None,
             platform: None,
             config_matching: None,
+            execution_platform: None,
             actions: Vec::new(),
             deps: Vec::new(),
             aspect_deps: Vec::new(),
@@ -187,6 +195,19 @@ impl Key for ConfiguredTargetKey {
                 } => {
                     target.rule_class = Some(rule_class.clone());
                     let attrs = crate::select::resolve(ctx, self, attrs).await?;
+                    if ctx.data::<Env>()?.record_execution_platforms {
+                        let exec: Vec<Label> = attrs
+                            .iter()
+                            .find_map(|(n, v)| match (n.as_str(), v) {
+                                ("exec_compatible_with", AttrValue::LabelList(list)) => {
+                                    Some(list.clone())
+                                }
+                                _ => None,
+                            })
+                            .unwrap_or_default();
+                        target.execution_platform =
+                            crate::toolchain::default_execution_platform(ctx, self, &exec).await?;
+                    }
                     native::analyze(
                         ctx,
                         self,

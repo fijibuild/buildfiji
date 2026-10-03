@@ -90,6 +90,7 @@ async fn analyse_on(
         registered_execution_platforms,
         extra_execution_platforms: Vec::new(),
         host_constraints: None,
+        record_execution_platforms: false,
     });
     let (package, name) = label.trim_start_matches("//").split_once(':').unwrap();
     engine

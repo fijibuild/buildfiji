@@ -135,7 +135,7 @@ impl Key for AspectKey {
         for (key, done) in own_keys.iter().zip(ctx.get_all(own_keys.clone()).await) {
             deps.insert(key.label.clone(), dep_info(&*done?, false));
         }
-        let (toolchains, toolchain_keys) =
+        let (toolchains, toolchain_keys, _) =
             resolve_toolchains(ctx, &self.target, &spec.schema.toolchains, &[]).await?;
 
         let request = AspectRequest {

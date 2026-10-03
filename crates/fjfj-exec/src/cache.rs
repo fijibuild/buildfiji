@@ -7,7 +7,7 @@
 //! digest is remembered with its size and modification time, so a file that
 //! has not changed is not read again.
 
-use fjfj_graph::{Action, ActionKind};
+use fjfj_graph::Action;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -155,80 +155,7 @@ impl ActionCache {
             hasher.update((bytes.len() as u64).to_le_bytes());
             hasher.update(bytes);
         };
-        field(action.mnemonic.as_bytes());
-        match &action.kind {
-            ActionKind::Spawn {
-                argv,
-                env,
-                execution_requirements,
-            } => {
-                field(b"spawn");
-                for arg in argv {
-                    field(arg.as_bytes());
-                }
-                field(b"env");
-                for (k, v) in env {
-                    field(k.as_bytes());
-                    field(v.as_bytes());
-                }
-                field(b"requirements");
-                for (k, v) in execution_requirements {
-                    field(k.as_bytes());
-                    field(v.as_bytes());
-                }
-            }
-            ActionKind::WriteFile {
-                contents,
-                executable,
-            } => {
-                field(b"write");
-                field(contents);
-                field(&[u8::from(*executable)]);
-            }
-            ActionKind::Symlink { target } => {
-                field(b"symlink");
-                field(target.as_bytes());
-            }
-            ActionKind::UnresolvedSymlink { target } => {
-                field(b"unresolved-symlink");
-                field(target.as_bytes());
-            }
-            ActionKind::RunfilesTree {
-                dir,
-                manifest,
-                repo_mapping,
-                repo_mapping_contents,
-                entries,
-                empty_files,
-            } => {
-                field(b"runfiles");
-                field(dir.as_bytes());
-                field(manifest.as_bytes());
-                field(repo_mapping.as_bytes());
-                field(repo_mapping_contents.as_bytes());
-                for (path, artifact) in entries {
-                    field(path.as_bytes());
-                    field(artifact.exec_path().as_bytes());
-                }
-                field(b"empty");
-                for path in empty_files {
-                    field(path.as_bytes());
-                }
-            }
-            ActionKind::Template {
-                template,
-                substitutions,
-                executable,
-            } => {
-                field(b"template");
-                field(template.as_bytes());
-                for (k, v) in substitutions {
-                    field(k.as_bytes());
-                    field(v.as_bytes());
-                }
-                field(&[u8::from(*executable)]);
-            }
-        }
+        action.definition(&mut field);
         field(b"inputs");
         let mut inputs: Vec<String> = action.inputs.iter().map(|a| a.exec_path()).collect();
         inputs.sort();

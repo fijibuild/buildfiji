@@ -71,6 +71,110 @@ pub struct Action {
 }
 
 impl Action {
+    /// Feed `field` what the action does: its mnemonic and what its kind
+    /// carries, each as one field. What its inputs and outputs are is left to
+    /// the caller.
+    pub fn definition(&self, field: &mut dyn FnMut(&[u8])) {
+        field(self.mnemonic.as_bytes());
+        match &self.kind {
+            ActionKind::Spawn {
+                argv,
+                env,
+                execution_requirements,
+            } => {
+                field(b"spawn");
+                for arg in argv {
+                    field(arg.as_bytes());
+                }
+                field(b"env");
+                for (k, v) in env {
+                    field(k.as_bytes());
+                    field(v.as_bytes());
+                }
+                field(b"requirements");
+                for (k, v) in execution_requirements {
+                    field(k.as_bytes());
+                    field(v.as_bytes());
+                }
+            }
+            ActionKind::WriteFile {
+                contents,
+                executable,
+            } => {
+                field(b"write");
+                field(contents);
+                field(&[u8::from(*executable)]);
+            }
+            ActionKind::Symlink { target } => {
+                field(b"symlink");
+                field(target.as_bytes());
+            }
+            ActionKind::UnresolvedSymlink { target } => {
+                field(b"unresolved-symlink");
+                field(target.as_bytes());
+            }
+            ActionKind::RunfilesTree {
+                dir,
+                manifest,
+                repo_mapping,
+                repo_mapping_contents,
+                entries,
+                empty_files,
+            } => {
+                field(b"runfiles");
+                field(dir.as_bytes());
+                field(manifest.as_bytes());
+                field(repo_mapping.as_bytes());
+                field(repo_mapping_contents.as_bytes());
+                for (path, artifact) in entries {
+                    field(path.as_bytes());
+                    field(artifact.exec_path().as_bytes());
+                }
+                field(b"empty");
+                for path in empty_files {
+                    field(path.as_bytes());
+                }
+            }
+            ActionKind::Template {
+                template,
+                substitutions,
+                executable,
+            } => {
+                field(b"template");
+                field(template.as_bytes());
+                for (k, v) in substitutions {
+                    field(k.as_bytes());
+                    field(v.as_bytes());
+                }
+                field(&[u8::from(*executable)]);
+            }
+        }
+    }
+
+    /// A digest of the action as defined, without what its inputs hold, which
+    /// `aquery` shows as the `ActionKey`.
+    pub fn key(&self) -> String {
+        use sha2::{Digest, Sha256};
+        let mut hasher = Sha256::new();
+        let mut field = |bytes: &[u8]| {
+            hasher.update((bytes.len() as u64).to_le_bytes());
+            hasher.update(bytes);
+        };
+        self.definition(&mut field);
+        field(b"inputs");
+        let mut inputs: Vec<String> = self.inputs.iter().map(|a| a.exec_path()).collect();
+        inputs.sort();
+        inputs.dedup();
+        for input in &inputs {
+            field(input.as_bytes());
+        }
+        field(b"outputs");
+        for out in &self.outputs {
+            field(out.exec_path().as_bytes());
+        }
+        hex::encode(hasher.finalize())
+    }
+
     /// The command line of a spawn, `None` for the other kinds.
     pub fn argv(&self) -> Option<&[String]> {
         match &self.kind {

@@ -220,13 +220,27 @@ impl CtxState {
         inputs: Vec<Artifact>,
         outputs: Vec<Artifact>,
     ) {
-        let progress = progress_message.unwrap_or_else(|| {
-            let first = outputs
-                .first()
-                .map(|o| FileValueView(o).short_path())
-                .unwrap_or_default();
-            format!("{mnemonic} {first}")
-        });
+        let progress = match progress_message {
+            // `%{label}`, `%{input}` and `%{output}` stand for the label of
+            // the target, the first input and the first output.
+            Some(message) => message
+                .replace("%{label}", &fjfj_graph::expand::label_text(&self.label))
+                .replace(
+                    "%{input}",
+                    &inputs.first().map(Artifact::exec_path).unwrap_or_default(),
+                )
+                .replace(
+                    "%{output}",
+                    &outputs.first().map(Artifact::exec_path).unwrap_or_default(),
+                ),
+            None => {
+                let first = outputs
+                    .first()
+                    .map(|o| FileValueView(o).short_path())
+                    .unwrap_or_default();
+                format!("{mnemonic} {first}")
+            }
+        };
         self.actions.lock().unwrap().push(Action {
             owner: self.label.clone(),
             owner_kind: self.rule_kind.clone(),
@@ -526,7 +540,7 @@ fn actions_members(builder: &mut MethodsBuilder) {
             };
             s.register(
                 "UnresolvedSymlink",
-                Some(format!("Creating unresolved symlink {}", basename(&output))),
+                Some(format!("Creating symlink {}", basename(&output))),
                 ActionKind::UnresolvedSymlink {
                     target: path.to_owned(),
                 },

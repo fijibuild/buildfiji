@@ -39,6 +39,8 @@ pub(crate) struct Options {
     pub strategy: fjfj_exec::run::Strategy,
     /// `--show_result`: say where the results are for this many targets or fewer.
     pub show_result: usize,
+    /// Decide the execution platform of every rule, for `aquery`.
+    pub record_execution_platforms: bool,
     /// `test`: run the tests among the targets, and how much of their logs to show.
     pub test: Option<fjfj_bazel_compat::test_flags::TestOutput>,
 }
@@ -419,6 +421,7 @@ pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> R
         registered_execution_platforms: repos.registered_execution_platforms(),
         extra_execution_platforms: request.options.extra_execution_platforms.clone(),
         host_constraints,
+        record_execution_platforms: request.options.record_execution_platforms,
     };
     let handle = tokio::runtime::Handle::current();
     // `--host_platform` says what the host is, in place of the machine's own.

@@ -3,6 +3,7 @@
 //! analysed (nothing is built), and the configured targets, or the actions
 //! they registered, are printed.
 
+use crate::aquery;
 use crate::build_command;
 use crate::configured_graph::ConfiguredGraph;
 use crate::fetch_command;
@@ -10,8 +11,8 @@ use crate::query_graph::QueryGraph;
 use crate::{CliError, bzlmod_flags, locate_workspace_root};
 use fjfj_analysis::ConfiguredTarget;
 use fjfj_bazel_compat::QueryArgs;
+use fjfj_graph::Label;
 use fjfj_graph::config::Configuration;
-use fjfj_graph::{Action, ActionKind, Label};
 use fjfj_query::{Evaluator, Graph, Options};
 use fjfj_starlark::RuleSource;
 use std::collections::BTreeSet;
@@ -47,7 +48,15 @@ impl Kind {
                 "starlark",
                 "files",
             ],
-            Kind::Aquery => &["text"],
+            Kind::Aquery => &[
+                "proto",
+                "streamed_proto",
+                "textproto",
+                "jsonproto",
+                "text",
+                "commands",
+                "summary",
+            ],
         }
     }
 
@@ -79,6 +88,30 @@ struct Flags {
     options: Options,
     expr: Option<String>,
     file: Option<String>,
+    aquery: aquery::Settings,
+}
+
+impl Flags {
+    /// An `aquery` flag that is `--[no]name`, `--name=true` or `--name=false`.
+    fn set_aquery(&mut self, name: &str, value: Option<&str>) -> bool {
+        let (base, negated) = match name.strip_prefix("no") {
+            Some(base) if value.is_none() => (base, true),
+            _ => (name, false),
+        };
+        let on = match value {
+            Some("false" | "0" | "no") => false,
+            Some(_) | None => !negated,
+        };
+        match base {
+            "include_commandline" => self.aquery.commandline = on,
+            "include_artifacts" => self.aquery.artifacts = on,
+            "include_file_write_contents" => self.aquery.file_write_contents = on,
+            // No action of fjfj has a parameter file.
+            "include_param_files" => {}
+            _ => return false,
+        }
+        true
+    }
 }
 
 impl Flags {
@@ -107,6 +140,7 @@ fn extract(kind: Kind, args: &[String]) -> Result<(Flags, Vec<String>), CliError
         options: Options::default(),
         expr: None,
         file: None,
+        aquery: aquery::Settings::default(),
     };
     let mut rest = Vec::new();
     let mut iter = args.iter();
@@ -143,6 +177,7 @@ fn extract(kind: Kind, args: &[String]) -> Result<(Flags, Vec<String>), CliError
             "tool_deps" => flags.options.tool_deps = true,
             "notool_deps" => flags.options.tool_deps = false,
             "keep_going" | "nokeep_going" => {}
+            _ if kind == Kind::Aquery && flags.set_aquery(name, value.as_deref()) => {}
             _ => rest.push(arg.clone()),
         }
     }
@@ -177,6 +212,7 @@ pub(crate) async fn run(args: QueryArgs, kind: Kind) -> Result<(), CliError> {
         format: flags.format,
         options: flags.options,
         formatter,
+        aquery: flags.aquery,
         expr,
     };
     let configuration = build_command::configuration_from(&build_flags).map_err(bad)?;
@@ -238,6 +274,7 @@ fn build_options(
         jobs: None,
         strategy: fjfj_exec::run::Options::default().strategy,
         show_result: 0,
+        record_execution_platforms: true,
         test: None,
     }
 }
@@ -249,6 +286,7 @@ struct Query {
     options: Options,
     /// For `--output=starlark`.
     formatter: Option<Formatter>,
+    aquery: aquery::Settings,
     expr: fjfj_query::Expr,
 }
 
@@ -269,7 +307,10 @@ fn evaluate(
                 .map_err(|e| CliError::Query(anyhow::anyhow!(e)))?,
         );
     }
-    let request = build_command::Request { layout, options };
+    let request = build_command::Request {
+        layout: layout.clone(),
+        options,
+    };
     let targets: Vec<Label> = named.into_iter().collect();
     let report = build_command::run(repos, &targets, &request);
     if let Some((label, message)) = report.analysis_errors.first() {
@@ -283,7 +324,7 @@ fn evaluate(
     let labels = evaluator
         .eval(&query.expr)
         .map_err(|e| CliError::Query(anyhow::anyhow!(e)))?;
-    render(query, &labels, &evaluator, &configured, repos)
+    render(query, &labels, &evaluator, &configured, repos, &layout)
 }
 
 /// The configured targets `labels` stand for, in label then configuration order.
@@ -300,6 +341,7 @@ fn render(
     evaluator: &Evaluator<'_>,
     graph: &ConfiguredGraph<'_>,
     repos: &fjfj_repo::Repos,
+    layout: &fjfj_exec::execroot::Layout,
 ) -> Result<String, CliError> {
     let failed = |e: String| CliError::Query(anyhow::anyhow!(e));
     match query.kind {
@@ -357,81 +399,24 @@ fn render(
             ))),
         },
         Kind::Aquery => {
-            let mut out = String::new();
-            let mut actions: Vec<(&Action, &Configuration)> = chosen(labels, graph)
+            let rows: Vec<aquery::Row<'_>> = chosen(labels, graph)
                 .into_iter()
-                .flat_map(|t| t.actions.iter().map(|a| (a, &t.configuration)))
+                .flat_map(|target| {
+                    target.actions.iter().map(move |action| aquery::Row {
+                        target: target.as_ref(),
+                        action,
+                    })
+                })
                 .collect();
-            actions.sort_by_key(|(a, _)| {
-                (
-                    build_command::label_name(&a.owner),
-                    a.mnemonic.clone(),
-                    a.outputs.first().map(|o| o.exec_path()),
-                )
-            });
-            for (action, configuration) in actions {
-                aquery_text(&mut out, action, configuration);
+            match query.format.as_str() {
+                "text" => Ok(aquery::text(&rows, query.aquery, layout)),
+                "commands" => Ok(aquery::commands(&rows)),
+                "summary" => Ok(aquery::summary(&rows)),
+                other => Err(CliError::Query(anyhow::anyhow!(
+                    "--output={other} is not implemented yet"
+                ))),
             }
-            Ok(out)
         }
-    }
-}
-
-fn aquery_text(out: &mut String, action: &Action, configuration: &Configuration) {
-    let described = action.progress_message.clone().unwrap_or_else(|| {
-        format!(
-            "{} {}",
-            action.mnemonic,
-            build_command::label_name(&action.owner)
-        )
-    });
-    out.push_str(&format!("action '{described}'\n"));
-    out.push_str(&format!("  Mnemonic: {}\n", action.mnemonic));
-    out.push_str(&format!(
-        "  Owner: {}\n",
-        build_command::label_name(&action.owner)
-    ));
-    out.push_str(&format!("  Configuration: {}\n", action.configuration));
-    let list = |artifacts: &[fjfj_graph::Artifact]| {
-        artifacts
-            .iter()
-            .map(|a| a.exec_path())
-            .collect::<Vec<_>>()
-            .join(", ")
-    };
-    out.push_str(&format!("  Inputs: [{}]\n", list(&action.inputs)));
-    out.push_str(&format!("  Outputs: [{}]\n", list(&action.outputs)));
-    if let ActionKind::Spawn { argv, env, .. } = &action.kind {
-        if !env.is_empty() {
-            out.push_str("  Environment Variables: [");
-            out.push_str(
-                &env.iter()
-                    .map(|(k, v)| format!("{k}={v}"))
-                    .collect::<Vec<_>>()
-                    .join(", "),
-            );
-            out.push_str("]\n");
-        }
-        let quoted: Vec<String> = argv.iter().map(|a| shell_quote(a)).collect();
-        out.push_str(&format!(
-            "  Command Line: (exec {})\n",
-            quoted.join(" \\\n    ")
-        ));
-    }
-    out.push_str(&format!("# Configuration: {}\n", configuration.checksum()));
-    out.push('\n');
-}
-
-/// An argument as the shell would need it written.
-fn shell_quote(arg: &str) -> String {
-    let plain = !arg.is_empty()
-        && arg
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || "-_./=:,+@%".contains(c));
-    if plain {
-        arg.to_owned()
-    } else {
-        format!("'{}'", arg.replace('\'', "'\\''"))
     }
 }
 
@@ -481,6 +466,7 @@ mod tests {
             format: format.to_owned(),
             options: Options::default(),
             formatter,
+            aquery: aquery::Settings::default(),
             expr: fjfj_query::parse(expr).unwrap(),
         };
         let options = build_options(Configuration::default(), &Default::default());
@@ -503,7 +489,7 @@ def _t(settings, attr):
 t = transition(implementation = _t, inputs = [], outputs = ["//:flag"])
 def _r(ctx):
     out = ctx.actions.declare_file(ctx.label.name + ".txt")
-    ctx.actions.run_shell(outputs = [out], inputs = ctx.files.srcs, command = "cat $@ > " + out.path, mnemonic = "Cat", env = {"A": "b"})
+    ctx.actions.run_shell(outputs = [out], inputs = ctx.files.srcs, command = "cat $@ > " + out.path, mnemonic = "Cat", progress_message = "Cat %{label}", env = {"A": "b"})
     return [DefaultInfo(files = depset([out]))]
 r = rule(implementation = _r, attrs = {"srcs": attr.label_list(allow_files = True), "deps": attr.label_list(cfg = t)})
 def _f(ctx):
@@ -666,6 +652,75 @@ r(name = "b", srcs = ["s.txt"])
         );
     }
 
+    /// The text with each 64-digit hash (an `ActionKey`, a configuration's
+    /// checksum) replaced by `HASH`.
+    fn unhashed(text: &str) -> String {
+        let mut out = String::new();
+        let mut run = String::new();
+        for c in text.chars().chain(std::iter::once('\u{0}')) {
+            if c.is_ascii_hexdigit() {
+                run.push(c);
+                continue;
+            }
+            out.push_str(&if run.len() == 64 {
+                "HASH".to_owned()
+            } else {
+                run.clone()
+            });
+            run.clear();
+            if c != '\u{0}' {
+                out.push(c);
+            }
+        }
+        out
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn aquery_prints_actions_as_bazel_does() {
+        let text = run_query(Kind::Aquery, "text", "//:a", None).await.unwrap();
+        // What `bazel aquery //:a` printed for the same files.
+        assert_eq!(
+            unhashed(&text),
+            "action 'Cat //:a'
+  Mnemonic: Cat
+  Target: //:a
+  Configuration: k8-fastbuild
+  Execution platform: @@platforms//host:host
+  ActionKey: HASH
+  Inputs: [s.txt]
+  Outputs: [bazel-out/k8-fastbuild/bin/a.txt]
+  Environment: [A=b]
+  Command Line: (exec /bin/bash \\
+    -c \\
+    'cat $@ > bazel-out/k8-fastbuild/bin/a.txt')
+# Configuration: HASH
+# Execution platform: @@platforms//host:host
+
+"
+            .replace(
+                "k8-fastbuild",
+                &format!("{}-fastbuild", fjfj_graph::config::host_cpu())
+            )
+        );
+        let commands = run_query(Kind::Aquery, "commands", "//:a", None)
+            .await
+            .unwrap();
+        assert_eq!(
+            commands,
+            format!(
+                "/bin/bash -c 'cat $@ > bazel-out/{}-fastbuild/bin/a.txt'\n",
+                fjfj_graph::config::host_cpu()
+            )
+        );
+        let summary = run_query(Kind::Aquery, "summary", "deps(//:a)", None)
+            .await
+            .unwrap();
+        assert!(
+            summary.starts_with("2 total actions.\n\nMnemonics:\n  Cat: 2\n"),
+            "{summary}"
+        );
+    }
+
     fn args(words: &[&str]) -> Vec<String> {
         words.iter().map(|s| s.to_string()).collect()
     }
@@ -701,12 +756,5 @@ r(name = "b", srcs = ["s.txt"])
                 .to_string()
                 .contains("must not specify both")
         );
-    }
-
-    #[test]
-    fn arguments_are_quoted_for_the_shell() {
-        assert_eq!(shell_quote("-c"), "-c");
-        assert_eq!(shell_quote("echo it's"), "'echo it'\\''s'");
-        assert_eq!(shell_quote(""), "''");
     }
 }

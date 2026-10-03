@@ -31,6 +31,7 @@ use fjfj_graph::pattern::{PatternContext, TargetPattern};
 use fjfj_remote::execution_log::{CompactExecutionLogWriter, EntryType, ExecLogEntry, Invocation};
 
 mod analysis_query;
+mod aquery;
 mod build_command;
 mod configured_graph;
 mod fetch_command;
@@ -771,6 +772,7 @@ async fn build_main(
                 ))
             })?,
         },
+        record_execution_platforms: false,
         test: test_flags.as_ref().map(|t| t.output),
     };
     let build_show_result = build.show_result;
@@ -1168,6 +1170,7 @@ mod tests {
             jobs: None,
             strategy: fjfj_exec::run::Options::default().strategy,
             show_result: 1,
+            record_execution_platforms: false,
             test: None,
         };
         let patterns = ["//:g".to_owned(), "//:bad".to_owned()];
@@ -1273,6 +1276,7 @@ my_test = rule(implementation = _impl, test = True, attrs = {"exit": attr.int()}
             jobs: None,
             strategy: fjfj_exec::run::Options::default().strategy,
             show_result: 1,
+            record_execution_platforms: false,
             test: Some(fjfj_bazel_compat::test_flags::TestOutput::Summary),
         };
         let runtime = tokio::runtime::Runtime::new().unwrap();

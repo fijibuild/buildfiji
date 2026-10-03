@@ -92,6 +92,29 @@ impl Key for ExecutionPlatforms {
     }
 }
 
+/// The first execution platform that has the `exec` constraints, which is
+/// where a target runs its actions when it needs no toolchain to say
+/// otherwise.
+pub(crate) async fn default_execution_platform(
+    ctx: &Ctx,
+    key: &ConfiguredTargetKey,
+    exec: &[Label],
+) -> Result<Option<Label>, Error> {
+    let extra = match key
+        .configuration
+        .settings
+        .get("//command_line_option:extra_execution_platforms")
+    {
+        Some(fjfj_graph::SettingValue::List(items)) => Some(items.clone()),
+        _ => None,
+    };
+    let platforms = ctx.get(ExecutionPlatforms { extra }).await?;
+    Ok(platforms
+        .iter()
+        .find(|p| exec.iter().all(|c| p.constraints.contains(c)))
+        .map(|p| p.label.clone()))
+}
+
 /// The `rule_class` targets `patterns` name, in order.
 async fn expand_all(
     ctx: &Ctx,
