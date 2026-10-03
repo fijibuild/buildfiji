@@ -148,8 +148,12 @@ pub(crate) async fn run(args: QueryArgs) -> Result<(), CliError> {
     .iter()
     .flat_map(|s| s.iter().copied())
     .collect();
-    fjfj_bazel_compat::clap_flags::validate(&rest, "query", &implemented)
-        .map_err(|e| CliError::CommandLine(anyhow::Error::from(e)))?;
+    fjfj_bazel_compat::clap_flags::validate(
+        &crate::query_io::flags_first(&rest),
+        "query",
+        &implemented,
+    )
+    .map_err(|e| CliError::CommandLine(anyhow::Error::from(e)))?;
     let query = crate::query_io::expression(&io, &rest)?;
     let expr = fjfj_query::parse(&query)
         .map_err(|e| bad(format!("Error while parsing '{query}': {e}")))?;

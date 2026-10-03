@@ -46,6 +46,16 @@ pub(crate) fn extract(args: &[String]) -> Result<(Io, Vec<String>), CliError> {
     Ok((io, rest))
 }
 
+/// `rest` with its flags first: the gate that refuses a flag fjfj does not read
+/// takes everything after the first word of the expression for words.
+pub(crate) fn flags_first(rest: &[String]) -> Vec<String> {
+    let is_flag =
+        |t: &&String| t.starts_with("--") && !t.starts_with("--//") && !t.starts_with("--@");
+    let flags = rest.iter().filter(is_flag);
+    let words = rest.iter().filter(|t| !is_flag(t));
+    flags.chain(words).cloned().collect()
+}
+
 /// The expression: the words that are left, or the contents of the query file.
 pub(crate) fn expression(io: &Io, rest: &[String]) -> Result<String, CliError> {
     let Some(file) = &io.query_file else {
@@ -93,6 +103,14 @@ mod tests {
         assert_eq!(io.query_file.as_deref(), Some("q.txt"));
         assert_eq!(io.output_file.as_deref(), Some("o.txt"));
         assert_eq!(rest, ["//a"]);
+    }
+
+    #[test]
+    fn flags_come_before_the_words() {
+        assert_eq!(
+            flags_first(&args(&["//a", "+", "//b", "--nodep_deps", "--//f:g=1"])),
+            ["--nodep_deps", "//a", "+", "//b", "--//f:g=1"]
+        );
     }
 
     #[test]

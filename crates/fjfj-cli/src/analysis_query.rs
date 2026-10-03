@@ -301,8 +301,12 @@ pub(crate) async fn run(args: QueryArgs, kind: Kind) -> Result<(), CliError> {
     let (io, rest) = crate::query_io::extract(&rest)?;
     let mut implemented = crate::build_family_implemented();
     implemented.extend(["output", "implicit_deps", "tool_deps", "keep_going"]);
-    fjfj_bazel_compat::clap_flags::validate(&rest, command, &implemented)
-        .map_err(|e| CliError::CommandLine(anyhow::Error::from(e)))?;
+    fjfj_bazel_compat::clap_flags::validate(
+        &crate::query_io::flags_first(&rest),
+        command,
+        &implemented,
+    )
+    .map_err(|e| CliError::CommandLine(anyhow::Error::from(e)))?;
     let text = crate::query_io::expression(&io, &rest)?;
     let expr = fjfj_query::parse_in(&text, kind.dialect())
         .map_err(|e| bad(format!("Error while parsing '{text}': {e}")))?;
