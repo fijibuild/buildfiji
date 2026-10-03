@@ -162,7 +162,7 @@ fn output_user_root() -> PathBuf {
 
 /// The output base of a workspace: a directory of the output user root named by
 /// the workspace's path.
-fn default_output_base(workspace_root: &Path) -> PathBuf {
+pub(crate) fn default_output_base(workspace_root: &Path) -> PathBuf {
     let digest = sha2::Sha256::digest(workspace_root.display().to_string().as_bytes());
     output_user_root().join(&hex::encode(digest)[..32])
 }

@@ -30,6 +30,7 @@ use fjfj_exec::console::ConsoleUi;
 use fjfj_graph::pattern::{PatternContext, TargetPattern};
 use fjfj_remote::execution_log::{CompactExecutionLogWriter, EntryType, ExecLogEntry, Invocation};
 
+mod analysis_query;
 mod build_command;
 mod fetch_command;
 mod mod_command;
@@ -433,6 +434,8 @@ async fn run(cli: Cli) -> Result<(), CliError> {
         }
         Command::Build(args) => build_main(args, "build", false).await.map(|_| ()),
         Command::Query(args) => query_command::run(args).await,
+        Command::Cquery(args) => analysis_query::run(args, analysis_query::Kind::Cquery).await,
+        Command::Aquery(args) => analysis_query::run(args, analysis_query::Kind::Aquery).await,
         Command::Run(args) => run_command::run(args).await,
         Command::Test(args) => test_command::run(args).await,
         Command::Mod(args) => {

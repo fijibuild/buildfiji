@@ -202,6 +202,8 @@ pub(crate) struct Report {
     /// Analysis errors, one message each, with the target they stopped.
     pub analysis_errors: Vec<(Label, String)>,
     pub failures: Vec<Failure>,
+    /// Every configured target analysis made, the roots and what they read.
+    pub analysed: Vec<Arc<ConfiguredTarget>>,
     pub configured: usize,
     pub packages: usize,
     pub total_actions: usize,
@@ -220,6 +222,7 @@ impl Report {
             results: Vec::new(),
             analysis_errors: Vec::new(),
             failures: Vec::new(),
+            analysed: Vec::new(),
             configured: 0,
             packages: 0,
             total_actions: 0,
@@ -511,6 +514,7 @@ pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> R
         &configuration,
         &mut report,
     ));
+    report.analysed = all.clone();
     report.printed = all.iter().flat_map(|t| t.printed.clone()).collect();
     report.configured = all.iter().filter(|t| t.rule_class.is_some()).count();
     report.packages = all
@@ -618,9 +622,12 @@ pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> R
     }
     report.tests.sort_by_key(|t| label_text(&t.label));
     let prefix = &request.options.symlink_prefix;
-    let _ = request
-        .layout
-        .convenience_links(prefix, &request.options.configuration.mnemonic());
+    // Bazel makes no links when it builds nothing (`--nobuild`, `cquery`).
+    if request.options.build {
+        let _ = request
+            .layout
+            .convenience_links(prefix, &request.options.configuration.mnemonic());
+    }
     // Which targets a root needs matters only once something has failed; the walk clones and
     // hashes a key per target, so a build that failed nothing does not make it.
     let by_key: std::collections::HashMap<ConfiguredTargetKey, &Arc<ConfiguredTarget>> =
