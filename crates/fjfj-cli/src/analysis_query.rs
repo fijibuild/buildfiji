@@ -106,6 +106,7 @@ struct Flags {
     file: Option<String>,
     aquery: aquery::Settings,
     proto: fjfj_query::target_proto::ProtoOptions,
+    graph: fjfj_query::output::GraphOptions,
     transitions: Transitions,
 }
 
@@ -161,6 +162,7 @@ fn extract(kind: Kind, args: &[String]) -> Result<(Flags, Vec<String>), CliError
         file: None,
         aquery: aquery::Settings::default(),
         proto: Default::default(),
+        graph: Default::default(),
         transitions: Transitions::None,
     };
     let mut rest = Vec::new();
@@ -213,6 +215,16 @@ fn extract(kind: Kind, args: &[String]) -> Result<(Flags, Vec<String>), CliError
             "tool_deps" => flags.options.tool_deps = true,
             "notool_deps" => flags.options.tool_deps = false,
             "keep_going" | "nokeep_going" => {}
+            n if n.starts_with("graph:") || n.starts_with("nograph:") => {
+                let value = if n == "graph:node_limit" {
+                    value.or_else(|| iter.next().cloned())
+                } else {
+                    value
+                };
+                if !flags.graph.flag(n, value.as_deref()).map_err(bad)? {
+                    rest.push(arg.clone());
+                }
+            }
             n if kind == Kind::Cquery && (n.starts_with("proto:") || n.starts_with("noproto:")) => {
                 let value = if n.ends_with("output_rule_attrs") {
                     value.or_else(|| iter.next().cloned())
@@ -260,6 +272,7 @@ pub(crate) async fn run(args: QueryArgs, kind: Kind) -> Result<(), CliError> {
         formatter,
         aquery: flags.aquery,
         proto: flags.proto,
+        graph: flags.graph,
         transitions: flags.transitions,
         expr,
     };
@@ -339,6 +352,7 @@ struct Query {
     formatter: Option<Formatter>,
     aquery: aquery::Settings,
     proto: fjfj_query::target_proto::ProtoOptions,
+    graph: fjfj_query::output::GraphOptions,
     transitions: Transitions,
     expr: fjfj_query::Expr,
 }
@@ -548,12 +562,13 @@ fn render(
             "label" | "label_kind" | "graph" | "build" => {
                 let format = fjfj_query::output::Format::parse(&query.format)
                     .expect("a format the query command has");
-                fjfj_query::output::render(
+                fjfj_query::output::render_with(
                     evaluator,
                     labels,
                     format,
                     fjfj_query::output::Order::Auto,
                     '\n',
+                    &query.graph,
                 )
                 .map_err(failed)
             }
@@ -672,6 +687,7 @@ mod tests {
             formatter,
             aquery: settings,
             proto: Default::default(),
+            graph: Default::default(),
             transitions,
             expr: fjfj_query::parse_in(expr, kind.dialect()).unwrap(),
         };

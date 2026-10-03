@@ -290,11 +290,14 @@ impl ConfiguredGraph<'_> {
                 changes: Vec::new(),
             });
         }
-        let transitions = node.edges.iter().any(|e| e.transition)
-            || target
-                .rule_info
-                .as_ref()
-                .is_some_and(|info| info.schema.incoming_transition);
+        let transitions = target.rule_info.as_ref().is_some_and(|info| {
+            info.schema.incoming_transition
+                || info
+                    .schema
+                    .attrs
+                    .iter()
+                    .any(|a| a.def.cfg == fjfj_graph::rule::Cfg::Transition)
+        });
         if transitions {
             out.push(TransitionEdge {
                 attr: "$allowlist_function_transition".to_owned(),

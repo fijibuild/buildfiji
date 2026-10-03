@@ -54,6 +54,47 @@ impl Format {
     }
 }
 
+/// The `--graph:` flags.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GraphOptions {
+    /// `--[no]graph:factored` (default true): nodes with the same
+    /// predecessors and successors are one node, their labels joined.
+    pub factored: bool,
+    /// `--graph:node_limit` (default 1000): a merged node shows labels up to
+    /// this many characters and says how many more there are; -1 for all.
+    pub node_limit: i64,
+}
+
+impl Default for GraphOptions {
+    fn default() -> GraphOptions {
+        GraphOptions {
+            factored: true,
+            node_limit: 1000,
+        }
+    }
+}
+
+impl GraphOptions {
+    /// Read the flag `name` (without its dashes) with its `value` if it is a
+    /// `--graph:` one. `Ok(false)` if it is not.
+    pub fn flag(&mut self, name: &str, value: Option<&str>) -> Result<bool, String> {
+        match name {
+            "graph:factored" => self.factored = value != Some("false") && value != Some("0"),
+            "nograph:factored" => self.factored = false,
+            "graph:node_limit" => {
+                let text = value.ok_or("--graph:node_limit needs a value")?;
+                self.node_limit = text.parse().map_err(|_| {
+                    format!(
+                        "While parsing option --graph:node_limit={text}: '{text}' is not an int"
+                    )
+                })?;
+            }
+            _ => return Ok(false),
+        }
+        Ok(true)
+    }
+}
+
 /// `--order_output`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Order {
@@ -75,6 +116,66 @@ impl Order {
             _ => return None,
         })
     }
+}
+
+/// The nodes of a graph after merging the equivalent ones.
+struct Factored {
+    /// The representative of each group, in dependency order.
+    order: Vec<Label>,
+    /// Each node's representative.
+    of: BTreeMap<Label, Label>,
+    /// The members of each group, by representative.
+    groups: BTreeMap<Label, Vec<Label>>,
+}
+
+impl Factored {
+    fn representative<'a>(&'a self, label: &'a Label) -> &'a Label {
+        self.of.get(label).unwrap_or(label)
+    }
+
+    fn members(&self, label: &Label) -> &[Label] {
+        self.groups.get(label).map_or(&[], Vec::as_slice)
+    }
+}
+
+/// Merge the nodes of `sub` that have the same predecessors and successors,
+/// if `factored`; the nodes in `order` otherwise.
+fn factor(sub: &BTreeMap<Label, Vec<Edge>>, order: &[Label], factored: bool) -> Factored {
+    let mut preds: BTreeMap<&Label, BTreeSet<&Label>> =
+        sub.keys().map(|k| (k, BTreeSet::new())).collect();
+    for (from, edges) in sub {
+        for edge in edges {
+            if let Some(p) = preds.get_mut(&edge.to) {
+                p.insert(from);
+            }
+        }
+    }
+    let mut by_shape: BTreeMap<(BTreeSet<&Label>, BTreeSet<&Label>), Label> = BTreeMap::new();
+    let mut out = Factored {
+        order: Vec::new(),
+        of: BTreeMap::new(),
+        groups: BTreeMap::new(),
+    };
+    for label in order {
+        let shape = (
+            preds[label].clone(),
+            sub[label].iter().map(|e| &e.to).collect::<BTreeSet<_>>(),
+        );
+        let rep = if factored {
+            by_shape
+                .entry(shape)
+                .or_insert_with(|| label.clone())
+                .clone()
+        } else {
+            label.clone()
+        };
+        if rep == *label {
+            out.order.push(label.clone());
+        }
+        out.of.insert(label.clone(), rep.clone());
+        out.groups.entry(rep).or_default().push(label.clone());
+    }
+    out
 }
 
 /// The edges of the subgraph `set`, in the order Bazel visits them.
@@ -196,6 +297,7 @@ pub fn render_bytes(
     wanted: Order,
     terminator: char,
     proto: &crate::target_proto::ProtoOptions,
+    graph: &GraphOptions,
 ) -> Result<Vec<u8>, String> {
     let targets = |ev: &Evaluator<'_>| -> Result<Vec<crate::proto::Msg>, String> {
         order(ev, set, wanted)?
@@ -216,7 +318,7 @@ pub fn render_bytes(
             }
             out.into_bytes()
         }
-        _ => render(ev, set, format, wanted, terminator)?.into_bytes(),
+        _ => render_with(ev, set, format, wanted, terminator, graph)?.into_bytes(),
     })
 }
 
@@ -227,6 +329,25 @@ pub fn render(
     format: Format,
     wanted: Order,
     terminator: char,
+) -> Result<String, String> {
+    render_with(
+        ev,
+        set,
+        format,
+        wanted,
+        terminator,
+        &GraphOptions::default(),
+    )
+}
+
+/// [`render`] with the `--graph:` flags.
+pub fn render_with(
+    ev: &Evaluator<'_>,
+    set: &Set,
+    format: Format,
+    wanted: Order,
+    terminator: char,
+    graph_options: &GraphOptions,
 ) -> Result<String, String> {
     let graph = ev.graph();
     let mut out = String::new();
@@ -300,9 +421,11 @@ pub fn render(
         }
         Format::Proto | Format::StreamedProto | Format::StreamedJsonProto => {
             let proto = crate::target_proto::ProtoOptions::default();
-            return render_bytes(ev, set, format, wanted, terminator, &proto).and_then(|bytes| {
-                String::from_utf8(bytes).map_err(|_| "the output is not text".to_owned())
-            });
+            let graph_options = GraphOptions::default();
+            return render_bytes(ev, set, format, wanted, terminator, &proto, &graph_options)
+                .and_then(|bytes| {
+                    String::from_utf8(bytes).map_err(|_| "the output is not text".to_owned())
+                });
         }
         Format::Xml => {
             line("<?xml version=\"1.1\" encoding=\"UTF-8\" standalone=\"no\"?>".to_owned());
@@ -318,18 +441,60 @@ pub fn render(
             let sub = subgraph(ev, set)?;
             line("digraph mygraph {".to_owned());
             line("  node [shape=box];".to_owned());
-            for label in dependency_order(&sub) {
-                line(format!("  \"{}\"", graph.output_name(&label)));
-                let mut edges: Vec<&Edge> = sub[&label].iter().collect();
+            let order = dependency_order(&sub);
+            let nodes = factor(&sub, &order, graph_options.factored);
+            let name_of = |label: &Label| -> String {
+                let members = nodes.members(label);
+                if members.len() == 1 {
+                    return graph.output_name(&members[0]);
+                }
+                let mut names: Vec<String> = members.iter().map(|m| graph.output_name(m)).collect();
+                // Bazel lists them from the last in order; when they do not all
+                // fit it shows those that do, starting from the first.
+                names.sort();
+                let limit = graph_options.node_limit;
+                let all = names
+                    .iter()
+                    .rev()
+                    .map(String::as_str)
+                    .collect::<Vec<_>>()
+                    .join("\\n");
+                if limit < 0 || all.chars().count() <= limit as usize {
+                    return all;
+                }
+                let mut shown: Vec<&String> = Vec::new();
+                let mut length = 0usize;
+                for name in &names {
+                    if !shown.is_empty() && length + 1 + name.len() > limit as usize {
+                        break;
+                    }
+                    length += name.len() + usize::from(!shown.is_empty());
+                    shown.push(name);
+                }
+                let more = names.len() - shown.len();
+                let mut text = shown
+                    .iter()
+                    .map(|n| n.as_str())
+                    .collect::<Vec<_>>()
+                    .join("\\n");
+                if more > 0 {
+                    let _ = write!(text, "\\n...and {more} more items");
+                }
+                text
+            };
+            for label in &nodes.order {
+                line(format!("  \"{}\"", name_of(label)));
+                let mut edges: Vec<&Edge> = sub[label].iter().collect();
                 if graph.sorts_edges() {
                     edges.sort_by_key(|e| graph.output_name(&e.to));
                 }
+                let mut seen: BTreeSet<&Label> = BTreeSet::new();
                 for edge in edges {
-                    line(format!(
-                        "  \"{}\" -> \"{}\"",
-                        graph.output_name(&label),
-                        graph.output_name(&edge.to)
-                    ));
+                    let to = nodes.representative(&edge.to);
+                    if !seen.insert(to) {
+                        continue;
+                    }
+                    line(format!("  \"{}\" -> \"{}\"", name_of(label), name_of(to)));
                     if let Some(condition) = &edge.condition {
                         line(format!("  [label=\"{condition}\"];"));
                     }

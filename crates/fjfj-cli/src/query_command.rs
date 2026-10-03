@@ -26,6 +26,7 @@ pub(crate) struct Flags {
     pub options: Options,
     pub terminator: char,
     pub proto: fjfj_query::target_proto::ProtoOptions,
+    pub graph: fjfj_query::output::GraphOptions,
 }
 
 /// `--output=bogus` is refused with Bazel's list of the valid ones.
@@ -43,6 +44,7 @@ pub(crate) fn extract(args: &[String]) -> Result<(Flags, Vec<String>), CliError>
         options: Options::default(),
         terminator: '\n',
         proto: Default::default(),
+        graph: Default::default(),
     };
     let mut rest = Vec::new();
     let mut iter = args.iter();
@@ -80,6 +82,16 @@ pub(crate) fn extract(args: &[String]) -> Result<(Flags, Vec<String>), CliError>
             "line_terminator_null" => flags.terminator = '\0',
             "noline_terminator_null" => flags.terminator = '\n',
             "keep_going" | "nokeep_going" => {}
+            n if n.starts_with("graph:") || n.starts_with("nograph:") => {
+                let value = if n == "graph:node_limit" {
+                    take(value)
+                } else {
+                    value
+                };
+                if !flags.graph.flag(n, value.as_deref()).map_err(bad)? {
+                    rest.push(arg.clone());
+                }
+            }
             n if n.starts_with("proto:") || n.starts_with("noproto:") => {
                 let value = if n.ends_with("output_rule_attrs") {
                     take(value)
@@ -137,6 +149,7 @@ pub(crate) async fn run(args: QueryArgs) -> Result<(), CliError> {
                     flags.order,
                     flags.terminator,
                     &flags.proto,
+                    &flags.graph,
                 )
             })
             .map_err(|e| CliError::Query(anyhow::anyhow!(e)))?;

@@ -218,6 +218,33 @@ impl QueryGraph {
                 unset: false,
             });
         }
+        // A rule that transitions says so to an allowlist, by an attribute
+        // Bazel adds.
+        if schema.incoming_transition || schema.attrs.iter().any(|a| a.def.cfg == Cfg::Transition) {
+            let allowlist = Label {
+                repo: "bazel_tools".to_owned(),
+                package: "tools/allowlists/function_transition_allowlist".to_owned(),
+                name: "function_transition_allowlist".to_owned(),
+            };
+            attrs.push(NodeAttr {
+                name: "$allowlist_function_transition".to_owned(),
+                text: self.display_text(&allowlist),
+                labels: vec![allowlist.clone()],
+                explicit: false,
+                ty: AttrType::Label,
+                value: AttrValue::Label(allowlist.clone()),
+                unset: false,
+            });
+            edges.push(Edge {
+                to: allowlist,
+                implicit: true,
+                tool: false,
+                condition: None,
+                visibility: false,
+                attr: "$allowlist_function_transition".to_owned(),
+                transition: false,
+            });
+        }
         // The `package_group`s that say who may see the rule.
         let visibility = target
             .visibility
@@ -1197,6 +1224,7 @@ genrule(name="gen", outs=["gen.txt"], cmd="echo > $@")
             Order::Auto,
             '\n',
             proto,
+            &Default::default(),
         )
         .unwrap();
         String::from_utf8(bytes)
@@ -1531,6 +1559,59 @@ allk(
 
 "#
         );
+    }
+
+    #[test]
+    fn graph_merges_equivalent_nodes_unless_told_not_to() {
+        let (_dir, repos) = workspace_of(&[
+            ("MODULE.bazel", ""),
+            (
+                "BUILD",
+                "filegroup(name = \"x\", srcs = [\"p.txt\", \"q.txt\", \":y\"])\nfilegroup(name = \"y\", srcs = [\"q.txt\"])\n",
+            ),
+        ]);
+        let graph = QueryGraph::new(repos);
+        let ev = Evaluator::new(&graph, Options::default());
+        let set = ev.eval(&fjfj_query::parse("deps(//:x)").unwrap()).unwrap();
+        let draw = |options: &fjfj_query::output::GraphOptions| {
+            fjfj_query::output::render_with(&ev, &set, Format::Graph, Order::Auto, '\n', options)
+                .unwrap()
+        };
+        // //:p.txt is read by //:x alone and //:q.txt by //:x and //:y: not
+        // equivalent. Nothing merges.
+        let plain = draw(&Default::default());
+        assert!(!plain.contains("\\n"), "{plain}");
+        // With a second leaf read by //:x alone they are.
+        let (_dir, repos) = workspace_of(&[
+            ("MODULE.bazel", ""),
+            (
+                "BUILD",
+                "filegroup(name = \"x\", srcs = [\"p.txt\", \"r.txt\"])\n",
+            ),
+        ]);
+        let graph = QueryGraph::new(repos);
+        let ev = Evaluator::new(&graph, Options::default());
+        let set = ev.eval(&fjfj_query::parse("deps(//:x)").unwrap()).unwrap();
+        let draw = |options: &fjfj_query::output::GraphOptions| {
+            fjfj_query::output::render_with(&ev, &set, Format::Graph, Order::Auto, '\n', options)
+                .unwrap()
+        };
+        let merged = draw(&Default::default());
+        assert!(
+            merged.contains("\"//:r.txt\\n//:p.txt\"")
+                || merged.contains("\"//:p.txt\\n//:r.txt\""),
+            "{merged}"
+        );
+        assert_eq!(merged.matches("//:x\" -> ").count(), 1);
+        let mut apart = fjfj_query::output::GraphOptions::default();
+        assert!(apart.flag("nograph:factored", None).unwrap());
+        let separate = draw(&apart);
+        assert!(!separate.contains("\\n"), "{separate}");
+        assert_eq!(separate.matches("//:x\" -> ").count(), 2);
+        // A node limit that cannot hold both says how many it left out.
+        let mut short = fjfj_query::output::GraphOptions::default();
+        assert!(short.flag("graph:node_limit", Some("9")).unwrap());
+        assert!(draw(&short).contains("\"//:p.txt\\n...and 1 more items\""));
     }
 
     #[test]
