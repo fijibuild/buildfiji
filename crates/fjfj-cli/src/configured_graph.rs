@@ -22,6 +22,8 @@ pub(crate) struct ConfiguredGraph<'a> {
     targets: Vec<Arc<ConfiguredTarget>>,
     index: HashMap<ConfiguredTargetKey, usize>,
     by_label: BTreeMap<Label, Vec<usize>>,
+    /// What each aspect made of a target, by the target.
+    aspects: HashMap<ConfiguredTargetKey, Vec<Arc<ConfiguredTarget>>>,
     /// The configuration of the top-level targets: `config(x, target)`.
     top_level: Configuration,
     /// The checksum of each configuration the targets were analysed in.
@@ -61,6 +63,25 @@ impl<'a> ConfiguredGraph<'a> {
         // In label order, so a label of this graph sorts as its target does.
         let mut analysed: Vec<&Arc<ConfiguredTarget>> = analysed.iter().collect();
         analysed.sort_by_cached_key(|t| (t.label.clone(), t.configuration.checksum()));
+        // What an aspect made is not a target of its own.
+        let mut aspects: HashMap<ConfiguredTargetKey, Vec<Arc<ConfiguredTarget>>> = HashMap::new();
+        analysed.retain(|t| match &t.aspect {
+            Some(_) => {
+                aspects
+                    .entry(ConfiguredTargetKey {
+                        label: t.label.clone(),
+                        configuration: t.configuration.clone(),
+                    })
+                    .or_default()
+                    .push((*t).clone());
+                false
+            }
+            None => true,
+        });
+        for made in aspects.values_mut() {
+            made.sort_by(|a, b| a.aspect.cmp(&b.aspect));
+            made.dedup_by(|a, b| a.aspect == b.aspect);
+        }
         let mut targets: Vec<Arc<ConfiguredTarget>> = Vec::new();
         let mut index = HashMap::new();
         let mut by_label: BTreeMap<Label, Vec<usize>> = BTreeMap::new();
@@ -93,6 +114,7 @@ impl<'a> ConfiguredGraph<'a> {
             targets,
             index,
             by_label,
+            aspects,
             top_level: top_level.clone(),
             checksums,
         }
@@ -102,6 +124,16 @@ impl<'a> ConfiguredGraph<'a> {
     pub(crate) fn target(&self, label: &Label) -> Option<&Arc<ConfiguredTarget>> {
         let (_, at) = label.repo.split_once(SEPARATOR)?;
         self.targets.get(at.parse::<usize>().ok()?)
+    }
+
+    /// What aspects applied to `target` made, one value for each aspect.
+    pub(crate) fn aspects_of(&self, target: &ConfiguredTarget) -> &[Arc<ConfiguredTarget>] {
+        self.aspects
+            .get(&ConfiguredTargetKey {
+                label: target.label.clone(),
+                configuration: target.configuration.clone(),
+            })
+            .map_or(&[], Vec::as_slice)
     }
 
     /// Every configured target of `label`.

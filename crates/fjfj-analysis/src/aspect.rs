@@ -37,6 +37,7 @@ impl Key for AspectKey {
         let base = ctx.get(self.target.clone()).await?;
         let mut out = ConfiguredTarget::new(&self.target);
         out.rule_class = Some(self.aspect.name.clone());
+        out.aspect = Some(self.aspect.clone());
         let Some(info) = base.rule_info.clone() else {
             return Ok(out);
         };

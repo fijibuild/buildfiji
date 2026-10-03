@@ -105,6 +105,9 @@ pub struct ConfiguredTarget {
     pub platform: Option<PlatformDecl>,
     /// For a `config_setting`: whether it matches this configuration.
     pub config_matching: Option<crate::select::ConfigMatching>,
+    /// For what an aspect made of a target: the aspect. Such a value has the
+    /// label and configuration of the target it was applied to.
+    pub aspect: Option<fjfj_starlark::AspectRef>,
     /// The platform its actions run on, when [`Env::record_execution_platforms`]
     /// or its toolchains decided it.
     pub execution_platform: Option<Label>,
@@ -166,6 +169,7 @@ impl ConfiguredTarget {
             platform: None,
             config_matching: None,
             execution_platform: None,
+            aspect: None,
             actions: Vec::new(),
             deps: Vec::new(),
             aspect_deps: Vec::new(),

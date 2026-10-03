@@ -113,6 +113,7 @@ impl Flags {
             "include_commandline" => self.aquery.commandline = on,
             "include_artifacts" => self.aquery.artifacts = on,
             "include_file_write_contents" => self.aquery.file_write_contents = on,
+            "include_aspects" => self.aquery.aspects = on,
             // No action of fjfj has a parameter file.
             "include_param_files" => {}
             _ => return false,
@@ -410,12 +411,7 @@ fn render(
             let filters = aquery::action_filters(&query.expr).map_err(failed)?;
             let rows: Vec<aquery::Row<'_>> = chosen(labels, graph)
                 .into_iter()
-                .flat_map(|target| {
-                    target.actions.iter().map(move |action| aquery::Row {
-                        target: target.as_ref(),
-                        action,
-                    })
-                })
+                .flat_map(|target| aquery::rows_of(target, graph.aspects_of(target), query.aquery))
                 .filter(|row| filters.iter().all(|f| f.keeps(row.action)))
                 .collect();
             match query.format.as_str() {
@@ -443,6 +439,8 @@ mod tests {
         format: &str,
         expr: &str,
         formatter: Option<Formatter>,
+        aspects: &[&str],
+        settings: aquery::Settings,
     ) -> Result<String, CliError> {
         let dir = tempfile::tempdir().unwrap();
         let ws = dir.path().join("ws");
@@ -476,10 +474,14 @@ mod tests {
             format: format.to_owned(),
             options: Options::default(),
             formatter,
-            aquery: aquery::Settings::default(),
+            aquery: settings,
             expr: fjfj_query::parse_in(expr, kind.dialect()).unwrap(),
         };
-        let options = build_options(Configuration::default(), &Default::default());
+        let flags = fjfj_bazel_compat::build_flags::BuildFlags {
+            aspects: aspects.iter().map(|a| (*a).to_owned()).collect(),
+            ..Default::default()
+        };
+        let options = build_options(Configuration::default(), &flags);
         let layout = fjfj_exec::execroot::Layout {
             workspace: ws,
             output_base: dir.path().join("exec"),
@@ -502,6 +504,11 @@ def _r(ctx):
     ctx.actions.run_shell(outputs = [out], inputs = ctx.files.srcs, command = "cat $@ > " + out.path, mnemonic = "Cat", progress_message = "Cat %{label}", env = {"A": "b"})
     return [DefaultInfo(files = depset([out]))]
 r = rule(implementation = _r, attrs = {"srcs": attr.label_list(allow_files = True), "deps": attr.label_list(cfg = t)})
+def _asp(target, ctx):
+    out = ctx.actions.declare_file(target.label.name + ".asp")
+    ctx.actions.run_shell(outputs = [out], command = "echo hi > " + out.path, mnemonic = "AspAct", progress_message = "Asp %{label}")
+    return [OutputGroupInfo(asp = depset([out]))]
+asp = aspect(implementation = _asp, attr_aspects = ["deps"])
 def _f(ctx):
     return []
 flag_rule = rule(implementation = _f, build_setting = config.string(flag = True))
@@ -546,9 +553,19 @@ r(name = "b", srcs = ["s.txt"])
         expr: &'static str,
         formatter: Option<Formatter>,
     ) -> Result<String, CliError> {
-        tokio::task::spawn_blocking(move || query_on(TRANSITION, kind, format, expr, formatter))
-            .await
-            .unwrap()
+        tokio::task::spawn_blocking(move || {
+            query_on(
+                TRANSITION,
+                kind,
+                format,
+                expr,
+                formatter,
+                &[],
+                aquery::Settings::default(),
+            )
+        })
+        .await
+        .unwrap()
     }
 
     async fn cquery(expr: &'static str) -> String {
@@ -786,6 +803,51 @@ r(name = "b", srcs = ["s.txt"])
         let digits = |l: &str| l.rsplit_once('(').map(|(_, d)| d.to_owned());
         let a = all.lines().find(|l| l.starts_with("//:a")).unwrap();
         digits(line) == digits(a)
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn aquery_lists_the_actions_aspects_registered_after_the_targets() {
+        let with = |settings: aquery::Settings| {
+            tokio::task::spawn_blocking(move || {
+                query_on(
+                    TRANSITION,
+                    Kind::Aquery,
+                    "text",
+                    "deps(//:a) - //:s.txt",
+                    None,
+                    &["//:defs.bzl%asp"],
+                    settings,
+                )
+                .unwrap()
+            })
+        };
+        let text = with(aquery::Settings::default()).await.unwrap();
+        // //:a, then what the aspect made of it, then //:b the same way: the
+        // aspect follows `deps`.
+        assert_eq!(
+            actions(&text),
+            [
+                "action 'Cat //:a'",
+                "action 'Asp //:a'",
+                "action 'Cat //:b'",
+                "action 'Asp //:b'"
+            ]
+        );
+        assert_eq!(
+            text.matches("  AspectDescriptors: [//:defs.bzl%asp()]\n")
+                .count(),
+            2
+        );
+        let without = with(aquery::Settings {
+            aspects: false,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+        assert_eq!(
+            actions(&without),
+            ["action 'Cat //:a'", "action 'Cat //:b'"]
+        );
     }
 
     /// The descriptions of the actions an `aquery` printed.

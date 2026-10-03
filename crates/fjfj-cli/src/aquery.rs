@@ -7,6 +7,7 @@ use fjfj_analysis::ConfiguredTarget;
 use fjfj_exec::execroot::Layout;
 use fjfj_graph::{Action, ActionKind, Artifact, Label};
 use fjfj_query::ast::{Arg, Expr, Function};
+use fjfj_starlark::AspectRef;
 use regex::Regex;
 use std::collections::BTreeMap;
 
@@ -19,6 +20,8 @@ pub(crate) struct Settings {
     pub artifacts: bool,
     /// `--include_file_write_contents`.
     pub file_write_contents: bool,
+    /// `--include_aspects`: the actions of aspects applied to the targets.
+    pub aspects: bool,
 }
 
 impl Default for Settings {
@@ -27,6 +30,7 @@ impl Default for Settings {
             commandline: true,
             artifacts: true,
             file_write_contents: false,
+            aspects: true,
         }
     }
 }
@@ -36,6 +40,32 @@ impl Default for Settings {
 pub(crate) struct Row<'a> {
     pub target: &'a ConfiguredTarget,
     pub action: &'a Action,
+    /// The aspect that registered it, if one did.
+    pub aspect: Option<&'a AspectRef>,
+}
+
+/// The actions of `target`, then those of the aspects applied to it.
+pub(crate) fn rows_of<'a>(
+    target: &'a ConfiguredTarget,
+    aspects: &'a [std::sync::Arc<ConfiguredTarget>],
+    settings: Settings,
+) -> Vec<Row<'a>> {
+    let own = target.actions.iter().map(|action| Row {
+        target,
+        action,
+        aspect: None,
+    });
+    let made = aspects
+        .iter()
+        .filter(|_| settings.aspects)
+        .flat_map(move |made| {
+            made.actions.iter().map(move |action| Row {
+                target,
+                action,
+                aspect: made.aspect.as_ref(),
+            })
+        });
+    own.chain(made).collect()
 }
 
 /// The platform Bazel names when none was chosen.
@@ -224,6 +254,13 @@ fn text_one(out: &mut String, row: &Row<'_>, settings: Settings, layout: &Layout
         row.target.configuration.mnemonic()
     ));
     out.push_str(&format!("  Execution platform: {platform}\n"));
+    if let Some(aspect) = row.aspect {
+        out.push_str(&format!(
+            "  AspectDescriptors: [{}%{}()]\n",
+            fjfj_graph::expand::label_text(&aspect.bzl),
+            aspect.name
+        ));
+    }
     out.push_str(&format!("  ActionKey: {}\n", action.key()));
     if settings.artifacts {
         out.push_str(&format!(
