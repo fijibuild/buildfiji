@@ -757,3 +757,46 @@ r = rule(implementation = _impl, attrs = {"tool": attr.label(executable = True, 
         ]
     );
 }
+
+/// The proto fragment's late-bound defaults are the labels `bazel query`
+/// showed as rule inputs; a field Bazel leaves unset stays unset.
+#[test]
+fn the_proto_fragment_late_bound_defaults_are_the_bazel_tools_targets() {
+    let src = r#"
+def _impl(ctx):
+    return []
+r = rule(implementation = _impl, attrs = {
+    "_protoc": attr.label(default = configuration_field("proto", "proto_compiler")),
+    "_cc": attr.label(default = configuration_field("proto", "proto_toolchain_for_cc")),
+    "_java": attr.label(default = configuration_field("proto", "proto_toolchain_for_java")),
+    "_lite": attr.label(default = configuration_field("proto", "proto_toolchain_for_java_lite")),
+    "_malloc": attr.label(default = configuration_field("cpp", "custom_malloc")),
+})
+"#;
+    let req = request(src, "r", Vec::new(), Vec::new());
+    let defaults = computed_defaults(
+        &req.module,
+        "r",
+        &[],
+        &crate::test_support::probe_mappings(),
+        "",
+    )
+    .unwrap();
+    let shown: Vec<(String, String)> = defaults
+        .into_iter()
+        .map(|(n, v)| match v {
+            AttrValue::Label(l) => (n, format!("@{}//{}:{}", l.repo, l.package, l.name)),
+            other => panic!("{other:?}"),
+        })
+        .collect();
+    assert_eq!(
+        shown,
+        [
+            ("_protoc", "@bazel_tools//tools/proto:protoc"),
+            ("_cc", "@bazel_tools//tools/proto:cc_toolchain"),
+            ("_java", "@bazel_tools//tools/proto:java_toolchain"),
+            ("_lite", "@bazel_tools//tools/proto:javalite_toolchain"),
+        ]
+        .map(|(a, b)| (a.to_owned(), b.to_owned()))
+    );
+}

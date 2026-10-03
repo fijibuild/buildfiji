@@ -32,10 +32,15 @@ fn to_starlark<'v>(heap: Heap<'v>, value: &AttrValue) -> Value<'v> {
 
 /// What a `configuration_field(fragment, name)` is with no option set to say
 /// otherwise (probed with `bazel query`). The fields not listed are unset by
-/// default (buildfiji-bo8 has the rest to probe).
+/// default (every other field of Bazel 9.2.0's fragments probed empty; the
+/// options that override these are buildfiji-bo8's remainder).
 pub fn late_bound_default(fragment: &str, name: &str) -> Option<Label> {
     let (package, target) = match (fragment, name) {
         ("apple", "xcode_config_label") => ("tools/objc", "host_xcodes"),
+        ("proto", "proto_compiler") => ("tools/proto", "protoc"),
+        ("proto", "proto_toolchain_for_cc") => ("tools/proto", "cc_toolchain"),
+        ("proto", "proto_toolchain_for_java") => ("tools/proto", "java_toolchain"),
+        ("proto", "proto_toolchain_for_java_lite") => ("tools/proto", "javalite_toolchain"),
         _ => return None,
     };
     Some(Label {
