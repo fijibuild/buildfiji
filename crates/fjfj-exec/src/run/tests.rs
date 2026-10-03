@@ -273,3 +273,28 @@ async fn an_action_whose_inputs_and_outputs_are_unchanged_does_not_run_again() {
     let sixth = run(&layout, changed, std::slice::from_ref(&out), false).await;
     assert_eq!((sixth.ran, sixth.cached), (1, 0));
 }
+
+/// Bazel leaves a file output, and every file and directory inside a tree
+/// artifact, 0555; a plain directory is left as it is.
+#[test]
+fn outputs_are_read_only_and_executable_throughout_a_tree_artifact() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let tree = dir.path().join("tree");
+    std::fs::create_dir_all(tree.join("sub")).unwrap();
+    std::fs::write(tree.join("sub/f.txt"), "x").unwrap();
+    let mode = |p: &std::path::Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+    make_read_only(&tree, true).unwrap();
+    assert_eq!(mode(&tree), 0o555);
+    assert_eq!(mode(&tree.join("sub")), 0o555);
+    assert_eq!(mode(&tree.join("sub/f.txt")), 0o555);
+    let plain = dir.path().join("plain");
+    std::fs::create_dir(&plain).unwrap();
+    let before = mode(&plain);
+    make_read_only(&plain, false).unwrap();
+    assert_eq!(mode(&plain), before);
+    // Let the temporary directory clean up.
+    for p in [tree.join("sub"), tree.clone()] {
+        std::fs::set_permissions(p, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+}

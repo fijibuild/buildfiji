@@ -479,8 +479,14 @@ impl Scheduler {
                     ..fail("not all outputs were created or valid".to_owned())
                 });
             }
-            make_read_only(&at)
-                .map_err(|e| fail(format!("cannot protect {}: {e}", at.display())))?;
+            // Bazel writes a parameter file 0775, unlike its other outputs.
+            let protected = if action.mnemonic == "ParameterFileWrite" {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&at, std::fs::Permissions::from_mode(0o775))
+            } else {
+                make_read_only(&at, out.tree)
+            };
+            protected.map_err(|e| fail(format!("cannot protect {}: {e}", at.display())))?;
         }
         Ok(())
     }
@@ -524,11 +530,19 @@ fn remove(at: &Path) -> std::io::Result<()> {
     }
 }
 
-fn make_read_only(at: &Path) -> std::io::Result<()> {
+/// Bazel leaves a file output, and everything in a tree artifact, read-only and
+/// executable (0555). Other directories, a runfiles tree among them, are not
+/// touched.
+fn make_read_only(at: &Path, tree: bool) -> std::io::Result<()> {
     use std::os::unix::fs::PermissionsExt;
     let meta = std::fs::symlink_metadata(at)?;
-    if meta.file_type().is_symlink() || meta.is_dir() {
+    if meta.file_type().is_symlink() || (meta.is_dir() && !tree) {
         return Ok(());
+    }
+    if meta.is_dir() {
+        for entry in std::fs::read_dir(at)? {
+            make_read_only(&entry?.path(), true)?;
+        }
     }
     std::fs::set_permissions(at, std::fs::Permissions::from_mode(0o555))
 }
