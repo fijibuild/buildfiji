@@ -256,12 +256,20 @@ pub(crate) async fn analyze(
         outputs.push((name.clone(), template.replace("%{name}", &label.name)));
     }
     for (name, value) in resolved_attrs(&schema, &set) {
-        let is_output = schema
+        let ty = schema
             .attrs
             .iter()
-            .any(|a| a.name == name && a.def.ty == fjfj_graph::rule::AttrType::Output);
-        if let (true, AttrValue::Label(out)) = (is_output, &value) {
-            outputs.push((name, out.name.clone()));
+            .find(|a| a.name == name)
+            .map(|a| a.def.ty);
+        match (ty, &value) {
+            (Some(fjfj_graph::rule::AttrType::Output), AttrValue::Label(out)) => {
+                outputs.push((name, out.name.clone()));
+            }
+            // A list of outputs is one entry for each file, under the name.
+            (Some(fjfj_graph::rule::AttrType::OutputList), AttrValue::LabelList(outs)) => {
+                outputs.extend(outs.iter().map(|out| (name.clone(), out.name.clone())));
+            }
+            _ => {}
         }
     }
 

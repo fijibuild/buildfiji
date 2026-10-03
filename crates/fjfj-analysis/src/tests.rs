@@ -1071,3 +1071,43 @@ top = rule(implementation = _impl, attrs = {"dep": attr.label(aspects = [outer])
         action.kind
     );
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn ctx_outputs_has_an_output_list_as_a_list_and_an_unset_output_as_none() {
+    let (_dir, repos) = workspace(&[
+        ("MODULE.bazel", ""),
+        (
+            "defs.bzl",
+            r#"
+def _impl(ctx):
+    outs = ctx.outputs.ol + ([ctx.outputs.o] if ctx.outputs.o else [])
+    for f in outs:
+        ctx.actions.write(f, "")
+    return [DefaultInfo(files = depset(outs))]
+rule_with_outputs = rule(
+    implementation = _impl,
+    attrs = {"o": attr.output(), "ol": attr.output_list()},
+)
+"#,
+        ),
+        (
+            "BUILD.bazel",
+            r#"
+load(":defs.bzl", "rule_with_outputs")
+rule_with_outputs(name = "set", o = "one.txt", ol = ["a.txt", "b.txt"])
+rule_with_outputs(name = "unset")
+"#,
+        ),
+    ]);
+    let set = analyse(&repos, "//:set").await.unwrap();
+    assert_eq!(
+        paths(&set.files),
+        [
+            format!("{BIN}/a.txt"),
+            format!("{BIN}/b.txt"),
+            format!("{BIN}/one.txt")
+        ]
+    );
+    let unset = analyse(&repos, "//:unset").await.unwrap();
+    assert!(paths(&unset.files).is_empty());
+}

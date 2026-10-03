@@ -500,11 +500,38 @@ fn ctx_members(builder: &mut MethodsBuilder) {
     #[starlark(attribute)]
     fn outputs<'v>(this: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
         let s = state(this);
-        let fields = s
-            .outputs
+        // An `attr.output_list()` is a list of its files, empty if the target
+        // set none; an `attr.output()` it did not set is None.
+        let lists: Vec<&str> = s
+            .schema
+            .attrs
             .iter()
-            .map(|(name, artifact)| (name.clone(), s.file(heap, artifact.clone())))
+            .filter(|a| a.def.ty == AttrType::OutputList)
+            .map(|a| a.name.as_str())
             .collect();
+        let mut fields: Vec<(String, Value<'v>)> = Vec::new();
+        for (name, artifact) in &s.outputs {
+            if !lists.contains(&name.as_str()) {
+                fields.push((name.clone(), s.file(heap, artifact.clone())));
+            }
+        }
+        for attr in &s.schema.attrs {
+            match attr.def.ty {
+                AttrType::OutputList => {
+                    let files: Vec<Value<'v>> = s
+                        .outputs
+                        .iter()
+                        .filter(|(n, _)| *n == attr.name)
+                        .map(|(_, a)| s.file(heap, a.clone()))
+                        .collect();
+                    fields.push((attr.name.clone(), heap.alloc(AllocList(files))));
+                }
+                AttrType::Output if !fields.iter().any(|(n, _)| *n == attr.name) => {
+                    fields.push((attr.name.clone(), Value::new_none()));
+                }
+                _ => {}
+            }
+        }
         Ok(new_struct(heap, fields))
     }
 
