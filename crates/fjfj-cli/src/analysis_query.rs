@@ -110,6 +110,8 @@ struct Flags {
     transitions: Transitions,
     terminator: char,
     relative_locations: bool,
+    /// `--universe_scope`, each pattern of each flag.
+    universe: Option<Vec<String>>,
 }
 
 impl Flags {
@@ -168,6 +170,7 @@ fn extract(kind: Kind, args: &[String]) -> Result<(Flags, Vec<String>), CliError
         transitions: Transitions::None,
         terminator: '\n',
         relative_locations: false,
+        universe: None,
     };
     let mut rest = Vec::new();
     let mut iter = args.iter();
@@ -214,6 +217,18 @@ fn extract(kind: Kind, args: &[String]) -> Result<(Flags, Vec<String>), CliError
                     }
                 };
             }
+            "universe_scope" => {
+                let value = value
+                    .or_else(|| iter.next().cloned())
+                    .ok_or_else(|| bad("--universe_scope needs a value"))?;
+                flags.universe.get_or_insert_with(Vec::new).extend(
+                    value
+                        .split(',')
+                        .filter(|p| !p.is_empty())
+                        .map(str::to_owned),
+                );
+            }
+            "infer_universe_scope" | "noinfer_universe_scope" => {}
             "relative_locations" => flags.relative_locations = true,
             "norelative_locations" => flags.relative_locations = false,
             "line_terminator_null" => flags.terminator = '\0',
@@ -285,6 +300,9 @@ pub(crate) async fn run(args: QueryArgs, kind: Kind) -> Result<(), CliError> {
         transitions: flags.transitions,
         terminator: flags.terminator,
         relative_locations: flags.relative_locations,
+        // `--infer_universe_scope` only fills in an unset scope, which is what
+        // the targets of the expression are anyway.
+        universe: flags.universe,
         expr,
     };
     let configuration = build_command::configuration_from(&build_flags).map_err(bad)?;
@@ -365,6 +383,9 @@ struct Query {
     /// `--line_terminator_null`: what ends a line of `cquery` output.
     terminator: char,
     relative_locations: bool,
+    /// The patterns whose closure the expression is evaluated in, if the
+    /// command line gave them.
+    universe: Option<Vec<String>>,
     expr: fjfj_query::Expr,
 }
 
@@ -378,7 +399,13 @@ fn evaluate(
 ) -> Result<Vec<u8>, CliError> {
     let graph = QueryGraph::new(repos.clone()).with_relative_locations(query.relative_locations);
     let mut named: BTreeSet<Label> = BTreeSet::new();
-    for pattern in query.expr.patterns() {
+    // What is analysed is the closure of the universe, which is the targets
+    // the expression names unless `--universe_scope` says otherwise.
+    let patterns: Vec<&str> = match &query.universe {
+        Some(scope) => scope.iter().map(String::as_str).collect(),
+        None => query.expr.patterns(),
+    };
+    for pattern in patterns {
         named.extend(
             graph
                 .pattern(pattern)
@@ -706,6 +733,7 @@ mod tests {
             transitions,
             terminator: '\n',
             relative_locations: false,
+            universe: UNIVERSE.with(|u| u.borrow().clone()),
             expr: fjfj_query::parse_in(expr, kind.dialect()).unwrap(),
         };
         let flags = fjfj_bazel_compat::build_flags::BuildFlags {
@@ -1513,6 +1541,70 @@ execution_platform: "@@platforms//host:host"
         )
         .unwrap();
         assert_eq!(flags.terminator, '\n');
+    }
+
+    #[test]
+    fn universe_scope_collects_its_patterns_from_every_flag() {
+        let (flags, rest) = extract(
+            Kind::Cquery,
+            &args(&[
+                "--universe_scope=//a,//b",
+                "--universe_scope",
+                "//c",
+                "--infer_universe_scope",
+                "//d",
+            ]),
+        )
+        .unwrap();
+        assert_eq!(flags.universe.unwrap(), ["//a", "//b", "//c"]);
+        assert_eq!(rest, ["//d"]);
+        assert_eq!(
+            extract(Kind::Cquery, &args(&["//d"])).unwrap().0.universe,
+            None
+        );
+    }
+
+    thread_local! {
+        /// The `--universe_scope` of the next `query_on` on this thread.
+        static UNIVERSE: std::cell::RefCell<Option<Vec<String>>> = const { std::cell::RefCell::new(None) };
+    }
+
+    /// What `bazel cquery --universe_scope=//:a //:b` printed: the //:b below
+    /// //:a, and not the one built by itself.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn the_universe_is_the_closure_of_its_scope() {
+        let query = |scope: &'static str, expr: &'static str| async move {
+            tokio::task::spawn_blocking(move || {
+                UNIVERSE.with(|u| {
+                    *u.borrow_mut() = Some(scope.split(',').map(str::to_owned).collect())
+                });
+                query_on(
+                    TRANSITION,
+                    Kind::Cquery,
+                    "label",
+                    expr,
+                    None,
+                    &[],
+                    aquery::Settings::default(),
+                )
+                .map(|bytes| String::from_utf8(bytes).unwrap())
+                .unwrap()
+            })
+            .await
+            .unwrap()
+        };
+        let alone = cquery("//:b").await;
+        let below = query("//:a", "//:b").await;
+        assert_eq!(undigested(&below), ["//:b (7)"]);
+        assert_ne!(
+            below, alone,
+            "the //:b below //:a is not the one built alone"
+        );
+        // Outside the universe there is nothing to find, and no error.
+        assert_eq!(query("//:a", "//:flag").await, "");
+        // Scopes add up, and the targets in both configurations are there.
+        let both = query("//:a,//:b", "//:b").await;
+        assert_eq!(both.lines().count(), 2);
     }
 
     /// The descriptions of the actions an `aquery` printed.
