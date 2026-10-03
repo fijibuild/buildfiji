@@ -28,6 +28,7 @@ pub(crate) struct Flags {
     pub proto: fjfj_query::target_proto::ProtoOptions,
     pub graph: fjfj_query::output::GraphOptions,
     pub relative_locations: bool,
+    pub consistent_labels: bool,
 }
 
 /// `--output=bogus` is refused with Bazel's list of the valid ones.
@@ -47,6 +48,7 @@ pub(crate) fn extract(args: &[String]) -> Result<(Flags, Vec<String>), CliError>
         proto: Default::default(),
         graph: Default::default(),
         relative_locations: false,
+        consistent_labels: false,
     };
     let mut rest = Vec::new();
     let mut iter = args.iter();
@@ -81,6 +83,21 @@ pub(crate) fn extract(args: &[String]) -> Result<(Flags, Vec<String>), CliError>
             "noimplicit_deps" => flags.options.implicit_deps = false,
             "tool_deps" => flags.options.tool_deps = true,
             "notool_deps" => flags.options.tool_deps = false,
+            // The graph has no edge that comes from an aspect.
+            "aspect_deps" => {
+                let value = take(value).ok_or_else(|| bad("--aspect_deps needs a value"))?;
+                if !["off", "conservative", "precise"].contains(&value.as_str()) {
+                    return Err(bad(format!(
+                        "While parsing option --aspect_deps={value}: Invalid value '{value}'; must be one of off, conservative, precise"
+                    )));
+                }
+            }
+            "include_aspects"
+            | "noinclude_aspects"
+            | "experimental_explicit_aspects"
+            | "noexperimental_explicit_aspects" => {}
+            "consistent_labels" => flags.consistent_labels = true,
+            "noconsistent_labels" => flags.consistent_labels = false,
             "relative_locations" => flags.relative_locations = true,
             "norelative_locations" => flags.relative_locations = false,
             "line_terminator_null" => flags.terminator = '\0',
@@ -142,8 +159,9 @@ pub(crate) async fn run(args: QueryArgs) -> Result<(), CliError> {
         let (resolved, repos) =
             fetch_command::begin(&fetch, &bzlmod, &workspace_root, &module_bazel_text)?;
         let repos = Arc::new(repos);
-        let graph =
-            QueryGraph::new(repos.clone()).with_relative_locations(flags.relative_locations);
+        let graph = QueryGraph::new(repos.clone())
+            .with_relative_locations(flags.relative_locations)
+            .with_consistent_labels(flags.consistent_labels);
         let evaluator = Evaluator::new(&graph, flags.options);
         let text = evaluator
             .eval(&expr)

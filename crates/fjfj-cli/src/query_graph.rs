@@ -25,6 +25,8 @@ pub(crate) struct QueryGraph {
     apparent: BTreeMap<String, String>,
     /// `--relative_locations`.
     relative: bool,
+    /// `--consistent_labels`: labels as `@@repo//pkg:name`.
+    consistent: bool,
 }
 
 impl QueryGraph {
@@ -43,7 +45,14 @@ impl QueryGraph {
             groups: Mutex::new(BTreeMap::new()),
             apparent,
             relative: false,
+            consistent: false,
         }
+    }
+
+    /// Write every label as `@@repo//pkg:name` (`--consistent_labels`).
+    pub(crate) fn with_consistent_labels(mut self, on: bool) -> QueryGraph {
+        self.consistent = on;
+        self
     }
 
     /// Show locations from the root of the repository (`--relative_locations`).
@@ -519,6 +528,9 @@ impl QueryGraph {
     }
 
     fn repo_prefix(&self, repo: &str) -> String {
+        if self.consistent {
+            return format!("@@{repo}");
+        }
         if repo.is_empty() {
             String::new()
         } else {
@@ -1668,6 +1680,29 @@ allk(
             "a/a.txt:1:1: source file //a:a.txt\na/BUILD:6:6: mylib rule //a:lib\n"
         );
         assert!(locations(false).starts_with(&format!("{ws}/a/a.txt:1:1: ")));
+    }
+
+    #[test]
+    fn consistent_labels_name_every_repository_canonically() {
+        let (_dir, repos) = workspace();
+        let labels = |consistent: bool| {
+            let graph = QueryGraph::new(repos.clone()).with_consistent_labels(consistent);
+            query(
+                &graph,
+                "//a:lib + @bazel_tools//tools/genrule:genrule-setup.sh",
+                Format::Label,
+                Order::Auto,
+                Options::default(),
+            )
+        };
+        assert_eq!(
+            labels(false),
+            "//a:lib\n@bazel_tools//tools/genrule:genrule-setup.sh\n"
+        );
+        assert_eq!(
+            labels(true),
+            "@@//a:lib\n@@bazel_tools//tools/genrule:genrule-setup.sh\n"
+        );
     }
 
     #[test]

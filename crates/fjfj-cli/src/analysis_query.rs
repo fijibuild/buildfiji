@@ -110,6 +110,7 @@ struct Flags {
     transitions: Transitions,
     terminator: char,
     relative_locations: bool,
+    consistent_labels: bool,
     /// `--universe_scope`, each pattern of each flag.
     universe: Option<Vec<String>>,
 }
@@ -170,6 +171,7 @@ fn extract(kind: Kind, args: &[String]) -> Result<(Flags, Vec<String>), CliError
         transitions: Transitions::None,
         terminator: '\n',
         relative_locations: false,
+        consistent_labels: false,
         universe: None,
     };
     let mut rest = Vec::new();
@@ -229,6 +231,24 @@ fn extract(kind: Kind, args: &[String]) -> Result<(Flags, Vec<String>), CliError
                 );
             }
             "infer_universe_scope" | "noinfer_universe_scope" => {}
+            "consistent_labels" => flags.consistent_labels = true,
+            "noconsistent_labels" => flags.consistent_labels = false,
+            // The graphs have no edge that comes from an aspect.
+            "include_aspects"
+            | "noinclude_aspects"
+            | "experimental_explicit_aspects"
+            | "noexperimental_explicit_aspects"
+                if kind == Kind::Cquery => {}
+            "aspect_deps" => {
+                let value = value
+                    .or_else(|| iter.next().cloned())
+                    .ok_or_else(|| bad("--aspect_deps needs a value"))?;
+                if !["off", "conservative", "precise"].contains(&value.as_str()) {
+                    return Err(bad(format!(
+                        "While parsing option --aspect_deps={value}: Invalid value '{value}'; must be one of off, conservative, precise"
+                    )));
+                }
+            }
             "relative_locations" => flags.relative_locations = true,
             "norelative_locations" => flags.relative_locations = false,
             "line_terminator_null" => flags.terminator = '\0',
@@ -300,6 +320,7 @@ pub(crate) async fn run(args: QueryArgs, kind: Kind) -> Result<(), CliError> {
         transitions: flags.transitions,
         terminator: flags.terminator,
         relative_locations: flags.relative_locations,
+        consistent_labels: flags.consistent_labels,
         // `--infer_universe_scope` only fills in an unset scope, which is what
         // the targets of the expression are anyway.
         universe: flags.universe,
@@ -383,6 +404,7 @@ struct Query {
     /// `--line_terminator_null`: what ends a line of `cquery` output.
     terminator: char,
     relative_locations: bool,
+    consistent_labels: bool,
     /// The patterns whose closure the expression is evaluated in, if the
     /// command line gave them.
     universe: Option<Vec<String>>,
@@ -397,7 +419,9 @@ fn evaluate(
     options: build_command::Options,
     layout: fjfj_exec::execroot::Layout,
 ) -> Result<Vec<u8>, CliError> {
-    let graph = QueryGraph::new(repos.clone()).with_relative_locations(query.relative_locations);
+    let graph = QueryGraph::new(repos.clone())
+        .with_relative_locations(query.relative_locations)
+        .with_consistent_labels(query.consistent_labels);
     let mut named: BTreeSet<Label> = BTreeSet::new();
     // What is analysed is the closure of the universe, which is the targets
     // the expression names unless `--universe_scope` says otherwise.
@@ -747,6 +771,7 @@ mod tests {
             transitions,
             terminator: '\n',
             relative_locations: false,
+            consistent_labels: false,
             universe: UNIVERSE.with(|u| u.borrow().clone()),
             expr: fjfj_query::parse_in(expr, kind.dialect()).unwrap(),
         };
