@@ -121,6 +121,8 @@ impl QueryGraph {
                     &known,
                     &self.repos.mappings(),
                     &bzl.repo,
+                    // `bazel query` takes none of the flags that set these.
+                    &BTreeMap::new(),
                 )?
             }
             _ => Vec::new(),

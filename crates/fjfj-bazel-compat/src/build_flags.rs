@@ -29,6 +29,17 @@ pub const IMPLEMENTED: &[&str] = &[
     "linkopt",
     "host_copt",
     "javacopt",
+    "custom_malloc",
+    "proto_compiler",
+    "proto_toolchain_for_cc",
+    "proto_toolchain_for_java",
+    "java_launcher",
+    "fdo_profile",
+    "cs_fdo_profile",
+    "xbinary_fdo",
+    "memprof_profile",
+    "propeller_optimize",
+    "fdo_prefetch_hints",
 ];
 
 /// The flags that are lists of options, kept in `options` joined by a space
@@ -40,6 +51,22 @@ const LIST_OPTIONS: &[&str] = &[
     "linkopt",
     "host_copt",
     "javacopt",
+];
+
+/// The flags that name a label, the last one given winning: the options the
+/// late-bound `configuration_field` defaults follow.
+pub const LABEL_OPTIONS: &[&str] = &[
+    "custom_malloc",
+    "proto_compiler",
+    "proto_toolchain_for_cc",
+    "proto_toolchain_for_java",
+    "java_launcher",
+    "fdo_profile",
+    "cs_fdo_profile",
+    "xbinary_fdo",
+    "memprof_profile",
+    "propeller_optimize",
+    "fdo_prefetch_hints",
 ];
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -177,6 +204,10 @@ pub fn extract(args: &[String], command: &str) -> (BuildFlags, Vec<String>) {
             }
             "symlink_prefix" => flags.symlink_prefix = Some(value),
             "show_result" => flags.show_result = Some(value),
+            other if LABEL_OPTIONS.contains(&other) => {
+                flags.options.retain(|(name, _)| name != other);
+                flags.options.push((other.to_owned(), value));
+            }
             other if LIST_OPTIONS.contains(&other) => {
                 flags.options.push((other.to_owned(), value));
             }

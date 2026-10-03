@@ -12,6 +12,7 @@ use starlark::environment::{FrozenModule, Module};
 use starlark::eval::Evaluator;
 use starlark::values::list::AllocList;
 use starlark::values::{Heap, Value, ValueLike};
+use std::collections::BTreeMap;
 
 fn to_starlark<'v>(heap: Heap<'v>, value: &AttrValue) -> Value<'v> {
     match value {
@@ -34,7 +35,32 @@ fn to_starlark<'v>(heap: Heap<'v>, value: &AttrValue) -> Value<'v> {
 /// otherwise (probed with `bazel query`). The fields not listed are unset by
 /// default (every other field of Bazel 9.2.0's fragments probed empty; the
 /// options that override these are buildfiji-bo8's remainder).
-pub fn late_bound_default(fragment: &str, name: &str) -> Option<Label> {
+pub fn late_bound_default(
+    fragment: &str,
+    name: &str,
+    options: &BTreeMap<String, String>,
+    mappings: &RepoMappings,
+) -> Option<Label> {
+    // The option that sets the field wins; Bazel has no flag for the others.
+    let flag = match (fragment, name) {
+        ("java", "launcher") => Some("java_launcher"),
+        ("cpp", "zipper" | "libc_top" | "fdo_optimize" | "proto_profile_path")
+        | ("proto", "proto_toolchain_for_java_lite") => None,
+        _ => Some(name),
+    };
+    if let Some(text) = flag.and_then(|f| options.get(f)) {
+        let label = Label::parse_mapped(
+            text,
+            LabelContext {
+                repo: "",
+                package: "",
+            },
+            &mut |apparent| mappings.resolve_apparent("", apparent),
+        );
+        if let Ok(label) = label {
+            return Some(label);
+        }
+    }
     let (package, target) = match (fragment, name) {
         ("apple", "xcode_config_label") => ("tools/objc", "host_xcodes"),
         ("proto", "proto_compiler") => ("tools/proto", "protoc"),
@@ -59,6 +85,7 @@ pub fn computed_defaults(
     values: &[(String, AttrValue)],
     mappings: &RepoMappings,
     repo: &str,
+    options: &BTreeMap<String, String>,
 ) -> Result<Vec<(String, AttrValue)>, String> {
     let (rule, _) = module
         .get_any_visibility(rule_name)
@@ -92,7 +119,9 @@ pub fn computed_defaults(
             // `configuration_field(...)` depends on the build's options, not on
             // other attributes: its label is the option's default.
             if let Some(late) = function.downcast_ref::<crate::decl::LateBoundDefault>() {
-                if let Some(label) = late_bound_default(&late.fragment, &late.name) {
+                if let Some(label) =
+                    late_bound_default(&late.fragment, &late.name, options, mappings)
+                {
                     out.push((name.to_owned(), AttrValue::Label(label)));
                 }
                 continue;

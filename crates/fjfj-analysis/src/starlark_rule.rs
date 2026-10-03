@@ -139,9 +139,10 @@ pub(crate) async fn analyze(
         let mut known = resolved_attrs(&schema, &set);
         known.push(("name".to_owned(), AttrValue::String(key.label.name.clone())));
         let (module, mappings, repo) = (module.clone(), rules.mappings(), bzl.repo.clone());
+        let options = key.configuration.options.clone();
         let rule = rule_class.to_owned();
         let computed = tokio::task::spawn_blocking(move || {
-            computed_defaults(&module, &rule, &known, &mappings, &repo)
+            computed_defaults(&module, &rule, &known, &mappings, &repo, &options)
         })
         .await
         .map_err(|e| Error::msg(format!("computing defaults panicked: {e}")))?

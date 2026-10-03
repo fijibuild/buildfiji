@@ -434,6 +434,7 @@ r = rule(
         &[],
         &crate::test_support::probe_mappings(),
         "",
+        &Default::default(),
     )
     .unwrap();
     assert_eq!(
@@ -780,6 +781,7 @@ r = rule(implementation = _impl, attrs = {
         &[],
         &crate::test_support::probe_mappings(),
         "",
+        &Default::default(),
     )
     .unwrap();
     let shown: Vec<(String, String)> = defaults
@@ -796,6 +798,54 @@ r = rule(implementation = _impl, attrs = {
             ("_cc", "@bazel_tools//tools/proto:cc_toolchain"),
             ("_java", "@bazel_tools//tools/proto:java_toolchain"),
             ("_lite", "@bazel_tools//tools/proto:javalite_toolchain"),
+        ]
+        .map(|(a, b)| (a.to_owned(), b.to_owned()))
+    );
+}
+
+/// `--custom_malloc` and the like replace the default of the field they set,
+/// as `bazel cquery deps(...)` showed; a field with no flag keeps its own.
+#[test]
+fn late_bound_defaults_follow_their_options() {
+    let src = r#"
+def _impl(ctx):
+    return []
+r = rule(implementation = _impl, attrs = {
+    "_protoc": attr.label(default = configuration_field("proto", "proto_compiler")),
+    "_malloc": attr.label(default = configuration_field("cpp", "custom_malloc")),
+    "_lite": attr.label(default = configuration_field("proto", "proto_toolchain_for_java_lite")),
+    "_launcher": attr.label(default = configuration_field("java", "launcher")),
+})
+"#;
+    let req = request(src, "r", Vec::new(), Vec::new());
+    let options = std::collections::BTreeMap::from([
+        ("custom_malloc".to_owned(), "//:m".to_owned()),
+        ("proto_compiler".to_owned(), "//tools:mine".to_owned()),
+        ("java_launcher".to_owned(), "//j:l".to_owned()),
+    ]);
+    let defaults = computed_defaults(
+        &req.module,
+        "r",
+        &[],
+        &crate::test_support::probe_mappings(),
+        "",
+        &options,
+    )
+    .unwrap();
+    let shown: Vec<(String, String)> = defaults
+        .into_iter()
+        .map(|(n, v)| match v {
+            AttrValue::Label(l) => (n, format!("@{}//{}:{}", l.repo, l.package, l.name)),
+            other => panic!("{other:?}"),
+        })
+        .collect();
+    assert_eq!(
+        shown,
+        [
+            ("_protoc", "@//tools:mine"),
+            ("_malloc", "@//:m"),
+            ("_lite", "@bazel_tools//tools/proto:javalite_toolchain"),
+            ("_launcher", "@//j:l"),
         ]
         .map(|(a, b)| (a.to_owned(), b.to_owned()))
     );
