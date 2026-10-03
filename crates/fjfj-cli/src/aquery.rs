@@ -7,6 +7,7 @@ use fjfj_analysis::ConfiguredTarget;
 use fjfj_exec::execroot::Layout;
 use fjfj_graph::{Action, ActionKind, Artifact, Label};
 use fjfj_query::ast::{Arg, Expr, Function};
+use fjfj_query::proto::Msg;
 use fjfj_starlark::AspectRef;
 use regex::Regex;
 use std::collections::BTreeMap;
@@ -229,6 +230,17 @@ fn check_filters_only_nest_in_filters(expr: &Expr) -> Result<(), String> {
     }
 }
 
+/// The text of the template of a `Template` action, which is a file the action
+/// reads: empty if it cannot be read (it is made by the build).
+fn template_content(action: &Action, template: &str, layout: &Layout) -> String {
+    action
+        .inputs
+        .iter()
+        .find(|a| a.exec_path() == template)
+        .and_then(|a| std::fs::read_to_string(layout.resolve(a)).ok())
+        .unwrap_or_default()
+}
+
 /// `--output=text`.
 pub(crate) fn text(rows: &[Row<'_>], settings: Settings, layout: &Layout) -> String {
     let mut out = String::new();
@@ -316,13 +328,7 @@ fn text_one(out: &mut String, row: &Row<'_>, settings: Settings, layout: &Layout
             substitutions,
             executable: _,
         } => {
-            // The text of the template, which is a file the action reads.
-            let content = action
-                .inputs
-                .iter()
-                .find(|a| a.exec_path() == *template)
-                .and_then(|a| std::fs::read_to_string(layout.resolve(a)).ok())
-                .unwrap_or_default();
+            let content = template_content(action, template, layout);
             out.push_str(&format!("  Template: {content}\n"));
             out.push_str("  Substitutions: [\n");
             for (key, value) in substitutions {
@@ -398,5 +404,293 @@ mod tests {
         assert_eq!(base64(b"content"), "Y29udGVudA==");
         assert_eq!(base64(b"ab"), "YWI=");
         assert_eq!(base64(b""), "");
+    }
+}
+
+/// One message of `analysis.ActionGraphContainer`'s repeated fields, in the
+/// order the dump created it.
+pub(crate) struct Piece {
+    pub number: u32,
+    pub name: &'static str,
+    pub message: Msg,
+}
+
+/// The ids of what an action graph refers to, and the messages made so far.
+#[derive(Default)]
+struct Dump {
+    pieces: Vec<Piece>,
+    rule_classes: BTreeMap<String, i64>,
+    targets: BTreeMap<(String, String), i64>,
+    configurations: BTreeMap<String, i64>,
+    aspects: BTreeMap<String, i64>,
+    artifacts: BTreeMap<String, i64>,
+    fragments: BTreeMap<String, i64>,
+    dep_sets: BTreeMap<Vec<String>, i64>,
+}
+
+impl Dump {
+    fn add(&mut self, number: u32, name: &'static str, message: Msg) {
+        self.pieces.push(Piece {
+            number,
+            name,
+            message,
+        });
+    }
+
+    /// The id of `key` in `ids`, and whether it is new.
+    fn id<K: Ord + Clone>(ids: &mut BTreeMap<K, i64>, key: &K) -> (i64, bool) {
+        if let Some(id) = ids.get(key) {
+            return (*id, false);
+        }
+        let id = ids.len() as i64 + 1;
+        ids.insert(key.clone(), id);
+        (id, true)
+    }
+
+    /// The id of the fragment of the path `path` (up to and including its
+    /// last name). The leaf is numbered before its parents and written after
+    /// them.
+    fn fragment(&mut self, path: &str) -> i64 {
+        if let Some(id) = self.fragments.get(path) {
+            return *id;
+        }
+        let id = self.fragments.len() as i64 + 1;
+        self.fragments.insert(path.to_owned(), id);
+        let (parent, label) = match path.rsplit_once('/') {
+            Some((parent, label)) => (Some(self.fragment(parent)), label),
+            None => (None, path),
+        };
+        let mut message = Msg::new().one(1, "id", id).one(2, "label", label);
+        if let Some(parent) = parent {
+            message = message.one(3, "parent_id", parent);
+        }
+        self.add(8, "path_fragments", message);
+        id
+    }
+
+    fn artifact(&mut self, artifact: &Artifact) -> i64 {
+        let path = artifact.exec_path();
+        if let Some(id) = self.artifacts.get(&path) {
+            return *id;
+        }
+        let fragment = self.fragment(&path);
+        let id = self.artifacts.len() as i64 + 1;
+        self.artifacts.insert(path, id);
+        let mut message = Msg::new()
+            .one(1, "id", id)
+            .one(2, "path_fragment_id", fragment);
+        if artifact.tree {
+            message = message.one(3, "is_tree_artifact", true);
+        }
+        self.add(1, "artifacts", message);
+        id
+    }
+
+    fn action(&mut self, row: &Row<'_>, settings: Settings, layout: &Layout) {
+        let action = row.action;
+        let target = row.target;
+        let rule_class = target.rule_class.clone().unwrap_or_default();
+        let label = build_command::label_name(&target.label);
+        let (class_id, new) = Self::id(&mut self.rule_classes, &rule_class);
+        if new {
+            self.add(
+                7,
+                "rule_classes",
+                Msg::new().one(1, "id", class_id).one(2, "name", rule_class),
+            );
+        }
+        let (target_id, new) = Self::id(
+            &mut self.targets,
+            &(label.clone(), target.configuration.checksum()),
+        );
+        if new {
+            self.add(
+                3,
+                "targets",
+                Msg::new()
+                    .one(1, "id", target_id)
+                    .one(2, "label", label)
+                    .one(3, "rule_class_id", class_id),
+            );
+        }
+        let checksum = target.configuration.checksum();
+        let (configuration_id, new) = Self::id(&mut self.configurations, &checksum);
+        if new {
+            let mut message = Msg::new()
+                .one(1, "id", configuration_id)
+                .one(2, "mnemonic", target.configuration.mnemonic())
+                .one(3, "platform_name", target.configuration.cpu.clone())
+                .one(4, "checksum", checksum);
+            if target.configuration.exec {
+                message = message.one(5, "is_tool", true);
+            }
+            self.add(5, "configuration", message);
+        }
+        let mut aspect_ids = Vec::new();
+        if let Some(aspect) = row.aspect {
+            let name = format!(
+                "{}%{}",
+                fjfj_graph::expand::label_text(&aspect.bzl),
+                aspect.name
+            );
+            let (id, new) = Self::id(&mut self.aspects, &name);
+            if new {
+                self.add(
+                    6,
+                    "aspect_descriptors",
+                    Msg::new().one(1, "id", id).one(2, "name", name),
+                );
+            }
+            aspect_ids.push(id);
+        }
+        let mut input_sets = Vec::new();
+        let mut outputs = Vec::new();
+        if settings.artifacts {
+            let mut inputs: Vec<&Artifact> = action.inputs.iter().collect();
+            inputs.sort_by_key(|a| a.exec_path());
+            inputs.dedup_by_key(|a| a.exec_path());
+            let ids: Vec<i64> = inputs.iter().map(|a| self.artifact(a)).collect();
+            if !ids.is_empty() {
+                let paths: Vec<String> = inputs.iter().map(|a| a.exec_path()).collect();
+                let (id, new) = Self::id(&mut self.dep_sets, &paths);
+                if new {
+                    self.add(
+                        4,
+                        "dep_set_of_files",
+                        Msg::new()
+                            .one(1, "id", id)
+                            .packed(3, "direct_artifact_ids", ids),
+                    );
+                }
+                input_sets.push(id);
+            }
+            outputs = action.outputs.iter().map(|a| self.artifact(a)).collect();
+        }
+        let mut message = Msg::new()
+            .one(1, "target_id", target_id)
+            .packed(2, "aspect_descriptor_ids", aspect_ids)
+            .one(3, "action_key", action.key())
+            .one(4, "mnemonic", action.mnemonic.as_str())
+            .one(5, "configuration_id", configuration_id);
+        let pair = |k: &str, v: &str| Msg::new().text_field(1, "key", k).text_field(2, "value", v);
+        match &action.kind {
+            ActionKind::Spawn {
+                argv,
+                env,
+                execution_requirements,
+            } => {
+                if settings.commandline {
+                    message = message.many(6, "arguments", argv.iter().cloned());
+                }
+                message = message
+                    .many(
+                        7,
+                        "environment_variables",
+                        env.iter().map(|(k, v)| pair(k, v)),
+                    )
+                    .many(
+                        11,
+                        "execution_info",
+                        execution_requirements.iter().map(|(k, v)| pair(k, v)),
+                    );
+            }
+            ActionKind::WriteFile {
+                contents,
+                executable,
+            } => {
+                if settings.file_write_contents {
+                    message = message.text_field(
+                        17,
+                        "file_contents",
+                        String::from_utf8_lossy(contents).into_owned(),
+                    );
+                }
+                if *executable {
+                    message = message.one(19, "is_executable", true);
+                }
+            }
+            ActionKind::Template {
+                template,
+                substitutions,
+                executable,
+            } => {
+                message = message
+                    .one(
+                        15,
+                        "template_content",
+                        template_content(action, template, layout),
+                    )
+                    .many(
+                        16,
+                        "substitutions",
+                        substitutions.iter().map(|(k, v)| pair(k, v)),
+                    );
+                if *executable {
+                    message = message.one(19, "is_executable", true);
+                }
+            }
+            ActionKind::UnresolvedSymlink { target } => {
+                message = message.text_field(18, "unresolved_symlink_target", target.as_str());
+            }
+            ActionKind::Symlink { .. } | ActionKind::RunfilesTree { .. } => {}
+        }
+        message = message.packed(8, "input_dep_set_ids", input_sets).packed(
+            9,
+            "output_ids",
+            outputs.clone(),
+        );
+        if let Some(primary) = outputs.first() {
+            message = message.one(13, "primary_output_id", *primary);
+        }
+        message = message.one(14, "execution_platform", row.execution_platform());
+        self.add(2, "actions", message);
+    }
+}
+
+/// The action graph of `rows` as the pieces `analysis.ActionGraphContainer`
+/// is made of, in the order Bazel's dump makes them.
+pub(crate) fn pieces(rows: &[Row<'_>], settings: Settings, layout: &Layout) -> Vec<Piece> {
+    let mut dump = Dump::default();
+    for row in rows {
+        dump.action(row, settings, layout);
+    }
+    dump.pieces
+}
+
+/// `--output=proto`, `textproto`, `jsonproto` and `streamed_proto`.
+pub(crate) fn proto(format: &str, pieces: &[Piece]) -> Vec<u8> {
+    let whole = || {
+        let mut container = Msg::new();
+        for piece in pieces {
+            container = container.many(piece.number, piece.name, [piece.message.clone()]);
+        }
+        container
+    };
+    match format {
+        // Bazel writes the pieces one after another, as it makes them; the
+        // result reads as one message.
+        "proto" => pieces
+            .iter()
+            .flat_map(|p| {
+                Msg::new()
+                    .many(p.number, p.name, [p.message.clone()])
+                    .binary()
+            })
+            .collect(),
+        "jsonproto" => whole().json().into_bytes(),
+        // Each message on its own, its fields at the left edge.
+        "textproto" => pieces
+            .iter()
+            .map(|p| format!("{} {{\n{}}}\n", p.name, p.message.text()))
+            .collect::<String>()
+            .into_bytes(),
+        _ => pieces
+            .iter()
+            .flat_map(|p| {
+                Msg::new()
+                    .many(p.number, p.name, [p.message.clone()])
+                    .delimited()
+            })
+            .collect(),
     }
 }

@@ -59,6 +59,9 @@ struct Field {
     number: u32,
     name: &'static str,
     repeated: bool,
+    /// A repeated number of a proto3 message, which the wire format packs
+    /// into one record.
+    packed: bool,
     value: Val,
 }
 
@@ -79,9 +82,41 @@ impl Msg {
             number,
             name,
             repeated: false,
+            packed: false,
             value: value.into(),
         });
         self
+    }
+
+    /// Add each of `values` to a repeated number field of a proto3 message,
+    /// which the wire format packs.
+    pub fn packed(
+        mut self,
+        number: u32,
+        name: &'static str,
+        values: impl IntoIterator<Item = i64>,
+    ) -> Msg {
+        for value in values {
+            self.fields.push(Field {
+                number,
+                name,
+                repeated: true,
+                packed: true,
+                value: Val::Int(value),
+            });
+        }
+        self
+    }
+
+    /// Set the singular string field of a proto3 message, which says nothing
+    /// for the empty string.
+    pub fn text_field(self, number: u32, name: &'static str, value: impl Into<String>) -> Msg {
+        let value = value.into();
+        if value.is_empty() {
+            self
+        } else {
+            self.one(number, name, value)
+        }
     }
 
     /// Add each of `values` to the repeated field.
@@ -96,6 +131,7 @@ impl Msg {
                 number,
                 name,
                 repeated: true,
+                packed: false,
                 value: value.into(),
             });
         }
@@ -129,8 +165,29 @@ impl Msg {
     }
 
     fn encode(&self, out: &mut Vec<u8>) {
-        for field in self.sorted() {
+        let fields = self.sorted();
+        let mut at = 0;
+        while at < fields.len() {
+            let field = fields[at];
             let number = u64::from(field.number);
+            if field.packed {
+                let run = fields[at..]
+                    .iter()
+                    .take_while(|f| f.packed && f.number == field.number)
+                    .count();
+                let mut body = Vec::new();
+                for f in &fields[at..at + run] {
+                    if let Val::Int(i) = &f.value {
+                        varint(&mut body, *i as u64);
+                    }
+                }
+                varint(out, (number << 3) | 2);
+                varint(out, body.len() as u64);
+                out.extend(body);
+                at += run;
+                continue;
+            }
+            at += 1;
             match &field.value {
                 Val::Int(i) => {
                     varint(out, number << 3);

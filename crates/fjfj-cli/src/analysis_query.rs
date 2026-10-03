@@ -350,6 +350,22 @@ fn evaluate(
     let labels = evaluator
         .eval(&query.expr)
         .map_err(|e| CliError::Query(anyhow::anyhow!("Error doing post analysis query: {e}")))?;
+    if query.kind == Kind::Aquery
+        && matches!(
+            query.format.as_str(),
+            "proto" | "streamed_proto" | "textproto" | "jsonproto"
+        )
+    {
+        let filters =
+            aquery::action_filters(&query.expr).map_err(|e| CliError::Query(anyhow::anyhow!(e)))?;
+        let rows: Vec<aquery::Row<'_>> = chosen(&labels, &configured)
+            .into_iter()
+            .flat_map(|target| aquery::rows_of(target, configured.aspects_of(target), query.aquery))
+            .filter(|row| filters.iter().all(|f| f.keeps(row.action)))
+            .collect();
+        let pieces = aquery::pieces(&rows, query.aquery, &layout);
+        return Ok(aquery::proto(&query.format, &pieces));
+    }
     if query.kind == Kind::Cquery
         && matches!(
             query.format.as_str(),
@@ -1059,6 +1075,195 @@ r(name = "sel", ss = select({":fast": ["f"], "//conditions:default": ["d"]}))
             .await
             .unwrap();
         assert_eq!(whole[0], 0x0a);
+    }
+
+    /// What `bazel aquery //:a --output=jsonproto` printed for the same files,
+    /// its two hashes replaced by `HASH`.
+    const AQUERY_A_JSONPROTO: &str = r#"{
+  "artifacts": [{
+    "id": 1,
+    "pathFragmentId": 1
+  }, {
+    "id": 2,
+    "pathFragmentId": 2
+  }],
+  "actions": [{
+    "targetId": 1,
+    "actionKey": "HASH",
+    "mnemonic": "Cat",
+    "configurationId": 1,
+    "arguments": ["/bin/bash", "-c", "cat $@ \u003e bazel-out/k8-fastbuild/bin/a.txt"],
+    "environmentVariables": [{
+      "key": "A",
+      "value": "b"
+    }],
+    "inputDepSetIds": [1],
+    "outputIds": [2],
+    "primaryOutputId": 2,
+    "executionPlatform": "@@platforms//host:host"
+  }],
+  "targets": [{
+    "id": 1,
+    "label": "//:a",
+    "ruleClassId": 1
+  }],
+  "depSetOfFiles": [{
+    "id": 1,
+    "directArtifactIds": [1]
+  }],
+  "configuration": [{
+    "id": 1,
+    "mnemonic": "k8-fastbuild",
+    "platformName": "k8",
+    "checksum": "HASH"
+  }],
+  "ruleClasses": [{
+    "id": 1,
+    "name": "r"
+  }],
+  "pathFragments": [{
+    "id": 1,
+    "label": "s.txt"
+  }, {
+    "id": 5,
+    "label": "bazel-out"
+  }, {
+    "id": 4,
+    "label": "k8-fastbuild",
+    "parentId": 5
+  }, {
+    "id": 3,
+    "label": "bin",
+    "parentId": 4
+  }, {
+    "id": 2,
+    "label": "a.txt",
+    "parentId": 3
+  }]
+}"#;
+
+    /// The same with `--output=textproto`.
+    const AQUERY_A_TEXTPROTO: &str = r#"rule_classes {
+id: 1
+name: "r"
+}
+targets {
+id: 1
+label: "//:a"
+rule_class_id: 1
+}
+configuration {
+id: 1
+mnemonic: "k8-fastbuild"
+platform_name: "k8"
+checksum: "HASH"
+}
+path_fragments {
+id: 1
+label: "s.txt"
+}
+artifacts {
+id: 1
+path_fragment_id: 1
+}
+dep_set_of_files {
+id: 1
+direct_artifact_ids: 1
+}
+path_fragments {
+id: 5
+label: "bazel-out"
+}
+path_fragments {
+id: 4
+label: "k8-fastbuild"
+parent_id: 5
+}
+path_fragments {
+id: 3
+label: "bin"
+parent_id: 4
+}
+path_fragments {
+id: 2
+label: "a.txt"
+parent_id: 3
+}
+artifacts {
+id: 2
+path_fragment_id: 2
+}
+actions {
+target_id: 1
+action_key: "HASH"
+mnemonic: "Cat"
+configuration_id: 1
+arguments: "/bin/bash"
+arguments: "-c"
+arguments: "cat $@ > bazel-out/k8-fastbuild/bin/a.txt"
+environment_variables {
+  key: "A"
+  value: "b"
+}
+input_dep_set_ids: 1
+output_ids: 2
+primary_output_id: 2
+execution_platform: "@@platforms//host:host"
+}
+"#;
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn aquery_protos_are_what_bazel_prints() {
+        let host = fjfj_graph::config::host_cpu();
+        let like_ours = |expected: &str| {
+            expected
+                .replace("k8-fastbuild", &format!("{host}-fastbuild"))
+                .replace("\"k8\"", &format!("\"{host}\""))
+        };
+        let json = run_query(Kind::Aquery, "jsonproto", "//:a", None)
+            .await
+            .unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&unhashed(&json)).unwrap(),
+            serde_json::from_str::<serde_json::Value>(&like_ours(AQUERY_A_JSONPROTO)).unwrap()
+        );
+        // The text is Bazel's, down to its pieces sitting at the left edge.
+        let text = run_query(Kind::Aquery, "textproto", "//:a", None)
+            .await
+            .unwrap();
+        assert_eq!(unhashed(&text), like_ours(AQUERY_A_TEXTPROTO));
+        // The wire format is those pieces one after the other, and the
+        // streamed form puts a length before each.
+        let whole = run_bytes(Kind::Aquery, "proto", "//:a", None)
+            .await
+            .unwrap();
+        let streamed = run_bytes(Kind::Aquery, "streamed_proto", "//:a", None)
+            .await
+            .unwrap();
+        assert_eq!(whole[0], 0x3a, "rule_classes (field 7) comes first");
+        assert!(streamed.len() > whole.len());
+        // `--noinclude_artifacts` leaves out what names files.
+        let bare = tokio::task::spawn_blocking(|| {
+            query_on(
+                TRANSITION,
+                Kind::Aquery,
+                "jsonproto",
+                "//:a",
+                None,
+                &[],
+                aquery::Settings {
+                    artifacts: false,
+                    ..Default::default()
+                },
+            )
+            .map(|bytes| String::from_utf8(bytes).unwrap())
+            .unwrap()
+        })
+        .await
+        .unwrap();
+        let value: serde_json::Value = serde_json::from_str(&bare).unwrap();
+        assert!(value.get("artifacts").is_none() && value.get("pathFragments").is_none());
+        assert!(value["actions"][0].get("outputIds").is_none());
     }
 
     /// The descriptions of the actions an `aquery` printed.
