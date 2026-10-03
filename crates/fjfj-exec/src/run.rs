@@ -40,6 +40,12 @@ pub enum Strategy {
     /// nothing else (Bazel's `processwrapper-sandbox`); what it makes that
     /// is not a declared output is gone afterwards.
     Sandboxed,
+    /// As `Sandboxed`, and also in new user, mount, pid and ipc namespaces
+    /// with the file system read-only but for the sandbox directory and
+    /// `/tmp` (Bazel's `linux-sandbox`), and without a network if the action
+    /// asks (`block-network`). Where the host does not allow namespaces it
+    /// is `Sandboxed`.
+    LinuxSandbox,
 }
 
 impl Strategy {
@@ -49,9 +55,8 @@ impl Strategy {
         for name in list.split(',') {
             match name.trim() {
                 "local" | "standalone" => return Ok(Strategy::Local),
-                "sandboxed" | "linux-sandbox" | "processwrapper-sandbox" => {
-                    return Ok(Strategy::Sandboxed);
-                }
+                "sandboxed" | "linux-sandbox" => return Ok(Strategy::LinuxSandbox),
+                "processwrapper-sandbox" => return Ok(Strategy::Sandboxed),
                 _ => {}
             }
         }
@@ -66,7 +71,7 @@ impl Default for Options {
         Options {
             jobs: std::thread::available_parallelism().map_or(1, |n| n.get()),
             keep_going: false,
-            strategy: Strategy::Sandboxed,
+            strategy: Strategy::LinuxSandbox,
         }
     }
 }
@@ -458,7 +463,7 @@ impl Scheduler {
                 let started = std::time::Instant::now();
                 // A command that asks to runs in the execroot; a test asks
                 // with its tags.
-                let sandbox = if self.strategy == Strategy::Sandboxed
+                let sandbox = if self.strategy != Strategy::Local
                     && !["local", "no-sandbox", "exclusive"]
                         .iter()
                         .any(|k| execution_requirements.contains_key(*k))
@@ -491,6 +496,19 @@ impl Scheduler {
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped())
                     .kill_on_drop(true);
+                if self.strategy == Strategy::LinuxSandbox
+                    && let Some(sandbox) = &sandbox
+                    && fjfj_sandbox::namespaces_available()
+                {
+                    fjfj_sandbox::isolate(
+                        command.as_std_mut(),
+                        &fjfj_sandbox::Isolation {
+                            writable: vec![sandbox.root.clone()],
+                            block_network: execution_requirements.contains_key("block-network"),
+                        },
+                    )
+                    .map_err(|e| fail(format!("cannot isolate the command: {e}")))?;
+                }
                 let limit = execution_requirements
                     .get("timeout")
                     .and_then(|s| s.parse::<u64>().ok())

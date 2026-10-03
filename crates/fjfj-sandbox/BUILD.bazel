@@ -8,7 +8,7 @@ rust_library(
     crate_name = "fjfj_sandbox",
     edition = "2024",
     version = "0.0.1",
-    deps = ["@crates//:anyhow", "@crates//:thiserror", "@crates//:tracing", ],
+    deps = ["@crates//:anyhow", "@crates//:libc", "@crates//:thiserror", "@crates//:tracing", ],
 )
 
 rust_test(

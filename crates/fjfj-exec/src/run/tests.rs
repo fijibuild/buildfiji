@@ -406,16 +406,55 @@ async fn a_local_command_sees_the_whole_execroot_and_leaves_what_it_makes() {
     assert!(layout.execroot().join(BIN).join("stray.txt").exists());
 }
 
+#[tokio::test]
+async fn a_namespace_sandboxed_command_cannot_write_to_the_real_execroot() {
+    if !fjfj_sandbox::namespaces_available() {
+        return;
+    }
+    // `/tmp` stays writable, so the build tree is somewhere else.
+    let here = std::env::current_dir().unwrap();
+    if here.starts_with("/tmp") || here.starts_with("/dev/shm") {
+        return;
+    }
+    let dir = tempfile::tempdir_in(here).unwrap();
+    let layout = Layout {
+        workspace: dir.path().join("ws"),
+        output_base: dir.path().join("ob"),
+    };
+    std::fs::create_dir_all(&layout.workspace).unwrap();
+    layout.prepare().unwrap();
+    let a = out("a.txt");
+    let real = layout.execroot().join(BIN).join("stray.txt");
+    let action = shell(
+        &format!(
+            "(echo x > {real} && echo wrote || echo refused) > {a}",
+            real = real.display(),
+            a = a.exec_path()
+        ),
+        vec![],
+        vec![a.clone()],
+    );
+    let outcome = run(&layout, vec![action], std::slice::from_ref(&a), false).await;
+    assert!(outcome.failures.is_empty(), "{:?}", outcome.failures);
+    let seen = std::fs::read_to_string(layout.execroot().join(a.exec_path())).unwrap();
+    assert_eq!(seen.trim(), "refused");
+    assert!(!real.exists());
+}
+
 #[test]
 fn spawn_strategy_names_pick_the_first_strategy_that_runs() {
     assert_eq!(Strategy::parse("local").unwrap(), Strategy::Local);
     assert_eq!(
         Strategy::parse("remote,sandboxed,local").unwrap(),
-        Strategy::Sandboxed
+        Strategy::LinuxSandbox
     );
     assert_eq!(
         Strategy::parse("worker,standalone").unwrap(),
         Strategy::Local
+    );
+    assert_eq!(
+        Strategy::parse("processwrapper-sandbox").unwrap(),
+        Strategy::Sandboxed
     );
     assert!(Strategy::parse("remote").is_err());
 }
