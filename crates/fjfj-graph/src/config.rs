@@ -24,7 +24,7 @@ pub enum SettingValue {
 impl SettingValue {
     /// How Java prints it, which is how Bazel spells it in the hash of an
     /// output directory: `[-O1, -O2]` for a list.
-    fn java(&self) -> String {
+    pub fn java(&self) -> String {
         match self {
             SettingValue::Bool(b) => b.to_string(),
             SettingValue::Int(i) => i.to_string(),
@@ -199,6 +199,10 @@ impl Configuration {
         out.insert(
             option("compilation_mode"),
             SettingValue::Str(self.compilation_mode.name().to_owned()),
+        );
+        out.insert(
+            option("is exec configuration"),
+            SettingValue::Bool(self.exec),
         );
         out.insert(
             option("define"),

@@ -1342,6 +1342,11 @@ pub(crate) struct TransitionGen<V> {
     #[trace(static)]
     #[allocative(skip)]
     outputs: Vec<String>,
+    /// Where `transition()` was called, as `@@repo//pkg:file.bzl:line:col`;
+    /// empty for the other kinds.
+    #[trace(static)]
+    #[allocative(skip)]
+    defined_at: String,
 }
 
 starlark_complex_value!(pub(crate) Transition);
@@ -1360,6 +1365,7 @@ impl<'v> Freeze for Transition<'v> {
                 .collect::<FreezeResult<Vec<FrozenValue>>>()?,
             inputs: self.inputs,
             outputs: self.outputs,
+            defined_at: self.defined_at,
         })
     }
 }
@@ -1390,6 +1396,7 @@ struct TransitionView<'v> {
     values: Vec<Value<'v>>,
     inputs: Vec<String>,
     outputs: Vec<String>,
+    defined_at: String,
 }
 
 fn transition_view<'v>(value: Value<'v>) -> Option<TransitionView<'v>> {
@@ -1400,6 +1407,7 @@ fn transition_view<'v>(value: Value<'v>) -> Option<TransitionView<'v>> {
             values: t.values.iter().map(|v| v.to_value()).collect(),
             inputs: t.inputs.clone(),
             outputs: t.outputs.clone(),
+            defined_at: t.defined_at.clone(),
         }
     }
     if let Some(live) = value.downcast_ref::<Transition<'v>>() {
@@ -1417,6 +1425,11 @@ pub(crate) fn defined_transition<'v>(
     let t = transition_view(value)?;
     (t.kind == TransitionKind::Defined && !t.values.is_empty())
         .then(|| (t.values[0], t.inputs, t.outputs))
+}
+
+/// Where a defined transition was written: `@@repo//pkg:file.bzl:line:col`.
+pub(crate) fn transition_defined_at(value: Value<'_>) -> Option<String> {
+    transition_view(value).map(|t| t.defined_at)
 }
 
 /// Whether `value` is a transition (of any kind but `config.exec()`).
@@ -1525,6 +1538,7 @@ fn transition_methods(builder: &mut MethodsBuilder) {
             values: vec![this, next],
             inputs: Vec::new(),
             outputs: Vec::new(),
+            defined_at: String::new(),
         }))
     }
 }
@@ -1633,6 +1647,10 @@ fn make_transition<'v>(
         values: vec![bound[0].expect("required")],
         inputs,
         outputs,
+        defined_at: crate::native::call_frames(eval)
+            .last()
+            .map(|f| f.location.clone())
+            .unwrap_or_default(),
     }))
 }
 
@@ -1662,6 +1680,7 @@ fn make_analysis_test_transition<'v>(
         values,
         inputs: Vec::new(),
         outputs: keys,
+        defined_at: String::new(),
     }))
 }
 
@@ -1704,6 +1723,7 @@ fn singleton<'v>(kind: TransitionKind, heap: Heap<'v>) -> Value<'v> {
         values: Vec::new(),
         inputs: Vec::new(),
         outputs: Vec::new(),
+        defined_at: String::new(),
     })
 }
 

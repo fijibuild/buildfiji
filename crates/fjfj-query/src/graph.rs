@@ -80,6 +80,10 @@ pub struct Edge {
     /// Comes from the `visibility` attribute, which `--output=xml` does not
     /// list among a rule's inputs.
     pub visibility: bool,
+    /// The attribute it comes from, empty if none.
+    pub attr: String,
+    /// From an attribute whose `cfg` is a transition.
+    pub transition: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

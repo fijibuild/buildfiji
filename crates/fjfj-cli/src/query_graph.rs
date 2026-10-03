@@ -175,6 +175,7 @@ impl QueryGraph {
                 collect_labels(&value, None, &mut found);
                 found.remove(&default_condition());
                 let tool = matches!(attr.def.cfg, Cfg::Exec | Cfg::Host);
+                let transition = attr.def.cfg == Cfg::Transition;
                 for (to, condition) in found {
                     labels.push(to.clone());
                     edges.push(Edge {
@@ -183,6 +184,8 @@ impl QueryGraph {
                         tool,
                         condition: condition.map(|c| self.display_text(&c)),
                         visibility: false,
+                        attr: attr.name.clone(),
+                        transition,
                     });
                 }
             }
@@ -198,6 +201,8 @@ impl QueryGraph {
                                 tool: false,
                                 condition: None,
                                 visibility: false,
+                                attr: String::new(),
+                                transition: false,
                             });
                         }
                     }
@@ -226,6 +231,8 @@ impl QueryGraph {
                     tool: false,
                     condition: None,
                     visibility: true,
+                    attr: String::new(),
+                    transition: false,
                 });
             }
         }
@@ -237,6 +244,8 @@ impl QueryGraph {
                 tool: false,
                 condition: None,
                 visibility: false,
+                attr: String::new(),
+                transition: false,
             });
         }
         // The one implicit dependency of a native rule that its attributes do
@@ -252,6 +261,8 @@ impl QueryGraph {
                 tool: false,
                 condition: None,
                 visibility: false,
+                attr: "$genrule_setup".to_owned(),
+                transition: false,
             });
         }
         let location = target.location.clone();
@@ -376,6 +387,20 @@ impl QueryGraph {
                 })
             })
             .collect()
+    }
+
+    /// Where the transition on `attr` of the rule `rule_class` of `bzl` was
+    /// written, as `/abs/path/file.bzl:line:col`.
+    pub(crate) fn transition_location(
+        &self,
+        bzl: &Label,
+        rule_class: &str,
+        attr: &str,
+    ) -> Option<String> {
+        let module = self.repos.module(bzl).ok()?;
+        let spec =
+            fjfj_starlark::transition_spec(&module, rule_class, fjfj_starlark::Edge::Attr(attr))?;
+        self.frame_location(&bzl.repo, &spec.defined_at).ok()
     }
 
     fn rule_location(&self, repo: &str, location: &str) -> Result<String, String> {
@@ -660,6 +685,8 @@ impl Graph for QueryGraph {
                             tool: false,
                             condition: None,
                             visibility: false,
+                            attr: String::new(),
+                            transition: false,
                         })
                         .collect();
                     node
@@ -682,6 +709,8 @@ impl Graph for QueryGraph {
                         tool: false,
                         condition: None,
                         visibility: false,
+                        attr: String::new(),
+                        transition: false,
                     }];
                     node
                 }

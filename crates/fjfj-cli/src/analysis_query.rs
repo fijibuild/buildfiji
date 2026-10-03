@@ -88,6 +88,15 @@ enum Formatter {
     File(String, String),
 }
 
+/// `--transitions`: how much of the transitions on each edge `cquery` shows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum Transitions {
+    #[default]
+    None,
+    Lite,
+    Full,
+}
+
 /// What `--output` and the flags around it asked for.
 #[derive(Debug)]
 struct Flags {
@@ -97,6 +106,7 @@ struct Flags {
     file: Option<String>,
     aquery: aquery::Settings,
     proto: fjfj_query::target_proto::ProtoOptions,
+    transitions: Transitions,
 }
 
 impl Flags {
@@ -151,6 +161,7 @@ fn extract(kind: Kind, args: &[String]) -> Result<(Flags, Vec<String>), CliError
         file: None,
         aquery: aquery::Settings::default(),
         proto: Default::default(),
+        transitions: Transitions::None,
     };
     let mut rest = Vec::new();
     let mut iter = args.iter();
@@ -181,6 +192,21 @@ fn extract(kind: Kind, args: &[String]) -> Result<(Flags, Vec<String>), CliError
             }
             "starlark:file" if kind == Kind::Cquery => {
                 flags.file = Some(value.ok_or_else(|| bad("--starlark:file needs a value"))?);
+            }
+            "transitions" if kind == Kind::Cquery => {
+                let value = value
+                    .or_else(|| iter.next().cloned())
+                    .ok_or_else(|| bad("--transitions needs a value"))?;
+                flags.transitions = match value.as_str() {
+                    "none" => Transitions::None,
+                    "lite" => Transitions::Lite,
+                    "full" => Transitions::Full,
+                    other => {
+                        return Err(bad(format!(
+                            "While parsing option --transitions={other}: Not a valid transition verbosity: '{other}' (should be full, lite or none)"
+                        )));
+                    }
+                };
             }
             "implicit_deps" => flags.options.implicit_deps = true,
             "noimplicit_deps" => flags.options.implicit_deps = false,
@@ -234,6 +260,7 @@ pub(crate) async fn run(args: QueryArgs, kind: Kind) -> Result<(), CliError> {
         formatter,
         aquery: flags.aquery,
         proto: flags.proto,
+        transitions: flags.transitions,
         expr,
     };
     let configuration = build_command::configuration_from(&build_flags).map_err(bad)?;
@@ -312,6 +339,7 @@ struct Query {
     formatter: Option<Formatter>,
     aquery: aquery::Settings,
     proto: fjfj_query::target_proto::ProtoOptions,
+    transitions: Transitions,
     expr: fjfj_query::Expr,
 }
 
@@ -375,6 +403,46 @@ fn evaluate(
         return cquery_proto(query, &labels, &evaluator, &configured);
     }
     render(query, &labels, &evaluator, &configured, repos, &layout).map(String::into_bytes)
+}
+
+/// `--transitions=lite|full`: each target with the transition that led to it,
+/// then each of its dependencies by attribute, the transition on the edge and
+/// the configuration it reached.
+fn transitions_text(
+    labels: &BTreeSet<Label>,
+    graph: &ConfiguredGraph<'_>,
+    mode: Transitions,
+) -> String {
+    let mut out = String::new();
+    for label in labels {
+        let Some(target) = graph.target(label) else {
+            continue;
+        };
+        if !target.has_configuration() {
+            out.push_str(&format!("{}\n", graph.output_name(label)));
+            continue;
+        }
+        out.push_str(&format!("NoTransition -> {}\n", graph.output_name(label)));
+        for edge in graph.transition_edges(label) {
+            let reached = edge
+                .configuration
+                .as_ref()
+                .map(|c| c.checksum()[..7].to_owned())
+                .unwrap_or_default();
+            out.push_str(&format!(
+                "  {}#{}#{} -> {reached}\n",
+                edge.attr,
+                graph.loading_display(&edge.label),
+                edge.description
+            ));
+            if mode == Transitions::Full {
+                for (name, old, new) in &edge.changes {
+                    out.push_str(&format!("    {name}:{old} -> [{new}]\n"));
+                }
+            }
+        }
+    }
+    out
 }
 
 /// `cquery --output=proto` and its textual forms: a `CqueryResult` of the
@@ -474,6 +542,9 @@ fn render(
     let failed = |e: String| CliError::Query(anyhow::anyhow!(e));
     match query.kind {
         Kind::Cquery => match query.format.as_str() {
+            "label" if query.transitions != Transitions::None => {
+                Ok(transitions_text(labels, graph, query.transitions))
+            }
             "label" | "label_kind" | "graph" | "build" => {
                 let format = fjfj_query::output::Format::parse(&query.format)
                     .expect("a format the query command has");
@@ -561,6 +632,12 @@ mod tests {
         aspects: &[&str],
         settings: aquery::Settings,
     ) -> Result<Vec<u8>, CliError> {
+        // `label` with `--transitions` is `transitions=lite` or `transitions=full`.
+        let (format, transitions) = match format {
+            "transitions=lite" => ("label", Transitions::Lite),
+            "transitions=full" => ("label", Transitions::Full),
+            other => (other, Transitions::None),
+        };
         let dir = tempfile::tempdir().unwrap();
         let ws = dir.path().join("ws");
         for (file, text) in files {
@@ -595,6 +672,7 @@ mod tests {
             formatter,
             aquery: settings,
             proto: Default::default(),
+            transitions,
             expr: fjfj_query::parse_in(expr, kind.dialect()).unwrap(),
         };
         let flags = fjfj_bazel_compat::build_flags::BuildFlags {
@@ -1283,6 +1361,50 @@ execution_platform: "@@platforms//host:host"
             text.contains("# Rule r defined at (most recent call last):\n#   "),
             "{text}"
         );
+    }
+
+    /// What `bazel cquery //:a --transitions=lite` printed for the same files.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn transitions_show_each_edge_and_the_configuration_it_reaches() {
+        let text = run_query(Kind::Cquery, "transitions=lite", "//:a + //:s.txt", None)
+            .await
+            .unwrap();
+        let trimming = "(TestTrimmingTransition + ConfigFeatureFlagTaggedTrimmingTransition)";
+        let lines = undigested(&text);
+        assert_eq!(lines[0], "NoTransition -> //:a (7)");
+        assert_eq!(lines[1], "  srcs#//:s.txt#(null transition) -> ");
+        // The edge into //:b says where the transition was written and
+        // which configuration it reached.
+        let edge = &lines[2];
+        assert!(
+            edge.starts_with("  deps#//:b#(Starlark transition:")
+                && edge.contains("/ws/defs.bzl:4:15 + ")
+                && edge.contains(trimming),
+            "{edge}"
+        );
+        assert_eq!(edge.rsplit_once(" -> ").unwrap().1.len(), 7);
+        assert_eq!(
+            text.lines()
+                .nth(2)
+                .unwrap()
+                .rsplit_once(" -> ")
+                .unwrap()
+                .1
+                .len(),
+            7
+        );
+        assert_eq!(
+            lines[3],
+            "  $allowlist_function_transition#@bazel_tools//tools/allowlists/function_transition_allowlist:function_transition_allowlist#(null transition) -> "
+        );
+        // A source file has no configuration to come from.
+        assert_eq!(lines[4], "//:s.txt (null)");
+        // `full` adds the native options a transition changed: this one
+        // changed a build setting only, which Bazel does not list.
+        let full = run_query(Kind::Cquery, "transitions=full", "//:a", None)
+            .await
+            .unwrap();
+        assert_eq!(full.lines().count(), 4);
     }
 
     /// The descriptions of the actions an `aquery` printed.

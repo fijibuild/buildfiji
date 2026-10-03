@@ -40,6 +40,8 @@ pub type Outcome = (String, BTreeMap<String, SettingValue>);
 pub struct TransitionSpec {
     pub inputs: Vec<String>,
     pub outputs: Vec<String>,
+    /// Where `transition()` was called: `@@repo//pkg:file.bzl:line:col`.
+    pub defined_at: String,
 }
 
 /// The settings the transition on `edge` of `rule` reads and writes. `None`
@@ -53,7 +55,11 @@ pub fn transition_spec(
     let value = rule.value().unpack_frozen()?.to_value();
     let transition = transition_of(value, edge.attr())?;
     let (_, inputs, outputs) = crate::decl::defined_transition(transition)?;
-    Some(TransitionSpec { inputs, outputs })
+    Some(TransitionSpec {
+        inputs,
+        outputs,
+        defined_at: crate::decl::transition_defined_at(transition).unwrap_or_default(),
+    })
 }
 
 pub(super) fn to_starlark<'v>(heap: Heap<'v>, name: &str, value: &SettingValue) -> Value<'v> {
