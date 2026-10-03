@@ -131,8 +131,8 @@ impl Flags {
             "include_artifacts" => self.aquery.artifacts = on,
             "include_file_write_contents" => self.aquery.file_write_contents = on,
             "include_aspects" => self.aquery.aspects = on,
-            // No action of fjfj has a parameter file.
-            "include_param_files" => {}
+            // No action of fjfj has a parameter file or discovers inputs.
+            "include_param_files" | "include_pruned_inputs" => {}
             _ => return false,
         }
         true
