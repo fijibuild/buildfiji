@@ -434,6 +434,11 @@ pub(crate) fn location(eval: &Evaluator<'_, '_, '_>) -> String {
     let Some(span) = chosen else {
         return "<unknown>".to_owned();
     };
+    span_location(&span)
+}
+
+/// `file:line:col` of the `(` of the call `span` covers.
+fn span_location(span: &starlark::codemap::FileSpan) -> String {
     let resolved = span.resolve();
     let begin = resolved.span.begin;
     // The span covers the whole call; Bazel points at its `(`. It is on the
@@ -450,6 +455,78 @@ pub(crate) fn location(eval: &Evaluator<'_, '_, '_>) -> String {
         begin.line + 1,
         begin.column + column + 1
     )
+}
+
+/// The calls that led to the one being made, outermost first, each as where
+/// it was made and the function it was made in (`<toplevel>` for the first),
+/// the call being made last.
+pub(crate) fn call_frames(eval: &Evaluator<'_, '_, '_>) -> Vec<fjfj_graph::package::StackFrame> {
+    let mut caller = "<toplevel>".to_owned();
+    let mut out = Vec::new();
+    for frame in eval.call_stack().frames {
+        let Some(span) = &frame.location else {
+            continue;
+        };
+        out.push(fjfj_graph::package::StackFrame {
+            location: span_location(span),
+            function: caller,
+        });
+        caller = frame.name;
+    }
+    out
+}
+
+/// The `name` the call that starts at `span` gives as a string, if it is a
+/// literal: what Bazel calls the name of the macro.
+pub(crate) fn call_name_argument(call: &str) -> Option<String> {
+    // At depth one of the call's parentheses, `name = "..."`.
+    let bytes: Vec<char> = call.chars().collect();
+    let (mut depth, mut at) = (0usize, 0usize);
+    while at < bytes.len() {
+        match bytes[at] {
+            '(' | '[' | '{' => depth += 1,
+            ')' | ']' | '}' => depth = depth.saturating_sub(1),
+            '"' | '\'' => {
+                // Skip a string.
+                let quote = bytes[at];
+                at += 1;
+                while at < bytes.len() && bytes[at] != quote {
+                    if bytes[at] == '\\' {
+                        at += 1;
+                    }
+                    at += 1;
+                }
+            }
+            'n' if depth == 1 => {
+                let word: String = bytes[at..].iter().take(4).collect();
+                let before_ok =
+                    at == 0 || !(bytes[at - 1].is_alphanumeric() || bytes[at - 1] == '_');
+                if word == "name" && before_ok {
+                    let mut rest = at + 4;
+                    while rest < bytes.len() && bytes[rest].is_whitespace() {
+                        rest += 1;
+                    }
+                    if rest < bytes.len() && bytes[rest] == '=' && bytes.get(rest + 1) != Some(&'=')
+                    {
+                        rest += 1;
+                        while rest < bytes.len() && bytes[rest].is_whitespace() {
+                            rest += 1;
+                        }
+                        if let Some(&quote @ ('"' | '\'')) = bytes.get(rest) {
+                            let value: String = bytes[rest + 1..]
+                                .iter()
+                                .take_while(|c| **c != quote)
+                                .collect();
+                            return Some(value);
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+        at += 1;
+    }
+    None
 }
 
 /// Whether the rule `name` is one a finalizer sees: those there were when

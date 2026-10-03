@@ -168,6 +168,16 @@ impl Graph for ConfiguredGraph<'_> {
             .ok_or_else(|| format!("no configured target {}", self.display(label)))?;
         let mut node = (*self.loading.node(&plain(label))?).clone();
         node.label = label.clone();
+        // A generated file's rule is the target in its configuration.
+        if let fjfj_query::NodeKind::GeneratedFile { rule } = &mut node.kind
+            && let Some(made) = target
+                .deps
+                .iter()
+                .find(|k| k.label == *rule)
+                .and_then(|k| self.of_key(k))
+        {
+            *rule = made;
+        }
         // The edges analysis followed, in the configuration each went to.
         let mut edges: Vec<Edge> = Vec::new();
         for key in &target.deps {

@@ -692,6 +692,7 @@ fn make_aspect<'v>(
         outputs: Vec::new(),
         build_setting: None,
         incoming_transition: false,
+        definition_stack: Vec::new(),
     };
     if let Some(toolchains) = arg("toolchains") {
         for item in crate::args::sequence(toolchains).unwrap_or_default() {

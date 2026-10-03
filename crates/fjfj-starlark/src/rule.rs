@@ -599,6 +599,7 @@ fn make_rule<'v>(
     let mut schema =
         RuleSchema::starlark(own, test, executable, templates).map_err(|e| fatal(e.to_string()))?;
     schema.defined_in = crate::label::evaluating_file(eval);
+    schema.definition_stack = crate::native::call_frames(eval);
     schema.incoming_transition = arg("cfg").is_some_and(crate::decl::is_defined_transition);
     schema.build_setting = arg("build_setting")
         .and_then(build_setting_of)

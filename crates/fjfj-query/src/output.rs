@@ -5,6 +5,7 @@ use crate::graph::{Edge, NodeKind};
 use fjfj_graph::Label;
 use fjfj_graph::rule::AttrValue;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::fmt::Write as _;
 
 /// `--output`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -16,6 +17,10 @@ pub enum Format {
     MaxRank,
     Graph,
     Xml,
+    /// Each rule as the BUILD text that makes it.
+    Build,
+    /// The name of each package a target is in.
+    Package,
     /// `QueryResult` in the wire format.
     Proto,
     /// Each target as a length-prefixed `Target`.
@@ -34,6 +39,8 @@ impl Format {
             "maxrank" => Format::MaxRank,
             "graph" => Format::Graph,
             "xml" => Format::Xml,
+            "build" => Format::Build,
+            "package" => Format::Package,
             "proto" => Format::Proto,
             "streamed_proto" => Format::StreamedProto,
             "streamed_jsonproto" => Format::StreamedJsonProto,
@@ -260,6 +267,35 @@ pub fn render(
             rows.sort();
             for (r, label) in rows {
                 line(format!("{r} {}", graph.output_name(label)));
+            }
+        }
+        Format::Package => {
+            // Each package once, by name: the main repository's without the
+            // `//`, the others' as `@repo//pkg`.
+            let mut packages: BTreeSet<String> = BTreeSet::new();
+            for label in set {
+                let shown = graph.display(label);
+                let package = shown.rsplit_once(':').map_or(shown.as_str(), |(p, _)| p);
+                packages.insert(package.strip_prefix("//").unwrap_or(package).to_owned());
+            }
+            for package in packages {
+                line(package);
+            }
+        }
+        Format::Build => {
+            // Once for each name: `cquery` has a target in several configurations
+            // and shows one of them.
+            let mut done: BTreeSet<String> = BTreeSet::new();
+            for label in order(ev, set, wanted)? {
+                // A generated file is shown as the rule that makes it, once.
+                let rule = match &ev.node(&label)?.kind {
+                    NodeKind::Rule { .. } => label.clone(),
+                    NodeKind::GeneratedFile { rule } => rule.clone(),
+                    _ => continue,
+                };
+                if done.insert(graph.display(&rule)) {
+                    out.push_str(&build_text(ev, &rule)?);
+                }
             }
         }
         Format::Proto | Format::StreamedProto | Format::StreamedJsonProto => {
@@ -582,4 +618,153 @@ fn dict(out: &mut Vec<String>, name: &str, pairs: impl Iterator<Item = (String, 
         out.push("            </pair>".to_owned());
     }
     out.push("        </dict>".to_owned());
+}
+
+/// A string as Starlark's `repr` writes it.
+fn repr(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() + 2);
+    out.push('"');
+    for c in text.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 || c == '\u{7f}' => {
+                let _ = write!(out, "\\x{:02x}", c as u32);
+            }
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
+/// An attribute value as BUILD text.
+fn build_value(graph: &dyn crate::graph::Graph, value: &AttrValue) -> String {
+    let label = |l: &Label| repr(&graph.display(l));
+    let list = |items: Vec<String>| format!("[{}]", items.join(", "));
+    let dict = |items: Vec<String>| format!("{{{}}}", items.join(", "));
+    match value {
+        AttrValue::Bool(true) => "True".to_owned(),
+        AttrValue::Bool(false) => "False".to_owned(),
+        AttrValue::Int(i) => i.to_string(),
+        AttrValue::String(s) => repr(s),
+        AttrValue::Label(l) => label(l),
+        AttrValue::StringList(items) => list(items.iter().map(|s| repr(s)).collect()),
+        AttrValue::IntList(items) => list(items.iter().map(i32::to_string).collect()),
+        AttrValue::LabelList(items) => list(items.iter().map(label).collect()),
+        AttrValue::StringDict(items) => dict(
+            items
+                .iter()
+                .map(|(k, v)| format!("{}: {}", repr(k), repr(v)))
+                .collect(),
+        ),
+        AttrValue::StringListDict(items) => dict(
+            items
+                .iter()
+                .map(|(k, v)| format!("{}: {}", repr(k), list(v.iter().map(|s| repr(s)).collect())))
+                .collect(),
+        ),
+        AttrValue::LabelKeyedStringDict(items) => dict(
+            items
+                .iter()
+                .map(|(k, v)| format!("{}: {}", label(k), repr(v)))
+                .collect(),
+        ),
+        AttrValue::StringKeyedLabelDict(items) => dict(
+            items
+                .iter()
+                .map(|(k, v)| format!("{}: {}", repr(k), label(v)))
+                .collect(),
+        ),
+        AttrValue::LabelListDict(items) => dict(
+            items
+                .iter()
+                .map(|(k, v)| format!("{}: {}", repr(k), list(v.iter().map(label).collect())))
+                .collect(),
+        ),
+        AttrValue::Select(selectors) => {
+            let join = if selectors.pipe { " | " } else { " + " };
+            selectors
+                .elements
+                .iter()
+                .map(|selector| {
+                    let branches: Vec<String> = selector
+                        .branches
+                        .iter()
+                        .map(|(condition, branch)| {
+                            let shown = match branch {
+                                Some(v) => build_value(graph, v),
+                                None => "None".to_owned(),
+                            };
+                            format!("{}: {shown}", label(condition))
+                        })
+                        .collect();
+                    if selector.unconditional {
+                        branches
+                            .first()
+                            .and_then(|b| b.split_once(": ").map(|(_, v)| v.to_owned()))
+                            .unwrap_or_default()
+                    } else {
+                        format!("select({{{}}})", branches.join(", "))
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(join)
+        }
+    }
+}
+
+/// The calls of a stack as the lines of a comment, the functions lined up.
+fn stack_lines(frames: &[crate::graph::Frame]) -> String {
+    let width = frames
+        .iter()
+        .map(|f| f.location.chars().count())
+        .max()
+        .unwrap_or(0);
+    let mut out = String::new();
+    for frame in frames {
+        let pad = " ".repeat(width - frame.location.chars().count());
+        let _ = writeln!(out, "#   {}{pad} in {}", frame.location, frame.function);
+    }
+    out
+}
+
+/// The text `--output=build` gives a rule: where it is, the rule as written
+/// with the attributes that were set, and where it was made and defined.
+fn build_text(ev: &Evaluator<'_>, label: &Label) -> Result<String, String> {
+    let graph = ev.graph();
+    let node = ev.node(label)?;
+    let NodeKind::Rule { class, .. } = &node.kind else {
+        return Ok(String::new());
+    };
+    let mut out = String::new();
+    let _ = writeln!(out, "# {}", node.location);
+    let _ = writeln!(out, "{class}(");
+    for attr in &node.attrs {
+        if attr.unset || !(attr.explicit || attr.name == "name") {
+            continue;
+        }
+        let value = if attr.name == "name" {
+            repr(&label.name)
+        } else {
+            build_value(graph, &attr.value)
+        };
+        let _ = writeln!(out, "  {} = {value},", attr.name);
+    }
+    out.push_str(")\n");
+    let _ = writeln!(
+        out,
+        "# Rule {} instantiated at (most recent call last):",
+        label.name
+    );
+    out.push_str(&stack_lines(&node.stack));
+    if !node.definition_stack.is_empty() {
+        let _ = writeln!(out, "# Rule {class} defined at (most recent call last):");
+        out.push_str(&stack_lines(&node.definition_stack));
+    }
+    out.push('\n');
+    Ok(out)
 }

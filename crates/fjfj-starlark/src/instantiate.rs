@@ -28,7 +28,7 @@
 use crate::args::{describe, fatal};
 use crate::depset::{depset_to_list, is_depset};
 use crate::label::{StarlarkLabel, display_label, label_of_value};
-use crate::native::{BuildContext, context_for, location};
+use crate::native::{BuildContext, call_frames, call_name_argument, context_for, location};
 use crate::select;
 use fjfj_graph::package::{PackageError, check_subpackage_crossing};
 use fjfj_graph::rule::{
@@ -155,6 +155,40 @@ pub(crate) fn instantiate<'v>(
         }
     }
     normalize(schema, &mut attrs);
+    // A rule a macro makes says which: the macro's name, its function (the
+    // one the BUILD file called) and where it was called.
+    let frames = call_frames(eval);
+    if frames.len() > 1 && !ctx.macros.borrow().inside() {
+        let function = eval
+            .call_stack()
+            .frames
+            .first()
+            .map(|f| f.name.clone())
+            .unwrap_or_default();
+        let call_text = eval
+            .call_stack()
+            .frames
+            .first()
+            .and_then(|f| f.location.as_ref().map(|l| l.source_span().to_owned()))
+            .unwrap_or_default();
+        let macro_name = call_name_argument(&call_text).unwrap_or_else(|| name.clone());
+        // Bazel writes the path of the BUILD file as the root package's
+        // absolute path and others relative to the repository.
+        let location = if ctx.repo.is_empty() && ctx.package.is_empty() {
+            format!("{}/{}", ctx.lookup.package_dir("").display(), at)
+        } else {
+            at.clone()
+        };
+        for (key, value) in [
+            ("generator_name", macro_name),
+            ("generator_function", function),
+            ("generator_location", location),
+        ] {
+            if !attrs.iter().any(|(k, _)| k == key) {
+                attrs.push((key.to_owned(), AttrValue::String(value)));
+            }
+        }
+    }
     for attr in &schema.attrs {
         if attr.name != "name" && attr.def.mandatory() && !provided.contains(&attr.name.as_str()) {
             event(format!(
@@ -249,6 +283,9 @@ pub(crate) fn instantiate<'v>(
             &at,
         )
         .map_err(|e| fatal(e.to_string()))?;
+    if frames.len() > 1 {
+        ctx.state.borrow_mut().builder.set_stack(&name, frames);
+    }
     if let Some(crossing) = crossing {
         ctx.event(&at, crossing.to_string());
     }

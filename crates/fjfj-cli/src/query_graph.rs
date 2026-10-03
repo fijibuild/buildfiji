@@ -9,7 +9,7 @@ use fjfj_graph::rule::{AttrType, AttrValue, Cfg, default_condition, native_rule}
 use fjfj_graph::schema::RuleSchema;
 use fjfj_graph::visibility::is_visible;
 use fjfj_loading::{PackageSource, resolve_with};
-use fjfj_query::{Edge, Graph, Node, NodeAttr, NodeKind};
+use fjfj_query::{Edge, Frame, Graph, Node, NodeAttr, NodeKind};
 use fjfj_repo::Repos;
 use fjfj_starlark::{RuleSource, rule_schema};
 use std::collections::{BTreeMap, BTreeSet};
@@ -255,6 +255,18 @@ impl QueryGraph {
             });
         }
         let location = target.location.clone();
+        let rule_location = self.rule_location(&label.repo, &location)?;
+        // A rule the BUILD file called has just its location for a stack.
+        let stack = if target.stack.is_empty() {
+            vec![Frame {
+                location: rule_location.clone(),
+                relative: location.clone(),
+                function: "<toplevel>".to_owned(),
+            }]
+        } else {
+            self.frames(&label.repo, &target.stack)?
+        };
+        let definition_stack = self.frames(&label.repo, &schema.definition_stack)?;
         let mut config_deps: Vec<Label> = Vec::new();
         for attr in &attrs {
             let AttrValue::Select(list) = &attr.value else {
@@ -275,7 +287,7 @@ impl QueryGraph {
                 test: schema.test,
                 executable: schema.executable,
             },
-            location: self.rule_location(&label.repo, &location)?,
+            location: rule_location,
             attrs,
             edges,
             outputs: package
@@ -290,6 +302,8 @@ impl QueryGraph {
             loads: Vec::new(),
             build_file: false,
             config_deps,
+            stack,
+            definition_stack,
             group: None,
         })
     }
@@ -307,6 +321,61 @@ impl QueryGraph {
             name: build.file_name()?.to_str()?.to_owned(),
             ..label.clone()
         })
+    }
+
+    /// A location a stack frame names, absolute: a BUILD file as the package
+    /// of `repo` has it, a `.bzl` as `@@repo//pkg:file.bzl:line:col`.
+    fn frame_location(&self, repo: &str, location: &str) -> Result<String, String> {
+        let Some(label) = location.strip_prefix("@@") else {
+            return self.rule_location(repo, location);
+        };
+        let mut parts = location.rsplitn(3, ':');
+        let (Some(col), Some(line), Some(file)) = (parts.next(), parts.next(), parts.next()) else {
+            return Ok(location.to_owned());
+        };
+        let _ = label;
+        let file = file.trim_start_matches("@@");
+        let (bzl_repo, rest) = file.split_once("//").unwrap_or(("", file));
+        let (package, name) = rest.split_once(':').unwrap_or(("", rest));
+        let path = self.repos.lookup(bzl_repo)?.package_dir(package).join(name);
+        Ok(format!("{}:{line}:{col}", path.display()))
+    }
+
+    fn frames(
+        &self,
+        repo: &str,
+        frames: &[fjfj_graph::package::StackFrame],
+    ) -> Result<Vec<Frame>, String> {
+        frames
+            .iter()
+            .map(|f| {
+                // From the root of the repository: a `.bzl` is named by its
+                // label, a BUILD file already is.
+                let relative = match f.location.strip_prefix("@@") {
+                    Some(label) => {
+                        let mut parts = label.rsplitn(3, ':');
+                        match (parts.next(), parts.next(), parts.next()) {
+                            (Some(col), Some(line), Some(file)) => {
+                                let (_, rest) = file.split_once("//").unwrap_or(("", file));
+                                let (package, name) = rest.split_once(':').unwrap_or(("", rest));
+                                if package.is_empty() {
+                                    format!("{name}:{line}:{col}")
+                                } else {
+                                    format!("{package}/{name}:{line}:{col}")
+                                }
+                            }
+                            _ => f.location.clone(),
+                        }
+                    }
+                    None => f.location.clone(),
+                };
+                Ok(Frame {
+                    location: self.frame_location(repo, &f.location)?,
+                    relative,
+                    function: f.function.clone(),
+                })
+            })
+            .collect()
     }
 
     fn rule_location(&self, repo: &str, location: &str) -> Result<String, String> {
@@ -490,6 +559,8 @@ impl QueryGraph {
             loads: Vec::new(),
             build_file: false,
             config_deps: Vec::new(),
+            stack: Vec::new(),
+            definition_stack: Vec::new(),
             group: None,
         })
     }
@@ -739,9 +810,7 @@ mod tests {
     use fjfj_query::{Evaluator, Options};
 
     fn workspace() -> (tempfile::TempDir, Arc<Repos>) {
-        let dir = tempfile::tempdir().unwrap();
-        let ws = dir.path().join("ws");
-        for (file, text) in [
+        workspace_of(&[
             ("MODULE.bazel", ""),
             ("BUILD", ""),
             (
@@ -782,7 +851,14 @@ genrule(name="gen", outs=["gen.txt"], cmd="echo > $@")
                 "c/d/BUILD",
                 "load('//:rules.bzl', 'mylib')\nmylib(name='leaf')\npackage_group(name='pg', packages=['//a/...'])\n",
             ),
-        ] {
+        ])
+    }
+
+    /// A workspace of these files.
+    fn workspace_of(files: &[(&str, &str)]) -> (tempfile::TempDir, Arc<Repos>) {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = dir.path().join("ws");
+        for (file, text) in files {
             let at = ws.join(file);
             std::fs::create_dir_all(at.parent().unwrap()).unwrap();
             std::fs::write(at, text).unwrap();
@@ -1238,6 +1314,206 @@ genrule(name="gen", outs=["gen.txt"], cmd="echo > $@")
         assert_eq!(names, ["name", "opt"]);
         assert!(rule_narrow.get("ruleInput").is_none());
         assert!(rule_narrow.get("location").is_none());
+    }
+
+    /// A rule the BUILD file called, one a two-level legacy macro made and
+    /// one a native rule in a macro, on a root package and a subpackage:
+    /// `bazel query --output=build` printed this for the same files.
+    #[test]
+    fn build_shows_the_rule_as_written_with_where_it_was_made_and_defined() {
+        let (dir, repos) = workspace_of(&[
+            ("MODULE.bazel", ""),
+            (
+                "macros.bzl",
+                "def _impl(ctx):\n    return []\nr = rule(implementation = _impl, attrs = {\"deps\": attr.label_list(), \"s\": attr.string()})\n\ndef inner(name, **kwargs):\n    r(name = name + \"_in\", **kwargs)\n\ndef outer(name, deps = []):\n    inner(name = name, deps = deps, s = \"x\")\n    native.genrule(name = name + \"_gen\", outs = [name + \".out\"], cmd = \"echo > $@\")\n",
+            ),
+            (
+                "BUILD",
+                "load(\":macros.bzl\", \"outer\", \"r\")\nouter(name = \"m\")\nr(name = \"direct\")\n",
+            ),
+            (
+                "sub/BUILD",
+                "load(\"//:macros.bzl\", \"outer\")\nouter(name = \"n\")\n",
+            ),
+        ]);
+        let graph = QueryGraph::new(repos);
+        let ws = dir.path().join("ws").display().to_string();
+        let text = query(
+            &graph,
+            "//:m_in + //:m_gen + //:direct + //sub:n_in",
+            Format::Build,
+            Order::Auto,
+            Options::default(),
+        )
+        .replace(&ws, "<ws>");
+        assert_eq!(
+            text,
+            r#"# <ws>/BUILD:3:2
+r(
+  name = "direct",
+)
+# Rule direct instantiated at (most recent call last):
+#   <ws>/BUILD:3:2 in <toplevel>
+# Rule r defined at (most recent call last):
+#   <ws>/macros.bzl:3:9 in <toplevel>
+
+# <ws>/BUILD:2:6
+genrule(
+  name = "m_gen",
+  generator_name = "m",
+  generator_function = "outer",
+  generator_location = "<ws>/BUILD:2:6",
+  outs = ["//:m.out"],
+  cmd = "echo > $@",
+)
+# Rule m_gen instantiated at (most recent call last):
+#   <ws>/BUILD:2:6        in <toplevel>
+#   <ws>/macros.bzl:10:19 in outer
+
+# <ws>/BUILD:2:6
+r(
+  name = "m_in",
+  generator_name = "m",
+  generator_function = "outer",
+  generator_location = "<ws>/BUILD:2:6",
+  deps = [],
+  s = "x",
+)
+# Rule m_in instantiated at (most recent call last):
+#   <ws>/BUILD:2:6       in <toplevel>
+#   <ws>/macros.bzl:9:10 in outer
+#   <ws>/macros.bzl:6:6  in inner
+# Rule r defined at (most recent call last):
+#   <ws>/macros.bzl:3:9 in <toplevel>
+
+# <ws>/sub/BUILD:2:6
+r(
+  name = "n_in",
+  generator_name = "n",
+  generator_function = "outer",
+  generator_location = "sub/BUILD:2:6",
+  deps = [],
+  s = "x",
+)
+# Rule n_in instantiated at (most recent call last):
+#   <ws>/sub/BUILD:2:6   in <toplevel>
+#   <ws>/macros.bzl:9:10 in outer
+#   <ws>/macros.bzl:6:6  in inner
+# Rule r defined at (most recent call last):
+#   <ws>/macros.bzl:3:9 in <toplevel>
+
+"#
+        );
+    }
+
+    /// A rule of every kind of attribute, with `select()`s and a genrule:
+    /// `bazel query --output=build` printed this for the same files.
+    #[test]
+    fn build_writes_every_kind_of_value_as_bazel_does() {
+        let (dir, repos) = workspace_of(&[
+            ("MODULE.bazel", ""),
+            ("f.txt", "hi\n"),
+            (
+                "defs.bzl",
+                "def _impl(ctx):\n    for f in ctx.outputs.ol + ([ctx.outputs.o] if ctx.outputs.o else []):\n        ctx.actions.write(f, '')\n    return []\nallk = rule(implementation = _impl, attrs = {\n    \"i\": attr.int(default = 7),\n    \"b\": attr.bool(default = True),\n    \"s\": attr.string(default = \"str\"),\n    \"l\": attr.label(allow_files = True),\n    \"ls\": attr.label_list(allow_files = True),\n    \"ss\": attr.string_list(),\n    \"il\": attr.int_list(),\n    \"sd\": attr.string_dict(),\n    \"sld\": attr.string_list_dict(),\n    \"lsd\": attr.label_keyed_string_dict(allow_files = True),\n    \"o\": attr.output(),\n    \"ol\": attr.output_list(),\n})\n",
+            ),
+            (
+                "BUILD",
+                "load(\":defs.bzl\", \"allk\")\nconfig_setting(name = \"opt\", values = {\"compilation_mode\": \"opt\"})\nallk(name = \"x\", i = 1, b = False, s = \"a\\\"b\\n>\", l = \"f.txt\", ls = [\"f.txt\", \":fg\"], ss = [\"p\", \"q\"], il = [1, 2], sd = {\"k\": \"v\"}, sld = {\"k\": [\"a\", \"b\"]}, lsd = {\"f.txt\": \"v\"}, o = \"out.txt\", ol = [\"o1\", \"o2\"], tags = [\"t1\"], testonly = True, visibility = [\"//visibility:public\"])\nallk(name = \"y\", ss = select({\":opt\": [\"o\"], \"//conditions:default\": [\"d\"]}), ls = select({\":opt\": [\"f.txt\"], \"//conditions:default\": []}) + [\":fg\"], deprecation = \"old\")\ngenrule(name = \"g\", srcs = [\"f.txt\"], outs = [\"g.out\"], cmd = \"cp $< $@\", stamp = 1, executable = False, tools = [\":y\"], visibility = [\"//visibility:private\"])\nfilegroup(name = \"fg\", srcs = [\"f.txt\"])\npackage_group(name = \"pg\", packages = [\"//a/...\"], includes = [])\nexports_files([\"f.txt\"])\n",
+            ),
+        ]);
+        let graph = QueryGraph::new(repos);
+        let ws = dir.path().join("ws").display().to_string();
+        let text = query(
+            &graph,
+            "//:x + //:y + //:g + //:fg + f.txt + //:pg + //:g.out + //:opt",
+            Format::Build,
+            Order::Auto,
+            Options::default(),
+        )
+        .replace(&ws, "<ws>");
+        assert_eq!(
+            text,
+            r#"# <ws>/BUILD:6:10
+filegroup(
+  name = "fg",
+  srcs = ["//:f.txt"],
+)
+# Rule fg instantiated at (most recent call last):
+#   <ws>/BUILD:6:10 in <toplevel>
+
+# <ws>/BUILD:5:8
+genrule(
+  name = "g",
+  visibility = ["//visibility:private"],
+  srcs = ["//:f.txt"],
+  tools = ["//:y"],
+  outs = ["//:g.out"],
+  cmd = "cp $< $@",
+  executable = False,
+  stamp = 1,
+)
+# Rule g instantiated at (most recent call last):
+#   <ws>/BUILD:5:8 in <toplevel>
+
+# <ws>/BUILD:2:15
+config_setting(
+  name = "opt",
+  values = {"compilation_mode": "opt"},
+)
+# Rule opt instantiated at (most recent call last):
+#   <ws>/BUILD:2:15 in <toplevel>
+
+# <ws>/BUILD:3:5
+allk(
+  name = "x",
+  visibility = ["//visibility:public"],
+  tags = ["t1"],
+  testonly = True,
+  i = 1,
+  b = False,
+  s = "a\"b\n>",
+  l = "//:f.txt",
+  ls = ["//:f.txt", "//:fg"],
+  ss = ["p", "q"],
+  il = [1, 2],
+  sd = {"k": "v"},
+  sld = {"k": ["a", "b"]},
+  lsd = {"//:f.txt": "v"},
+  o = "//:out.txt",
+  ol = ["//:o1", "//:o2"],
+)
+# Rule x instantiated at (most recent call last):
+#   <ws>/BUILD:3:5 in <toplevel>
+# Rule allk defined at (most recent call last):
+#   <ws>/defs.bzl:5:12 in <toplevel>
+
+# <ws>/BUILD:4:5
+allk(
+  name = "y",
+  deprecation = "old",
+  ls = select({"//:opt": ["//:f.txt"], "//conditions:default": []}) + ["//:fg"],
+  ss = select({"//:opt": ["o"], "//conditions:default": ["d"]}),
+)
+# Rule y instantiated at (most recent call last):
+#   <ws>/BUILD:4:5 in <toplevel>
+# Rule allk defined at (most recent call last):
+#   <ws>/defs.bzl:5:12 in <toplevel>
+
+"#
+        );
+    }
+
+    #[test]
+    fn package_lists_each_package_once() {
+        let (_dir, repos) = workspace();
+        let graph = QueryGraph::new(repos);
+        let packages = |q: &str| query(&graph, q, Format::Package, Order::Auto, Options::default());
+        assert_eq!(
+            packages("//a:lib + //a:gen + //c/d:leaf + //b:lib"),
+            "a\nb\nc/d\n"
+        );
+        assert_eq!(packages("//a:a.txt"), "a\n");
     }
 
     #[test]

@@ -94,6 +94,9 @@ pub struct RuleSchema {
     /// `rule(cfg = transition(...))`: the target is built in the configuration
     /// the transition makes of the one it was asked for.
     pub incoming_transition: bool,
+    /// For a `rule()`: the calls that led to it, outermost first, which
+    /// `query --output=build` shows as where the class is defined.
+    pub definition_stack: Vec<crate::package::StackFrame>,
 }
 
 /// The type of a build setting and whether the command line may set it.
@@ -163,6 +166,7 @@ impl RuleSchema {
             outputs: Vec::new(),
             build_setting: None,
             incoming_transition: false,
+            definition_stack: Vec::new(),
         }
     }
 
@@ -209,6 +213,7 @@ impl RuleSchema {
             outputs,
             build_setting: None,
             incoming_transition: false,
+            definition_stack: Vec::new(),
         })
     }
 }

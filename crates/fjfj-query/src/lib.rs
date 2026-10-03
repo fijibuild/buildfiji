@@ -17,5 +17,5 @@ pub mod target_proto;
 pub use ast::Dialect;
 pub use ast::Expr;
 pub use eval::{Evaluator, Options};
-pub use graph::{Edge, Graph, Node, NodeAttr, NodeKind};
+pub use graph::{Edge, Frame, Graph, Node, NodeAttr, NodeKind};
 pub use parse::{parse, parse_in};

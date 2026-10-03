@@ -474,7 +474,7 @@ fn render(
     let failed = |e: String| CliError::Query(anyhow::anyhow!(e));
     match query.kind {
         Kind::Cquery => match query.format.as_str() {
-            "label" | "label_kind" | "graph" => {
+            "label" | "label_kind" | "graph" | "build" => {
                 let format = fjfj_query::output::Format::parse(&query.format)
                     .expect("a format the query command has");
                 fjfj_query::output::render(
@@ -1264,6 +1264,25 @@ execution_platform: "@@platforms//host:host"
         let value: serde_json::Value = serde_json::from_str(&bare).unwrap();
         assert!(value.get("artifacts").is_none() && value.get("pathFragments").is_none());
         assert!(value["actions"][0].get("outputIds").is_none());
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn cquery_build_shows_a_rule_once_with_its_stack() {
+        let text = run_query(Kind::Cquery, "build", "//:b + //:a + //:s.txt", None)
+            .await
+            .unwrap();
+        // //:b is in two configurations and shown once; a source file not at all.
+        assert_eq!(text.matches("# Rule b instantiated").count(), 1);
+        assert_eq!(text.matches("# Rule a instantiated").count(), 1);
+        assert!(text.contains("  deps = [\"//:b\"],\n"), "{text}");
+        assert!(
+            text.contains("# Rule a instantiated at (most recent call last):\n#   "),
+            "{text}"
+        );
+        assert!(
+            text.contains("# Rule r defined at (most recent call last):\n#   "),
+            "{text}"
+        );
     }
 
     /// The descriptions of the actions an `aquery` printed.

@@ -36,6 +36,15 @@ pub enum TargetKind {
     },
 }
 
+/// One call of a stack: where it was made, as `file:line:col` at the `(`, and
+/// the function it was made in (`<toplevel>` for a BUILD or `.bzl` file's own
+/// code).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct StackFrame {
+    pub location: String,
+    pub function: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Target {
     pub name: String,
@@ -45,6 +54,10 @@ pub struct Target {
     pub visibility: Option<Visibility>,
     /// Where the BUILD file declared it, as `file:line:col`, for errors.
     pub location: String,
+    /// For a rule made by a macro: the calls that led to it, outermost first.
+    /// Empty for a rule the BUILD file called itself, whose stack is its
+    /// `location` alone.
+    pub stack: Vec<StackFrame>,
 }
 
 impl Target {
@@ -345,8 +358,16 @@ impl<'a> PackageBuilder<'a> {
             },
             visibility,
             location: location.to_owned(),
+            stack: Vec::new(),
         });
         Ok(crossing)
+    }
+
+    /// Say which calls led to the rule `name`, outermost first.
+    pub fn set_stack(&mut self, name: &str, stack: Vec<StackFrame>) {
+        if let Some(&i) = self.index.get(name) {
+            self.targets[i].stack = stack;
+        }
     }
 
     /// A file the rule called `rule` (whose label is `rule_label`, for
@@ -384,6 +405,7 @@ impl<'a> PackageBuilder<'a> {
             },
             visibility: None,
             location: location.to_owned(),
+            stack: Vec::new(),
         });
         Ok(())
     }
@@ -406,6 +428,7 @@ impl<'a> PackageBuilder<'a> {
             kind: TargetKind::PackageGroup(group),
             visibility: None,
             location: location.to_owned(),
+            stack: Vec::new(),
         });
         Ok(())
     }
@@ -436,6 +459,7 @@ impl<'a> PackageBuilder<'a> {
             kind: TargetKind::SourceFile,
             visibility: Some(visibility.unwrap_or_else(Visibility::public)),
             location: location.to_owned(),
+            stack: Vec::new(),
         });
         Ok(())
     }

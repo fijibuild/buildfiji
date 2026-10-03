@@ -23,6 +23,10 @@ pub struct ProtoOptions {
     pub locations: bool,
     /// `--proto:output_rule_attrs`: only these attributes, if given.
     pub output_rule_attrs: Option<Vec<String>>,
+    /// `--[no]proto:instantiation_stack` (default false).
+    pub instantiation_stack: bool,
+    /// `--[no]proto:definition_stack` (default false).
+    pub definition_stack: bool,
 }
 
 impl Default for ProtoOptions {
@@ -33,6 +37,8 @@ impl Default for ProtoOptions {
             rule_inputs_and_outputs: true,
             locations: true,
             output_rule_attrs: None,
+            instantiation_stack: false,
+            definition_stack: false,
         }
     }
 }
@@ -57,6 +63,8 @@ impl ProtoOptions {
             "default_values" => self.default_values = on,
             "rule_inputs_and_outputs" => self.rule_inputs_and_outputs = on,
             "locations" => self.locations = on,
+            "instantiation_stack" => self.instantiation_stack = on,
+            "definition_stack" => self.definition_stack = on,
             "output_rule_attrs" => {
                 self.output_rule_attrs = Some(
                     value
@@ -433,6 +441,18 @@ pub fn target(ev: &Evaluator<'_>, label: &Label, options: &ProtoOptions) -> Resu
                     "rule_output",
                     outputs(&node, graph),
                 );
+            }
+            let shown = |frames: &[crate::graph::Frame]| -> Vec<String> {
+                frames
+                    .iter()
+                    .map(|f| format!("{}: {}", f.relative, f.function))
+                    .collect()
+            };
+            if options.instantiation_stack {
+                rule = rule.many(13, "instantiation_stack", shown(&node.stack));
+            }
+            if options.definition_stack {
+                rule = rule.many(14, "definition_stack", shown(&node.definition_stack));
             }
             Msg::new()
                 .one(1, "type", Val::Enum("RULE", 1))

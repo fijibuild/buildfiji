@@ -5,6 +5,18 @@ use fjfj_graph::Label;
 use fjfj_graph::rule::{AttrType, AttrValue};
 use std::sync::Arc;
 
+/// One call of a stack, as `query --output=build` and `--proto:instantiation_stack`
+/// show it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Frame {
+    /// `/abs/path/BUILD:2:6`.
+    pub location: String,
+    /// `BUILD:2:6`, from the root of the repository.
+    pub relative: String,
+    /// The function the call was made in.
+    pub function: String,
+}
+
 /// What kind of target a node is.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NodeKind {
@@ -91,6 +103,12 @@ pub struct Node {
     /// For a rule: the `config_setting`s its `select()`s read, once each in the
     /// order they were written (Bazel's `$config_dependencies`).
     pub config_deps: Vec<Label>,
+    /// For a rule: the calls that led to it, outermost first, each as the
+    /// absolute `file:line:col` it was made at and the function it was made in.
+    pub stack: Vec<Frame>,
+    /// For a rule of a class written in Starlark: the calls that defined the
+    /// class, in the same form.
+    pub definition_stack: Vec<Frame>,
     /// For a `package_group`: the other groups it includes and its package
     /// specifications, as written.
     pub group: Option<(Vec<Label>, Vec<String>)>,
