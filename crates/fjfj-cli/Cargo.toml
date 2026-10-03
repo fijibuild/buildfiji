@@ -22,6 +22,7 @@ fjfj-starlark.workspace = true
 fjfj-graph.workspace = true
 fjfj-loading.workspace = true
 fjfj-query.workspace = true
+regex.workspace = true
 fjfj-analysis.workspace = true
 fjfj-engine.workspace = true
 fjfj-exec.workspace = true

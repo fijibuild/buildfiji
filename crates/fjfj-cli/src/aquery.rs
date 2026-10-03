@@ -6,6 +6,8 @@ use crate::build_command;
 use fjfj_analysis::ConfiguredTarget;
 use fjfj_exec::execroot::Layout;
 use fjfj_graph::{Action, ActionKind, Artifact, Label};
+use fjfj_query::ast::{Arg, Expr, Function};
+use regex::Regex;
 use std::collections::BTreeMap;
 
 /// The `--include_*` flags.
@@ -109,6 +111,92 @@ fn base64(bytes: &[u8]) -> String {
         }
     }
     out
+}
+
+/// A filter function of an expression: `inputs`, `outputs` or `mnemonic`, with
+/// its regex, which must match the whole of a path or mnemonic.
+pub(crate) struct ActionFilter {
+    function: Function,
+    pattern: Regex,
+}
+
+impl ActionFilter {
+    pub(crate) fn keeps(&self, action: &Action) -> bool {
+        let any = |artifacts: &[Artifact]| {
+            artifacts
+                .iter()
+                .any(|a| self.pattern.is_match(&a.exec_path()))
+        };
+        match self.function {
+            Function::Inputs => any(&action.inputs),
+            Function::Outputs => any(&action.outputs),
+            _ => self.pattern.is_match(&action.mnemonic),
+        }
+    }
+}
+
+/// The filters an expression asks for, and Bazel's complaint if it uses a
+/// filter where it cannot. Bazel reads the filters off the top of the
+/// expression only: the outermost function and the filter functions nested
+/// in its expression argument. A filter under `+`, `^`, `-` or `let` still
+/// passes the targets through but filters nothing.
+pub(crate) fn action_filters(expr: &Expr) -> Result<Vec<ActionFilter>, String> {
+    check_filters_only_nest_in_filters(expr)?;
+    let mut filters = Vec::new();
+    let mut at = expr;
+    while let Expr::Call(call) = at {
+        if !call.function.is_action_filter() {
+            break;
+        }
+        let Some(Arg::Word(word)) = call.args.first() else {
+            break;
+        };
+        let pattern = Regex::new(&format!("^(?:{word})$")).map_err(|e| {
+            format!(
+                "Wrong query syntax: {}",
+                e.to_string().lines().last().unwrap_or("").trim()
+            )
+        })?;
+        filters.push(ActionFilter {
+            function: call.function,
+            pattern,
+        });
+        match call.args.get(1) {
+            Some(Arg::Expr(inner)) => at = inner,
+            _ => break,
+        }
+    }
+    Ok(filters)
+}
+
+fn check_filters_only_nest_in_filters(expr: &Expr) -> Result<(), String> {
+    match expr {
+        Expr::Binary(_, l, r) => {
+            check_filters_only_nest_in_filters(l)?;
+            check_filters_only_nest_in_filters(r)
+        }
+        Expr::Let { value, body, .. } => {
+            check_filters_only_nest_in_filters(value)?;
+            check_filters_only_nest_in_filters(body)
+        }
+        Expr::Call(call) => {
+            for arg in &call.args {
+                let Arg::Expr(inner) = arg else { continue };
+                if !call.function.is_action_filter()
+                    && let Expr::Call(inner_call) = inner
+                    && inner_call.function.is_action_filter()
+                {
+                    return Err(format!(
+                        "aquery filter functions (inputs, outputs, mnemonic) produce actions, and therefore can't be the input of other function types: {}",
+                        call.function.name()
+                    ));
+                }
+                check_filters_only_nest_in_filters(inner)?;
+            }
+            Ok(())
+        }
+        Expr::Word(_) | Expr::Variable(_) | Expr::Set(_) => Ok(()),
+    }
 }
 
 /// `--output=text`.

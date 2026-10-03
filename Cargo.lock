@@ -1108,6 +1108,7 @@ dependencies = [
  "fjfj-telemetry",
  "futures",
  "hex",
+ "regex",
  "serde_json",
  "sha2",
  "starlark",

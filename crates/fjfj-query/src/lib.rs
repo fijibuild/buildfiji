@@ -12,7 +12,8 @@ pub mod graph;
 pub mod output;
 pub mod parse;
 
+pub use ast::Dialect;
 pub use ast::Expr;
 pub use eval::{Evaluator, Options};
 pub use graph::{Edge, Graph, Node, NodeAttr, NodeKind};
-pub use parse::parse;
+pub use parse::{parse, parse_in};

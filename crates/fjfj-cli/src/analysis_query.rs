@@ -60,6 +60,13 @@ impl Kind {
         }
     }
 
+    fn dialect(self) -> fjfj_query::Dialect {
+        match self {
+            Kind::Cquery => fjfj_query::Dialect::Query,
+            Kind::Aquery => fjfj_query::Dialect::Aquery,
+        }
+    }
+
     fn default_format(self) -> &'static str {
         match self {
             Kind::Cquery => "label",
@@ -202,8 +209,8 @@ pub(crate) async fn run(args: QueryArgs, kind: Kind) -> Result<(), CliError> {
     fjfj_bazel_compat::clap_flags::validate(&rest, command, &implemented)
         .map_err(|e| CliError::CommandLine(anyhow::Error::from(e)))?;
     let text = rest.join(" ");
-    let expr =
-        fjfj_query::parse(&text).map_err(|e| bad(format!("Error while parsing '{text}': {e}")))?;
+    let expr = fjfj_query::parse_in(&text, kind.dialect())
+        .map_err(|e| bad(format!("Error while parsing '{text}': {e}")))?;
     let formatter = (flags.format == "starlark")
         .then(|| flags.formatter())
         .transpose()?;
@@ -323,7 +330,7 @@ fn evaluate(
     let evaluator = Evaluator::new(&configured, query.options);
     let labels = evaluator
         .eval(&query.expr)
-        .map_err(|e| CliError::Query(anyhow::anyhow!(e)))?;
+        .map_err(|e| CliError::Query(anyhow::anyhow!("Error doing post analysis query: {e}")))?;
     render(query, &labels, &evaluator, &configured, repos, &layout)
 }
 
@@ -399,6 +406,7 @@ fn render(
             ))),
         },
         Kind::Aquery => {
+            let filters = aquery::action_filters(&query.expr).map_err(failed)?;
             let rows: Vec<aquery::Row<'_>> = chosen(labels, graph)
                 .into_iter()
                 .flat_map(|target| {
@@ -407,6 +415,7 @@ fn render(
                         action,
                     })
                 })
+                .filter(|row| filters.iter().all(|f| f.keeps(row.action)))
                 .collect();
             match query.format.as_str() {
                 "text" => Ok(aquery::text(&rows, query.aquery, layout)),
@@ -467,7 +476,7 @@ mod tests {
             options: Options::default(),
             formatter,
             aquery: aquery::Settings::default(),
-            expr: fjfj_query::parse(expr).unwrap(),
+            expr: fjfj_query::parse_in(expr, kind.dialect()).unwrap(),
         };
         let options = build_options(Configuration::default(), &Default::default());
         let layout = fjfj_exec::execroot::Layout {
@@ -718,6 +727,58 @@ r(name = "b", srcs = ["s.txt"])
         assert!(
             summary.starts_with("2 total actions.\n\nMnemonics:\n  Cat: 2\n"),
             "{summary}"
+        );
+    }
+
+    /// The descriptions of the actions an `aquery` printed.
+    fn actions(text: &str) -> Vec<&str> {
+        text.lines().filter(|l| l.starts_with("action '")).collect()
+    }
+
+    async fn aquery(expr: &'static str) -> String {
+        run_query(Kind::Aquery, "text", expr, None).await.unwrap()
+    }
+
+    /// Each expectation is what `bazel aquery` printed for the same files.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn aquery_filters_read_off_the_top_of_the_expression() {
+        assert_eq!(actions(&aquery("mnemonic(Cat, //:a)").await).len(), 1);
+        // The regex must match the whole mnemonic or path.
+        assert!(actions(&aquery("mnemonic(Ca, //:a)").await).is_empty());
+        assert_eq!(actions(&aquery("inputs(s.txt, //:a)").await).len(), 1);
+        assert!(actions(&aquery("inputs(s, //:a)").await).is_empty());
+        // The filter applies to every target of the expression it is given.
+        let below = aquery("outputs(.*b.txt, deps(//:a))").await;
+        assert_eq!(actions(&below), ["action 'Cat //:b'"]);
+        // Filters nest, and each must be met.
+        assert!(actions(&aquery("mnemonic(Nope, mnemonic(Cat, //:a))").await).is_empty());
+        assert_eq!(
+            actions(&aquery("mnemonic(Cat, mnemonic(Cat, //:a))").await).len(),
+            1
+        );
+        // Under an operator a filter filters nothing: it passes its targets.
+        let kept = aquery("mnemonic(Cat, //:a) ^ outputs(.*b.txt, deps(//:a))").await;
+        assert_eq!(actions(&kept), ["action 'Cat //:a'"]);
+        assert!(actions(&aquery("mnemonic(Cat, //:a) ^ //:b").await).is_empty());
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn aquery_filters_are_checked_where_bazel_checks_them() {
+        let error = |expr: &'static str| async move {
+            run_query(Kind::Aquery, "text", expr, None)
+                .await
+                .unwrap_err()
+                .to_string()
+        };
+        assert!(
+            error("deps(mnemonic(Cat, //:a))")
+                .await
+                .contains("can't be the input of other function types: deps")
+        );
+        assert!(
+            error("mnemonic(Cat)")
+                .await
+                .contains("must have exactly 2 arguments")
         );
     }
 

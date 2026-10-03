@@ -1,7 +1,7 @@
 //! The lexer and parser of query expressions. The words it accepts and the
 //! texts of its errors are Bazel 9.2.0's.
 
-use crate::ast::{Arg, ArgKind, Call, Expr, Function, Op};
+use crate::ast::{Arg, ArgKind, Call, Dialect, Expr, Function, Op};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Token {
@@ -132,6 +132,7 @@ fn lex(input: &str) -> Result<Vec<Token>, String> {
 struct Parser {
     tokens: Vec<Token>,
     at: usize,
+    dialect: Dialect,
 }
 
 impl Parser {
@@ -259,12 +260,11 @@ impl Parser {
     }
 
     fn call(&mut self, name: &str) -> Result<Expr, String> {
-        let Some(function) = Function::named(name) else {
+        let Some(function) = Function::named(name, self.dialect) else {
             return Err(format!(
                 "unknown function '{name}' at '{}'; expected one of [{}]",
                 self.context(),
-                Function::ALL
-                    .iter()
+                Function::all(self.dialect)
                     .map(|f| format!("'{}'", f.name()))
                     .collect::<Vec<_>>()
                     .join(", ")
@@ -327,8 +327,17 @@ impl Parser {
 
 /// Parse `input`. The error is the text after `Error while parsing '<input>': `.
 pub fn parse(input: &str) -> Result<Expr, String> {
+    parse_in(input, Dialect::Query)
+}
+
+/// Parse `input` as an expression of `dialect`'s command.
+pub fn parse_in(input: &str, dialect: Dialect) -> Result<Expr, String> {
     let tokens = lex(input)?;
-    let mut parser = Parser { tokens, at: 0 };
+    let mut parser = Parser {
+        tokens,
+        at: 0,
+        dialect,
+    };
     let expr = parser.expression()?;
     if let Some(extra) = parser.peek() {
         return Err(format!(
@@ -348,6 +357,18 @@ mod tests {
     }
 
     /// Each error text was produced by `bazel query` 9.2.0.
+    #[test]
+    fn aquery_adds_the_action_filters_to_the_functions() {
+        assert!(parse("inputs(x, //a)").is_err());
+        let e = parse_in("inputs(x, //a)", Dialect::Aquery).unwrap();
+        assert_eq!(e.to_string(), "inputs(x, //a)");
+        let list = parse_in("foo(//a)", Dialect::Aquery).unwrap_err();
+        assert!(
+            list.ends_with("'filter', 'inputs', 'kind', 'labels', 'loadfiles', 'mnemonic', 'outputs', 'rdeps', 'same_pkg_direct_rdeps', 'siblings', 'some', 'somepath', 'tests', 'visible']"),
+            "{list}"
+        );
+    }
+
     #[test]
     fn errors_read_as_bazels_do() {
         assert_eq!(err("deps("), "premature end of input");

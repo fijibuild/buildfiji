@@ -84,9 +84,15 @@ pub enum Function {
     Deps,
     Executables,
     Filter,
+    /// `aquery` only: the actions of the targets whose inputs match.
+    Inputs,
     Kind,
     Labels,
     LoadFiles,
+    /// `aquery` only: the actions whose mnemonic matches.
+    Mnemonic,
+    /// `aquery` only: the actions whose outputs match.
+    Outputs,
     RDeps,
     SamePkgDirectRDeps,
     Siblings,
@@ -94,6 +100,15 @@ pub enum Function {
     SomePath,
     Tests,
     Visible,
+}
+
+/// Which command's expressions are being read: they differ in the functions
+/// they have.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Dialect {
+    #[default]
+    Query,
+    Aquery,
 }
 
 /// The shape of an argument of a function.
@@ -106,16 +121,19 @@ pub enum ArgKind {
 
 impl Function {
     /// Every function, in the alphabetical order Bazel lists them.
-    pub const ALL: [Function; 16] = [
+    pub const ALL: [Function; 19] = [
         Function::AllPaths,
         Function::Attr,
         Function::BuildFiles,
         Function::Deps,
         Function::Executables,
         Function::Filter,
+        Function::Inputs,
         Function::Kind,
         Function::Labels,
         Function::LoadFiles,
+        Function::Mnemonic,
+        Function::Outputs,
         Function::RDeps,
         Function::SamePkgDirectRDeps,
         Function::Siblings,
@@ -133,9 +151,12 @@ impl Function {
             Function::Deps => "deps",
             Function::Executables => "executables",
             Function::Filter => "filter",
+            Function::Inputs => "inputs",
             Function::Kind => "kind",
             Function::Labels => "labels",
             Function::LoadFiles => "loadfiles",
+            Function::Mnemonic => "mnemonic",
+            Function::Outputs => "outputs",
             Function::RDeps => "rdeps",
             Function::SamePkgDirectRDeps => "same_pkg_direct_rdeps",
             Function::Siblings => "siblings",
@@ -146,8 +167,25 @@ impl Function {
         }
     }
 
-    pub fn named(name: &str) -> Option<Function> {
-        Function::ALL.into_iter().find(|f| f.name() == name)
+    pub fn named(name: &str, dialect: Dialect) -> Option<Function> {
+        Function::all(dialect).find(|f| f.name() == name)
+    }
+
+    /// The functions a command's expressions have, alphabetically.
+    pub fn all(dialect: Dialect) -> impl Iterator<Item = Function> {
+        Function::ALL.into_iter().filter(move |f| match f {
+            Function::Inputs | Function::Mnemonic | Function::Outputs => dialect == Dialect::Aquery,
+            _ => true,
+        })
+    }
+
+    /// An `aquery` function that keeps the actions matching a regex rather
+    /// than choosing targets.
+    pub fn is_action_filter(self) -> bool {
+        matches!(
+            self,
+            Function::Inputs | Function::Mnemonic | Function::Outputs
+        )
     }
 
     /// The arguments it must have, and those it may add.
@@ -165,6 +203,9 @@ impl Function {
             | Function::Tests => (&[Expr], &[]),
             Function::Deps => (&[Expr], &[Int]),
             Function::Filter | Function::Kind | Function::Labels => (&[Word, Expr], &[]),
+            // Bazel parses these with one argument and complains when it
+            // evaluates them.
+            Function::Inputs | Function::Mnemonic | Function::Outputs => (&[Word], &[Expr]),
             Function::RDeps => (&[Expr, Expr], &[Int]),
             Function::Visible => (&[Expr, Expr], &[]),
         }

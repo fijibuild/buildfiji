@@ -8,7 +8,7 @@ rust_library(
     crate_name = "fjfj_cli",
     edition = "2024",
     version = "0.0.1",
-    deps = ["@crates//:anyhow", "@crates//:clap", "@crates//:hex", "@crates//:serde_json", "@crates//:sha2", "//crates/starlark", "@crates//:thiserror", "@crates//:tokio", "@crates//:tracing", "@crates//:futures", "//crates/fjfj-analysis", "//crates/fjfj-bazel-compat", "//crates/fjfj-engine", "//crates/fjfj-bzlmod", "//crates/fjfj-exec", "//crates/fjfj-graph", "//crates/fjfj-loading", "//crates/fjfj-query", "//crates/fjfj-remote", "//crates/fjfj-repo", "//crates/fjfj-starlark", "//crates/fjfj-telemetry", ],
+    deps = ["@crates//:anyhow", "@crates//:clap", "@crates//:hex", "@crates//:serde_json", "@crates//:sha2", "//crates/starlark", "@crates//:thiserror", "@crates//:tokio", "@crates//:tracing", "@crates//:futures", "@crates//:regex", "//crates/fjfj-analysis", "//crates/fjfj-bazel-compat", "//crates/fjfj-engine", "//crates/fjfj-bzlmod", "//crates/fjfj-exec", "//crates/fjfj-graph", "//crates/fjfj-loading", "//crates/fjfj-query", "//crates/fjfj-remote", "//crates/fjfj-repo", "//crates/fjfj-starlark", "//crates/fjfj-telemetry", ],
 )
 
 rust_test(

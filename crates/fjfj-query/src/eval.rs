@@ -208,6 +208,18 @@ impl<'g> Evaluator<'g> {
                 let back = self.rdeps(&reach, &to, None)?;
                 Ok(reach.intersection(&back).cloned().collect())
             }
+            // The actions they keep are chosen by whoever prints them; as an
+            // expression they stand for the targets they were given.
+            Function::Inputs | Function::Mnemonic | Function::Outputs => {
+                if call.args.len() != 2 {
+                    return Err(format!(
+                        "Evaluation of query \"{}('{}')\" failed: aquery filter functions (inputs, outputs, mnemonics) must have exactly 2 arguments,except when --skyframe_state is used.",
+                        call.function.name(),
+                        Self::word_arg(call, 0)
+                    ));
+                }
+                self.expr_arg(call, 1, env)
+            }
             Function::Kind => {
                 let pattern = self.regex("kind", Self::word_arg(call, 0))?;
                 let input = self.expr_arg(call, 1, env)?;
