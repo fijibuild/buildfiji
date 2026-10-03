@@ -220,6 +220,37 @@ impl<'g> Evaluator<'g> {
                 }
                 self.expr_arg(call, 1, env)
             }
+            Function::Config => {
+                let name = Self::word_arg(call, 1);
+                if name == "host" {
+                    return Err("Evaluation failed: 'host' configuration no longer exists. Use a specific configuration hash instead".to_owned());
+                }
+                if !self.graph.is_configuration(name) {
+                    return Err(format!(
+                        "Evaluation failed: Unknown configuration ID '{name}'.\nconfig()'s second argument must identify a unique configuration.\n\nValid values:\n 'target' for the default configuration\n 'null' for source files (which have no configuration)\n an arbitrary configuration's full or short ID\n\nA short ID is any prefix of a full ID. cquery shows short IDs. 'bazel config' shows full IDs.\n\nFor more help, see https://bazel.build/docs/cquery."
+                    ));
+                }
+                let input = self.expr_arg(call, 0, env)?;
+                let out: Set = input
+                    .into_iter()
+                    .filter(|l| self.graph.in_configuration(l, name))
+                    .collect();
+                if out.is_empty() {
+                    let Arg::Expr(expr) = &call.args[0] else {
+                        unreachable!("config() takes an expression first")
+                    };
+                    let place = if name == "target" || name == "null" {
+                        format!("the '{name}' configuration")
+                    } else {
+                        format!("the configuration with checksum '{name}'")
+                    };
+                    return Err(format!(
+                        "Evaluation failed: No target (in) {} could be found in {place}",
+                        expr.canonical()
+                    ));
+                }
+                Ok(out)
+            }
             Function::Kind => {
                 let pattern = self.regex("kind", Self::word_arg(call, 0))?;
                 let input = self.expr_arg(call, 1, env)?;

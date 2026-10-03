@@ -10,9 +10,9 @@
 
 use crate::query_graph::QueryGraph;
 use fjfj_analysis::{ConfiguredTarget, ConfiguredTargetKey};
-use fjfj_graph::Label;
+use fjfj_graph::{Configuration, Label};
 use fjfj_query::{Edge, Graph, Node};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
 
 const SEPARATOR: char = '\u{1}';
@@ -22,6 +22,10 @@ pub(crate) struct ConfiguredGraph<'a> {
     targets: Vec<Arc<ConfiguredTarget>>,
     index: HashMap<ConfiguredTargetKey, usize>,
     by_label: BTreeMap<Label, Vec<usize>>,
+    /// The configuration of the top-level targets: `config(x, target)`.
+    top_level: Configuration,
+    /// The checksum of each configuration the targets were analysed in.
+    checksums: BTreeSet<String>,
 }
 
 /// The label a configured target answers to in a query.
@@ -52,6 +56,7 @@ impl<'a> ConfiguredGraph<'a> {
     pub(crate) fn new(
         loading: &'a QueryGraph,
         analysed: &[Arc<ConfiguredTarget>],
+        top_level: &Configuration,
     ) -> ConfiguredGraph<'a> {
         // In label order, so a label of this graph sorts as its target does.
         let mut analysed: Vec<&Arc<ConfiguredTarget>> = analysed.iter().collect();
@@ -78,11 +83,18 @@ impl<'a> ConfiguredGraph<'a> {
             };
             index.insert(key, at);
         }
+        let checksums = targets
+            .iter()
+            .filter(|t| t.rule_class.is_some())
+            .map(|t| t.configuration.checksum())
+            .collect();
         ConfiguredGraph {
             loading,
             targets,
             index,
             by_label,
+            top_level: top_level.clone(),
+            checksums,
         }
     }
 
@@ -191,6 +203,31 @@ impl Graph for ConfiguredGraph<'_> {
 
     fn display(&self, label: &Label) -> String {
         self.loading.display(&plain(label))
+    }
+
+    fn is_configuration(&self, name: &str) -> bool {
+        name == "target"
+            || name == "null"
+            || (!name.is_empty()
+                && self
+                    .checksums
+                    .iter()
+                    .filter(|c| c.starts_with(name))
+                    .count()
+                    == 1)
+    }
+
+    fn in_configuration(&self, label: &Label, name: &str) -> bool {
+        let Some(target) = self.target(label) else {
+            return false;
+        };
+        let configured = target.rule_class.is_some();
+        match name {
+            // A file has no configuration, so it is in any that is asked for.
+            "target" => !configured || target.configuration == self.top_level,
+            "null" => !configured,
+            checksum => configured && target.configuration.checksum().starts_with(checksum),
+        }
     }
 
     fn sorts_edges(&self) -> bool {

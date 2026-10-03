@@ -62,7 +62,7 @@ impl Kind {
 
     fn dialect(self) -> fjfj_query::Dialect {
         match self {
-            Kind::Cquery => fjfj_query::Dialect::Query,
+            Kind::Cquery => fjfj_query::Dialect::Cquery,
             Kind::Aquery => fjfj_query::Dialect::Aquery,
         }
     }
@@ -314,6 +314,7 @@ fn evaluate(
                 .map_err(|e| CliError::Query(anyhow::anyhow!(e)))?,
         );
     }
+    let top_level = options.configuration.clone();
     let request = build_command::Request {
         layout: layout.clone(),
         options,
@@ -326,7 +327,7 @@ fn evaluate(
             build_command::label_name(label)
         )));
     }
-    let configured = ConfiguredGraph::new(&graph, &report.analysed);
+    let configured = ConfiguredGraph::new(&graph, &report.analysed, &top_level);
     let evaluator = Evaluator::new(&configured, query.options);
     let labels = evaluator
         .eval(&query.expr)
@@ -728,6 +729,63 @@ r(name = "b", srcs = ["s.txt"])
             summary.starts_with("2 total actions.\n\nMnemonics:\n  Cat: 2\n"),
             "{summary}"
         );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn config_selects_a_configuration_as_bazel_does() {
+        // The top-level configuration has //:b, the other is below //:a.
+        let all = cquery("//:b + //:a").await;
+        assert_eq!(all.lines().count(), 3);
+        assert_eq!(
+            undigested(&cquery("config(//:b, target)").await),
+            ["//:b (7)"]
+        );
+        let below = cquery("config(deps(//:a), null)").await;
+        assert_eq!(undigested(&below), ["//:s.txt (null)"]);
+        // A short checksum names the configuration of the dependency.
+        let transitioned = all
+            .lines()
+            .filter(|l| l.starts_with("//:b"))
+            .find(|l| !cquery_top_level_line(l, &all))
+            .unwrap()
+            .to_owned();
+        let digits = transitioned
+            .rsplit_once('(')
+            .unwrap()
+            .1
+            .trim_end_matches(')')
+            .to_owned();
+        let query: &'static str =
+            Box::leak(format!("config(//:b + //:a, {digits})").into_boxed_str());
+        assert_eq!(cquery(query).await, format!("{transitioned}\n"));
+        let error = |expr: &'static str| async move {
+            run_query(Kind::Cquery, "label", expr, None)
+                .await
+                .unwrap_err()
+                .to_string()
+        };
+        assert_eq!(
+            error("config(//:b, host)").await,
+            "Error doing post analysis query: Evaluation failed: 'host' configuration no longer exists. Use a specific configuration hash instead"
+        );
+        assert_eq!(
+            error("config(//:b + //:a, null)").await,
+            "Error doing post analysis query: Evaluation failed: No target (in) (//:b + //:a) could be found in the 'null' configuration"
+        );
+        assert!(
+            error("config(//:b, nonsense)")
+                .await
+                .contains("Unknown configuration ID 'nonsense'.\nconfig()'s second argument must identify a unique configuration.")
+        );
+    }
+
+    /// Whether `line` of `all` is the one `config(.., target)` gives.
+    fn cquery_top_level_line(line: &str, all: &str) -> bool {
+        // //:a is analysed in the top-level configuration, and so is the
+        // //:b that was asked for by itself: they share their digits.
+        let digits = |l: &str| l.rsplit_once('(').map(|(_, d)| d.to_owned());
+        let a = all.lines().find(|l| l.starts_with("//:a")).unwrap();
+        digits(line) == digits(a)
     }
 
     /// The descriptions of the actions an `aquery` printed.

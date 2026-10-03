@@ -23,6 +23,15 @@ pub enum Expr {
 }
 
 impl Expr {
+    /// The expression as Bazel writes it in an error: an operator's operands
+    /// in parentheses.
+    pub fn canonical(&self) -> String {
+        match self {
+            Expr::Binary(..) => format!("({self})"),
+            _ => self.to_string(),
+        }
+    }
+
     /// The target patterns the expression names, in the order written: what
     /// a query over analysed targets must analyse before it can run.
     pub fn patterns(&self) -> Vec<&str> {
@@ -81,6 +90,8 @@ pub enum Function {
     AllPaths,
     Attr,
     BuildFiles,
+    /// `cquery` only: the configured targets in a configuration.
+    Config,
     Deps,
     Executables,
     Filter,
@@ -108,6 +119,7 @@ pub enum Function {
 pub enum Dialect {
     #[default]
     Query,
+    Cquery,
     Aquery,
 }
 
@@ -121,10 +133,11 @@ pub enum ArgKind {
 
 impl Function {
     /// Every function, in the alphabetical order Bazel lists them.
-    pub const ALL: [Function; 19] = [
+    pub const ALL: [Function; 20] = [
         Function::AllPaths,
         Function::Attr,
         Function::BuildFiles,
+        Function::Config,
         Function::Deps,
         Function::Executables,
         Function::Filter,
@@ -148,6 +161,7 @@ impl Function {
             Function::AllPaths => "allpaths",
             Function::Attr => "attr",
             Function::BuildFiles => "buildfiles",
+            Function::Config => "config",
             Function::Deps => "deps",
             Function::Executables => "executables",
             Function::Filter => "filter",
@@ -175,6 +189,7 @@ impl Function {
     pub fn all(dialect: Dialect) -> impl Iterator<Item = Function> {
         Function::ALL.into_iter().filter(move |f| match f {
             Function::Inputs | Function::Mnemonic | Function::Outputs => dialect == Dialect::Aquery,
+            Function::Config => dialect == Dialect::Cquery,
             _ => true,
         })
     }
@@ -203,6 +218,7 @@ impl Function {
             | Function::Tests => (&[Expr], &[]),
             Function::Deps => (&[Expr], &[Int]),
             Function::Filter | Function::Kind | Function::Labels => (&[Word, Expr], &[]),
+            Function::Config => (&[Expr, Word], &[]),
             // Bazel parses these with one argument and complains when it
             // evaluates them.
             Function::Inputs | Function::Mnemonic | Function::Outputs => (&[Word], &[Expr]),

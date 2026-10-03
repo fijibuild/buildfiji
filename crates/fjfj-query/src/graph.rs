@@ -126,6 +126,18 @@ pub trait Graph: Sync {
         false
     }
 
+    /// For `cquery`'s `config()`: whether `name` (`target`, `null`, or the
+    /// start of a checksum) identifies one configuration of the graph.
+    fn is_configuration(&self, _name: &str) -> bool {
+        false
+    }
+
+    /// For `config()`: whether the node `label` is in the configuration `name`
+    /// identifies.
+    fn in_configuration(&self, _label: &Label, _name: &str) -> bool {
+        false
+    }
+
     /// A label as the user reads it (`@repo//p:t`).
     fn display(&self, label: &Label) -> String {
         if label.repo.is_empty() {

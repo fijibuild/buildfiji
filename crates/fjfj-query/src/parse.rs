@@ -371,6 +371,16 @@ mod tests {
     }
 
     #[test]
+    fn cquery_adds_config_to_the_functions() {
+        assert!(parse("config(//a, target)").is_err());
+        let e = parse_in("config(//a, target)", Dialect::Cquery).unwrap();
+        assert_eq!(e.to_string(), "config(//a, target)");
+        let list = parse_in("foo(//a)", Dialect::Cquery).unwrap_err();
+        assert!(list.contains("'buildfiles', 'config', 'deps'"), "{list}");
+        assert!(!list.contains("'inputs'"), "{list}");
+    }
+
+    #[test]
     fn aquery_adds_the_action_filters_to_the_functions() {
         assert!(parse("inputs(x, //a)").is_err());
         let e = parse_in("inputs(x, //a)", Dialect::Aquery).unwrap();
