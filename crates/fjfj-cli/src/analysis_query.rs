@@ -9,6 +9,7 @@ use crate::query_graph::QueryGraph;
 use crate::{CliError, bzlmod_flags, locate_workspace_root};
 use fjfj_analysis::ConfiguredTarget;
 use fjfj_bazel_compat::QueryArgs;
+use fjfj_graph::config::Configuration;
 use fjfj_graph::{Action, ActionKind, Label};
 use fjfj_query::{Evaluator, Options};
 use std::collections::BTreeSet;
@@ -195,7 +196,7 @@ fn render(kind: Kind, format: &str, labels: &BTreeSet<Label>, report: &Report) -
             for t in chosen(labels, report) {
                 // A source file has no configuration.
                 let config = if t.rule_class.is_some() {
-                    t.configuration.mnemonic()
+                    t.configuration.checksum()[..7].to_owned()
                 } else {
                     "null".to_owned()
                 };
@@ -212,26 +213,26 @@ fn render(kind: Kind, format: &str, labels: &BTreeSet<Label>, report: &Report) -
             }
         }
         Kind::Aquery => {
-            let mut actions: Vec<&Action> = chosen(labels, report)
+            let mut actions: Vec<(&Action, &Configuration)> = chosen(labels, report)
                 .into_iter()
-                .flat_map(|t| t.actions.iter())
+                .flat_map(|t| t.actions.iter().map(|a| (a, &t.configuration)))
                 .collect();
-            actions.sort_by_key(|a| {
+            actions.sort_by_key(|(a, _)| {
                 (
                     build_command::label_name(&a.owner),
                     a.mnemonic.clone(),
                     a.outputs.first().map(|o| o.exec_path()),
                 )
             });
-            for action in actions {
-                aquery_text(&mut out, action);
+            for (action, configuration) in actions {
+                aquery_text(&mut out, action, configuration);
             }
         }
     }
     out
 }
 
-fn aquery_text(out: &mut String, action: &Action) {
+fn aquery_text(out: &mut String, action: &Action, configuration: &Configuration) {
     let described = action.progress_message.clone().unwrap_or_else(|| {
         format!(
             "{} {}",
@@ -272,6 +273,7 @@ fn aquery_text(out: &mut String, action: &Action) {
             quoted.join(" \\\n    ")
         ));
     }
+    out.push_str(&format!("# Configuration: {}\n", configuration.checksum()));
     out.push('\n');
 }
 

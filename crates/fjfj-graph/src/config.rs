@@ -189,6 +189,15 @@ impl Configuration {
         }
     }
 
+    /// SHA-256 of every field of the configuration, as sixty-four hex digits:
+    /// what `cquery` shows the first seven of and `aquery` shows whole. Bazel
+    /// hashes the options of every fragment, which fjfj does not model, so the
+    /// digits differ from Bazel's; the digest tells configurations apart all
+    /// the same.
+    pub fn checksum(&self) -> String {
+        hex::encode(Sha256::digest(format!("{self:?}").as_bytes()))
+    }
+
     /// The directory of `bazel-out` this configuration's outputs are in:
     /// `k8-fastbuild`. A configuration that builds tools says so.
     pub fn mnemonic(&self) -> String {
@@ -241,6 +250,16 @@ impl Configuration {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_checksum_tells_configurations_apart() {
+        let a = Configuration::default();
+        let mut b = Configuration::default();
+        b.defines.insert("x".into(), "y".into());
+        assert_eq!(a.checksum().len(), 64);
+        assert_eq!(a.checksum(), Configuration::default().checksum());
+        assert_ne!(a.checksum(), b.checksum());
+    }
+
     use super::*;
 
     #[test]
