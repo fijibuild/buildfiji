@@ -51,6 +51,7 @@ async fn run(
     let options = Options {
         jobs: 4,
         keep_going,
+        ..Options::default()
     };
     execute(layout, actions, want, &options, Arc::new(Quiet)).await
 }
@@ -297,4 +298,85 @@ fn outputs_are_read_only_and_executable_throughout_a_tree_artifact() {
     for p in [tree.join("sub"), tree.clone()] {
         std::fs::set_permissions(p, std::fs::Permissions::from_mode(0o755)).unwrap();
     }
+}
+
+#[tokio::test]
+async fn a_sandboxed_command_sees_its_declared_inputs_and_leaves_only_its_declared_outputs() {
+    let (_dir, layout) = layout();
+    std::fs::write(layout.workspace.join("in.txt"), "hello\n").unwrap();
+    std::fs::write(layout.workspace.join("other.txt"), "other\n").unwrap();
+    layout.prepare().unwrap();
+    let a = out("a.txt");
+    let src = Artifact::source("", "", "in.txt");
+    // Reads the input, looks for one it was not given, and writes a file nobody declared.
+    let action = shell(
+        &format!(
+            "cat in.txt > {a}; test ! -e other.txt && echo hidden >> {a}; echo x > {bin}/stray.txt",
+            a = a.exec_path(),
+            bin = BIN
+        ),
+        vec![src],
+        vec![a.clone()],
+    );
+    let outcome = run(
+        &layout,
+        vec![action.clone()],
+        std::slice::from_ref(&a),
+        false,
+    )
+    .await;
+    assert!(outcome.failures.is_empty(), "{:?}", outcome.failures);
+    let root = layout.execroot();
+    assert_eq!(
+        std::fs::read_to_string(root.join(a.exec_path())).unwrap(),
+        "hello\nhidden\n"
+    );
+    assert!(!root.join(BIN).join("stray.txt").exists());
+    assert!(!layout.output_base.join("sandbox").exists());
+}
+
+#[tokio::test]
+async fn a_local_command_sees_the_whole_execroot_and_leaves_what_it_makes() {
+    let (_dir, layout) = layout();
+    std::fs::write(layout.workspace.join("other.txt"), "other\n").unwrap();
+    layout.prepare().unwrap();
+    let a = out("a.txt");
+    let action = shell(
+        &format!(
+            "cat other.txt > {a}; echo x > {bin}/stray.txt",
+            a = a.exec_path(),
+            bin = BIN
+        ),
+        vec![],
+        vec![a.clone()],
+    );
+    let options = Options {
+        jobs: 1,
+        strategy: Strategy::Local,
+        ..Options::default()
+    };
+    let outcome = execute(
+        &layout,
+        vec![action],
+        std::slice::from_ref(&a),
+        &options,
+        Arc::new(Quiet),
+    )
+    .await;
+    assert!(outcome.failures.is_empty(), "{:?}", outcome.failures);
+    assert!(layout.execroot().join(BIN).join("stray.txt").exists());
+}
+
+#[test]
+fn spawn_strategy_names_pick_the_first_strategy_that_runs() {
+    assert_eq!(Strategy::parse("local").unwrap(), Strategy::Local);
+    assert_eq!(
+        Strategy::parse("remote,sandboxed,local").unwrap(),
+        Strategy::Sandboxed
+    );
+    assert_eq!(
+        Strategy::parse("worker,standalone").unwrap(),
+        Strategy::Local
+    );
+    assert!(Strategy::parse("remote").is_err());
 }

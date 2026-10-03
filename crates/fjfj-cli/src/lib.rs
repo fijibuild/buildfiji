@@ -752,6 +752,11 @@ async fn build_main(
             .unwrap_or_else(|| "bazel-".to_owned()),
         jobs: build_command::jobs_from(build_flags.jobs.as_deref())
             .map_err(|e| CliError::CommandLine(anyhow::anyhow!(e)))?,
+        strategy: match build_flags.spawn_strategy.as_deref() {
+            None => fjfj_exec::run::Options::default().strategy,
+            Some(list) => fjfj_exec::run::Strategy::parse(list)
+                .map_err(|e| CliError::CommandLine(anyhow::anyhow!(e)))?,
+        },
         show_result: match build_flags.show_result.as_deref() {
             None => 1,
             Some(n) => n.parse().map_err(|_| {
@@ -1153,6 +1158,7 @@ mod tests {
             build: true,
             symlink_prefix: "bazel-".into(),
             jobs: None,
+            strategy: fjfj_exec::run::Options::default().strategy,
             show_result: 1,
             test: None,
         };
@@ -1255,6 +1261,7 @@ my_test = rule(implementation = _impl, test = True, attrs = {"exit": attr.int()}
             build: true,
             symlink_prefix: "bazel-".into(),
             jobs: None,
+            strategy: fjfj_exec::run::Options::default().strategy,
             show_result: 1,
             test: Some(fjfj_bazel_compat::test_flags::TestOutput::Summary),
         };

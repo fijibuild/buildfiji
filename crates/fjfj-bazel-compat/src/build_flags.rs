@@ -16,6 +16,7 @@ pub const IMPLEMENTED: &[&str] = &[
     "cpu",
     "define",
     "jobs",
+    "spawn_strategy",
     "symlink_prefix",
     "show_result",
     "build",
@@ -47,6 +48,8 @@ pub struct BuildFlags {
     pub defines: Vec<(String, String)>,
     /// `--jobs`: a number, `auto`, or `HOST_CPUS*0.5`.
     pub jobs: Option<String>,
+    /// `--spawn_strategy`: strategy names, comma-separated, in the order given.
+    pub spawn_strategy: Option<String>,
     pub symlink_prefix: Option<String>,
     /// `--platforms`: the target platform.
     pub platforms: Option<String>,
@@ -149,6 +152,12 @@ pub fn extract(args: &[String], command: &str) -> (BuildFlags, Vec<String>) {
                 None => rest.push(arg.clone()),
             },
             "jobs" => flags.jobs = Some(value),
+            "spawn_strategy" => {
+                flags.spawn_strategy = Some(match flags.spawn_strategy.take() {
+                    Some(earlier) => format!("{earlier},{value}"),
+                    None => value,
+                });
+            }
             "symlink_prefix" => flags.symlink_prefix = Some(value),
             "show_result" => flags.show_result = Some(value),
             other if LIST_OPTIONS.contains(&other) => {

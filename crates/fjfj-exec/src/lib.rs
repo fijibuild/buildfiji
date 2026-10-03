@@ -5,4 +5,5 @@ pub mod cache;
 pub mod console;
 pub mod execroot;
 pub mod run;
+mod sandbox;
 pub mod workspace_status;

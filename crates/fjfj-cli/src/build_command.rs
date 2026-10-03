@@ -30,6 +30,8 @@ pub(crate) struct Options {
     pub symlink_prefix: String,
     /// `--jobs`; the number of CPUs if unset.
     pub jobs: Option<usize>,
+    /// `--spawn_strategy`: how commands are run.
+    pub strategy: fjfj_exec::run::Strategy,
     /// `--show_result`: say where the results are for this many targets or fewer.
     pub show_result: usize,
     /// `test`: run the tests among the targets, and how much of their logs to show.
@@ -501,6 +503,7 @@ pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> R
                 .options
                 .jobs
                 .unwrap_or_else(|| fjfj_exec::run::Options::default().jobs),
+            strategy: request.options.strategy,
         },
         collector.clone(),
     ));

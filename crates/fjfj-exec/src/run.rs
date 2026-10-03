@@ -11,6 +11,7 @@
 
 use crate::cache::ActionCache;
 use crate::execroot::Layout;
+use crate::sandbox::Sandbox;
 use fjfj_graph::{Action, ActionKind, Artifact};
 use futures::future::{BoxFuture, FutureExt, Shared, join_all};
 use std::collections::HashMap;
@@ -26,6 +27,38 @@ pub struct Options {
     pub jobs: usize,
     /// Run what can be run after a failure (`--keep_going`).
     pub keep_going: bool,
+    /// How a command is run (`--spawn_strategy`).
+    pub strategy: Strategy,
+}
+
+/// How a command is run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Strategy {
+    /// In the execroot itself, where it sees everything there.
+    Local,
+    /// In a directory of its own that holds links to its declared inputs and
+    /// nothing else (Bazel's `processwrapper-sandbox`); what it makes that
+    /// is not a declared output is gone afterwards.
+    Sandboxed,
+}
+
+impl Strategy {
+    /// The strategy a `--spawn_strategy` list asks for: the first name that
+    /// is one this runs.
+    pub fn parse(list: &str) -> Result<Strategy, String> {
+        for name in list.split(',') {
+            match name.trim() {
+                "local" | "standalone" => return Ok(Strategy::Local),
+                "sandboxed" | "linux-sandbox" | "processwrapper-sandbox" => {
+                    return Ok(Strategy::Sandboxed);
+                }
+                _ => {}
+            }
+        }
+        Err(format!(
+            "while parsing option --spawn_strategy={list}: none of the strategies is available"
+        ))
+    }
 }
 
 impl Default for Options {
@@ -33,6 +66,7 @@ impl Default for Options {
         Options {
             jobs: std::thread::available_parallelism().map_or(1, |n| n.get()),
             keep_going: false,
+            strategy: Strategy::Sandboxed,
         }
     }
 }
@@ -102,6 +136,8 @@ struct Scheduler {
     memo: Mutex<HashMap<usize, Done>>,
     slots: Semaphore,
     keep_going: bool,
+    strategy: Strategy,
+    sandboxes: AtomicUsize,
     stopped: AtomicBool,
     spawned: AtomicUsize,
     ran: AtomicUsize,
@@ -134,6 +170,8 @@ pub async fn execute(
         memo: Mutex::new(HashMap::new()),
         slots: Semaphore::new(options.jobs.max(1)),
         keep_going: options.keep_going,
+        strategy: options.strategy,
+        sandboxes: AtomicUsize::new(0),
         stopped: AtomicBool::new(false),
         spawned: AtomicUsize::new(0),
         ran: AtomicUsize::new(0),
@@ -144,6 +182,8 @@ pub async fn execute(
         cached_outputs: Mutex::new(Vec::new()),
         progress,
     });
+    // A sandbox a killed build left is no use to this one.
+    let _ = remove(&layout.output_base.join("sandbox"));
     let mut wanted: Vec<usize> = requested
         .iter()
         .filter_map(|a| scheduler.by_output.get(a).copied())
@@ -152,6 +192,7 @@ pub async fn execute(
     wanted.dedup();
     join_all(wanted.into_iter().map(|id| scheduler.run(id))).await;
     let _ = scheduler.cache.save();
+    let _ = remove(&layout.output_base.join("sandbox"));
     Outcome {
         spawned: scheduler.spawned.load(Ordering::Relaxed),
         ran: scheduler.ran.load(Ordering::Relaxed),
@@ -415,10 +456,36 @@ impl Scheduler {
                     return Err(fail("the command is empty".to_owned()));
                 };
                 let started = std::time::Instant::now();
+                // A test runs where its runfiles are; so does a command that
+                // asks to.
+                let sandbox = if self.strategy == Strategy::Sandboxed
+                    && action.mnemonic != "TestRunner"
+                    && !["local", "no-sandbox"]
+                        .iter()
+                        .any(|k| execution_requirements.contains_key(*k))
+                {
+                    let id = self.sandboxes.fetch_add(1, Ordering::Relaxed);
+                    let root = self
+                        .layout
+                        .output_base
+                        .join("sandbox/processwrapper-sandbox")
+                        .join(id.to_string());
+                    let sandbox = Sandbox {
+                        exec: root.join("execroot").join(crate::execroot::MAIN_REPO_DIR),
+                        root,
+                    };
+                    sandbox
+                        .prepare(&self.layout, action)
+                        .map_err(|e| fail(format!("cannot make the sandbox: {e}")))?;
+                    Some(sandbox)
+                } else {
+                    None
+                };
+                let run_in = sandbox.as_ref().map_or(&execroot, |s| &s.exec);
                 let mut command = tokio::process::Command::new(program);
                 command
                     .args(args)
-                    .current_dir(&execroot)
+                    .current_dir(run_in)
                     .env_clear()
                     .envs(env)
                     .stdin(Stdio::null())
@@ -445,6 +512,11 @@ impl Scheduler {
                     None => command.output().await,
                 }
                 .map_err(|e| fail(format!("cannot run {program}: {e}")))?;
+                if let Some(sandbox) = &sandbox {
+                    sandbox.collect(&self.layout, action).map_err(|e| {
+                        fail(format!("cannot take the outputs out of the sandbox: {e}"))
+                    })?;
+                }
                 let mut text = String::from_utf8_lossy(&output.stdout).into_owned();
                 text.push_str(&String::from_utf8_lossy(&output.stderr));
                 // A test's output is its log, whatever became of it.
@@ -550,7 +622,7 @@ fn quote(arg: &str) -> String {
     }
 }
 
-fn remove(at: &Path) -> std::io::Result<()> {
+pub(crate) fn remove(at: &Path) -> std::io::Result<()> {
     match std::fs::symlink_metadata(at) {
         Ok(meta) if meta.is_dir() => {
             // A directory output of an earlier run was made read-only.
