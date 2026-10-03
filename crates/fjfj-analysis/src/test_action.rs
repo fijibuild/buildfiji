@@ -260,6 +260,17 @@ pub(crate) async fn register(
     argv.extend(key.configuration.test_args.iter().cloned());
     let mut inputs = tool_files;
     inputs.extend(target.extra_outputs.iter().take(1).cloned());
+    // The tags that keep a test out of the sandbox, as Bazel reads them.
+    let mut requirements = BTreeMap::from([("timeout".to_owned(), seconds.to_string())]);
+    if let Some(AttrValue::StringList(tags)) =
+        attrs.iter().find(|(n, _)| n == "tags").map(|(_, v)| v)
+    {
+        for tag in tags {
+            if ["local", "no-sandbox", "exclusive"].contains(&tag.as_str()) {
+                requirements.insert(tag.clone(), String::new());
+            }
+        }
+    }
     let action = Action {
         owner: label.clone(),
         owner_kind: target.rule_class.clone().unwrap_or_default(),
@@ -270,7 +281,7 @@ pub(crate) async fn register(
         kind: ActionKind::Spawn {
             argv,
             env,
-            execution_requirements: BTreeMap::from([("timeout".to_owned(), seconds.to_string())]),
+            execution_requirements: requirements,
         },
         inputs,
         outputs: vec![log.clone(), xml.clone()],

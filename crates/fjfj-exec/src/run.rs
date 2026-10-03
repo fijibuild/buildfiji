@@ -456,11 +456,10 @@ impl Scheduler {
                     return Err(fail("the command is empty".to_owned()));
                 };
                 let started = std::time::Instant::now();
-                // A test runs where its runfiles are; so does a command that
-                // asks to.
+                // A command that asks to runs in the execroot; a test asks
+                // with its tags.
                 let sandbox = if self.strategy == Strategy::Sandboxed
-                    && action.mnemonic != "TestRunner"
-                    && !["local", "no-sandbox"]
+                    && !["local", "no-sandbox", "exclusive"]
                         .iter()
                         .any(|k| execution_requirements.contains_key(*k))
                 {

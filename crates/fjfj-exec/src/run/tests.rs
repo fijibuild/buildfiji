@@ -336,6 +336,45 @@ async fn a_sandboxed_command_sees_its_declared_inputs_and_leaves_only_its_declar
 }
 
 #[tokio::test]
+async fn a_test_runs_in_the_sandbox_unless_its_tags_say_otherwise() {
+    let (_dir, layout) = layout();
+    std::fs::write(layout.workspace.join("other.txt"), "other\n").unwrap();
+    layout.prepare().unwrap();
+    for (tag, sees_other) in [(None, false), (Some("local"), true)] {
+        let log = out(&format!("t{}.log", tag.unwrap_or("-")));
+        let xml = out(&format!("t{}.xml", tag.unwrap_or("-")));
+        let mut action = shell(
+            &format!(
+                "(test -e other.txt && echo sees || echo blind) > {x}; echo x > {bin}/stray.txt",
+                x = xml.exec_path(),
+                bin = BIN
+            ),
+            vec![],
+            vec![log.clone(), xml.clone()],
+        );
+        action.mnemonic = "TestRunner".to_owned();
+        if let (
+            Some(tag),
+            ActionKind::Spawn {
+                execution_requirements,
+                ..
+            },
+        ) = (tag, &mut action.kind)
+        {
+            execution_requirements.insert(tag.to_owned(), String::new());
+        }
+        let outcome = run(&layout, vec![action], std::slice::from_ref(&xml), false).await;
+        assert!(outcome.failures.is_empty(), "{:?}", outcome.failures);
+        let seen = std::fs::read_to_string(layout.execroot().join(xml.exec_path())).unwrap();
+        assert_eq!(seen.trim() == "sees", sees_other, "{tag:?}");
+        assert_eq!(
+            layout.execroot().join(BIN).join("stray.txt").exists(),
+            sees_other
+        );
+    }
+}
+
+#[tokio::test]
 async fn a_local_command_sees_the_whole_execroot_and_leaves_what_it_makes() {
     let (_dir, layout) = layout();
     std::fs::write(layout.workspace.join("other.txt"), "other\n").unwrap();
