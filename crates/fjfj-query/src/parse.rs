@@ -276,27 +276,27 @@ impl Parser {
         let mut args: Vec<Arg> = Vec::new();
         if self.peek() != Some(&Token::Close) {
             loop {
-                let Some(kind) = kinds.get(args.len()) else {
-                    return Err(format!(
-                        "too many arguments to {name}; expected at most {}",
-                        kinds.len()
-                    ));
-                };
-                args.push(self.argument(*kind)?);
-                match self.peek() {
-                    Some(Token::Comma) => self.at += 1,
-                    _ => break,
+                let kind = kinds[args.len()];
+                args.push(self.argument(kind)?);
+                if self.peek() != Some(&Token::Comma) {
+                    break;
                 }
+                if args.len() == kinds.len() {
+                    return Err(format!(
+                        "too many arguments to function '{name}' at '{}'",
+                        self.context()
+                    ));
+                }
+                self.at += 1;
             }
         }
-        self.expect(Token::Close)?;
-        if args.len() < required.len() {
+        if args.len() < required.len() && self.peek() == Some(&Token::Close) {
             return Err(format!(
-                "missing argument(s) to {name}; expected at least {} but got {}",
-                required.len(),
-                args.len()
+                "too few arguments to function '{name}' at '{}'",
+                self.context()
             ));
         }
+        self.expect(Token::Close)?;
         Ok(Expr::Call(Call { function, args }))
     }
 
@@ -357,6 +357,19 @@ mod tests {
     }
 
     /// Each error text was produced by `bazel query` 9.2.0.
+    #[test]
+    fn the_wrong_number_of_arguments_is_bazels_error() {
+        assert_eq!(err("deps()"), "too few arguments to function 'deps' at ')'");
+        assert_eq!(
+            err("deps(//a, 1, 2)"),
+            "too many arguments to function 'deps' at ', 2 )'"
+        );
+        assert_eq!(
+            err("kind(r)"),
+            "too few arguments to function 'kind' at ')'"
+        );
+    }
+
     #[test]
     fn aquery_adds_the_action_filters_to_the_functions() {
         assert!(parse("inputs(x, //a)").is_err());
