@@ -37,10 +37,10 @@ impl Default for Settings {
 }
 
 /// An action and the configured target that registered it.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub(crate) struct Row<'a> {
     pub target: &'a ConfiguredTarget,
-    pub action: &'a Action,
+    pub action: std::borrow::Cow<'a, Action>,
     /// The aspect that registered it, if one did.
     pub aspect: Option<&'a AspectRef>,
 }
@@ -53,7 +53,7 @@ pub(crate) fn rows_of<'a>(
 ) -> Vec<Row<'a>> {
     let own = target.actions.iter().map(|action| Row {
         target,
-        action,
+        action: std::borrow::Cow::Borrowed(action),
         aspect: None,
     });
     let made = aspects
@@ -62,11 +62,105 @@ pub(crate) fn rows_of<'a>(
         .flat_map(move |made| {
             made.actions.iter().map(move |action| Row {
                 target,
-                action,
+                action: std::borrow::Cow::Borrowed(action),
                 aspect: made.aspect.as_ref(),
             })
         });
-    own.chain(made).collect()
+    own.chain(made).flat_map(expand_runfiles).collect()
+}
+
+/// What Bazel lists for the runfiles of an executable: an action that writes
+/// the repository mapping, one that writes the manifest of the sources, one
+/// that makes the tree of links and the `RunfilesTree` that stands for it.
+/// fjfj does all that in one action, which it lists as the four.
+fn expand_runfiles(row: Row<'_>) -> Vec<Row<'_>> {
+    let ActionKind::RunfilesTree {
+        dir,
+        manifest,
+        repo_mapping,
+        repo_mapping_contents,
+        entries,
+        ..
+    } = &row.action.kind
+    else {
+        return vec![row];
+    };
+    let find = |path: &str| row.action.outputs.iter().find(|a| a.exec_path() == path);
+    let (Some(dir_file), Some(manifest_file), Some(mapping_file)) =
+        (find(dir), find(manifest), find(repo_mapping))
+    else {
+        return vec![row];
+    };
+    let label = build_command::label_name(&row.target.label);
+    let made = |mnemonic: &str,
+                message: String,
+                kind: ActionKind,
+                inputs: Vec<Artifact>,
+                outputs: Vec<Artifact>| Row {
+        target: row.target,
+        action: std::borrow::Cow::Owned(Action {
+            owner: row.action.owner.clone(),
+            owner_kind: row.action.owner_kind.clone(),
+            location: row.action.location.clone(),
+            configuration: row.action.configuration.clone(),
+            mnemonic: mnemonic.to_owned(),
+            progress_message: Some(message),
+            kind,
+            inputs,
+            outputs,
+        }),
+        aspect: row.aspect,
+    };
+    let tree_manifest = Artifact {
+        root: dir_file.root.clone(),
+        path: format!("{}/MANIFEST", dir_file.path),
+        tree: false,
+    };
+    let sources: String = entries
+        .iter()
+        .map(|(path, file)| format!("{path} {}\n", file.exec_path()))
+        .collect();
+    let mut runfiles_inputs = row.action.inputs.clone();
+    runfiles_inputs.push(tree_manifest.clone());
+    runfiles_inputs.push(mapping_file.clone());
+    vec![
+        made(
+            "RepoMappingManifest",
+            format!("Writing repo mapping manifest for {label}"),
+            ActionKind::WriteFile {
+                contents: repo_mapping_contents.clone().into_bytes(),
+                executable: false,
+            },
+            Vec::new(),
+            vec![mapping_file.clone()],
+        ),
+        made(
+            "SourceSymlinkManifest",
+            format!("Creating source manifest for {label}"),
+            ActionKind::WriteFile {
+                contents: sources.into_bytes(),
+                executable: false,
+            },
+            Vec::new(),
+            vec![manifest_file.clone()],
+        ),
+        made(
+            "SymlinkTree",
+            format!("Creating runfiles tree {}", dir_file.exec_path()),
+            ActionKind::Symlink {
+                target: String::new(),
+            },
+            vec![manifest_file.clone()],
+            vec![tree_manifest],
+        ),
+        made(
+            "RunfilesTree",
+            format!("runfiles for {label}"),
+            row.action.kind.clone(),
+            runfiles_inputs,
+            vec![dir_file.clone()],
+        ),
+    ]
 }
 
 /// The platform Bazel names when none was chosen.
@@ -251,7 +345,7 @@ pub(crate) fn text(rows: &[Row<'_>], settings: Settings, layout: &Layout) -> Str
 }
 
 fn text_one(out: &mut String, row: &Row<'_>, settings: Settings, layout: &Layout) {
-    let action = row.action;
+    let action: &Action = &row.action;
     let platform = row.execution_platform();
     let target = build_command::label_name(&row.target.label);
     if matches!(action.kind, ActionKind::RunfilesTree { .. }) {
@@ -338,6 +432,17 @@ fn text_one(out: &mut String, row: &Row<'_>, settings: Settings, layout: &Layout
         }
         ActionKind::UnresolvedSymlink { target } => {
             out.push_str(&format!("  UnresolvedSymlinkTarget: {target}\n"));
+        }
+        ActionKind::Symlink { .. } if action.mnemonic == "SymlinkTree" => {
+            // The tree is made with the environment of a shell.
+            let env: Vec<String> = row
+                .target
+                .configuration
+                .default_shell_env()
+                .iter()
+                .map(|(k, v)| format!("{k}={v}"))
+                .collect();
+            out.push_str(&format!("  Environment: [{}]\n", env.join(", ")));
         }
         ActionKind::Symlink { .. } | ActionKind::RunfilesTree { .. } => {}
     }
@@ -487,7 +592,7 @@ impl Dump {
     }
 
     fn action(&mut self, row: &Row<'_>, settings: Settings, layout: &Layout) {
-        let action = row.action;
+        let action: &Action = &row.action;
         let target = row.target;
         let rule_class = target.rule_class.clone().unwrap_or_default();
         let label = build_command::label_name(&target.label);
@@ -546,9 +651,13 @@ impl Dump {
         let mut input_sets = Vec::new();
         let mut outputs = Vec::new();
         if settings.artifacts {
-            let mut inputs: Vec<&Artifact> = action.inputs.iter().collect();
-            inputs.sort_by_key(|a| a.exec_path());
-            inputs.dedup_by_key(|a| a.exec_path());
+            // In the order the action lists them, each once.
+            let mut seen = std::collections::BTreeSet::new();
+            let inputs: Vec<&Artifact> = action
+                .inputs
+                .iter()
+                .filter(|a| seen.insert(a.exec_path()))
+                .collect();
             let ids: Vec<i64> = inputs.iter().map(|a| self.artifact(a)).collect();
             if !ids.is_empty() {
                 let paths: Vec<String> = inputs.iter().map(|a| a.exec_path()).collect();

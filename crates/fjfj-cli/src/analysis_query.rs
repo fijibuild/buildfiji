@@ -389,7 +389,7 @@ fn evaluate(
         let rows: Vec<aquery::Row<'_>> = chosen(&labels, &configured)
             .into_iter()
             .flat_map(|target| aquery::rows_of(target, configured.aspects_of(target), query.aquery))
-            .filter(|row| filters.iter().all(|f| f.keeps(row.action)))
+            .filter(|row| filters.iter().all(|f| f.keeps(&row.action)))
             .collect();
         let pieces = aquery::pieces(&rows, query.aquery, &layout);
         return Ok(aquery::proto(&query.format, &pieces));
@@ -602,7 +602,7 @@ fn render(
             let rows: Vec<aquery::Row<'_>> = chosen(labels, graph)
                 .into_iter()
                 .flat_map(|target| aquery::rows_of(target, graph.aspects_of(target), query.aquery))
-                .filter(|row| filters.iter().all(|f| f.keeps(row.action)))
+                .filter(|row| filters.iter().all(|f| f.keeps(&row.action)))
                 .collect();
             match query.format.as_str() {
                 "text" => Ok(aquery::text(&rows, query.aquery, layout)),
@@ -1405,6 +1405,69 @@ execution_platform: "@@platforms//host:host"
             .await
             .unwrap();
         assert_eq!(full.lines().count(), 4);
+    }
+
+    /// What `bazel aquery //:k2` listed for an executable rule: the script
+    /// it writes and the four actions of its runfiles.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn aquery_lists_an_executables_runfiles_as_bazel_does() {
+        let files: &[(&str, &str)] = &[
+            ("MODULE.bazel", ""),
+            (
+                "defs.bzl",
+                "def _impl(ctx):\n    exe = ctx.actions.declare_file(ctx.label.name + \".sh\")\n    ctx.actions.write(exe, \"#!/bin/sh\", is_executable = True)\n    return [DefaultInfo(files = depset([exe]), executable = exe, runfiles = ctx.runfiles(files = [exe]))]\nk2 = rule(implementation = _impl, executable = True)\n",
+            ),
+            ("BUILD", "load(\":defs.bzl\", \"k2\")\nk2(name = \"k2\")\n"),
+        ];
+        let text = tokio::task::spawn_blocking(|| {
+            query_on(
+                files,
+                Kind::Aquery,
+                "text",
+                "//:k2",
+                None,
+                &[],
+                aquery::Settings::default(),
+            )
+            .map(|bytes| String::from_utf8(bytes).unwrap())
+            .unwrap()
+        })
+        .await
+        .unwrap();
+        let described: Vec<&str> = text
+            .lines()
+            .filter(|l| l.starts_with("action '") || l.starts_with("runfiles for"))
+            .collect();
+        let bin = format!("bazel-out/{}-fastbuild/bin", fjfj_graph::config::host_cpu());
+        assert_eq!(
+            described,
+            [
+                "action 'Writing script k2.sh'".to_owned(),
+                "action 'Writing repo mapping manifest for //:k2'".to_owned(),
+                "action 'Creating source manifest for //:k2'".to_owned(),
+                format!("action 'Creating runfiles tree {bin}/k2.sh.runfiles'"),
+                "runfiles for //:k2".to_owned(),
+            ]
+        );
+        let mnemonics: Vec<&str> = text
+            .lines()
+            .filter_map(|l| l.strip_prefix("  Mnemonic: "))
+            .collect();
+        assert_eq!(
+            mnemonics,
+            [
+                "FileWrite",
+                "RepoMappingManifest",
+                "SourceSymlinkManifest",
+                "SymlinkTree",
+                "RunfilesTree"
+            ]
+        );
+        // The tree is made from the manifest, and stands for what it links.
+        assert!(text.contains(&format!("  Inputs: [{bin}/k2.sh.runfiles_manifest]\n")));
+        assert!(text.contains(&format!(
+            "  Inputs: [{bin}/k2.sh, {bin}/k2.sh.repo_mapping, {bin}/k2.sh.runfiles/MANIFEST]\n  Outputs: [{bin}/k2.sh.runfiles]\n"
+        )));
     }
 
     /// The descriptions of the actions an `aquery` printed.
