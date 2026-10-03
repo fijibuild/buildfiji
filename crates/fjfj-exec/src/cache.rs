@@ -13,7 +13,7 @@ use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Mutex, RwLock};
 use std::time::UNIX_EPOCH;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -49,6 +49,9 @@ pub struct ActionCache {
     /// Directories an action made, by the key it ran with: a directory
     /// stands for what made it.
     dirs: Mutex<HashMap<String, String>>,
+    /// The fragments [`ActionCache::input_fragment`] has found this run: an input
+    /// is read after what makes it has finished, so it does not change again.
+    inputs: RwLock<HashMap<String, [u8; 32]>>,
 }
 
 impl ActionCache {
@@ -67,6 +70,7 @@ impl ActionCache {
             path,
             state: Mutex::new(state),
             dirs: Mutex::new(HashMap::new()),
+            inputs: RwLock::new(HashMap::new()),
         }
     }
 
@@ -120,6 +124,27 @@ impl ActionCache {
             },
         );
         Some(sha256)
+    }
+
+    /// What an input of an action about to be keyed adds to its key: the
+    /// SHA-256 of the input's path and digest, found once however many
+    /// actions read it.
+    fn input_fragment(&self, root: &Path, exec_path: &str) -> Option<[u8; 32]> {
+        if let Some(known) = self.inputs.read().unwrap().get(exec_path) {
+            return Some(*known);
+        }
+        let digest = self.digest(root, exec_path)?;
+        let mut hasher = Sha256::new();
+        for bytes in [exec_path.as_bytes(), digest.as_bytes()] {
+            hasher.update((bytes.len() as u64).to_le_bytes());
+            hasher.update(bytes);
+        }
+        let fragment: [u8; 32] = hasher.finalize().into();
+        self.inputs
+            .write()
+            .unwrap()
+            .insert(exec_path.to_owned(), fragment);
+        Some(fragment)
     }
 
     /// The key of `action`: what it does and what its inputs hold. `None` if
@@ -203,14 +228,11 @@ impl ActionCache {
         let mut inputs: Vec<String> = action.inputs.iter().map(|a| a.exec_path()).collect();
         inputs.sort();
         inputs.dedup();
-        let mut digests = Vec::with_capacity(inputs.len());
+        let mut fragments = Vec::with_capacity(inputs.len() * 32);
         for input in &inputs {
-            digests.push(self.digest(root, input)?);
+            fragments.extend_from_slice(&self.input_fragment(root, input)?);
         }
-        for (input, digest) in inputs.iter().zip(&digests) {
-            field(input.as_bytes());
-            field(digest.as_bytes());
-        }
+        field(&fragments);
         field(b"outputs");
         for out in &action.outputs {
             field(out.exec_path().as_bytes());
