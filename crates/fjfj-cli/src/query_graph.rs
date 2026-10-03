@@ -374,7 +374,7 @@ impl QueryGraph {
     }
 
     /// How an attribute value reads to `attr()`.
-    fn attr_text(&self, value: &AttrValue) -> String {
+    pub(crate) fn attr_text(&self, value: &AttrValue) -> String {
         let list = |items: Vec<String>| format!("[{}]", items.join(", "));
         match value {
             AttrValue::Bool(b) => if *b { "1" } else { "0" }.to_owned(),

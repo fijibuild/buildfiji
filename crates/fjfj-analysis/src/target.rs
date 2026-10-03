@@ -105,6 +105,9 @@ pub struct ConfiguredTarget {
     pub platform: Option<PlatformDecl>,
     /// For a `config_setting`: whether it matches this configuration.
     pub config_matching: Option<crate::select::ConfigMatching>,
+    /// For a rule: the attributes it was declared with, `select()`s decided
+    /// for this configuration.
+    pub attrs: Vec<(String, AttrValue)>,
     /// For what an aspect made of a target: the aspect. Such a value has the
     /// label and configuration of the target it was applied to.
     pub aspect: Option<fjfj_starlark::AspectRef>,
@@ -169,6 +172,7 @@ impl ConfiguredTarget {
             platform: None,
             config_matching: None,
             execution_platform: None,
+            attrs: Vec::new(),
             aspect: None,
             actions: Vec::new(),
             deps: Vec::new(),
@@ -198,7 +202,9 @@ impl Key for ConfiguredTargetKey {
                     attrs,
                 } => {
                     target.rule_class = Some(rule_class.clone());
+                    let attrs_declared = attrs;
                     let attrs = crate::select::resolve(ctx, self, attrs).await?;
+                    target.attrs = attrs.clone();
                     if ctx.data::<Env>()?.record_execution_platforms {
                         let exec: Vec<Label> = attrs
                             .iter()
@@ -212,7 +218,16 @@ impl Key for ConfiguredTargetKey {
                         target.execution_platform =
                             crate::toolchain::default_execution_platform(ctx, self, &exec).await?;
                     }
-                    native::analyze(
+                    // The `config_setting`s its `select()`s read are targets it
+                    // depends on, which `cquery` shows.
+                    let conditions: Vec<ConfiguredTargetKey> = declared_conditions(attrs_declared)
+                        .into_iter()
+                        .map(|label| ConfiguredTargetKey {
+                            label,
+                            configuration: self.configuration.clone(),
+                        })
+                        .collect();
+                    let mut analysed = native::analyze(
                         ctx,
                         self,
                         &package,
@@ -221,7 +236,13 @@ impl Key for ConfiguredTargetKey {
                         &attrs,
                         target,
                     )
-                    .await
+                    .await?;
+                    for condition in conditions {
+                        if !analysed.deps.contains(&condition) {
+                            analysed.deps.push(condition);
+                        }
+                    }
+                    Ok(analysed)
                 }
                 TargetKind::SourceFile => Ok(source_file(self, target)),
                 TargetKind::PackageGroup(_) => {
@@ -259,6 +280,26 @@ impl Key for ConfiguredTargetKey {
             }
         }
     }
+}
+
+/// The conditions of every `select()` among `attrs`, once each, in the order
+/// they are written.
+fn declared_conditions(attrs: &[(String, AttrValue)]) -> Vec<Label> {
+    let default = fjfj_graph::rule::default_condition();
+    let mut out: Vec<Label> = Vec::new();
+    for (_, value) in attrs {
+        let AttrValue::Select(list) = value else {
+            continue;
+        };
+        for selector in &list.elements {
+            for (condition, _) in &selector.branches {
+                if *condition != default && !out.contains(condition) {
+                    out.push(condition.clone());
+                }
+            }
+        }
+    }
+    out
 }
 
 /// The target of a source file.

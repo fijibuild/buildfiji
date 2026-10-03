@@ -184,6 +184,16 @@ impl Graph for ConfiguredGraph<'_> {
                 visibility: false,
             });
         }
+        // The values the target has in this configuration: a `select()` is
+        // the branch that was taken.
+        for attr in &mut node.attrs {
+            if let Some((_, decided)) = target.attrs.iter().find(|(n, _)| *n == attr.name)
+                && attr.value != *decided
+            {
+                attr.value = decided.clone();
+                attr.text = self.loading.attr_text(decided);
+            }
+        }
         for attr in &mut node.attrs {
             attr.labels = attr
                 .labels

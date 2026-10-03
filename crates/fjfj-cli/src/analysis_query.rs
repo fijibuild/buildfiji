@@ -503,7 +503,7 @@ def _r(ctx):
     out = ctx.actions.declare_file(ctx.label.name + ".txt")
     ctx.actions.run_shell(outputs = [out], inputs = ctx.files.srcs, command = "cat $@ > " + out.path, mnemonic = "Cat", progress_message = "Cat %{label}", env = {"A": "b"})
     return [DefaultInfo(files = depset([out]))]
-r = rule(implementation = _r, attrs = {"srcs": attr.label_list(allow_files = True), "deps": attr.label_list(cfg = t)})
+r = rule(implementation = _r, attrs = {"srcs": attr.label_list(allow_files = True), "deps": attr.label_list(cfg = t), "ss": attr.string_list()})
 def _asp(target, ctx):
     out = ctx.actions.declare_file(target.label.name + ".asp")
     ctx.actions.run_shell(outputs = [out], command = "echo hi > " + out.path, mnemonic = "AspAct", progress_message = "Asp %{label}")
@@ -521,6 +521,8 @@ load(":defs.bzl", "r", "flag_rule")
 flag_rule(name = "flag", build_setting_default = "d")
 r(name = "a", srcs = ["s.txt"], deps = [":b"])
 r(name = "b", srcs = ["s.txt"])
+config_setting(name = "fast", values = {"compilation_mode": "fastbuild"})
+r(name = "sel", ss = select({":fast": ["f"], "//conditions:default": ["d"]}))
 "#,
         ),
         ("s.txt", ""),
@@ -579,7 +581,14 @@ r(name = "b", srcs = ["s.txt"])
         // //:b by itself and //:b below //:a, which transitions it.
         assert_eq!(
             undigested(&text),
-            ["//:a (7)", "//:b (7)", "//:b (7)", "//:flag (7)"]
+            [
+                "//:a (7)",
+                "//:b (7)",
+                "//:b (7)",
+                "//:fast (7)",
+                "//:flag (7)",
+                "//:sel (7)"
+            ]
         );
         let digits: Vec<&str> = text.lines().filter(|l| l.starts_with("//:b")).collect();
         assert_ne!(digits[0], digits[1]);
@@ -848,6 +857,19 @@ r(name = "b", srcs = ["s.txt"])
             actions(&without),
             ["action 'Cat //:a'", "action 'Cat //:b'"]
         );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn attr_sees_the_branch_a_select_took_in_the_configuration() {
+        // The default configuration is fastbuild: `:fast` matches.
+        assert_eq!(
+            undigested(&cquery("attr(ss, f, //:sel)").await),
+            ["//:sel (7)"]
+        );
+        assert!(cquery("attr(ss, d, //:sel)").await.is_empty());
+        // The condition is a dependency, the branch's labels are not.
+        let deps = cquery("deps(//:sel)").await;
+        assert!(deps.contains("//:fast"), "{deps}");
     }
 
     /// The descriptions of the actions an `aquery` printed.
