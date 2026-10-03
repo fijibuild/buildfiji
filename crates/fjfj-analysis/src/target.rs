@@ -154,6 +154,12 @@ impl PartialEq for RuleInfo {
 impl Eq for RuleInfo {}
 
 impl ConfiguredTarget {
+    /// Whether the target has a configuration, as a rule and a generated file
+    /// do and a source file does not.
+    pub fn has_configuration(&self) -> bool {
+        self.rule_class.is_some() || self.files.to_vec().first().is_some_and(|f| !f.is_source())
+    }
+
     pub(crate) fn new(key: &ConfiguredTargetKey) -> ConfiguredTarget {
         ConfiguredTarget {
             label: key.label.clone(),

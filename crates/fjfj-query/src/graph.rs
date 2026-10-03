@@ -49,6 +49,9 @@ pub struct NodeAttr {
     pub ty: AttrType,
     /// The value, `select()`s included.
     pub value: AttrValue,
+    /// The attribute has no value: a label or an output the rule did not
+    /// give and the class has no default for. `value` is then empty.
+    pub unset: bool,
 }
 
 /// A dependency of a target.
@@ -85,6 +88,9 @@ pub struct Node {
     pub loads: Vec<Label>,
     /// This is the BUILD file of a package.
     pub build_file: bool,
+    /// For a rule: the `config_setting`s its `select()`s read, once each in the
+    /// order they were written (Bazel's `$config_dependencies`).
+    pub config_deps: Vec<Label>,
     /// For a `package_group`: the other groups it includes and its package
     /// specifications, as written.
     pub group: Option<(Vec<Label>, Vec<String>)>,
@@ -98,6 +104,13 @@ pub trait Graph: Sync {
 
     /// A target loaded.
     fn node(&self, label: &Label) -> Result<Arc<Node>, String>;
+
+    /// The node as the BUILD file declares it: for `cquery`, with the edges
+    /// of every branch of a `select()`, which is what a rule's `rule_input`
+    /// lists, where `node` has only those of the branch taken.
+    fn declared_node(&self, label: &Label) -> Result<Arc<Node>, String> {
+        self.node(label)
+    }
 
     /// Every target of the package of `label`, files included.
     fn siblings(&self, label: &Label) -> Result<Vec<Label>, String>;

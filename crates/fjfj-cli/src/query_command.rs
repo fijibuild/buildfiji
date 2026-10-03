@@ -25,6 +25,7 @@ pub(crate) struct Flags {
     pub order: Order,
     pub options: Options,
     pub terminator: char,
+    pub proto: fjfj_query::target_proto::ProtoOptions,
 }
 
 /// `--output=bogus` is refused with Bazel's list of the valid ones.
@@ -41,6 +42,7 @@ pub(crate) fn extract(args: &[String]) -> Result<(Flags, Vec<String>), CliError>
         order: Order::Auto,
         options: Options::default(),
         terminator: '\n',
+        proto: Default::default(),
     };
     let mut rest = Vec::new();
     let mut iter = args.iter();
@@ -78,6 +80,16 @@ pub(crate) fn extract(args: &[String]) -> Result<(Flags, Vec<String>), CliError>
             "line_terminator_null" => flags.terminator = '\0',
             "noline_terminator_null" => flags.terminator = '\n',
             "keep_going" | "nokeep_going" => {}
+            n if n.starts_with("proto:") || n.starts_with("noproto:") => {
+                let value = if n.ends_with("output_rule_attrs") {
+                    take(value)
+                } else {
+                    value
+                };
+                if !flags.proto.flag(n, value.as_deref()).map_err(bad)? {
+                    rest.push(arg.clone());
+                }
+            }
             _ => rest.push(arg.clone()),
         }
     }
@@ -109,7 +121,7 @@ pub(crate) async fn run(args: QueryArgs) -> Result<(), CliError> {
                 workspace_root.display()
             ))
         })?;
-    let output = tokio::task::spawn_blocking(move || -> Result<String, CliError> {
+    let output = tokio::task::spawn_blocking(move || -> Result<Vec<u8>, CliError> {
         let (resolved, repos) =
             fetch_command::begin(&fetch, &bzlmod, &workspace_root, &module_bazel_text)?;
         let repos = Arc::new(repos);
@@ -118,12 +130,13 @@ pub(crate) async fn run(args: QueryArgs) -> Result<(), CliError> {
         let text = evaluator
             .eval(&expr)
             .and_then(|set| {
-                fjfj_query::output::render(
+                fjfj_query::output::render_bytes(
                     &evaluator,
                     &set,
                     flags.format,
                     flags.order,
                     flags.terminator,
+                    &flags.proto,
                 )
             })
             .map_err(|e| CliError::Query(anyhow::anyhow!(e)))?;
@@ -133,6 +146,9 @@ pub(crate) async fn run(args: QueryArgs) -> Result<(), CliError> {
     })
     .await
     .map_err(|e| CliError::Internal(anyhow::anyhow!("query task panicked: {e}")))??;
-    print!("{output}");
+    use std::io::Write;
+    std::io::stdout()
+        .write_all(&output)
+        .map_err(|e| CliError::Internal(anyhow::anyhow!("writing the result failed: {e}")))?;
     Ok(())
 }

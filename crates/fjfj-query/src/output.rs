@@ -16,6 +16,12 @@ pub enum Format {
     MaxRank,
     Graph,
     Xml,
+    /// `QueryResult` in the wire format.
+    Proto,
+    /// Each target as a length-prefixed `Target`.
+    StreamedProto,
+    /// Each target as one line of JSON.
+    StreamedJsonProto,
 }
 
 impl Format {
@@ -28,8 +34,16 @@ impl Format {
             "maxrank" => Format::MaxRank,
             "graph" => Format::Graph,
             "xml" => Format::Xml,
+            "proto" => Format::Proto,
+            "streamed_proto" => Format::StreamedProto,
+            "streamed_jsonproto" => Format::StreamedJsonProto,
             _ => return None,
         })
+    }
+
+    /// Whether the output is bytes rather than text.
+    pub fn is_binary(self) -> bool {
+        matches!(self, Format::Proto | Format::StreamedProto)
     }
 }
 
@@ -165,6 +179,40 @@ fn ranks(graph: &BTreeMap<Label, Vec<Edge>>, longest: bool) -> BTreeMap<Label, u
     rank
 }
 
+/// What `bazel query --output=<format>` prints for `set`, as bytes: the text
+/// of `render` for a text format, a `QueryResult` or a stream of `Target`s
+/// for the protocol buffer ones.
+pub fn render_bytes(
+    ev: &Evaluator<'_>,
+    set: &Set,
+    format: Format,
+    wanted: Order,
+    terminator: char,
+    proto: &crate::target_proto::ProtoOptions,
+) -> Result<Vec<u8>, String> {
+    let targets = |ev: &Evaluator<'_>| -> Result<Vec<crate::proto::Msg>, String> {
+        order(ev, set, wanted)?
+            .iter()
+            .map(|l| crate::target_proto::target(ev, l, proto))
+            .collect()
+    };
+    Ok(match format {
+        Format::Proto => crate::proto::Msg::new()
+            .many(1, "target", targets(ev)?)
+            .binary(),
+        Format::StreamedProto => targets(ev)?.iter().flat_map(|t| t.delimited()).collect(),
+        Format::StreamedJsonProto => {
+            let mut out = String::new();
+            for target in targets(ev)? {
+                out.push_str(&target.json_compact());
+                out.push('\n');
+            }
+            out.into_bytes()
+        }
+        _ => render(ev, set, format, wanted, terminator)?.into_bytes(),
+    })
+}
+
 /// The text `bazel query --output=<format>` prints for `set`.
 pub fn render(
     ev: &Evaluator<'_>,
@@ -213,6 +261,12 @@ pub fn render(
             for (r, label) in rows {
                 line(format!("{r} {}", graph.output_name(label)));
             }
+        }
+        Format::Proto | Format::StreamedProto | Format::StreamedJsonProto => {
+            let proto = crate::target_proto::ProtoOptions::default();
+            return render_bytes(ev, set, format, wanted, terminator, &proto).and_then(|bytes| {
+                String::from_utf8(bytes).map_err(|_| "the output is not text".to_owned())
+            });
         }
         Format::Xml => {
             line("<?xml version=\"1.1\" encoding=\"UTF-8\" standalone=\"no\"?>".to_owned());
@@ -372,7 +426,7 @@ fn xml_element(ev: &Evaluator<'_>, label: &Label) -> Result<Vec<String>, String>
 
 /// Every value a `select()` could give, joined, which is what `--output=xml`
 /// shows of it.
-fn flatten(value: &AttrValue) -> AttrValue {
+pub(crate) fn flatten(value: &AttrValue) -> AttrValue {
     let AttrValue::Select(list) = value else {
         return value.clone();
     };

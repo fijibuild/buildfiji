@@ -11,6 +11,8 @@ pub mod eval;
 pub mod graph;
 pub mod output;
 pub mod parse;
+pub mod proto;
+pub mod target_proto;
 
 pub use ast::Dialect;
 pub use ast::Expr;

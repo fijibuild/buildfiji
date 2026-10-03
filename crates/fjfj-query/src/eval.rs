@@ -281,7 +281,10 @@ impl<'g> Evaluator<'g> {
                         continue;
                     }
                     if node.attrs.iter().any(|a| {
-                        a.name == name && !a.name.starts_with('_') && pattern.is_match(&a.text)
+                        a.name == name
+                            && !a.unset
+                            && !a.name.starts_with('_')
+                            && pattern.is_match(&a.text)
                     }) {
                         out.insert(label);
                     }

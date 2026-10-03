@@ -111,7 +111,8 @@ impl QueryGraph {
         let mut edges = Vec::new();
         let rule_attr = |name: &str| set.iter().find(|(n, _)| n == name).map(|(_, v)| v);
         for attr in &schema.attrs {
-            let explicit = rule_attr(&attr.name).is_some();
+            // `name` is the one attribute every rule sets.
+            let explicit = attr.name == "name" || rule_attr(&attr.name).is_some();
             let value = match attr.name.as_str() {
                 "name" => Some(AttrValue::String(label.name.clone())),
                 "visibility" => None,
@@ -132,6 +133,7 @@ impl QueryGraph {
                     explicit: target.visibility.is_some(),
                     ty: AttrType::LabelList,
                     value: AttrValue::StringList(self.visibility_parts(package, target)),
+                    unset: false,
                 });
                 continue;
             }
@@ -146,7 +148,18 @@ impl QueryGraph {
                 }
                 (_, value) => value,
             };
-            let Some(value) = value else { continue };
+            let Some(value) = value else {
+                attrs.push(NodeAttr {
+                    name: attr.name.clone(),
+                    text: String::new(),
+                    labels: Vec::new(),
+                    explicit: false,
+                    ty: attr.def.ty,
+                    value: AttrValue::StringList(Vec::new()),
+                    unset: true,
+                });
+                continue;
+            };
             let mut labels = Vec::new();
             let implicit = attr.name.starts_with('_') || attr.name.starts_with('$');
             let is_label = matches!(
@@ -197,6 +210,7 @@ impl QueryGraph {
                 explicit,
                 ty: attr.def.ty,
                 value: value.clone(),
+                unset: false,
             });
         }
         // The `package_group`s that say who may see the rule.
@@ -241,6 +255,19 @@ impl QueryGraph {
             });
         }
         let location = target.location.clone();
+        let mut config_deps: Vec<Label> = Vec::new();
+        for attr in &attrs {
+            let AttrValue::Select(list) = &attr.value else {
+                continue;
+            };
+            for selector in &list.elements {
+                for (condition, _) in &selector.branches {
+                    if *condition != default_condition() && !config_deps.contains(condition) {
+                        config_deps.push(condition.clone());
+                    }
+                }
+            }
+        }
         Ok(Node {
             label: label.clone(),
             kind: NodeKind::Rule {
@@ -262,6 +289,7 @@ impl QueryGraph {
             visibility: self.visibility_parts(package, target),
             loads: Vec::new(),
             build_file: false,
+            config_deps,
             group: None,
         })
     }
@@ -461,6 +489,7 @@ impl QueryGraph {
             visibility: vec!["//visibility:private".to_owned()],
             loads: Vec::new(),
             build_file: false,
+            config_deps: Vec::new(),
             group: None,
         })
     }
@@ -1045,6 +1074,170 @@ genrule(name="gen", outs=["gen.txt"], cmd="echo > $@")
 </query>
 "#
         );
+    }
+
+    /// The targets of `text` as `--output=streamed_jsonproto` prints them, each
+    /// parsed.
+    fn jsonproto(
+        graph: &QueryGraph,
+        text: &str,
+        proto: &fjfj_query::target_proto::ProtoOptions,
+    ) -> Vec<serde_json::Value> {
+        let ev = Evaluator::new(graph, Options::default());
+        let set = ev.eval(&fjfj_query::parse(text).unwrap()).unwrap();
+        let bytes = fjfj_query::output::render_bytes(
+            &ev,
+            &set,
+            Format::StreamedJsonProto,
+            Order::Auto,
+            '\n',
+            proto,
+        )
+        .unwrap();
+        String::from_utf8(bytes)
+            .unwrap()
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect()
+    }
+
+    /// Each expectation is what `bazel query --output=streamed_jsonproto`
+    /// printed for the same kinds of target.
+    #[test]
+    fn proto_describes_each_kind_of_target_as_bazel_does() {
+        let (dir, repos) = workspace();
+        let graph = QueryGraph::new(repos);
+        let ws = dir.path().join("ws").display().to_string();
+        let all = jsonproto(
+            &graph,
+            "//a:a.txt + //b:gen.txt + //b:gen + //c/d:pg + //a:lib",
+            &Default::default(),
+        );
+        let by_name = |name: &str| {
+            all.iter()
+                .find(|t| {
+                    ["rule", "sourceFile", "generatedFile", "packageGroup"]
+                        .iter()
+                        .any(|k| t[k]["name"] == name)
+                })
+                .unwrap_or_else(|| panic!("no {name}"))
+        };
+        assert_eq!(
+            by_name("//a:a.txt"),
+            &serde_json::json!({"type": "SOURCE_FILE", "sourceFile": {
+                "name": "//a:a.txt", "location": format!("{ws}/a/a.txt:1:1"),
+                "visibilityLabel": ["//visibility:public"]}})
+        );
+        assert_eq!(
+            by_name("//b:gen.txt"),
+            &serde_json::json!({"type": "GENERATED_FILE", "generatedFile": {
+                "name": "//b:gen.txt", "generatingRule": "//b:gen",
+                "location": format!("{ws}/b/BUILD:4:8")}})
+        );
+        assert_eq!(
+            by_name("//c/d:pg"),
+            &serde_json::json!({"type": "PACKAGE_GROUP", "packageGroup": {
+                "name": "//c/d:pg", "containedPackage": ["//a/..."]}})
+        );
+        // A genrule has the attributes of its class and Bazel's hidden ones, by
+        // name, and says what it reads and makes.
+        let genrule = &by_name("//b:gen")["rule"];
+        let names: Vec<&str> = genrule["attribute"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|a| a["name"].as_str().unwrap())
+            .collect();
+        let mut sorted = names.clone();
+        sorted.sort();
+        assert_eq!(names, sorted);
+        assert_eq!(
+            &names[..4],
+            [
+                "$config_dependencies",
+                "$genrule_setup",
+                "$is_executable",
+                ":action_listener"
+            ]
+        );
+        assert_eq!(genrule["ruleOutput"], serde_json::json!(["//b:gen.txt"]));
+        let attr = |name: &str| {
+            genrule["attribute"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|a| a["name"] == name)
+                .unwrap()
+                .clone()
+        };
+        assert_eq!(
+            attr("outs"),
+            serde_json::json!({"name": "outs", "type": "OUTPUT_LIST",
+                "stringListValue": ["//b:gen.txt"], "explicitlySpecified": true, "nodep": false})
+        );
+        assert_eq!(
+            attr("testonly"),
+            serde_json::json!({"name": "testonly", "type": "BOOLEAN", "intValue": 0,
+                "stringValue": "false", "explicitlySpecified": false, "booleanValue": false})
+        );
+        // `name` is explicit, a value the rule left alone is not.
+        assert_eq!(attr("name")["explicitlySpecified"], true);
+    }
+
+    #[test]
+    fn proto_flags_shape_the_rules() {
+        let (_dir, repos) = workspace();
+        let graph = QueryGraph::new(repos);
+        let rule = |proto: &fjfj_query::target_proto::ProtoOptions| {
+            jsonproto(&graph, "//a:sel", proto).remove(0)["rule"].clone()
+        };
+        // A select() shows every value it could take, or as it is.
+        let flat = rule(&Default::default());
+        let deps = flat["attribute"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["name"] == "deps")
+            .unwrap();
+        assert_eq!(deps["type"], "LABEL_LIST");
+        assert_eq!(
+            deps["stringListValue"],
+            serde_json::json!(["//b:lib", "//c:tool"])
+        );
+        let mut raw = fjfj_query::target_proto::ProtoOptions::default();
+        assert!(raw.flag("noproto:flatten_selects", None).unwrap());
+        let rule_raw = rule(&raw);
+        let deps = rule_raw["attribute"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["name"] == "deps")
+            .unwrap();
+        assert_eq!(deps["type"], "SELECTOR_LIST");
+        assert_eq!(deps["selectorList"]["type"], "LABEL_LIST");
+        // Only the attributes asked for, with no inputs or location.
+        let mut narrow = fjfj_query::target_proto::ProtoOptions::default();
+        assert!(
+            narrow
+                .flag("proto:output_rule_attrs", Some("name,opt"))
+                .unwrap()
+        );
+        assert!(
+            narrow
+                .flag("noproto:rule_inputs_and_outputs", None)
+                .unwrap()
+        );
+        assert!(narrow.flag("noproto:locations", None).unwrap());
+        let rule_narrow = rule(&narrow);
+        let names: Vec<&str> = rule_narrow["attribute"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|a| a["name"].as_str().unwrap())
+            .collect();
+        assert_eq!(names, ["name", "opt"]);
+        assert!(rule_narrow.get("ruleInput").is_none());
+        assert!(rule_narrow.get("location").is_none());
     }
 
     #[test]

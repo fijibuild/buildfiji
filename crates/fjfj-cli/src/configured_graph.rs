@@ -93,7 +93,7 @@ impl<'a> ConfiguredGraph<'a> {
             if index.contains_key(&key) {
                 continue;
             }
-            let at = match (target.rule_class.is_none(), by_label.get(&target.label)) {
+            let at = match (!target.has_configuration(), by_label.get(&target.label)) {
                 (true, Some(existing)) => existing[0],
                 _ => {
                     targets.push(target.clone());
@@ -106,7 +106,7 @@ impl<'a> ConfiguredGraph<'a> {
         }
         let checksums = targets
             .iter()
-            .filter(|t| t.rule_class.is_some())
+            .filter(|t| t.has_configuration())
             .map(|t| t.configuration.checksum())
             .collect();
         ConfiguredGraph {
@@ -195,6 +195,14 @@ impl Graph for ConfiguredGraph<'_> {
             }
         }
         for attr in &mut node.attrs {
+            // A rule that did not say who may see it has no value here, where
+            // `query` shows the package's default.
+            if attr.name == "visibility" && !attr.explicit {
+                attr.value = fjfj_graph::rule::AttrValue::StringList(Vec::new());
+                attr.text = "[]".to_owned();
+            }
+        }
+        for attr in &mut node.attrs {
             attr.labels = attr
                 .labels
                 .iter()
@@ -210,6 +218,10 @@ impl Graph for ConfiguredGraph<'_> {
         node.outputs = node.outputs.iter().flat_map(|l| self.lift(l)).collect();
         node.edges = edges;
         Ok(Arc::new(node))
+    }
+
+    fn declared_node(&self, label: &Label) -> Result<Arc<Node>, String> {
+        self.loading.node(&plain(label))
     }
 
     fn siblings(&self, label: &Label) -> Result<Vec<Label>, String> {
@@ -263,7 +275,7 @@ impl Graph for ConfiguredGraph<'_> {
         let Some(target) = self.target(label) else {
             return false;
         };
-        let configured = target.rule_class.is_some();
+        let configured = target.has_configuration();
         match name {
             // A file has no configuration, so it is in any that is asked for.
             "target" => !configured || target.configuration == self.top_level,
@@ -280,7 +292,7 @@ impl Graph for ConfiguredGraph<'_> {
     /// configuration, `(null)` for a file, which has none.
     fn output_name(&self, label: &Label) -> String {
         let configuration = match self.target(label) {
-            Some(t) if t.rule_class.is_some() => t.configuration.checksum()[..7].to_owned(),
+            Some(t) if t.has_configuration() => t.configuration.checksum()[..7].to_owned(),
             _ => "null".to_owned(),
         };
         format!("{} ({configuration})", self.display(label))

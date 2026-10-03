@@ -96,6 +96,7 @@ struct Flags {
     expr: Option<String>,
     file: Option<String>,
     aquery: aquery::Settings,
+    proto: fjfj_query::target_proto::ProtoOptions,
 }
 
 impl Flags {
@@ -149,6 +150,7 @@ fn extract(kind: Kind, args: &[String]) -> Result<(Flags, Vec<String>), CliError
         expr: None,
         file: None,
         aquery: aquery::Settings::default(),
+        proto: Default::default(),
     };
     let mut rest = Vec::new();
     let mut iter = args.iter();
@@ -185,6 +187,16 @@ fn extract(kind: Kind, args: &[String]) -> Result<(Flags, Vec<String>), CliError
             "tool_deps" => flags.options.tool_deps = true,
             "notool_deps" => flags.options.tool_deps = false,
             "keep_going" | "nokeep_going" => {}
+            n if kind == Kind::Cquery && (n.starts_with("proto:") || n.starts_with("noproto:")) => {
+                let value = if n.ends_with("output_rule_attrs") {
+                    value.or_else(|| iter.next().cloned())
+                } else {
+                    value
+                };
+                if !flags.proto.flag(n, value.as_deref()).map_err(bad)? {
+                    rest.push(arg.clone());
+                }
+            }
             _ if kind == Kind::Aquery && flags.set_aquery(name, value.as_deref()) => {}
             _ => rest.push(arg.clone()),
         }
@@ -221,6 +233,7 @@ pub(crate) async fn run(args: QueryArgs, kind: Kind) -> Result<(), CliError> {
         options: flags.options,
         formatter,
         aquery: flags.aquery,
+        proto: flags.proto,
         expr,
     };
     let configuration = build_command::configuration_from(&build_flags).map_err(bad)?;
@@ -232,7 +245,7 @@ pub(crate) async fn run(args: QueryArgs, kind: Kind) -> Result<(), CliError> {
                 workspace_root.display()
             ))
         })?;
-    let output = tokio::task::spawn_blocking(move || -> Result<String, CliError> {
+    let output = tokio::task::spawn_blocking(move || -> Result<Vec<u8>, CliError> {
         let (resolved, repos) =
             fetch_command::begin(&fetch, &bzlmod, &workspace_root, &module_bazel_text)?;
         let repos = Arc::new(repos);
@@ -259,7 +272,10 @@ pub(crate) async fn run(args: QueryArgs, kind: Kind) -> Result<(), CliError> {
     })
     .await
     .map_err(|e| CliError::Internal(anyhow::anyhow!("{command} task panicked: {e}")))??;
-    print!("{output}");
+    use std::io::Write;
+    std::io::stdout()
+        .write_all(&output)
+        .map_err(|e| CliError::Internal(anyhow::anyhow!("writing the result failed: {e}")))?;
     Ok(())
 }
 
@@ -295,6 +311,7 @@ struct Query {
     /// For `--output=starlark`.
     formatter: Option<Formatter>,
     aquery: aquery::Settings,
+    proto: fjfj_query::target_proto::ProtoOptions,
     expr: fjfj_query::Expr,
 }
 
@@ -305,7 +322,7 @@ fn evaluate(
     repos: &Arc<fjfj_repo::Repos>,
     options: build_command::Options,
     layout: fjfj_exec::execroot::Layout,
-) -> Result<String, CliError> {
+) -> Result<Vec<u8>, CliError> {
     let graph = QueryGraph::new(repos.clone());
     let mut named: BTreeSet<Label> = BTreeSet::new();
     for pattern in query.expr.patterns() {
@@ -333,7 +350,93 @@ fn evaluate(
     let labels = evaluator
         .eval(&query.expr)
         .map_err(|e| CliError::Query(anyhow::anyhow!("Error doing post analysis query: {e}")))?;
-    render(query, &labels, &evaluator, &configured, repos, &layout)
+    if query.kind == Kind::Cquery
+        && matches!(
+            query.format.as_str(),
+            "proto" | "streamed_proto" | "textproto" | "jsonproto"
+        )
+    {
+        return cquery_proto(query, &labels, &evaluator, &configured);
+    }
+    render(query, &labels, &evaluator, &configured, repos, &layout).map(String::into_bytes)
+}
+
+/// `cquery --output=proto` and its textual forms: a `CqueryResult` of the
+/// targets, each with the checksum of its configuration, and the
+/// configurations they are in.
+fn cquery_proto(
+    query: &Query,
+    labels: &BTreeSet<Label>,
+    evaluator: &Evaluator<'_>,
+    graph: &ConfiguredGraph<'_>,
+) -> Result<Vec<u8>, CliError> {
+    use fjfj_query::proto::Msg;
+    let failed = |e: String| CliError::Query(anyhow::anyhow!(e));
+    let mut results: Vec<Msg> = Vec::new();
+    // A configuration is numbered where its first target is.
+    let mut configurations: Vec<(String, Msg)> = Vec::new();
+    for label in labels {
+        let Some(target) = graph.target(label) else {
+            continue;
+        };
+        let message =
+            fjfj_query::target_proto::target(evaluator, label, &query.proto).map_err(failed)?;
+        let mut result = Msg::new().one(1, "target", message);
+        if target.has_configuration() {
+            let checksum = target.configuration.checksum();
+            let at = match configurations.iter().position(|(c, _)| *c == checksum) {
+                Some(at) => at,
+                None => {
+                    // Proto3: `is_tool` is there only when it is true.
+                    let mut configuration = Msg::new()
+                        .one(1, "id", configurations.len() as i64 + 1)
+                        .one(2, "mnemonic", target.configuration.mnemonic())
+                        .one(3, "platform_name", target.configuration.cpu.clone())
+                        .one(4, "checksum", checksum.clone());
+                    if target.configuration.exec {
+                        configuration = configuration.one(5, "is_tool", true);
+                    }
+                    configurations.push((checksum.clone(), configuration));
+                    configurations.len() - 1
+                }
+            };
+            result = result
+                .one(2, "configuration", Msg::new().one(4, "checksum", checksum))
+                .one(3, "configuration_id", at as i64 + 1);
+        } else {
+            result = result.one(2, "configuration", Msg::new().one(4, "checksum", "null"));
+        }
+        results.push(result);
+    }
+    let configurations: Vec<Msg> = configurations.into_iter().map(|(_, m)| m).collect();
+    let whole = || {
+        Msg::new().many(1, "results", results.clone()).many(
+            2,
+            "configurations",
+            configurations.clone(),
+        )
+    };
+    Ok(match query.format.as_str() {
+        "proto" => whole().binary(),
+        "textproto" => whole().text().into_bytes(),
+        "jsonproto" => whole().json().into_bytes(),
+        // Each result in a message of its own, and the configurations in one
+        // after them.
+        _ => {
+            let mut out: Vec<u8> = results
+                .iter()
+                .flat_map(|r| Msg::new().many(1, "results", [r.clone()]).delimited())
+                .collect();
+            if !configurations.is_empty() {
+                out.extend(
+                    Msg::new()
+                        .many(2, "configurations", configurations.clone())
+                        .delimited(),
+                );
+            }
+            out
+        }
+    })
 }
 
 /// The configured targets `labels` stand for, in label then configuration order.
@@ -441,7 +544,7 @@ mod tests {
         formatter: Option<Formatter>,
         aspects: &[&str],
         settings: aquery::Settings,
-    ) -> Result<String, CliError> {
+    ) -> Result<Vec<u8>, CliError> {
         let dir = tempfile::tempdir().unwrap();
         let ws = dir.path().join("ws");
         for (file, text) in files {
@@ -475,6 +578,7 @@ mod tests {
             options: Options::default(),
             formatter,
             aquery: settings,
+            proto: Default::default(),
             expr: fjfj_query::parse_in(expr, kind.dialect()).unwrap(),
         };
         let flags = fjfj_bazel_compat::build_flags::BuildFlags {
@@ -555,6 +659,17 @@ r(name = "sel", ss = select({":fast": ["f"], "//conditions:default": ["d"]}))
         expr: &'static str,
         formatter: Option<Formatter>,
     ) -> Result<String, CliError> {
+        run_bytes(kind, format, expr, formatter)
+            .await
+            .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+    }
+
+    async fn run_bytes(
+        kind: Kind,
+        format: &'static str,
+        expr: &'static str,
+        formatter: Option<Formatter>,
+    ) -> Result<Vec<u8>, CliError> {
         tokio::task::spawn_blocking(move || {
             query_on(
                 TRANSITION,
@@ -827,6 +942,7 @@ r(name = "sel", ss = select({":fast": ["f"], "//conditions:default": ["d"]}))
                     &["//:defs.bzl%asp"],
                     settings,
                 )
+                .map(|bytes| String::from_utf8(bytes).unwrap())
                 .unwrap()
             })
         };
@@ -870,6 +986,79 @@ r(name = "sel", ss = select({":fast": ["f"], "//conditions:default": ["d"]}))
         // The condition is a dependency, the branch's labels are not.
         let deps = cquery("deps(//:sel)").await;
         assert!(deps.contains("//:fast"), "{deps}");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn cquery_proto_is_a_cquery_result_with_each_targets_configuration() {
+        let json = run_query(Kind::Cquery, "jsonproto", "//:a + //:s.txt", None)
+            .await
+            .unwrap();
+        let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let results = value["results"].as_array().unwrap();
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0]["target"]["rule"]["name"], "//:a");
+        assert_eq!(results[0]["configurationId"], 1);
+        let checksum = results[0]["configuration"]["checksum"].as_str().unwrap();
+        assert_eq!(checksum.len(), 64);
+        // A source file has no configuration and no id.
+        assert_eq!(results[1]["target"]["sourceFile"]["name"], "//:s.txt");
+        assert_eq!(results[1]["configuration"]["checksum"], "null");
+        assert!(results[1].get("configurationId").is_none());
+        let configurations = value["configurations"].as_array().unwrap();
+        assert_eq!(configurations.len(), 1);
+        assert_eq!(configurations[0]["id"], 1);
+        assert_eq!(configurations[0]["checksum"], checksum);
+        assert_eq!(
+            configurations[0]["mnemonic"],
+            format!("{}-fastbuild", fjfj_graph::config::host_cpu())
+        );
+        // proto3: a tool that is not one has no `isTool`.
+        assert!(configurations[0].get("isTool").is_none());
+        // The same message as text.
+        let text = run_query(Kind::Cquery, "textproto", "//:s.txt", None)
+            .await
+            .unwrap();
+        assert!(
+            text.starts_with(
+                "results {\n  target {\n    type: SOURCE_FILE\n    source_file {\n      name: \"//:s.txt\"\n"
+            ),
+            "{text}"
+        );
+        assert!(
+            text.ends_with("  configuration {\n    checksum: \"null\"\n  }\n}\n"),
+            "{text}"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn cquery_streamed_proto_is_a_message_for_each_result_then_the_configurations() {
+        let bytes = run_bytes(Kind::Cquery, "streamed_proto", "//:a + //:s.txt", None)
+            .await
+            .unwrap();
+        // Each message is a length, then a `CqueryResult` with one field: a
+        // result (tag 0x0a), and for the last the configurations (tag 0x12).
+        let mut tags = Vec::new();
+        let mut rest = &bytes[..];
+        while !rest.is_empty() {
+            let (mut len, mut shift, mut at) = (0usize, 0, 0);
+            loop {
+                let byte = rest[at];
+                len |= usize::from(byte & 0x7f) << shift;
+                shift += 7;
+                at += 1;
+                if byte < 0x80 {
+                    break;
+                }
+            }
+            tags.push(rest[at]);
+            rest = &rest[at + len..];
+        }
+        assert_eq!(tags, [0x0a, 0x0a, 0x12]);
+        // `proto` is those results and configurations in one message.
+        let whole = run_bytes(Kind::Cquery, "proto", "//:a + //:s.txt", None)
+            .await
+            .unwrap();
+        assert_eq!(whole[0], 0x0a);
     }
 
     /// The descriptions of the actions an `aquery` printed.
