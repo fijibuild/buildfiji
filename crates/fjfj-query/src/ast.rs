@@ -22,6 +22,39 @@ pub enum Expr {
     Call(Call),
 }
 
+impl Expr {
+    /// The target patterns the expression names, in the order written: what
+    /// a query over analysed targets must analyse before it can run.
+    pub fn patterns(&self) -> Vec<&str> {
+        let mut out = Vec::new();
+        self.collect_patterns(&mut out);
+        out
+    }
+
+    fn collect_patterns<'a>(&'a self, out: &mut Vec<&'a str>) {
+        match self {
+            Expr::Word(w) => out.push(w),
+            Expr::Variable(_) => {}
+            Expr::Set(words) => out.extend(words.iter().map(String::as_str)),
+            Expr::Binary(_, l, r) => {
+                l.collect_patterns(out);
+                r.collect_patterns(out);
+            }
+            Expr::Let { value, body, .. } => {
+                value.collect_patterns(out);
+                body.collect_patterns(out);
+            }
+            Expr::Call(call) => {
+                for arg in &call.args {
+                    if let Arg::Expr(e) = arg {
+                        e.collect_patterns(out);
+                    }
+                }
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Op {
     Union,

@@ -32,6 +32,7 @@ use fjfj_remote::execution_log::{CompactExecutionLogWriter, EntryType, ExecLogEn
 
 mod analysis_query;
 mod build_command;
+mod configured_graph;
 mod fetch_command;
 mod mod_command;
 mod query_command;

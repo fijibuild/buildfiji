@@ -3,7 +3,8 @@
 //! analysed (nothing is built), and the configured targets, or the actions
 //! they registered, are printed.
 
-use crate::build_command::{self, Report};
+use crate::build_command;
+use crate::configured_graph::ConfiguredGraph;
 use crate::fetch_command;
 use crate::query_graph::QueryGraph;
 use crate::{CliError, bzlmod_flags, locate_workspace_root};
@@ -11,7 +12,7 @@ use fjfj_analysis::ConfiguredTarget;
 use fjfj_bazel_compat::QueryArgs;
 use fjfj_graph::config::Configuration;
 use fjfj_graph::{Action, ActionKind, Label};
-use fjfj_query::{Evaluator, Options};
+use fjfj_query::{Evaluator, Graph, Options};
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
@@ -101,6 +102,12 @@ pub(crate) async fn run(args: QueryArgs, kind: Kind) -> Result<(), CliError> {
     let text = rest.join(" ");
     let expr =
         fjfj_query::parse(&text).map_err(|e| bad(format!("Error while parsing '{text}': {e}")))?;
+    let query = Query {
+        kind,
+        format,
+        options: query_options,
+        expr,
+    };
     let configuration = build_command::configuration_from(&build_flags).map_err(bad)?;
     let workspace_root = locate_workspace_root(command)?;
     let module_bazel_text =
@@ -114,28 +121,7 @@ pub(crate) async fn run(args: QueryArgs, kind: Kind) -> Result<(), CliError> {
         let (resolved, repos) =
             fetch_command::begin(&fetch, &bzlmod, &workspace_root, &module_bazel_text)?;
         let repos = Arc::new(repos);
-        let labels: BTreeSet<Label> = {
-            let graph = QueryGraph::new(repos.clone());
-            Evaluator::new(&graph, query_options)
-                .eval(&expr)
-                .map_err(|e| CliError::Query(anyhow::anyhow!(e)))?
-        };
-        let mut options = build_command::Options {
-            configuration,
-            platform: build_flags.platforms.clone(),
-            extra_toolchains: build_flags.extra_toolchains.clone(),
-            extra_execution_platforms: build_flags.extra_execution_platforms.clone(),
-            host_platform: build_flags.host_platform.clone(),
-            aspects: build_flags.aspects.clone(),
-            output_groups: Vec::new(),
-            keep_going: true,
-            build: false,
-            symlink_prefix: "bazel-".to_owned(),
-            jobs: None,
-            strategy: fjfj_exec::run::Options::default().strategy,
-            show_result: 0,
-            test: None,
-        };
+        let mut options = build_options(configuration, &build_flags);
         if let Some(platforms) = repos.module_repo("platforms") {
             for (setting, value) in fjfj_graph::config::host_constraints() {
                 options.configuration.constraints.insert(Label {
@@ -145,25 +131,14 @@ pub(crate) async fn run(args: QueryArgs, kind: Kind) -> Result<(), CliError> {
                 });
             }
         }
-        let request = build_command::Request {
-            layout: fjfj_exec::execroot::Layout {
-                workspace: workspace_root.clone(),
-                output_base: fetch
-                    .output_base
-                    .clone()
-                    .unwrap_or_else(|| fetch_command::default_output_base(&workspace_root)),
-            },
-            options,
+        let layout = fjfj_exec::execroot::Layout {
+            workspace: workspace_root.clone(),
+            output_base: fetch
+                .output_base
+                .clone()
+                .unwrap_or_else(|| fetch_command::default_output_base(&workspace_root)),
         };
-        let targets: Vec<Label> = labels.iter().cloned().collect();
-        let report = build_command::run(&repos, &targets, &request);
-        if let Some((label, message)) = report.analysis_errors.first() {
-            return Err(CliError::Query(anyhow::anyhow!(
-                "{}: {message}",
-                build_command::label_name(label)
-            )));
-        }
-        let text = render(kind, &format, &labels, &report);
+        let text = evaluate(&query, &repos, options, layout)?;
         fetch_command::finish(resolved, &repos)?;
         Ok(text)
     })
@@ -173,27 +148,95 @@ pub(crate) async fn run(args: QueryArgs, kind: Kind) -> Result<(), CliError> {
     Ok(())
 }
 
-/// The analysed targets among `labels`, in label then configuration order.
-fn chosen<'a>(labels: &BTreeSet<Label>, report: &'a Report) -> Vec<&'a Arc<ConfiguredTarget>> {
-    let mut chosen: Vec<_> = report
-        .analysed
-        .iter()
-        .filter(|t| labels.contains(&t.label))
-        .collect();
+/// `build`'s options for an analysis alone: nothing is built.
+fn build_options(
+    configuration: Configuration,
+    flags: &fjfj_bazel_compat::build_flags::BuildFlags,
+) -> build_command::Options {
+    build_command::Options {
+        configuration,
+        platform: flags.platforms.clone(),
+        extra_toolchains: flags.extra_toolchains.clone(),
+        extra_execution_platforms: flags.extra_execution_platforms.clone(),
+        host_platform: flags.host_platform.clone(),
+        aspects: flags.aspects.clone(),
+        output_groups: Vec::new(),
+        keep_going: true,
+        build: false,
+        symlink_prefix: "bazel-".to_owned(),
+        jobs: None,
+        strategy: fjfj_exec::run::Options::default().strategy,
+        show_result: 0,
+        test: None,
+    }
+}
+
+/// What was asked: the expression and how to print what it names.
+struct Query {
+    kind: Kind,
+    format: String,
+    options: Options,
+    expr: fjfj_query::Expr,
+}
+
+/// Analyse the targets the expression names, run it over what that made, and
+/// print the result.
+fn evaluate(
+    query: &Query,
+    repos: &Arc<fjfj_repo::Repos>,
+    options: build_command::Options,
+    layout: fjfj_exec::execroot::Layout,
+) -> Result<String, CliError> {
+    let graph = QueryGraph::new(repos.clone());
+    let mut named: BTreeSet<Label> = BTreeSet::new();
+    for pattern in query.expr.patterns() {
+        named.extend(
+            graph
+                .pattern(pattern)
+                .map_err(|e| CliError::Query(anyhow::anyhow!(e)))?,
+        );
+    }
+    let request = build_command::Request { layout, options };
+    let targets: Vec<Label> = named.into_iter().collect();
+    let report = build_command::run(repos, &targets, &request);
+    if let Some((label, message)) = report.analysis_errors.first() {
+        return Err(CliError::Query(anyhow::anyhow!(
+            "{}: {message}",
+            build_command::label_name(label)
+        )));
+    }
+    let configured = ConfiguredGraph::new(&graph, &report.analysed);
+    let labels = Evaluator::new(&configured, query.options)
+        .eval(&query.expr)
+        .map_err(|e| CliError::Query(anyhow::anyhow!(e)))?;
+    Ok(render(query.kind, &query.format, &labels, &configured))
+}
+
+/// The configured targets `labels` stand for, in label then configuration order.
+fn chosen<'a>(
+    labels: &BTreeSet<Label>,
+    graph: &'a ConfiguredGraph<'_>,
+) -> Vec<&'a Arc<ConfiguredTarget>> {
+    let mut chosen: Vec<_> = labels.iter().filter_map(|l| graph.target(l)).collect();
     chosen.sort_by_key(|t| {
         (
             build_command::label_name(&t.label),
-            t.configuration.mnemonic(),
+            t.configuration.checksum(),
         )
     });
     chosen
 }
 
-fn render(kind: Kind, format: &str, labels: &BTreeSet<Label>, report: &Report) -> String {
+fn render(
+    kind: Kind,
+    format: &str,
+    labels: &BTreeSet<Label>,
+    graph: &ConfiguredGraph<'_>,
+) -> String {
     let mut out = String::new();
     match kind {
         Kind::Cquery => {
-            for t in chosen(labels, report) {
+            for t in chosen(labels, graph) {
                 // A source file has no configuration.
                 let config = if t.rule_class.is_some() {
                     t.configuration.checksum()[..7].to_owned()
@@ -213,7 +256,7 @@ fn render(kind: Kind, format: &str, labels: &BTreeSet<Label>, report: &Report) -
             }
         }
         Kind::Aquery => {
-            let mut actions: Vec<(&Action, &Configuration)> = chosen(labels, report)
+            let mut actions: Vec<(&Action, &Configuration)> = chosen(labels, graph)
                 .into_iter()
                 .flat_map(|t| t.actions.iter().map(|a| (a, &t.configuration)))
                 .collect();
@@ -293,6 +336,134 @@ fn shell_quote(arg: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use fjfj_bzlmod::eval::{EvalOptions, eval_module_file};
+    use std::collections::BTreeMap;
+
+    /// `fjfj <kind> <expr>` on a workspace of `files`.
+    fn query_on(files: &[(&str, &str)], kind: Kind, format: &str, expr: &str) -> String {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = dir.path().join("ws");
+        for (file, text) in files {
+            let at = ws.join(file);
+            std::fs::create_dir_all(at.parent().unwrap()).unwrap();
+            std::fs::write(at, text).unwrap();
+        }
+        let module = eval_module_file("MODULE.bazel", "module(name = 'm')\n", &EvalOptions::root())
+            .unwrap()
+            .module;
+        let repos = Arc::new(
+            fjfj_repo::Repos::new(
+                fjfj_repo::Options {
+                    workspace_root: ws.clone(),
+                    output_base: dir.path().join("ob"),
+                    environ: BTreeMap::new(),
+                    downloader: None,
+                    repository_cache: None,
+                    distdirs: Vec::new(),
+                    registries: Vec::new(),
+                    facts: Vec::new(),
+                    repo_overrides: Vec::new(),
+                },
+                module,
+            )
+            .unwrap(),
+        );
+        let query = Query {
+            kind,
+            format: format.to_owned(),
+            options: Options::default(),
+            expr: fjfj_query::parse(expr).unwrap(),
+        };
+        let options = build_options(Configuration::default(), &Default::default());
+        let layout = fjfj_exec::execroot::Layout {
+            workspace: ws,
+            output_base: dir.path().join("exec"),
+        };
+        evaluate(&query, &repos, options, layout).unwrap()
+    }
+
+    /// Two targets of one rule, the second reached through a transition that
+    /// sets a build setting, which `//:b` is also built without.
+    const TRANSITION: &[(&str, &str)] = &[
+        ("MODULE.bazel", ""),
+        (
+            "defs.bzl",
+            r#"
+def _t(settings, attr):
+    return {"//:flag": "x"}
+t = transition(implementation = _t, inputs = [], outputs = ["//:flag"])
+def _r(ctx):
+    out = ctx.actions.declare_file(ctx.label.name + ".txt")
+    ctx.actions.run_shell(outputs = [out], inputs = ctx.files.srcs, command = "cat $@ > " + out.path, mnemonic = "Cat", env = {"A": "b"})
+    return [DefaultInfo(files = depset([out]))]
+r = rule(implementation = _r, attrs = {"srcs": attr.label_list(allow_files = True), "deps": attr.label_list(cfg = t)})
+def _f(ctx):
+    return []
+flag_rule = rule(implementation = _f, build_setting = config.string(flag = True))
+"#,
+        ),
+        (
+            "BUILD",
+            r#"
+load(":defs.bzl", "r", "flag_rule")
+flag_rule(name = "flag", build_setting_default = "d")
+r(name = "a", srcs = ["s.txt"], deps = [":b"])
+r(name = "b", srcs = ["s.txt"])
+"#,
+        ),
+        ("s.txt", ""),
+    ];
+
+    /// Each line without its configuration digits.
+    fn undigested(text: &str) -> Vec<String> {
+        text.lines()
+            .map(|l| match l.rsplit_once(" (") {
+                Some((head, tail)) if tail.ends_with(')') && tail != "null)" => {
+                    format!("{head} ({})", tail.len() - 1)
+                }
+                _ => l.to_owned(),
+            })
+            .collect()
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn cquery_lists_a_target_once_for_each_configuration() {
+        let text =
+            tokio::task::spawn_blocking(|| query_on(TRANSITION, Kind::Cquery, "label", "//:b"))
+                .await
+                .unwrap();
+        assert_eq!(undigested(&text), ["//:b (7)"]);
+        let text =
+            tokio::task::spawn_blocking(|| query_on(TRANSITION, Kind::Cquery, "label", "//..."))
+                .await
+                .unwrap();
+        // //:b by itself and //:b below //:a, which transitions it.
+        assert_eq!(
+            undigested(&text),
+            ["//:a (7)", "//:b (7)", "//:b (7)", "//:flag (7)"]
+        );
+        let digits: Vec<&str> = text.lines().filter(|l| l.starts_with("//:b")).collect();
+        assert_ne!(digits[0], digits[1]);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn deps_follow_the_edge_into_the_configuration_the_transition_chose() {
+        let all =
+            tokio::task::spawn_blocking(|| query_on(TRANSITION, Kind::Cquery, "label", "//:b"))
+                .await
+                .unwrap();
+        let below = tokio::task::spawn_blocking(|| {
+            query_on(TRANSITION, Kind::Cquery, "label", "deps(//:a) - //:a")
+        })
+        .await
+        .unwrap();
+        assert_eq!(undigested(&below), ["//:b (7)", "//:s.txt (null)"]);
+        assert_ne!(
+            all.lines().next().unwrap(),
+            below.lines().next().unwrap(),
+            "//:b below //:a is not the //:b that was built on its own"
+        );
+    }
 
     fn args(words: &[&str]) -> Vec<String> {
         words.iter().map(|s| s.to_string()).collect()
