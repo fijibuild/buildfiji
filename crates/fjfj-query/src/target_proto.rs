@@ -422,7 +422,7 @@ pub fn target(ev: &Evaluator<'_>, label: &Label, options: &ProtoOptions) -> Resu
                 .one(1, "name", name)
                 .one(2, "rule_class", class.as_str());
             if options.locations {
-                rule = rule.one(3, "location", node.location.as_str());
+                rule = rule.one(3, "location", node.shown_location(graph));
             }
             rule = rule.many(
                 4,
@@ -461,7 +461,7 @@ pub fn target(ev: &Evaluator<'_>, label: &Label, options: &ProtoOptions) -> Resu
         NodeKind::SourceFile => {
             let mut file = Msg::new().one(1, "name", name);
             if options.locations {
-                file = file.one(2, "location", node.location.as_str());
+                file = file.one(2, "location", node.shown_location(graph));
             }
             let mut loads: Vec<&Label> = node.loads.iter().collect();
             loads.sort();
@@ -484,7 +484,7 @@ pub fn target(ev: &Evaluator<'_>, label: &Label, options: &ProtoOptions) -> Resu
                     .one(1, "name", name)
                     .one(2, "generating_rule", graph.display(rule));
             if options.locations {
-                file = file.one(3, "location", node.location.as_str());
+                file = file.one(3, "location", node.shown_location(graph));
             }
             Msg::new()
                 .one(1, "type", Val::Enum("GENERATED_FILE", 3))

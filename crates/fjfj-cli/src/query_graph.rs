@@ -23,6 +23,8 @@ pub(crate) struct QueryGraph {
     groups: Mutex<BTreeMap<Label, &'static fjfj_graph::visibility::PackageGroup>>,
     /// What the main repository calls each repo: canonical to apparent.
     apparent: BTreeMap<String, String>,
+    /// `--relative_locations`.
+    relative: bool,
 }
 
 impl QueryGraph {
@@ -40,7 +42,14 @@ impl QueryGraph {
             nodes: Mutex::new(BTreeMap::new()),
             groups: Mutex::new(BTreeMap::new()),
             apparent,
+            relative: false,
         }
+    }
+
+    /// Show locations from the root of the repository (`--relative_locations`).
+    pub(crate) fn with_relative_locations(mut self, on: bool) -> QueryGraph {
+        self.relative = on;
+        self
     }
 
     fn package(&self, label: &Label) -> Result<Arc<Package>, String> {
@@ -326,6 +335,7 @@ impl QueryGraph {
                 executable: schema.executable,
             },
             location: rule_location,
+            relative_location: location.clone(),
             attrs,
             edges,
             outputs: package
@@ -604,6 +614,14 @@ impl QueryGraph {
             label: label.clone(),
             kind,
             location: format!("{}:1:1", path.display()),
+            relative_location: format!(
+                "{}:1:1",
+                if label.package.is_empty() {
+                    label.name.clone()
+                } else {
+                    format!("{}/{}", label.package, label.name)
+                }
+            ),
             attrs: Vec::new(),
             edges: Vec::new(),
             outputs: Vec::new(),
@@ -651,6 +669,10 @@ fn collect_labels(
 }
 
 impl Graph for QueryGraph {
+    fn relative_locations(&self) -> bool {
+        self.relative
+    }
+
     fn pattern(&self, text: &str) -> Result<Vec<Label>, String> {
         let context = PatternContext {
             repo: "",
@@ -1612,6 +1634,27 @@ allk(
         let mut short = fjfj_query::output::GraphOptions::default();
         assert!(short.flag("graph:node_limit", Some("9")).unwrap());
         assert!(draw(&short).contains("\"//:p.txt\\n...and 1 more items\""));
+    }
+
+    #[test]
+    fn relative_locations_start_at_the_root_of_the_repository() {
+        let (dir, repos) = workspace();
+        let ws = dir.path().join("ws").display().to_string();
+        let locations = |relative: bool| {
+            let graph = QueryGraph::new(repos.clone()).with_relative_locations(relative);
+            query(
+                &graph,
+                "//a:lib + //a:a.txt",
+                Format::Location,
+                Order::Auto,
+                Options::default(),
+            )
+        };
+        assert_eq!(
+            locations(true),
+            "a/a.txt:1:1: source file //a:a.txt\na/BUILD:6:6: mylib rule //a:lib\n"
+        );
+        assert!(locations(false).starts_with(&format!("{ws}/a/a.txt:1:1: ")));
     }
 
     #[test]

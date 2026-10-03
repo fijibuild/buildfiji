@@ -38,6 +38,7 @@ mod fetch_command;
 mod mod_command;
 mod query_command;
 mod query_graph;
+mod query_io;
 mod run_command;
 mod test_command;
 mod workspace;

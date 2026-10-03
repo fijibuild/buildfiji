@@ -375,7 +375,7 @@ pub fn render_with(
                 let node = ev.node(&label)?;
                 line(format!(
                     "{}: {} {}",
-                    node.location,
+                    node.shown_location(graph),
                     node.kind.description(),
                     graph.output_name(&label)
                 ));
@@ -529,7 +529,7 @@ fn xml_element(ev: &Evaluator<'_>, label: &Label) -> Result<Vec<String>, String>
     let graph = ev.graph();
     let node = ev.node(label)?;
     let name = escape(&graph.output_name(label));
-    let location = escape(&node.location);
+    let location = escape(node.shown_location(graph));
     let mut out = Vec::new();
     match &node.kind {
         NodeKind::SourceFile => {

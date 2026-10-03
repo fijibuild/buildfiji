@@ -477,6 +477,10 @@ impl Graph for ConfiguredGraph<'_> {
         }
     }
 
+    fn relative_locations(&self) -> bool {
+        self.loading.relative_locations()
+    }
+
     fn sorts_edges(&self) -> bool {
         true
     }

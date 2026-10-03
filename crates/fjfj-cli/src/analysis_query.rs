@@ -108,6 +108,8 @@ struct Flags {
     proto: fjfj_query::target_proto::ProtoOptions,
     graph: fjfj_query::output::GraphOptions,
     transitions: Transitions,
+    terminator: char,
+    relative_locations: bool,
 }
 
 impl Flags {
@@ -164,6 +166,8 @@ fn extract(kind: Kind, args: &[String]) -> Result<(Flags, Vec<String>), CliError
         proto: Default::default(),
         graph: Default::default(),
         transitions: Transitions::None,
+        terminator: '\n',
+        relative_locations: false,
     };
     let mut rest = Vec::new();
     let mut iter = args.iter();
@@ -210,6 +214,10 @@ fn extract(kind: Kind, args: &[String]) -> Result<(Flags, Vec<String>), CliError
                     }
                 };
             }
+            "relative_locations" => flags.relative_locations = true,
+            "norelative_locations" => flags.relative_locations = false,
+            "line_terminator_null" => flags.terminator = '\0',
+            "noline_terminator_null" => flags.terminator = '\n',
             "implicit_deps" => flags.options.implicit_deps = true,
             "noimplicit_deps" => flags.options.implicit_deps = false,
             "tool_deps" => flags.options.tool_deps = true,
@@ -248,6 +256,7 @@ pub(crate) async fn run(args: QueryArgs, kind: Kind) -> Result<(), CliError> {
     let (build_flags, rest) = fjfj_bazel_compat::build_flags::extract(&rest, command);
     let (bzlmod, rest) = bzlmod_flags::extract(&rest, command);
     let (fetch, rest) = fetch_command::extract(&rest)?;
+    let (io, rest) = crate::query_io::extract(&rest)?;
     let implemented: Vec<&'static str> = [
         bzlmod_flags::IMPLEMENTED,
         fetch_command::IMPLEMENTED,
@@ -259,7 +268,7 @@ pub(crate) async fn run(args: QueryArgs, kind: Kind) -> Result<(), CliError> {
     .collect();
     fjfj_bazel_compat::clap_flags::validate(&rest, command, &implemented)
         .map_err(|e| CliError::CommandLine(anyhow::Error::from(e)))?;
-    let text = rest.join(" ");
+    let text = crate::query_io::expression(&io, &rest)?;
     let expr = fjfj_query::parse_in(&text, kind.dialect())
         .map_err(|e| bad(format!("Error while parsing '{text}': {e}")))?;
     let formatter = (flags.format == "starlark")
@@ -274,6 +283,8 @@ pub(crate) async fn run(args: QueryArgs, kind: Kind) -> Result<(), CliError> {
         proto: flags.proto,
         graph: flags.graph,
         transitions: flags.transitions,
+        terminator: flags.terminator,
+        relative_locations: flags.relative_locations,
         expr,
     };
     let configuration = build_command::configuration_from(&build_flags).map_err(bad)?;
@@ -312,10 +323,7 @@ pub(crate) async fn run(args: QueryArgs, kind: Kind) -> Result<(), CliError> {
     })
     .await
     .map_err(|e| CliError::Internal(anyhow::anyhow!("{command} task panicked: {e}")))??;
-    use std::io::Write;
-    std::io::stdout()
-        .write_all(&output)
-        .map_err(|e| CliError::Internal(anyhow::anyhow!("writing the result failed: {e}")))?;
+    crate::query_io::write(&io, &output)?;
     Ok(())
 }
 
@@ -354,6 +362,9 @@ struct Query {
     proto: fjfj_query::target_proto::ProtoOptions,
     graph: fjfj_query::output::GraphOptions,
     transitions: Transitions,
+    /// `--line_terminator_null`: what ends a line of `cquery` output.
+    terminator: char,
+    relative_locations: bool,
     expr: fjfj_query::Expr,
 }
 
@@ -365,7 +376,7 @@ fn evaluate(
     options: build_command::Options,
     layout: fjfj_exec::execroot::Layout,
 ) -> Result<Vec<u8>, CliError> {
-    let graph = QueryGraph::new(repos.clone());
+    let graph = QueryGraph::new(repos.clone()).with_relative_locations(query.relative_locations);
     let mut named: BTreeSet<Label> = BTreeSet::new();
     for pattern in query.expr.patterns() {
         named.extend(
@@ -557,7 +568,8 @@ fn render(
     match query.kind {
         Kind::Cquery => match query.format.as_str() {
             "label" if query.transitions != Transitions::None => {
-                Ok(transitions_text(labels, graph, query.transitions))
+                Ok(transitions_text(labels, graph, query.transitions)
+                    .replace('\n', &query.terminator.to_string()))
             }
             "label" | "label_kind" | "graph" | "build" => {
                 let format = fjfj_query::output::Format::parse(&query.format)
@@ -567,7 +579,7 @@ fn render(
                     labels,
                     format,
                     fjfj_query::output::Order::Auto,
-                    '\n',
+                    query.terminator,
                     &query.graph,
                 )
                 .map_err(failed)
@@ -577,7 +589,7 @@ fn render(
                 for target in chosen(labels, graph) {
                     for file in target.files.to_vec() {
                         out.push_str(&file.exec_path());
-                        out.push('\n');
+                        out.push(query.terminator);
                     }
                 }
                 Ok(out)
@@ -603,7 +615,10 @@ fn render(
                 let lines =
                     fjfj_starlark::format_targets(name, source, expr, &repos.mappings(), &targets)
                         .map_err(failed)?;
-                Ok(lines.into_iter().map(|l| l + "\n").collect())
+                Ok(lines
+                    .into_iter()
+                    .map(|l| l + &query.terminator.to_string())
+                    .collect())
             }
             "transitions" => Err(CliError::Query(anyhow::anyhow!(
                 "Instead of using --output=transitions, set the --transitions flag explicitly to 'lite' or 'full'"
@@ -689,6 +704,8 @@ mod tests {
             proto: Default::default(),
             graph: Default::default(),
             transitions,
+            terminator: '\n',
+            relative_locations: false,
             expr: fjfj_query::parse_in(expr, kind.dialect()).unwrap(),
         };
         let flags = fjfj_bazel_compat::build_flags::BuildFlags {
@@ -1484,6 +1501,18 @@ execution_platform: "@@platforms//host:host"
         assert!(text.contains(&format!(
             "  Inputs: [{bin}/k2.sh, {bin}/k2.sh.repo_mapping, {bin}/k2.sh.runfiles/MANIFEST]\n  Outputs: [{bin}/k2.sh.runfiles]\n"
         )));
+    }
+
+    #[test]
+    fn cquery_takes_nul_as_the_line_terminator() {
+        let (flags, _) = extract(Kind::Cquery, &args(&["--line_terminator_null", "//a"])).unwrap();
+        assert_eq!(flags.terminator, '\0');
+        let (flags, _) = extract(
+            Kind::Cquery,
+            &args(&["--line_terminator_null", "--noline_terminator_null", "//a"]),
+        )
+        .unwrap();
+        assert_eq!(flags.terminator, '\n');
     }
 
     /// The descriptions of the actions an `aquery` printed.

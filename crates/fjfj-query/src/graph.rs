@@ -86,12 +86,25 @@ pub struct Edge {
     pub transition: bool,
 }
 
+impl Node {
+    /// The location as an output shows it.
+    pub fn shown_location(&self, graph: &dyn Graph) -> &str {
+        if graph.relative_locations() {
+            &self.relative_location
+        } else {
+            &self.location
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Node {
     pub label: Label,
     pub kind: NodeKind,
     /// `/path/BUILD:5:6`.
     pub location: String,
+    /// The same from the root of the repository: `BUILD:5:6`.
+    pub relative_location: String,
     /// Every attribute, in the class's order.
     pub attrs: Vec<NodeAttr>,
     /// In the order Bazel visits them.
@@ -170,6 +183,12 @@ pub trait Graph: Sync {
     /// For `config()`: whether the node `label` is in the configuration `name`
     /// identifies.
     fn in_configuration(&self, _label: &Label, _name: &str) -> bool {
+        false
+    }
+
+    /// Whether `--relative_locations` is on: locations in the outputs that
+    /// have them are from the root of the repository.
+    fn relative_locations(&self) -> bool {
         false
     }
 

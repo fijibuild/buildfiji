@@ -27,6 +27,7 @@ pub(crate) struct Flags {
     pub terminator: char,
     pub proto: fjfj_query::target_proto::ProtoOptions,
     pub graph: fjfj_query::output::GraphOptions,
+    pub relative_locations: bool,
 }
 
 /// `--output=bogus` is refused with Bazel's list of the valid ones.
@@ -45,6 +46,7 @@ pub(crate) fn extract(args: &[String]) -> Result<(Flags, Vec<String>), CliError>
         terminator: '\n',
         proto: Default::default(),
         graph: Default::default(),
+        relative_locations: false,
     };
     let mut rest = Vec::new();
     let mut iter = args.iter();
@@ -79,6 +81,8 @@ pub(crate) fn extract(args: &[String]) -> Result<(Flags, Vec<String>), CliError>
             "noimplicit_deps" => flags.options.implicit_deps = false,
             "tool_deps" => flags.options.tool_deps = true,
             "notool_deps" => flags.options.tool_deps = false,
+            "relative_locations" => flags.relative_locations = true,
+            "norelative_locations" => flags.relative_locations = false,
             "line_terminator_null" => flags.terminator = '\0',
             "noline_terminator_null" => flags.terminator = '\n',
             "keep_going" | "nokeep_going" => {}
@@ -112,6 +116,7 @@ pub(crate) async fn run(args: QueryArgs) -> Result<(), CliError> {
     let (flags, rest) = extract(&args.expr)?;
     let (bzlmod, rest) = bzlmod_flags::extract(&rest, "query");
     let (fetch, rest) = fetch_command::extract(&rest)?;
+    let (io, rest) = crate::query_io::extract(&rest)?;
     let implemented: Vec<&'static str> = [
         bzlmod_flags::IMPLEMENTED,
         fetch_command::IMPLEMENTED,
@@ -122,7 +127,7 @@ pub(crate) async fn run(args: QueryArgs) -> Result<(), CliError> {
     .collect();
     fjfj_bazel_compat::clap_flags::validate(&rest, "query", &implemented)
         .map_err(|e| CliError::CommandLine(anyhow::Error::from(e)))?;
-    let query = rest.join(" ");
+    let query = crate::query_io::expression(&io, &rest)?;
     let expr = fjfj_query::parse(&query)
         .map_err(|e| bad(format!("Error while parsing '{query}': {e}")))?;
     let workspace_root = locate_workspace_root("query")?;
@@ -137,7 +142,8 @@ pub(crate) async fn run(args: QueryArgs) -> Result<(), CliError> {
         let (resolved, repos) =
             fetch_command::begin(&fetch, &bzlmod, &workspace_root, &module_bazel_text)?;
         let repos = Arc::new(repos);
-        let graph = QueryGraph::new(repos.clone());
+        let graph =
+            QueryGraph::new(repos.clone()).with_relative_locations(flags.relative_locations);
         let evaluator = Evaluator::new(&graph, flags.options);
         let text = evaluator
             .eval(&expr)
@@ -159,9 +165,6 @@ pub(crate) async fn run(args: QueryArgs) -> Result<(), CliError> {
     })
     .await
     .map_err(|e| CliError::Internal(anyhow::anyhow!("query task panicked: {e}")))??;
-    use std::io::Write;
-    std::io::stdout()
-        .write_all(&output)
-        .map_err(|e| CliError::Internal(anyhow::anyhow!("writing the result failed: {e}")))?;
+    crate::query_io::write(&io, &output)?;
     Ok(())
 }
