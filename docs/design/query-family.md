@@ -28,6 +28,12 @@ workspaces; the tests carry what Bazel printed.
   the actions that are printed. A filter under `+`, `^` or `-` filters
   nothing, and as the argument of another function it is an error.
 
+- The rc files apply: `cquery` and `aquery` inherit what `build` lines give
+  them (an rc `build --aspects=...` lists those aspects' actions in aquery), and
+  accept the flags `build` reads that analysis has no use for. `aquery` keeps
+  `ParameterFileWrite` actions out, as Bazel does, and lists an aspect that
+  requires others as the chain `a() -> b()`.
+
 ## Output formats
 
 Everything is written through two layers. `fjfj-query::output` renders the

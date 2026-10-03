@@ -287,20 +287,20 @@ fn extract(kind: Kind, args: &[String]) -> Result<(Flags, Vec<String>), CliError
 
 pub(crate) async fn run(args: QueryArgs, kind: Kind) -> Result<(), CliError> {
     let command = kind.name();
-    let (flags, rest) = extract(kind, &args.expr)?;
+    // What the rc files give the command comes first, as for `build`, so the
+    // command line overrides it.
+    let with_rc: Vec<String> = crate::rc_flags(command)?
+        .into_iter()
+        .chain(args.expr.iter().cloned())
+        .collect();
+    let (flags, rest) = extract(kind, &with_rc)?;
     let (build_flags, rest) = fjfj_bazel_compat::build_flags::extract(&rest, command);
+    let rest = crate::drop_build_family_flags(rest, command)?;
     let (bzlmod, rest) = bzlmod_flags::extract(&rest, command);
     let (fetch, rest) = fetch_command::extract(&rest)?;
     let (io, rest) = crate::query_io::extract(&rest)?;
-    let implemented: Vec<&'static str> = [
-        bzlmod_flags::IMPLEMENTED,
-        fetch_command::IMPLEMENTED,
-        fjfj_bazel_compat::build_flags::IMPLEMENTED,
-        &["output", "implicit_deps", "tool_deps", "keep_going"],
-    ]
-    .iter()
-    .flat_map(|s| s.iter().copied())
-    .collect();
+    let mut implemented = crate::build_family_implemented();
+    implemented.extend(["output", "implicit_deps", "tool_deps", "keep_going"]);
     fjfj_bazel_compat::clap_flags::validate(&rest, command, &implemented)
         .map_err(|e| CliError::CommandLine(anyhow::Error::from(e)))?;
     let text = crate::query_io::expression(&io, &rest)?;
@@ -464,7 +464,14 @@ fn evaluate(
             aquery::action_filters(&query.expr).map_err(|e| CliError::Query(anyhow::anyhow!(e)))?;
         let rows: Vec<aquery::Row<'_>> = chosen(&labels, &configured)
             .into_iter()
-            .flat_map(|target| aquery::rows_of(target, configured.aspects_of(target), query.aquery))
+            .flat_map(|target| {
+                aquery::rows_of(
+                    target,
+                    configured.aspects_of(target),
+                    query.aquery,
+                    &configured,
+                )
+            })
             .filter(|row| filters.iter().all(|f| f.keeps(&row.action)))
             .collect();
         let pieces = aquery::pieces(&rows, query.aquery, &layout);
@@ -696,7 +703,9 @@ fn render(
             let filters = aquery::action_filters(&query.expr).map_err(failed)?;
             let rows: Vec<aquery::Row<'_>> = chosen(labels, graph)
                 .into_iter()
-                .flat_map(|target| aquery::rows_of(target, graph.aspects_of(target), query.aquery))
+                .flat_map(|target| {
+                    aquery::rows_of(target, graph.aspects_of(target), query.aquery, graph)
+                })
                 .filter(|row| filters.iter().all(|f| f.keeps(&row.action)))
                 .collect();
             match query.format.as_str() {
@@ -1156,6 +1165,26 @@ r(name = "sel", ss = select({":fast": ["f"], "//conditions:default": ["d"]}))
             text.matches("  AspectDescriptors: [//:defs.bzl%asp()]\n")
                 .count(),
             2
+        );
+        // The summary counts the aspects too.
+        let summary = tokio::task::spawn_blocking(|| {
+            query_on(
+                TRANSITION,
+                Kind::Aquery,
+                "summary",
+                "deps(//:a) - //:s.txt",
+                None,
+                &["//:defs.bzl%asp"],
+                aquery::Settings::default(),
+            )
+            .map(|bytes| String::from_utf8(bytes).unwrap())
+            .unwrap()
+        })
+        .await
+        .unwrap();
+        assert!(
+            summary.ends_with("\nAspects:\n  //:defs.bzl%asp: 2\n"),
+            "{summary}"
         );
         let without = with(aquery::Settings {
             aspects: false,

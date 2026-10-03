@@ -333,6 +333,16 @@ fn option_changes(from: &Configuration, to: &Configuration) -> Vec<(String, Stri
         .collect()
 }
 
+impl crate::aquery::Names for ConfiguredGraph<'_> {
+    fn label(&self, label: &Label) -> String {
+        self.loading.display(label)
+    }
+
+    fn aspects(&self, aspect: &fjfj_starlark::AspectRef) -> Vec<fjfj_starlark::AspectRef> {
+        self.loading.aspect_chain(aspect)
+    }
+}
+
 impl Graph for ConfiguredGraph<'_> {
     fn pattern(&self, text: &str) -> Result<Vec<Label>, String> {
         Ok(self

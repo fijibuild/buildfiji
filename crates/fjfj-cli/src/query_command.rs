@@ -130,7 +130,13 @@ pub(crate) fn extract(args: &[String]) -> Result<(Flags, Vec<String>), CliError>
 }
 
 pub(crate) async fn run(args: QueryArgs) -> Result<(), CliError> {
-    let (flags, rest) = extract(&args.expr)?;
+    // What the rc files give `query`, which the command line overrides.
+    let with_rc: Vec<String> = crate::rc_flags("query")?
+        .into_iter()
+        .chain(args.expr.iter().cloned())
+        .collect();
+    let (flags, rest) = extract(&with_rc)?;
+    let rest = crate::drop_build_family_flags(rest, "query")?;
     let (bzlmod, rest) = bzlmod_flags::extract(&rest, "query");
     let (fetch, rest) = fetch_command::extract(&rest)?;
     let (io, rest) = crate::query_io::extract(&rest)?;

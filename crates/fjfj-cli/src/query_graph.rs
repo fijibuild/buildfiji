@@ -441,6 +441,39 @@ impl QueryGraph {
             .collect()
     }
 
+    /// The aspects an action of `aspect` came from: the aspect, named by the
+    /// file that defines it, and then those it requires, each so.
+    pub(crate) fn aspect_chain(
+        &self,
+        aspect: &fjfj_starlark::AspectRef,
+    ) -> Vec<fjfj_starlark::AspectRef> {
+        let mut chain = Vec::new();
+        let mut next = vec![aspect.clone()];
+        while let Some(current) = next.pop() {
+            let spec = self
+                .repos
+                .module(&current.bzl)
+                .ok()
+                .and_then(|module| fjfj_starlark::aspect_spec(&module, &current.name));
+            let defined = spec
+                .as_ref()
+                .and_then(|s| s.schema.defined_in.clone())
+                .unwrap_or_else(|| current.bzl.clone());
+            let named = fjfj_starlark::AspectRef {
+                bzl: defined,
+                name: current.name.clone(),
+            };
+            if !chain.contains(&named) {
+                chain.push(named);
+            }
+            if let Some(spec) = spec {
+                // Depth first, in the order the aspect lists them.
+                next.extend(spec.requires.into_iter().rev());
+            }
+        }
+        chain
+    }
+
     /// Where the transition on `attr` of the rule `rule_class` of `bzl` was
     /// written, as `/abs/path/file.bzl:line:col`.
     pub(crate) fn transition_location(

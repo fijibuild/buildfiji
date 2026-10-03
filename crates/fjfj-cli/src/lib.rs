@@ -306,7 +306,7 @@ async fn resolve_workspace_bzlmod(flags: &BzlmodFlags) -> Result<Resolution, Cli
 /// The flags the `.bazelrc` files give `command`: the system, workspace and
 /// home ones, `import`s and `--config`s expanded, those of the commands it
 /// inherits from included. Nothing if there is no workspace here.
-fn rc_flags(command: &str) -> Result<Vec<String>, CliError> {
+pub(crate) fn rc_flags(command: &str) -> Result<Vec<String>, CliError> {
     let Ok(cwd) = std::env::current_dir() else {
         return Ok(Vec::new());
     };
@@ -519,6 +519,53 @@ async fn run(cli: Cli) -> Result<(), CliError> {
     }
 }
 
+/// The flags the modules `build` reads give: what an rc file may hand any
+/// command that inherits from `build`.
+const BUILD_IMPLEMENTED: &[&[&str]] = &[
+    flag_alias::IMPLEMENTED,
+    build_flags::IMPLEMENTED,
+    test_flags::IMPLEMENTED,
+    diagnostics_flags::IMPLEMENTED,
+    workspace_status_flags::IMPLEMENTED,
+    misc_flags::IMPLEMENTED,
+    output_filter::IMPLEMENTED,
+    execution_log_flags::IMPLEMENTED,
+    remote_flags::IMPLEMENTED,
+    bes_flags::IMPLEMENTED,
+    bzlmod_flags::IMPLEMENTED,
+    console_flags::IMPLEMENTED,
+    fetch_command::BUILD_IMPLEMENTED,
+];
+
+/// The names of [`BUILD_IMPLEMENTED`].
+pub(crate) fn build_family_implemented() -> Vec<&'static str> {
+    BUILD_IMPLEMENTED
+        .iter()
+        .flat_map(|s| s.iter().copied())
+        .collect()
+}
+
+/// `rest` without the flags the build modules read, for a command that
+/// analyses and builds nothing and has no use for them: an rc file gives
+/// them to `cquery` and `aquery` as it does to `build`.
+pub(crate) fn drop_build_family_flags(
+    rest: Vec<String>,
+    command: &'static str,
+) -> Result<Vec<String>, CliError> {
+    let (aliases, rest) =
+        flag_alias::extract(&rest).map_err(|e| CliError::CommandLine(anyhow::Error::from(e)))?;
+    let rest = flag_alias::apply(&aliases, &rest);
+    let (_, rest) = diagnostics_flags::extract(&rest, command);
+    let (_, rest) = workspace_status_flags::extract(&rest, command);
+    let (_, rest) = misc_flags::extract(&rest, command);
+    let (_, rest) = output_filter::extract(&rest, command);
+    let (_, rest) = execution_log_flags::extract(&rest, command);
+    let (_, rest) = remote_flags::extract(&rest, command);
+    let (_, rest) = bes_flags::extract(&rest, command);
+    let (_, rest) = console_flags::extract(&rest, command);
+    Ok(rest)
+}
+
 /// What a `build`, `run` or `test` has built.
 pub(crate) struct Built {
     pub(crate) report: build_command::Report,
@@ -569,25 +616,7 @@ async fn build_main(
     // ever reaching `TargetPattern::from_str`, whose "pattern
     // must start with // or @" error is misleading for a flag
     // typo.
-    const BUILD_IMPLEMENTED: &[&[&str]] = &[
-        flag_alias::IMPLEMENTED,
-        build_flags::IMPLEMENTED,
-        test_flags::IMPLEMENTED,
-        diagnostics_flags::IMPLEMENTED,
-        workspace_status_flags::IMPLEMENTED,
-        misc_flags::IMPLEMENTED,
-        output_filter::IMPLEMENTED,
-        execution_log_flags::IMPLEMENTED,
-        remote_flags::IMPLEMENTED,
-        bes_flags::IMPLEMENTED,
-        bzlmod_flags::IMPLEMENTED,
-        console_flags::IMPLEMENTED,
-        fetch_command::BUILD_IMPLEMENTED,
-    ];
-    let implemented: Vec<&'static str> = BUILD_IMPLEMENTED
-        .iter()
-        .flat_map(|s| s.iter().copied())
-        .collect();
+    let implemented = build_family_implemented();
     clap_flags::validate(&rest, command, &implemented)
         .map_err(|e| CliError::CommandLine(anyhow::Error::from(e)))?;
     let (build_flags, rest) = build_flags::extract(&rest, command);

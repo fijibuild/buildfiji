@@ -42,7 +42,9 @@ pub(crate) struct Row<'a> {
     pub target: &'a ConfiguredTarget,
     pub action: std::borrow::Cow<'a, Action>,
     /// The aspect that registered it, if one did.
-    pub aspect: Option<&'a AspectRef>,
+    pub aspect: Vec<AspectRef>,
+    /// Where it runs, as the main repository names the platform.
+    pub platform: String,
 }
 
 /// The actions of `target`, then those of the aspects applied to it.
@@ -50,20 +52,39 @@ pub(crate) fn rows_of<'a>(
     target: &'a ConfiguredTarget,
     aspects: &'a [std::sync::Arc<ConfiguredTarget>],
     settings: Settings,
+    names: &dyn Names,
 ) -> Vec<Row<'a>> {
-    let own = target.actions.iter().map(|action| Row {
+    let platform = names.label(
+        &target
+            .execution_platform
+            .clone()
+            .unwrap_or_else(host_platform),
+    );
+    // Bazel keeps the actions that write a parameter file out of the graph
+    // it prints; they are part of the action that reads the file.
+    let listed = |action: &&Action| action.mnemonic != "ParameterFileWrite";
+    let own_platform = platform.clone();
+    let own = target.actions.iter().filter(listed).map(move |action| Row {
         target,
         action: std::borrow::Cow::Borrowed(action),
-        aspect: None,
+        aspect: Vec::new(),
+        platform: own_platform.clone(),
     });
     let made = aspects
         .iter()
         .filter(|_| settings.aspects)
         .flat_map(move |made| {
-            made.actions.iter().map(move |action| Row {
+            let platform = platform.clone();
+            let chain = made
+                .aspect
+                .as_ref()
+                .map(|a| names.aspects(a))
+                .unwrap_or_default();
+            made.actions.iter().filter(listed).map(move |action| Row {
                 target,
                 action: std::borrow::Cow::Borrowed(action),
-                aspect: made.aspect.as_ref(),
+                aspect: chain.clone(),
+                platform: platform.clone(),
             })
         });
     own.chain(made).flat_map(expand_runfiles).collect()
@@ -109,7 +130,8 @@ fn expand_runfiles(row: Row<'_>) -> Vec<Row<'_>> {
             inputs,
             outputs,
         }),
-        aspect: row.aspect,
+        aspect: row.aspect.clone(),
+        platform: row.platform.clone(),
     };
     let tree_manifest = Artifact {
         root: dir_file.root.clone(),
@@ -175,15 +197,7 @@ fn host_platform() -> Label {
 impl Row<'_> {
     /// `@@platforms//host:host`: where the action runs.
     pub(crate) fn execution_platform(&self) -> String {
-        let platform = self
-            .target
-            .execution_platform
-            .clone()
-            .unwrap_or_else(host_platform);
-        format!(
-            "@@{}//{}:{}",
-            platform.repo, platform.package, platform.name
-        )
+        self.platform.clone()
     }
 
     /// What the action says it is doing.
@@ -196,6 +210,15 @@ impl Row<'_> {
             )
         })
     }
+}
+
+/// How the names in the output are written, which only the graph knows.
+pub(crate) trait Names {
+    /// A label as the main repository names it.
+    fn label(&self, label: &Label) -> String;
+    /// The aspects an action's aspect stands for: the file that defines each,
+    /// the aspect itself first and then those it requires.
+    fn aspects(&self, aspect: &AspectRef) -> Vec<AspectRef>;
 }
 
 /// The exec paths of `artifacts`, sorted, once each.
@@ -335,6 +358,18 @@ fn template_content(action: &Action, template: &str, layout: &Layout) -> String 
         .unwrap_or_default()
 }
 
+/// An aspect as a descriptor names it: `//pkg:file.bzl%name` in the main
+/// repository, `@@repo//pkg:file.bzl%name` in another.
+fn aspect_name(aspect: &AspectRef) -> String {
+    let bzl = &aspect.bzl;
+    let repo = if bzl.repo.is_empty() {
+        String::new()
+    } else {
+        format!("@@{}", bzl.repo)
+    };
+    format!("{repo}//{}:{}%{}", bzl.package, bzl.name, aspect.name)
+}
+
 /// `--output=text`.
 pub(crate) fn text(rows: &[Row<'_>], settings: Settings, layout: &Layout) -> String {
     let mut out = String::new();
@@ -360,11 +395,15 @@ fn text_one(out: &mut String, row: &Row<'_>, settings: Settings, layout: &Layout
         row.target.configuration.mnemonic()
     ));
     out.push_str(&format!("  Execution platform: {platform}\n"));
-    if let Some(aspect) = row.aspect {
+    if !row.aspect.is_empty() {
+        let chain: Vec<String> = row
+            .aspect
+            .iter()
+            .map(|a| format!("{}()", aspect_name(a)))
+            .collect();
         out.push_str(&format!(
-            "  AspectDescriptors: [{}%{}()]\n",
-            fjfj_graph::expand::label_text(&aspect.bzl),
-            aspect.name
+            "  AspectDescriptors: [{}]\n",
+            chain.join("\n    -> ")
         ));
     }
     out.push_str(&format!("  ActionKey: {}\n", action.key()));
@@ -468,7 +507,11 @@ pub(crate) fn summary(rows: &[Row<'_>]) -> String {
     let mut mnemonics: BTreeMap<String, usize> = BTreeMap::new();
     let mut configurations: BTreeMap<String, usize> = BTreeMap::new();
     let mut platforms: BTreeMap<String, usize> = BTreeMap::new();
+    let mut aspects: BTreeMap<String, usize> = BTreeMap::new();
     for row in rows {
+        for aspect in &row.aspect {
+            *aspects.entry(aspect_name(aspect)).or_default() += 1;
+        }
         *mnemonics.entry(row.action.mnemonic.clone()).or_default() += 1;
         *configurations
             .entry(row.target.configuration.mnemonic())
@@ -484,7 +527,11 @@ pub(crate) fn summary(rows: &[Row<'_>]) -> String {
         ("Mnemonics", &mnemonics),
         ("Configurations", &configurations),
         ("Execution Platforms", &platforms),
+        ("Aspects", &aspects),
     ] {
+        if counts.is_empty() && title == "Aspects" {
+            continue;
+        }
         out.push_str(&format!("\n{title}:\n"));
         for (name, count) in counts {
             out.push_str(&format!("  {name}: {count}\n"));
@@ -632,12 +679,8 @@ impl Dump {
             self.add(5, "configuration", message);
         }
         let mut aspect_ids = Vec::new();
-        if let Some(aspect) = row.aspect {
-            let name = format!(
-                "{}%{}",
-                fjfj_graph::expand::label_text(&aspect.bzl),
-                aspect.name
-            );
+        for aspect in &row.aspect {
+            let name = aspect_name(aspect);
             let (id, new) = Self::id(&mut self.aspects, &name);
             if new {
                 self.add(
