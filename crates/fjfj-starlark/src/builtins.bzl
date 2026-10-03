@@ -419,7 +419,16 @@ py_internal = struct(
 # attributes as the native schema types them. The rules that stay Rust are the
 # ones that read or write what a provider cannot say.
 def _filegroup(ctx):
-    return [DefaultInfo(files = depset(transitive = [src[DefaultInfo].files for src in ctx.attr.srcs]))]
+    files = depset(transitive = [src[DefaultInfo].files for src in ctx.attr.srcs])
+
+    # As Bazel's filegroup has it, the runfiles are `data` alone, files and
+    # what they bring along, not the `srcs`: rules_rust links the srcs into a
+    # sysroot beside what it reads out of these.
+    runfiles = ctx.runfiles().merge_all(
+        [t[DefaultInfo].default_runfiles for t in ctx.attr.data] +
+        [ctx.runfiles(transitive_files = t[DefaultInfo].files) for t in ctx.attr.data],
+    )
+    return [DefaultInfo(files = files, runfiles = runfiles)]
 
 _native_implementations = {
     "filegroup": _filegroup,

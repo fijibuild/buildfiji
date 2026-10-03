@@ -398,6 +398,36 @@ my_bin = rule(implementation = _impl, executable = True, attrs = {"data": attr.l
     );
 }
 
+/// A filegroup's default runfiles are its `data`, not its `srcs`, as in Bazel; rules_rust reads a linker's tools out of them.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_filegroups_data_is_in_its_default_runfiles() {
+    let (_dir, repos) = workspace(&[
+        ("MODULE.bazel", ""),
+        (
+            "defs.bzl",
+            r#"
+def _impl(ctx):
+    got = sorted([f.short_path for f in ctx.attr.dep[DefaultInfo].default_runfiles.files.to_list()])
+    if got != ["pkg/data.txt"]:
+        fail("runfiles were " + str(got))
+    if [f.short_path for f in ctx.attr.dep[DefaultInfo].files.to_list()] != ["pkg/src.txt"]:
+        fail("files were not the srcs")
+    return []
+
+check = rule(implementation = _impl, attrs = {"dep": attr.label()})
+"#,
+        ),
+        (
+            "pkg/BUILD.bazel",
+            "load('//:defs.bzl', 'check')\nfilegroup(name = 'fg', srcs = ['src.txt'], data = ['data.txt'])\ncheck(name = 'c', dep = ':fg')\n",
+        ),
+        ("BUILD.bazel", ""),
+        ("pkg/src.txt", ""),
+        ("pkg/data.txt", ""),
+    ]);
+    analyse(&repos, "//pkg:c").await.unwrap();
+}
+
 /// Probed with `bazel build` of the same BUILD file and `register_toolchains`.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_rule_gets_the_first_registered_toolchain_its_platform_fits() {
