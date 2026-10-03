@@ -266,7 +266,7 @@ fn internal(name: &'static str, ty: AttrType, value: Option<AttrValue>) -> NodeA
     }
 }
 
-fn attribute(graph: &dyn Graph, attr: &NodeAttr, options: &ProtoOptions) -> Msg {
+fn attribute(graph: &dyn Graph, attr: &NodeAttr, native: bool, options: &ProtoOptions) -> Msg {
     let mut msg = Msg::new().one(1, "name", attr.name.as_str());
     // Bazel types these two as the lists of strings they are.
     let ty_of = match attr.name.as_str() {
@@ -275,7 +275,7 @@ fn attribute(graph: &dyn Graph, attr: &NodeAttr, options: &ProtoOptions) -> Msg 
     };
     let mut ty = discriminator(ty_of);
     let mut nodep = true;
-    if attr.name == "licenses" && attr.ty == AttrType::StringList {
+    if native && attr.name == "licenses" && attr.ty == AttrType::StringList {
         // `licenses` is a `LICENSE`: its kinds, `NONE` when there are none.
         ty = Val::Enum("LICENSE", 9);
         nodep = false;
@@ -362,11 +362,13 @@ fn attributes<'a>(class: &str, node: &'a Node) -> Vec<std::borrow::Cow<'a, NodeA
         AttrType::LabelList,
         Some(AttrValue::LabelList(node.config_deps.clone())),
     )));
-    attrs.push(Cow::Owned(internal(
-        ":action_listener",
-        AttrType::LabelList,
-        Some(AttrValue::LabelList(Vec::new())),
-    )));
+    if class != "alias" {
+        attrs.push(Cow::Owned(internal(
+            ":action_listener",
+            AttrType::LabelList,
+            Some(AttrValue::LabelList(Vec::new())),
+        )));
+    }
     if class == "genrule" {
         attrs.push(Cow::Owned(internal(
             "$is_executable",
@@ -418,7 +420,8 @@ pub fn target(ev: &Evaluator<'_>, label: &Label, options: &ProtoOptions) -> Resu
     let node: std::sync::Arc<Node> = ev.node(label)?;
     let name = graph.display(label);
     Ok(match &node.kind {
-        NodeKind::Rule { class, .. } => {
+        NodeKind::Rule { class, native, .. } => {
+            let native = *native;
             let attrs: Vec<_> = attributes(class, &node)
                 .into_iter()
                 .filter(|a| options.default_values || a.explicit || a.name == "name")
@@ -438,7 +441,7 @@ pub fn target(ev: &Evaluator<'_>, label: &Label, options: &ProtoOptions) -> Resu
             let mut shown: Vec<Msg> = attrs
                 .iter()
                 .map(|a| {
-                    let message = attribute(graph, a, options);
+                    let message = attribute(graph, a, native, options);
                     if options.include_attribute_source_aspects {
                         message.one(23, "source_aspect_name", "")
                     } else {
@@ -458,11 +461,16 @@ pub fn target(ev: &Evaluator<'_>, label: &Label, options: &ProtoOptions) -> Resu
             }
             rule = rule.many(4, "attribute", shown);
             if options.rule_inputs_and_outputs {
-                let inputs: BTreeSet<String> = ev
+                // In label order, which compares the canonical names of the
+                // repositories.
+                let inputs: Vec<String> = ev
                     .edges(&*graph.declared_node(label)?)
                     .into_iter()
                     .filter(|e| !e.visibility)
-                    .map(|e| graph.display(&e.to))
+                    .map(|e| e.to)
+                    .collect::<BTreeSet<Label>>()
+                    .iter()
+                    .map(|l| graph.display(l))
                     .collect();
                 rule = rule.many(5, "rule_input", inputs).many(
                     6,

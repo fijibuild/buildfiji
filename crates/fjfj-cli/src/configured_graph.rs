@@ -190,10 +190,14 @@ impl ConfiguredGraph<'_> {
         attrs.sort_by_key(|a| a.name.starts_with('$') || a.name.starts_with('_'));
         let mut out = Vec::new();
         for attr in attrs {
+            let declared = match attr.name.strip_prefix('$') {
+                Some(rest) => format!("_{rest}"),
+                None => attr.name.clone(),
+            };
             let value = target
                 .attrs
                 .iter()
-                .find(|(n, _)| *n == attr.name)
+                .find(|(n, _)| *n == declared || *n == attr.name)
                 .map_or(&attr.value, |(_, v)| v);
             let mut named: Vec<&Label> = Vec::new();
             value.labels(&mut named);
@@ -390,7 +394,15 @@ impl Graph for ConfiguredGraph<'_> {
         // The values the target has in this configuration: a `select()` is
         // the branch that was taken.
         for attr in &mut node.attrs {
-            if let Some((_, decided)) = target.attrs.iter().find(|(n, _)| *n == attr.name)
+            // The attributes analysis decided are named as declared: `_x`.
+            let declared = match attr.name.strip_prefix('$') {
+                Some(rest) => format!("_{rest}"),
+                None => attr.name.clone(),
+            };
+            if let Some((_, decided)) = target
+                .attrs
+                .iter()
+                .find(|(n, _)| *n == declared || *n == attr.name)
                 && attr.value != *decided
             {
                 attr.value = decided.clone();

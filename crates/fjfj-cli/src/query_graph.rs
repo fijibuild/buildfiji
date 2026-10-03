@@ -156,6 +156,22 @@ impl QueryGraph {
                 continue;
             }
             let value = match (attr.name.as_str(), value) {
+                // A test with no timeout has the one its size has.
+                ("timeout", Some(AttrValue::String(none))) if none.is_empty() && !explicit => {
+                    let size = match rule_attr("size") {
+                        Some(AttrValue::String(size)) => size.as_str(),
+                        _ => "medium",
+                    };
+                    Some(AttrValue::String(
+                        match size {
+                            "small" => "short",
+                            "large" => "long",
+                            "enormous" => "eternal",
+                            _ => "moderate",
+                        }
+                        .to_owned(),
+                    ))
+                }
                 // The package's default stands where the rule gave none.
                 ("package_metadata", Some(AttrValue::LabelList(none)))
                     if none.is_empty() && !explicit =>
@@ -168,7 +184,7 @@ impl QueryGraph {
             };
             let Some(value) = value else {
                 attrs.push(NodeAttr {
-                    name: attr.name.clone(),
+                    name: shown_attr_name(&attr.name),
                     text: String::new(),
                     labels: Vec::new(),
                     explicit: false,
@@ -227,7 +243,7 @@ impl QueryGraph {
                 }
             }
             attrs.push(NodeAttr {
-                name: attr.name.clone(),
+                name: shown_attr_name(&attr.name),
                 text: self.attr_text(&value),
                 labels,
                 explicit,
@@ -235,6 +251,94 @@ impl QueryGraph {
                 value: value.clone(),
                 unset: false,
             });
+        }
+        // The attributes Bazel gives every executable and every test.
+        if schema.executable || schema.test {
+            attrs.push(NodeAttr {
+                name: "$is_executable".to_owned(),
+                text: "1".to_owned(),
+                labels: Vec::new(),
+                explicit: false,
+                ty: AttrType::Bool,
+                value: AttrValue::Bool(true),
+                unset: false,
+            });
+        }
+        if schema.test {
+            let test = |name: &str| Label {
+                repo: "bazel_tools".to_owned(),
+                package: "tools/test".to_owned(),
+                name: name.to_owned(),
+            };
+            let labelled: [(&str, AttrType, Vec<Label>); 8] = [
+                (
+                    "$collect_coverage_script",
+                    AttrType::Label,
+                    vec![test("collect_coverage")],
+                ),
+                ("$test_runtime", AttrType::LabelList, vec![test("runtime")]),
+                (
+                    "$test_setup_script",
+                    AttrType::Label,
+                    vec![test("test_setup")],
+                ),
+                ("$test_wrapper", AttrType::Label, vec![test("test_wrapper")]),
+                (
+                    "$xml_generator_script",
+                    AttrType::Label,
+                    vec![test("test_xml_generator")],
+                ),
+                ("$xml_writer", AttrType::Label, vec![test("xml_writer")]),
+                (
+                    ":coverage_report_generator",
+                    AttrType::Label,
+                    vec![test("coverage_report_generator")],
+                ),
+                (
+                    ":coverage_support",
+                    AttrType::Label,
+                    vec![test("coverage_support")],
+                ),
+            ];
+            for (name, ty, labels) in labelled {
+                let value = if ty == AttrType::Label {
+                    AttrValue::Label(labels[0].clone())
+                } else {
+                    AttrValue::LabelList(labels.clone())
+                };
+                attrs.push(NodeAttr {
+                    name: name.to_owned(),
+                    text: self.attr_text(&value),
+                    labels: labels.clone(),
+                    explicit: false,
+                    ty,
+                    value,
+                    unset: false,
+                });
+                for to in labels {
+                    edges.push(Edge {
+                        to,
+                        implicit: true,
+                        tool: false,
+                        condition: None,
+                        visibility: false,
+                        attr: name.to_owned(),
+                        transition: false,
+                    });
+                }
+            }
+            // What `--run_under` sets: nothing here.
+            for name in [":run_under_exec_config", ":run_under_target_config"] {
+                attrs.push(NodeAttr {
+                    name: name.to_owned(),
+                    text: String::new(),
+                    labels: Vec::new(),
+                    explicit: false,
+                    ty: AttrType::Label,
+                    value: AttrValue::StringList(Vec::new()),
+                    unset: true,
+                });
+            }
         }
         // A rule that transitions says so to an allowlist, by an attribute
         // Bazel adds.
@@ -288,7 +392,8 @@ impl QueryGraph {
                 implicit: true,
                 tool: false,
                 condition: None,
-                visibility: false,
+                // A dependency, but not among the inputs of the rule.
+                visibility: true,
                 attr: String::new(),
                 transition: false,
             });
@@ -342,6 +447,7 @@ impl QueryGraph {
                 class: class.to_owned(),
                 test: schema.test,
                 executable: schema.executable,
+                native: defined_in.is_none(),
             },
             location: rule_location,
             relative_location: location.clone(),
@@ -685,6 +791,15 @@ impl QueryGraph {
             implementation_hash: None,
             group: None,
         })
+    }
+}
+
+/// The name an attribute has in output: the private attribute `_x` of a
+/// Starlark rule is the implicit attribute `$x`.
+fn shown_attr_name(name: &str) -> String {
+    match name.strip_prefix('_') {
+        Some(rest) => format!("${rest}"),
+        None => name.to_owned(),
     }
 }
 
@@ -1736,6 +1851,90 @@ allk(
             labels(true),
             "@@//a:lib\n@@bazel_tools//tools/genrule:genrule-setup.sh\n"
         );
+    }
+
+    /// What `bazel query --output=streamed_jsonproto` named the attributes of
+    /// a Starlark test and a Starlark executable with a private attribute.
+    #[test]
+    fn executables_and_tests_have_the_implicit_attributes_bazel_gives_them() {
+        let (_dir, repos) = workspace_of(&[
+            ("MODULE.bazel", ""),
+            (
+                "defs.bzl",
+                "def _impl(ctx):\n    return []\nmy_test = rule(implementation = _impl, test = True, attrs = {\"_tool\": attr.label(default = \"//:t\")})\nmy_bin = rule(implementation = _impl, executable = True)\n",
+            ),
+            (
+                "BUILD",
+                "load(\":defs.bzl\", \"my_test\", \"my_bin\")\nfilegroup(name = \"t\")\nmy_test(name = \"tt\", size = \"large\")\nmy_bin(name = \"bb\")\n",
+            ),
+        ]);
+        let graph = QueryGraph::new(repos);
+        let rules = jsonproto(&graph, "//:tt + //:bb", &Default::default());
+        let rule =
+            |name: &str| rules.iter().find(|t| t["rule"]["name"] == name).unwrap()["rule"].clone();
+        let names = |rule: &serde_json::Value| -> Vec<String> {
+            rule["attribute"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|a| a["name"].as_str().unwrap().to_owned())
+                .filter(|n| n.starts_with(['$', ':']))
+                .collect()
+        };
+        assert_eq!(
+            names(&rule("//:bb")),
+            [
+                "$config_dependencies",
+                "$is_executable",
+                ":action_listener",
+                "$rule_implementation_hash"
+            ]
+        );
+        let test = rule("//:tt");
+        assert_eq!(
+            names(&test),
+            [
+                "$collect_coverage_script",
+                "$config_dependencies",
+                "$is_executable",
+                "$test_runtime",
+                "$test_setup_script",
+                "$test_wrapper",
+                "$tool",
+                "$xml_generator_script",
+                "$xml_writer",
+                ":action_listener",
+                ":coverage_report_generator",
+                ":coverage_support",
+                ":run_under_exec_config",
+                ":run_under_target_config",
+                "$rule_implementation_hash"
+            ]
+        );
+        // The test infrastructure is what it reads; a private attribute's
+        // target is too.
+        assert_eq!(
+            test["ruleInput"],
+            serde_json::json!([
+                "//:t",
+                "@bazel_tools//tools/test:collect_coverage",
+                "@bazel_tools//tools/test:coverage_report_generator",
+                "@bazel_tools//tools/test:coverage_support",
+                "@bazel_tools//tools/test:runtime",
+                "@bazel_tools//tools/test:test_setup",
+                "@bazel_tools//tools/test:test_wrapper",
+                "@bazel_tools//tools/test:test_xml_generator",
+                "@bazel_tools//tools/test:xml_writer"
+            ])
+        );
+        // A large test has the long timeout.
+        let timeout = test["attribute"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["name"] == "timeout")
+            .unwrap();
+        assert_eq!(timeout["stringValue"], "long");
     }
 
     #[test]

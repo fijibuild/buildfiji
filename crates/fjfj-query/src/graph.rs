@@ -26,6 +26,8 @@ pub enum NodeKind {
         test: bool,
         /// A rule that makes an executable.
         executable: bool,
+        /// A rule Bazel implements, as opposed to one written in Starlark.
+        native: bool,
     },
     SourceFile,
     GeneratedFile {
@@ -77,8 +79,9 @@ pub struct Edge {
     pub tool: bool,
     /// For `--output=graph`: the `select()` condition that brings it in.
     pub condition: Option<String>,
-    /// Comes from the `visibility` attribute, which `--output=xml` does not
-    /// list among a rule's inputs.
+    /// Not among the rule's inputs, which `--output=xml` and the protocol
+    /// buffer outputs list: the `visibility` attribute's package groups and
+    /// the toolchain types.
     pub visibility: bool,
     /// The attribute it comes from, empty if none.
     pub attr: String,
