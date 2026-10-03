@@ -37,6 +37,8 @@ pub enum ActionKind {
         repo_mapping_contents: String,
         /// Each link as a path under `dir` and the file it leads to.
         entries: Vec<(String, Artifact)>,
+        /// Paths under `dir` of empty regular files.
+        empty_files: Vec<String>,
     },
     /// Write the file `template`, with each key replaced by its value.
     Template {

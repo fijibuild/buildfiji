@@ -384,18 +384,12 @@ my_bin = rule(implementation = _impl, executable = True, attrs = {"data": attr.l
         .iter()
         .find(|a| a.mnemonic == "SymlinkTree")
         .unwrap();
-    let ActionKind::RunfilesTree { entries, .. } = &tree.kind else {
+    let ActionKind::RunfilesTree { empty_files, .. } = &tree.kind else {
         panic!()
     };
-    let inits: Vec<&str> = entries
-        .iter()
-        .map(|(p, _)| p.as_str())
-        .filter(|p| p.ends_with("__init__.py"))
-        .collect();
     assert_eq!(
-        inits,
-        [
-            "_main/pkg/e/__init__.py",
+        empty_files,
+        &[
             "__init__.py",
             "_main/pkg/__init__.py",
             "_main/pkg/a/__init__.py",

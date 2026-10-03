@@ -324,19 +324,46 @@ impl Scheduler {
                 repo_mapping,
                 repo_mapping_contents,
                 entries,
+                empty_files,
             } => {
                 let manifest_at = execroot.join(manifest);
                 let mapping_at = execroot.join(repo_mapping);
                 std::fs::write(&mapping_at, repo_mapping_contents)
                     .map_err(|e| fail(format!("cannot write {}: {e}", mapping_at.display())))?;
+                // Sorted by path, an empty file with nothing after its path.
+                let mut listed: Vec<(&str, String)> = entries
+                    .iter()
+                    .map(|(path, artifact)| {
+                        (
+                            path.as_str(),
+                            self.layout.resolve(artifact).display().to_string(),
+                        )
+                    })
+                    .chain(
+                        empty_files
+                            .iter()
+                            .map(|path| (path.as_str(), String::new())),
+                    )
+                    .chain(std::iter::once((
+                        "_repo_mapping",
+                        mapping_at.display().to_string(),
+                    )))
+                    .collect();
+                listed.sort();
                 let mut lines = String::new();
-                for (path, artifact) in entries {
-                    lines.push_str(&format!(
-                        "{path} {}\n",
-                        self.layout.resolve(artifact).display()
-                    ));
+                for (path, target) in &listed {
+                    // A path with a space, newline or backslash is escaped,
+                    // and its line starts with a space.
+                    if path.contains([' ', '\n', '\\']) {
+                        let escaped = path
+                            .replace('\\', "\\b")
+                            .replace(' ', "\\s")
+                            .replace('\n', "\\n");
+                        lines.push_str(&format!(" {escaped} {target}\n"));
+                    } else {
+                        lines.push_str(&format!("{path} {target}\n"));
+                    }
                 }
-                lines.push_str(&format!("_repo_mapping {}\n", mapping_at.display()));
                 std::fs::write(&manifest_at, lines)
                     .map_err(|e| fail(format!("cannot write {}: {e}", manifest_at.display())))?;
                 let tree = execroot.join(dir);
@@ -351,6 +378,16 @@ impl Scheduler {
                     }
                     std::os::unix::fs::symlink(self.layout.resolve(artifact), &link)
                         .map_err(|e| fail(format!("cannot link {}: {e}", link.display())))?;
+                }
+                for path in empty_files {
+                    let file = tree.join(path);
+                    if let Some(parent) = file.parent() {
+                        std::fs::create_dir_all(parent).map_err(|e| {
+                            fail(format!("cannot create {}: {e}", parent.display()))
+                        })?;
+                    }
+                    std::fs::write(&file, b"")
+                        .map_err(|e| fail(format!("cannot write {}: {e}", file.display())))?;
                 }
                 std::os::unix::fs::symlink(&manifest_at, tree.join("MANIFEST"))
                     .and_then(|()| {

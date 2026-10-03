@@ -199,6 +199,7 @@ impl ActionCache {
                 repo_mapping,
                 repo_mapping_contents,
                 entries,
+                empty_files,
             } => {
                 field(b"runfiles");
                 field(dir.as_bytes());
@@ -208,6 +209,10 @@ impl ActionCache {
                 for (path, artifact) in entries {
                     field(path.as_bytes());
                     field(artifact.exec_path().as_bytes());
+                }
+                field(b"empty");
+                for path in empty_files {
+                    field(path.as_bytes());
                 }
             }
             ActionKind::Template {
