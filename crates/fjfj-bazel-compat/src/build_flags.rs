@@ -40,6 +40,8 @@ pub const IMPLEMENTED: &[&str] = &[
     "memprof_profile",
     "propeller_optimize",
     "fdo_prefetch_hints",
+    "grte_top",
+    "fdo_optimize",
 ];
 
 /// The flags that are lists of options, kept in `options` joined by a space
@@ -67,6 +69,8 @@ pub const LABEL_OPTIONS: &[&str] = &[
     "memprof_profile",
     "propeller_optimize",
     "fdo_prefetch_hints",
+    "grte_top",
+    "fdo_optimize",
 ];
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

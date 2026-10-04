@@ -815,6 +815,8 @@ r = rule(implementation = _impl, attrs = {
     "_malloc": attr.label(default = configuration_field("cpp", "custom_malloc")),
     "_lite": attr.label(default = configuration_field("proto", "proto_toolchain_for_java_lite")),
     "_launcher": attr.label(default = configuration_field("java", "launcher")),
+    "_libc": attr.label(default = configuration_field("cpp", "libc_top")),
+    "_fdo": attr.label(default = configuration_field("cpp", "fdo_optimize")),
 })
 "#;
     let req = request(src, "r", Vec::new(), Vec::new());
@@ -822,6 +824,8 @@ r = rule(implementation = _impl, attrs = {
         ("custom_malloc".to_owned(), "//:m".to_owned()),
         ("proto_compiler".to_owned(), "//tools:mine".to_owned()),
         ("java_launcher".to_owned(), "//j:l".to_owned()),
+        ("grte_top".to_owned(), "//g:x".to_owned()),
+        ("fdo_optimize".to_owned(), "//:m".to_owned()),
     ]);
     let defaults = computed_defaults(
         &req.module,
@@ -846,6 +850,8 @@ r = rule(implementation = _impl, attrs = {
             ("_malloc", "@//:m"),
             ("_lite", "@bazel_tools//tools/proto:javalite_toolchain"),
             ("_launcher", "@//j:l"),
+            ("_libc", "@//g:everything"),
+            ("_fdo", "@//:m"),
         ]
         .map(|(a, b)| (a.to_owned(), b.to_owned()))
     );

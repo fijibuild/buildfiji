@@ -44,8 +44,10 @@ pub fn late_bound_default(
     // The option that sets the field wins; Bazel has no flag for the others.
     let flag = match (fragment, name) {
         ("java", "launcher") => Some("java_launcher"),
-        ("cpp", "zipper" | "libc_top" | "fdo_optimize" | "proto_profile_path")
-        | ("proto", "proto_toolchain_for_java_lite") => None,
+        ("cpp", "libc_top") => Some("grte_top"),
+        ("cpp", "zipper" | "proto_profile_path") | ("proto", "proto_toolchain_for_java_lite") => {
+            None
+        }
         _ => Some(name),
     };
     if let Some(text) = flag.and_then(|f| options.get(f)) {
@@ -57,7 +59,11 @@ pub fn late_bound_default(
             },
             &mut |apparent| mappings.resolve_apparent("", apparent),
         );
-        if let Ok(label) = label {
+        if let Ok(mut label) = label {
+            // --grte_top names a package; its libc is that package's `everything`.
+            if name == "libc_top" {
+                label.name = "everything".to_owned();
+            }
             return Some(label);
         }
     }
