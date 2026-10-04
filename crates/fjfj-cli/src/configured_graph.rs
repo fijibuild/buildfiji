@@ -562,6 +562,15 @@ impl ConfiguredGraph<'_> {
             if !transitive {
                 continue;
             }
+            // What the aspects its attributes ask for read counts from here.
+            for key in &t.aspect_deps {
+                for f in self
+                    .loading
+                    .aspect_fragments(&key.aspect.bzl, &key.aspect.name)
+                {
+                    out.extend(fragment_class(&f).map(str::to_owned));
+                }
+            }
             for key in &t.deps {
                 let Some(&at) = self.index.get(key) else {
                     continue;
@@ -603,6 +612,9 @@ impl ConfiguredGraph<'_> {
                 out.insert("TestConfiguration".to_owned());
             }
             _ => {}
+        }
+        if t.rule_class.as_deref() == Some("cc_libc_top_alias") {
+            out.insert("CppConfiguration".to_owned());
         }
         if t.test.is_some() {
             out.insert("TestConfiguration".to_owned());
@@ -647,5 +659,38 @@ impl ConfiguredGraph<'_> {
         for flag in settings.iter().flat_map(flags_of) {
             out.insert(self.loading.display(&flag));
         }
+        // The options a `config_setting` lists are the fragments' own.
+        for label in &settings {
+            let Some(node) = self.loading.node(label).ok() else {
+                continue;
+            };
+            let Some(fjfj_graph::rule::AttrValue::StringDict(values)) = node
+                .attrs
+                .iter()
+                .find(|a| a.name == "values")
+                .map(|a| &a.value)
+            else {
+                continue;
+            };
+            for (option, value) in values {
+                if option == "define" {
+                    let name = value.split('=').next().unwrap_or_default();
+                    out.insert(format!("--define:{name}"));
+                } else if let Some(classes) = option_fragments().get(option.as_str()) {
+                    out.extend(classes.iter().cloned());
+                }
+            }
+        }
     }
+}
+
+/// The fragment options each option of a `config_setting`'s `values` belongs
+/// to, recorded from Bazel 9.2.0 for the options that belong to one beyond
+/// the base.
+fn option_fragments() -> &'static std::collections::HashMap<String, Vec<String>> {
+    static TABLE: std::sync::OnceLock<std::collections::HashMap<String, Vec<String>>> =
+        std::sync::OnceLock::new();
+    TABLE.get_or_init(|| {
+        serde_json::from_str(include_str!("option_fragments.json")).expect("a table of options")
+    })
 }

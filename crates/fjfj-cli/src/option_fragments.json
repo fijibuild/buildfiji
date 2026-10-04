@@ -1,0 +1,749 @@
+{
+ "allow_local_tests": [
+  "TestConfiguration$TestOptions"
+ ],
+ "android_compiler": [
+  "AndroidConfiguration$Options"
+ ],
+ "android_databinding_use_androidx": [
+  "AndroidConfiguration$Options"
+ ],
+ "android_databinding_use_v3_4_args": [
+  "AndroidConfiguration$Options"
+ ],
+ "android_dynamic_mode": [
+  "AndroidConfiguration$Options"
+ ],
+ "android_fixed_resource_neverlinking": [
+  "AndroidConfiguration$Options"
+ ],
+ "android_migration_tag_check": [
+  "AndroidConfiguration$Options"
+ ],
+ "android_platforms": [
+  "AndroidConfiguration$Options"
+ ],
+ "android_resource_shrinking": [
+  "AndroidConfiguration$Options"
+ ],
+ "apple_generate_dsym": [
+  "CppOptions"
+ ],
+ "apple_platform_type": [
+  "AppleCommandLineOptions"
+ ],
+ "apple_platforms": [
+  "AppleCommandLineOptions"
+ ],
+ "apple_split_cpu": [
+  "AppleCommandLineOptions"
+ ],
+ "break_build_on_parallel_dex2oat_failure": [
+  "AndroidConfiguration$Options"
+ ],
+ "build_python_zip": [
+  "PythonOptions"
+ ],
+ "build_test_dwp": [
+  "CppOptions"
+ ],
+ "bytecode_optimization_pass_actions": [
+  "JavaOptions"
+ ],
+ "bytecode_optimizers": [
+  "JavaOptions"
+ ],
+ "cache_test_results": [
+  "TestConfiguration$TestOptions"
+ ],
+ "catalyst_cpus": [
+  "AppleCommandLineOptions"
+ ],
+ "cc_dotd_files": [
+  "CppOptions"
+ ],
+ "cc_include_scanning": [
+  "CppOptions"
+ ],
+ "cc_output_directory_tag": [
+  "CppOptions"
+ ],
+ "cc_proto_library_header_suffixes": [
+  "ProtoConfiguration$Options"
+ ],
+ "cc_proto_library_source_suffixes": [
+  "ProtoConfiguration$Options"
+ ],
+ "compiler": [
+  "CppOptions"
+ ],
+ "conlyopt": [
+  "CppOptions"
+ ],
+ "copt": [
+  "CppOptions"
+ ],
+ "coverage_output_generator": [
+  "CoverageConfiguration$CoverageOptions"
+ ],
+ "coverage_report_generator": [
+  "CoverageConfiguration$CoverageOptions"
+ ],
+ "coverage_support": [
+  "TestConfiguration$TestOptions"
+ ],
+ "crosstool_top": [
+  "CppOptions"
+ ],
+ "cs_fdo_absolute_path": [
+  "CppOptions"
+ ],
+ "cs_fdo_instrument": [
+  "CppOptions"
+ ],
+ "cs_fdo_profile": [
+  "CppOptions"
+ ],
+ "custom_malloc": [
+  "CppOptions"
+ ],
+ "cxxopt": [
+  "CppOptions"
+ ],
+ "desugar_for_android": [
+  "AndroidConfiguration$Options"
+ ],
+ "desugar_java8_libs": [
+  "AndroidConfiguration$Options"
+ ],
+ "device_debug_entitlements": [
+  "ObjcCommandLineOptions"
+ ],
+ "dexopts_supported_in_dexmerger": [
+  "AndroidConfiguration$Options"
+ ],
+ "dexopts_supported_in_dexsharder": [
+  "AndroidConfiguration$Options"
+ ],
+ "dexopts_supported_in_incremental_dexing": [
+  "AndroidConfiguration$Options"
+ ],
+ "dynamic_mode": [
+  "CppOptions"
+ ],
+ "enable_propeller_optimize_absolute_paths": [
+  "CppOptions"
+ ],
+ "enable_remaining_fdo_absolute_paths": [
+  "CppOptions"
+ ],
+ "enforce_proguard_file_extension": [
+  "JavaOptions"
+ ],
+ "enforce_transitive_configs_for_config_feature_flag": [
+  "ConfigFeatureFlagOptions"
+ ],
+ "experimental_add_test_support_to_compile_time_deps": [
+  "JavaOptions"
+ ],
+ "experimental_allow_android_library_deps_without_srcs": [
+  "AndroidConfiguration$Options"
+ ],
+ "experimental_always_filter_duplicate_classes_from_android_test": [
+  "AndroidConfiguration$Options"
+ ],
+ "experimental_android_assume_minsdkversion": [
+  "AndroidConfiguration$Options"
+ ],
+ "experimental_android_compress_java_resources": [
+  "AndroidConfiguration$Options"
+ ],
+ "experimental_android_databinding_v2": [
+  "AndroidConfiguration$Options"
+ ],
+ "experimental_android_library_exports_manifest_default": [
+  "AndroidConfiguration$Options"
+ ],
+ "experimental_android_resource_cycle_shrinking": [
+  "AndroidConfiguration$Options"
+ ],
+ "experimental_android_resource_name_obfuscation": [
+  "AndroidConfiguration$Options"
+ ],
+ "experimental_android_resource_path_shortening": [
+  "AndroidConfiguration$Options"
+ ],
+ "experimental_android_resource_shrinking": [
+  "AndroidConfiguration$Options"
+ ],
+ "experimental_android_rewrite_dexes_with_rex": [
+  "AndroidConfiguration$Options"
+ ],
+ "experimental_android_use_parallel_dex2oat": [
+  "AndroidConfiguration$Options"
+ ],
+ "experimental_cancel_concurrent_tests": [
+  "TestConfiguration$TestOptions"
+ ],
+ "experimental_cc_implementation_deps": [
+  "CppOptions"
+ ],
+ "experimental_check_desugar_deps": [
+  "AndroidConfiguration$Options"
+ ],
+ "experimental_cpp_compile_resource_estimation": [
+  "CppOptions"
+ ],
+ "experimental_cpp_modules": [
+  "CppOptions"
+ ],
+ "experimental_disable_instrumentation_manifest_merge": [
+  "AndroidConfiguration$Options"
+ ],
+ "experimental_enable_jspecify": [
+  "JavaOptions"
+ ],
+ "experimental_fetch_all_coverage_outputs": [
+  "TestConfiguration$TestOptions"
+ ],
+ "experimental_filter_library_jar_with_program_jar": [
+  "AndroidConfiguration$Options"
+ ],
+ "experimental_filter_r_jars_from_android_test": [
+  "AndroidConfiguration$Options"
+ ],
+ "experimental_fix_deps_tool": [
+  "JavaOptions"
+ ],
+ "experimental_generate_llvm_lcov": [
+  "CppOptions"
+ ],
+ "experimental_get_android_java_resources_from_optimized_jar": [
+  "AndroidConfiguration$Options"
+ ],
+ "experimental_include_xcode_execution_requirements": [
+  "AppleCommandLineOptions"
+ ],
+ "experimental_incremental_dexing_after_proguard": [
+  "AndroidConfiguration$Options"
+ ],
+ "experimental_incremental_dexing_after_proguard_by_default": [
+  "AndroidConfiguration$Options"
+ ],
+ "experimental_inmemory_dotd_files": [
+  "CppOptions"
+ ],
+ "experimental_inmemory_jdeps_files": [
+  "JavaOptions"
+ ],
+ "experimental_java_classpath": [
+  "JavaOptions"
+ ],
+ "experimental_java_test_auto_create_deploy_jar": [
+  "JavaOptions"
+ ],
+ "experimental_link_static_libraries_once": [
+  "CppOptions"
+ ],
+ "experimental_local_java_optimization_configuration": [
+  "JavaOptions"
+ ],
+ "experimental_local_java_optimizations": [
+  "JavaOptions"
+ ],
+ "experimental_objc_fastbuild_options": [
+  "ObjcCommandLineOptions"
+ ],
+ "experimental_objc_provider_from_linked": [
+  "AppleCommandLineOptions"
+ ],
+ "experimental_omit_resources_info_provider_from_android_binary": [
+  "AndroidConfiguration$Options"
+ ],
+ "experimental_omitfp": [
+  "CppOptions"
+ ],
+ "experimental_one_version_enforcement": [
+  "JavaOptions"
+ ],
+ "experimental_one_version_enforcement_use_transitive_jars_for_binary_under_test": [
+  "AndroidConfiguration$Options"
+ ],
+ "experimental_persistent_aar_extractor": [
+  "AndroidConfiguration$Options"
+ ],
+ "experimental_prefer_mutual_xcode": [
+  "AppleCommandLineOptions"
+ ],
+ "experimental_proto_descriptor_sets_include_source_info": [
+  "ProtoConfiguration$Options"
+ ],
+ "experimental_py_binaries_include_label": [
+  "PythonOptions"
+ ],
+ "experimental_python_import_all_repositories": [
+  "BazelPythonConfiguration$Options"
+ ],
+ "experimental_remove_r_classes_from_instrumentation_test_jar": [
+  "AndroidConfiguration$Options"
+ ],
+ "experimental_retain_test_configuration_across_testonly": [
+  "TestConfiguration$TestOptions"
+ ],
+ "experimental_run_android_lint_on_java_rules": [
+  "JavaOptions"
+ ],
+ "experimental_save_feature_state": [
+  "CppOptions"
+ ],
+ "experimental_split_coverage_postprocessing": [
+  "TestConfiguration$TestOptions"
+ ],
+ "experimental_strict_java_deps": [
+  "JavaOptions"
+ ],
+ "experimental_turbine_annotation_processing": [
+  "JavaOptions"
+ ],
+ "experimental_unsupported_and_brittle_include_scanning": [
+  "CppOptions"
+ ],
+ "experimental_use_cpp_compile_action_args_params_file": [
+  "CppOptions"
+ ],
+ "experimental_use_dex_splitter_for_incremental_dexing": [
+  "AndroidConfiguration$Options"
+ ],
+ "experimental_use_llvm_covmap": [
+  "CppOptions"
+ ],
+ "experimental_use_rtxt_from_merged_resources": [
+  "AndroidConfiguration$Options"
+ ],
+ "explicit_java_test_deps": [
+  "JavaOptions"
+ ],
+ "fat_apk_hwasan": [
+  "AndroidConfiguration$Options"
+ ],
+ "fdo_instrument": [
+  "CppOptions"
+ ],
+ "fdo_optimize": [
+  "CppOptions"
+ ],
+ "fdo_prefetch_hints": [
+  "CppOptions"
+ ],
+ "fdo_profile": [
+  "CppOptions"
+ ],
+ "fission": [
+  "CppOptions"
+ ],
+ "force_pic": [
+  "CppOptions"
+ ],
+ "grte_top": [
+  "CppOptions"
+ ],
+ "host_compiler": [
+  "CppOptions"
+ ],
+ "host_conlyopt": [
+  "CppOptions"
+ ],
+ "host_copt": [
+  "CppOptions"
+ ],
+ "host_cxxopt": [
+  "CppOptions"
+ ],
+ "host_grte_top": [
+  "CppOptions"
+ ],
+ "host_java_launcher": [
+  "JavaOptions"
+ ],
+ "host_javacopt": [
+  "JavaOptions"
+ ],
+ "host_jvmopt": [
+  "JavaOptions"
+ ],
+ "host_linkopt": [
+  "CppOptions"
+ ],
+ "host_macos_minimum_os": [
+  "AppleCommandLineOptions"
+ ],
+ "host_per_file_copt": [
+  "CppOptions"
+ ],
+ "incompatible_avoid_hardcoded_objc_compilation_flags": [
+  "ObjcCommandLineOptions"
+ ],
+ "incompatible_builtin_objc_strip_action": [
+  "ObjcCommandLineOptions"
+ ],
+ "incompatible_check_sharding_support": [
+  "TestConfiguration$TestOptions"
+ ],
+ "incompatible_default_to_explicit_init_py": [
+  "PythonOptions"
+ ],
+ "incompatible_disable_legacy_cc_provider": [
+  "CppOptions"
+ ],
+ "incompatible_disable_native_android_rules": [
+  "AndroidConfiguration$Options"
+ ],
+ "incompatible_disable_native_apple_binary_rule": [
+  "ObjcCommandLineOptions"
+ ],
+ "incompatible_disable_nocopts": [
+  "CppOptions"
+ ],
+ "incompatible_disallow_java_import_exports": [
+  "JavaOptions"
+ ],
+ "incompatible_disallow_sdk_frameworks_attributes": [
+  "ObjcCommandLineOptions"
+ ],
+ "incompatible_dont_enable_host_nonhost_crosstool_features": [
+  "CppOptions"
+ ],
+ "incompatible_enable_apple_toolchain_resolution": [
+  "AppleCommandLineOptions"
+ ],
+ "incompatible_enable_cc_toolchain_resolution": [
+  "CppOptions"
+ ],
+ "incompatible_exclusive_test_sandboxed": [
+  "TestConfiguration$TestOptions"
+ ],
+ "incompatible_make_thinlto_command_lines_standalone": [
+  "CppOptions"
+ ],
+ "incompatible_multi_release_deploy_jars": [
+  "JavaOptions"
+ ],
+ "incompatible_objc_alwayslink_by_default": [
+  "ObjcCommandLineOptions"
+ ],
+ "incompatible_python_disallow_native_rules": [
+  "PythonOptions"
+ ],
+ "incompatible_remove_ctx_android_fragment": [
+  "AndroidConfiguration$Options"
+ ],
+ "incompatible_remove_ctx_bazel_py_fragment": [
+  "BazelPythonConfiguration$Options"
+ ],
+ "incompatible_remove_ctx_py_fragment": [
+  "PythonOptions"
+ ],
+ "incompatible_remove_legacy_whole_archive": [
+  "CppOptions"
+ ],
+ "incompatible_require_ctx_in_configure_features": [
+  "CppOptions"
+ ],
+ "incompatible_strict_action_env": [
+  "BazelRuleClassProvider$StrictActionEnvOptions"
+ ],
+ "incompatible_strip_executable_safely": [
+  "ObjcCommandLineOptions"
+ ],
+ "incompatible_use_cpp_compile_header_mnemonic": [
+  "CppOptions"
+ ],
+ "incompatible_use_specific_tool_files": [
+  "CppOptions"
+ ],
+ "incompatible_validate_top_level_header_inclusions": [
+  "CppOptions"
+ ],
+ "incremental_dexing": [
+  "AndroidConfiguration$Options"
+ ],
+ "interface_shared_objects": [
+  "CppOptions"
+ ],
+ "internal_persistent_android_dex_desugar": [
+  "AndroidConfiguration$Options"
+ ],
+ "internal_persistent_busybox_tools": [
+  "AndroidConfiguration$Options"
+ ],
+ "internal_persistent_multiplex_android_dex_desugar": [
+  "AndroidConfiguration$Options"
+ ],
+ "internal_persistent_multiplex_busybox_tools": [
+  "AndroidConfiguration$Options"
+ ],
+ "ios_memleaks": [
+  "ObjcCommandLineOptions"
+ ],
+ "ios_minimum_os": [
+  "AppleCommandLineOptions"
+ ],
+ "ios_multi_cpus": [
+  "AppleCommandLineOptions"
+ ],
+ "ios_sdk_version": [
+  "AppleCommandLineOptions"
+ ],
+ "ios_signing_cert_name": [
+  "ObjcCommandLineOptions"
+ ],
+ "ios_simulator_device": [
+  "ObjcCommandLineOptions"
+ ],
+ "ios_simulator_version": [
+  "ObjcCommandLineOptions"
+ ],
+ "j2objc_dead_code_report": [
+  "J2ObjcCommandLineOptions"
+ ],
+ "j2objc_translation_flags": [
+  "J2ObjcCommandLineOptions"
+ ],
+ "java_deps": [
+  "JavaOptions"
+ ],
+ "java_header_compilation": [
+  "JavaOptions"
+ ],
+ "java_language_version": [
+  "JavaOptions"
+ ],
+ "java_launcher": [
+  "JavaOptions"
+ ],
+ "java_runtime_version": [
+  "JavaOptions"
+ ],
+ "javacopt": [
+  "JavaOptions"
+ ],
+ "jvmopt": [
+  "JavaOptions"
+ ],
+ "legacy_main_dex_list_generator": [
+  "AndroidConfiguration$Options"
+ ],
+ "legacy_whole_archive": [
+  "CppOptions"
+ ],
+ "linkopt": [
+  "CppOptions"
+ ],
+ "ltobackendopt": [
+  "CppOptions"
+ ],
+ "ltoindexopt": [
+  "CppOptions"
+ ],
+ "macos_cpus": [
+  "AppleCommandLineOptions"
+ ],
+ "macos_minimum_os": [
+  "AppleCommandLineOptions"
+ ],
+ "macos_sdk_version": [
+  "AppleCommandLineOptions"
+ ],
+ "memprof_profile": [
+  "CppOptions"
+ ],
+ "merge_android_manifest_permissions": [
+  "BazelAndroidConfiguration$Options"
+ ],
+ "minimum_os_version": [
+  "CppOptions"
+ ],
+ "non_incremental_per_target_dexopts": [
+  "AndroidConfiguration$Options"
+ ],
+ "objc_debug_with_GLIBCXX": [
+  "ObjcCommandLineOptions"
+ ],
+ "objc_enable_binary_stripping": [
+  "CppOptions"
+ ],
+ "objc_generate_linkmap": [
+  "CppOptions"
+ ],
+ "objc_use_dotd_pruning": [
+  "CppOptions"
+ ],
+ "objccopt": [
+  "CppOptions"
+ ],
+ "one_version_enforcement_on_java_tests": [
+  "JavaOptions"
+ ],
+ "optimizing_dexer": [
+  "AndroidConfiguration$Options"
+ ],
+ "output_library_merged_assets": [
+  "AndroidConfiguration$Options"
+ ],
+ "per_file_copt": [
+  "CppOptions"
+ ],
+ "per_file_ltobackendopt": [
+  "CppOptions"
+ ],
+ "plugin": [
+  "JavaOptions"
+ ],
+ "process_headers_in_dependencies": [
+  "CppOptions"
+ ],
+ "proguard_top": [
+  "JavaOptions"
+ ],
+ "propeller_optimize": [
+  "CppOptions"
+ ],
+ "propeller_optimize_absolute_cc_profile": [
+  "CppOptions"
+ ],
+ "propeller_optimize_absolute_ld_profile": [
+  "CppOptions"
+ ],
+ "proto_compiler": [
+  "ProtoConfiguration$Options"
+ ],
+ "proto_profile": [
+  "CppOptions"
+ ],
+ "proto_profile_path": [
+  "CppOptions"
+ ],
+ "proto_toolchain_for_cc": [
+  "ProtoConfiguration$Options"
+ ],
+ "proto_toolchain_for_j2objc": [
+  "ProtoConfiguration$Options"
+ ],
+ "proto_toolchain_for_java": [
+  "ProtoConfiguration$Options"
+ ],
+ "proto_toolchain_for_javalite": [
+  "ProtoConfiguration$Options"
+ ],
+ "protocopt": [
+  "ProtoConfiguration$Options"
+ ],
+ "python_native_rules_allowlist": [
+  "PythonOptions"
+ ],
+ "python_path": [
+  "BazelPythonConfiguration$Options"
+ ],
+ "runs_per_test": [
+  "TestConfiguration$TestOptions"
+ ],
+ "runs_per_test_detects_flakes": [
+  "TestConfiguration$TestOptions"
+ ],
+ "save_temps": [
+  "CppOptions"
+ ],
+ "share_native_deps": [
+  "CppOptions"
+ ],
+ "shell_executable": [
+  "ShellConfiguration$Options"
+ ],
+ "split_bytecode_optimization_pass": [
+  "JavaOptions"
+ ],
+ "start_end_lib": [
+  "CppOptions"
+ ],
+ "strict_proto_deps": [
+  "ProtoConfiguration$Options"
+ ],
+ "strict_public_imports": [
+  "ProtoConfiguration$Options"
+ ],
+ "strict_system_includes": [
+  "CppOptions"
+ ],
+ "strip": [
+  "CppOptions"
+ ],
+ "stripopt": [
+  "CppOptions"
+ ],
+ "test_arg": [
+  "TestConfiguration$TestOptions"
+ ],
+ "test_env": [
+  "TestConfiguration$TestOptions"
+ ],
+ "test_filter": [
+  "TestConfiguration$TestOptions"
+ ],
+ "test_result_expiration": [
+  "TestConfiguration$TestOptions"
+ ],
+ "test_runner_fail_fast": [
+  "TestConfiguration$TestOptions"
+ ],
+ "test_timeout": [
+  "TestConfiguration$TestOptions"
+ ],
+ "tool_java_language_version": [
+  "JavaOptions"
+ ],
+ "tool_java_runtime_version": [
+  "JavaOptions"
+ ],
+ "trim_test_configuration": [
+  "TestConfiguration$TestOptions"
+ ],
+ "tvos_cpus": [
+  "AppleCommandLineOptions"
+ ],
+ "tvos_minimum_os": [
+  "AppleCommandLineOptions"
+ ],
+ "tvos_sdk_version": [
+  "AppleCommandLineOptions"
+ ],
+ "use_ijars": [
+  "JavaOptions"
+ ],
+ "use_platforms_in_apple_crosstool_transition": [
+  "AppleCommandLineOptions"
+ ],
+ "visionos_cpus": [
+  "AppleCommandLineOptions"
+ ],
+ "watchos_cpus": [
+  "AppleCommandLineOptions"
+ ],
+ "watchos_minimum_os": [
+  "AppleCommandLineOptions"
+ ],
+ "watchos_sdk_version": [
+  "AppleCommandLineOptions"
+ ],
+ "xbinary_fdo": [
+  "CppOptions"
+ ],
+ "xcode_version": [
+  "AppleCommandLineOptions"
+ ],
+ "xcode_version_config": [
+  "AppleCommandLineOptions"
+ ],
+ "zip_undeclared_test_outputs": [
+  "TestConfiguration$TestOptions"
+ ]
+}

@@ -5,6 +5,7 @@ package(default_visibility = ["//visibility:public"])
 rust_library(
     name = "fjfj-cli",
     srcs = glob(["src/**/*.rs"]),
+    compile_data = ["src/option_fragments.json"],
     crate_name = "fjfj_cli",
     edition = "2024",
     version = "0.0.1",

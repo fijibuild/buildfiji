@@ -65,6 +65,16 @@ impl QueryGraph {
         self
     }
 
+    /// The fragments the aspect `name` of `bzl` asks for with `fragments`.
+    pub(crate) fn aspect_fragments(&self, bzl: &Label, name: &str) -> Vec<String> {
+        self.repos
+            .module(bzl)
+            .ok()
+            .and_then(|module| fjfj_starlark::aspect_spec(&module, name))
+            .map(|spec| spec.schema.fragments.clone())
+            .unwrap_or_default()
+    }
+
     /// Show locations from the root of the repository (`--relative_locations`).
     pub(crate) fn with_relative_locations(mut self, on: bool) -> QueryGraph {
         self.relative = on;

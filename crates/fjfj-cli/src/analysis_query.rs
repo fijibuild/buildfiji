@@ -1017,11 +1017,11 @@ r(name = "sel", ss = select({":fast": ["f"], "//conditions:default": ["d"]}))
             ("MODULE.bazel", ""),
             (
                 "r.bzl",
-                "def _i(ctx): return []\nflag = rule(implementation=_i, build_setting=config.string(flag=True))\nusr = rule(implementation=_i, attrs={'f': attr.label(), 'deps': attr.label_list()})\nrcpp = rule(implementation=_i, fragments=['cpp'])\n",
+                "def _i(ctx): return []\nflag = rule(implementation=_i, build_setting=config.string(flag=True))\nusr = rule(implementation=_i, attrs={'f': attr.label(), 'deps': attr.label_list()})\nrcpp = rule(implementation=_i, fragments=['cpp'])\nasp = aspect(implementation=lambda target, ctx: [], fragments=['cpp'])\nwasp = rule(implementation=_i, attrs={'deps': attr.label_list(aspects=[asp])})\n",
             ),
             (
                 "BUILD",
-                "load(':r.bzl', 'flag', 'usr', 'rcpp')\nflag(name='myflag', build_setting_default='x')\nconfig_setting(name='on', flag_values={':myflag': 'y'})\nusr(name='reads', f=':myflag')\nusr(name='sels', deps=select({':on': [], '//conditions:default': []}))\nusr(name='outer', deps=[':reads', ':sels'])\nrcpp(name='cpp')\nconstraint_setting(name='s')\nfilegroup(name='fgs', srcs=['x.txt'])\n",
+                "load(':r.bzl', 'flag', 'usr', 'rcpp', 'wasp')\nflag(name='myflag', build_setting_default='x')\nconfig_setting(name='on', flag_values={':myflag': 'y'})\nusr(name='reads', f=':myflag')\nusr(name='sels', deps=select({':on': [], '//conditions:default': []}))\nusr(name='outer', deps=[':reads', ':sels'])\nrcpp(name='cpp')\nconstraint_setting(name='s')\nconfig_setting(name='copt', values={'copt': '-O1', 'define': 'a=b'})\nwasp(name='w', deps=[':fgs'])\nfilegroup(name='fgs', srcs=['x.txt'])\n",
             ),
             ("x.txt", ""),
         ];
@@ -1051,6 +1051,7 @@ r(name = "sel", ss = select({":fast": ["f"], "//conditions:default": ["d"]}))
                 "BazelRuleClassProvider$StrictActionEnvConfiguration, CoreOptions, CppConfiguration, PlatformConfiguration, PlatformOptions, ShellConfiguration",
             ),
             ("//:fgs", BASE),
+            ("//:w", BASE),
             ("//:myflag", flag.as_str()),
             ("//:on", flag.as_str()),
             ("//:outer", BASE),
@@ -1073,6 +1074,18 @@ r(name = "sel", ss = select({":fast": ["f"], "//conditions:default": ["d"]}))
             .find(|l| l.starts_with("//:outer "))
             .unwrap();
         assert!(outer.ends_with(&format!("[{flag}]")), "{outer}");
+        // The options of a config_setting, and what an aspect reads.
+        let line = |text: &str, label: &str| {
+            text.lines()
+                .find(|l| l.starts_with(&format!("{label} ")))
+                .unwrap()
+                .to_owned()
+        };
+        assert!(
+            line(&direct, "//:copt")
+                .ends_with("[--define:a, BazelRuleClassProvider$StrictActionEnvConfiguration, CoreOptions, CppOptions, PlatformConfiguration, PlatformOptions, ShellConfiguration]")
+        );
+        assert!(line(&transitive, "//:w").contains("CppConfiguration"));
         assert!(run("label").await.lines().all(|l| !l.ends_with(']')));
     }
 

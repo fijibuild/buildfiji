@@ -648,9 +648,10 @@ fn make_aspect<'v>(
     if let Some(value) = arg("requires") {
         all_of_type("requires", value, heap, "Aspect", "Aspect")?;
     }
-    if let Some(value) = arg("fragments") {
-        fragment_names(value, heap)?;
-    }
+    let fragments = match arg("fragments") {
+        Some(value) => fragment_names(value, heap)?,
+        None => Vec::new(),
+    };
     let mut names = Vec::new();
     let mut values = Vec::new();
     for (p, value) in ASPECT_PARAMS.iter().zip(&bound) {
@@ -694,7 +695,7 @@ fn make_aspect<'v>(
         build_setting: None,
         incoming_transition: false,
         definition_stack: Vec::new(),
-        fragments: Vec::new(),
+        fragments,
         doc: None,
         provides: Vec::new(),
     };
