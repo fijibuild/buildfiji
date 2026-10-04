@@ -97,6 +97,9 @@ pub struct RuleSchema {
     /// For a `rule()`: the calls that led to it, outermost first, which
     /// `query --output=build` shows as where the class is defined.
     pub definition_stack: Vec<crate::package::StackFrame>,
+    /// `rule(fragments = ...)`: the configuration fragments the class reads,
+    /// as written.
+    pub fragments: Vec<String>,
 }
 
 /// The type of a build setting and whether the command line may set it.
@@ -167,6 +170,7 @@ impl RuleSchema {
             build_setting: None,
             incoming_transition: false,
             definition_stack: Vec::new(),
+            fragments: Vec::new(),
         }
     }
 
@@ -214,6 +218,7 @@ impl RuleSchema {
             build_setting: None,
             incoming_transition: false,
             definition_stack: Vec::new(),
+            fragments: Vec::new(),
         })
     }
 }

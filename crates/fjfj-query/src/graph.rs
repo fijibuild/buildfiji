@@ -85,6 +85,8 @@ pub struct Edge {
     /// buffer outputs list: the `visibility` attribute's package groups and
     /// the toolchain types.
     pub visibility: bool,
+    /// From a `nodep` attribute, which `--nonodep_deps` leaves out: `visibility`.
+    pub nodep: bool,
     /// The attribute it comes from, empty if none.
     pub attr: String,
     /// From an attribute whose `cfg` is a transition.

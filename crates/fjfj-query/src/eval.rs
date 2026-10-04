@@ -16,6 +16,8 @@ pub struct Options {
     pub implicit_deps: bool,
     /// `--[no]tool_deps`.
     pub tool_deps: bool,
+    /// `--[no]nodep_deps`.
+    pub nodep_deps: bool,
 }
 
 impl Default for Options {
@@ -23,6 +25,7 @@ impl Default for Options {
         Options {
             implicit_deps: true,
             tool_deps: true,
+            nodep_deps: true,
         }
     }
 }
@@ -97,7 +100,9 @@ impl<'g> Evaluator<'g> {
         node.edges
             .iter()
             .filter(|e| {
-                (self.options.implicit_deps || !e.implicit) && (self.options.tool_deps || !e.tool)
+                (self.options.implicit_deps || !e.implicit)
+                    && (self.options.tool_deps || !e.tool)
+                    && (self.options.nodep_deps || !e.nodep)
             })
             .filter(|e| seen.insert((e.to.clone(), e.aspect)))
             .cloned()

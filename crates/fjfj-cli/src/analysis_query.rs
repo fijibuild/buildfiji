@@ -15,7 +15,7 @@ use fjfj_graph::Label;
 use fjfj_graph::config::Configuration;
 use fjfj_query::{Evaluator, Graph, Options};
 use fjfj_starlark::RuleSource;
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -97,9 +97,20 @@ enum Transitions {
     Full,
 }
 
+/// `--show_config_fragments`: whether `cquery` follows a label with the
+/// configuration fragments its target reads, and whose.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum ShowFragments {
+    #[default]
+    Off,
+    Direct,
+    Transitive,
+}
+
 /// What `--output` and the flags around it asked for.
 #[derive(Debug)]
 struct Flags {
+    fragments: ShowFragments,
     format: String,
     options: Options,
     expr: Option<String>,
@@ -111,6 +122,7 @@ struct Flags {
     terminator: char,
     relative_locations: bool,
     consistent_labels: bool,
+    double_slash: bool,
     /// `--universe_scope`, each pattern of each flag.
     universe: Option<Vec<String>>,
 }
@@ -169,9 +181,11 @@ fn extract(kind: Kind, args: &[String]) -> Result<(Flags, Vec<String>), CliError
         proto: Default::default(),
         graph: Default::default(),
         transitions: Transitions::None,
+        fragments: ShowFragments::Off,
         terminator: '\n',
         relative_locations: false,
         consistent_labels: false,
+        double_slash: true,
         universe: None,
     };
     let mut rest = Vec::new();
@@ -204,6 +218,21 @@ fn extract(kind: Kind, args: &[String]) -> Result<(Flags, Vec<String>), CliError
             "starlark:file" if kind == Kind::Cquery => {
                 flags.file = Some(value.ok_or_else(|| bad("--starlark:file needs a value"))?);
             }
+            "show_config_fragments" if kind == Kind::Cquery => {
+                let value = value
+                    .or_else(|| iter.next().cloned())
+                    .ok_or_else(|| bad("--show_config_fragments needs a value"))?;
+                flags.fragments = match value.as_str() {
+                    "off" => ShowFragments::Off,
+                    "direct" => ShowFragments::Direct,
+                    "transitive" => ShowFragments::Transitive,
+                    other => {
+                        return Err(bad(format!(
+                            "While parsing option --show_config_fragments={other}: Not a valid include config fragments provider option: '{other}' (should be off, direct or transitive)"
+                        )));
+                    }
+                };
+            }
             "transitions" if kind == Kind::Cquery => {
                 let value = value
                     .or_else(|| iter.next().cloned())
@@ -231,6 +260,8 @@ fn extract(kind: Kind, args: &[String]) -> Result<(Flags, Vec<String>), CliError
                 );
             }
             "infer_universe_scope" | "noinfer_universe_scope" => {}
+            "incompatible_package_group_includes_double_slash" => flags.double_slash = true,
+            "noincompatible_package_group_includes_double_slash" => flags.double_slash = false,
             "consistent_labels" => flags.consistent_labels = true,
             "noconsistent_labels" => flags.consistent_labels = false,
             // The graphs have no edge that comes from an aspect.
@@ -257,6 +288,8 @@ fn extract(kind: Kind, args: &[String]) -> Result<(Flags, Vec<String>), CliError
             "noimplicit_deps" => flags.options.implicit_deps = false,
             "tool_deps" => flags.options.tool_deps = true,
             "notool_deps" => flags.options.tool_deps = false,
+            "nodep_deps" => flags.options.nodep_deps = true,
+            "nonodep_deps" => flags.options.nodep_deps = false,
             "keep_going" | "nokeep_going" => {}
             n if n.starts_with("graph:") || n.starts_with("nograph:") => {
                 let value = if n == "graph:node_limit" {
@@ -300,7 +333,13 @@ pub(crate) async fn run(args: QueryArgs, kind: Kind) -> Result<(), CliError> {
     let (fetch, rest) = fetch_command::extract(&rest)?;
     let (io, rest) = crate::query_io::extract(&rest)?;
     let mut implemented = crate::build_family_implemented();
-    implemented.extend(["output", "implicit_deps", "tool_deps", "keep_going"]);
+    implemented.extend([
+        "output",
+        "implicit_deps",
+        "tool_deps",
+        "nodep_deps",
+        "keep_going",
+    ]);
     fjfj_bazel_compat::clap_flags::validate(
         &crate::query_io::flags_first(&rest),
         command,
@@ -322,9 +361,11 @@ pub(crate) async fn run(args: QueryArgs, kind: Kind) -> Result<(), CliError> {
         proto: flags.proto,
         graph: flags.graph,
         transitions: flags.transitions,
+        fragments: flags.fragments,
         terminator: flags.terminator,
         relative_locations: flags.relative_locations,
         consistent_labels: flags.consistent_labels,
+        double_slash: flags.double_slash,
         // `--infer_universe_scope` only fills in an unset scope, which is what
         // the targets of the expression are anyway.
         universe: flags.universe,
@@ -405,10 +446,12 @@ struct Query {
     proto: fjfj_query::target_proto::ProtoOptions,
     graph: fjfj_query::output::GraphOptions,
     transitions: Transitions,
+    fragments: ShowFragments,
     /// `--line_terminator_null`: what ends a line of `cquery` output.
     terminator: char,
     relative_locations: bool,
     consistent_labels: bool,
+    double_slash: bool,
     /// The patterns whose closure the expression is evaluated in, if the
     /// command line gave them.
     universe: Option<Vec<String>>,
@@ -425,7 +468,8 @@ fn evaluate(
 ) -> Result<Vec<u8>, CliError> {
     let graph = QueryGraph::new(repos.clone())
         .with_relative_locations(query.relative_locations)
-        .with_consistent_labels(query.consistent_labels);
+        .with_consistent_labels(query.consistent_labels)
+        .with_double_slash(query.double_slash);
     let mut named: BTreeSet<Label> = BTreeSet::new();
     // What is analysed is the closure of the universe, which is the targets
     // the expression names unless `--universe_scope` says otherwise.
@@ -490,6 +534,39 @@ fn evaluate(
         return cquery_proto(query, &labels, &evaluator, &configured);
     }
     render(query, &labels, &evaluator, &configured, repos, &layout).map(String::into_bytes)
+}
+
+/// The lines of `label` or `label_kind` output, each followed by the
+/// configuration fragments its target reads.
+fn with_fragments(
+    query: &Query,
+    labels: &BTreeSet<Label>,
+    graph: &ConfiguredGraph<'_>,
+    text: &str,
+) -> String {
+    let transitive = query.fragments == ShowFragments::Transitive;
+    let by_name: HashMap<String, Vec<String>> = labels
+        .iter()
+        .map(|label| {
+            (
+                graph.output_name(label),
+                graph.config_fragments(label, transitive),
+            )
+        })
+        .collect();
+    let terminator = query.terminator;
+    text.split_terminator(terminator)
+        .map(|line| {
+            // `kind rule //a:b (hash)` or `//a:b (hash)`.
+            let mut words = line.rsplitn(3, ' ');
+            let (hash, label) = (words.next().unwrap_or(""), words.next().unwrap_or(""));
+            let fragments = by_name
+                .get(&format!("{label} {hash}"))
+                .map(|f| f.join(", "))
+                .unwrap_or_default();
+            format!("{line} [{fragments}]{terminator}")
+        })
+        .collect()
 }
 
 /// `--transitions=lite|full`: each target with the transition that led to it,
@@ -650,7 +727,7 @@ fn render(
             "label" | "label_kind" | "graph" | "build" => {
                 let format = fjfj_query::output::Format::parse(&query.format)
                     .expect("a format the query command has");
-                fjfj_query::output::render_with(
+                let text = fjfj_query::output::render_with(
                     evaluator,
                     labels,
                     format,
@@ -658,7 +735,13 @@ fn render(
                     query.terminator,
                     &query.graph,
                 )
-                .map_err(failed)
+                .map_err(failed)?;
+                if query.fragments == ShowFragments::Off
+                    || !matches!(query.format.as_str(), "label" | "label_kind")
+                {
+                    return Ok(text);
+                }
+                Ok(with_fragments(query, labels, graph, &text))
             }
             "files" => {
                 let mut out = String::new();
@@ -746,6 +829,11 @@ mod tests {
             "transitions=full" => ("label", Transitions::Full),
             other => (other, Transitions::None),
         };
+        let (format, fragments) = match format {
+            "fragments=direct" => ("label", ShowFragments::Direct),
+            "fragments=transitive" => ("label", ShowFragments::Transitive),
+            other => (other, ShowFragments::Off),
+        };
         let dir = tempfile::tempdir().unwrap();
         let ws = dir.path().join("ws");
         for (file, text) in files {
@@ -782,9 +870,11 @@ mod tests {
             proto: PROTO.with(|p| p.borrow().clone()),
             graph: Default::default(),
             transitions,
+            fragments,
             terminator: '\n',
             relative_locations: false,
             consistent_labels: false,
+            double_slash: true,
             universe: UNIVERSE.with(|u| u.borrow().clone()),
             expr: fjfj_query::parse_in(expr, kind.dialect()).unwrap(),
         };
@@ -914,6 +1004,74 @@ r(name = "sel", ss = select({":fast": ["f"], "//conditions:default": ["d"]}))
         );
         let digits: Vec<&str> = text.lines().filter(|l| l.starts_with("//:b")).collect();
         assert_ne!(digits[0], digits[1]);
+    }
+
+    /// `cquery --show_config_fragments` on rules that read a fragment, a build
+    /// setting and a `select()` on one, as bazel printed it (the digests
+    /// here are not bazel's).
+    #[tokio::test(flavor = "multi_thread")]
+    async fn show_config_fragments_lists_what_each_target_reads() {
+        const FILES: &[(&str, &str)] = &[
+            ("MODULE.bazel", ""),
+            (
+                "r.bzl",
+                "def _i(ctx): return []\nflag = rule(implementation=_i, build_setting=config.string(flag=True))\nusr = rule(implementation=_i, attrs={'f': attr.label(), 'deps': attr.label_list()})\nrcpp = rule(implementation=_i, fragments=['cpp'])\n",
+            ),
+            (
+                "BUILD",
+                "load(':r.bzl', 'flag', 'usr', 'rcpp')\nflag(name='myflag', build_setting_default='x')\nconfig_setting(name='on', flag_values={':myflag': 'y'})\nusr(name='reads', f=':myflag')\nusr(name='sels', deps=select({':on': [], '//conditions:default': []}))\nusr(name='outer', deps=[':reads', ':sels'])\nrcpp(name='cpp')\nconstraint_setting(name='s')\nfilegroup(name='fgs', srcs=['x.txt'])\n",
+            ),
+            ("x.txt", ""),
+        ];
+        let run = |format: &'static str| async move {
+            let text = tokio::task::spawn_blocking(move || {
+                query_on(
+                    FILES,
+                    Kind::Cquery,
+                    format,
+                    "//... + //:x.txt",
+                    None,
+                    &[],
+                    aquery::Settings::default(),
+                )
+            })
+            .await
+            .unwrap()
+            .unwrap();
+            undigested_text(&String::from_utf8(text).unwrap())
+        };
+        const BASE: &str = "BazelRuleClassProvider$StrictActionEnvConfiguration, CoreOptions, PlatformConfiguration, PlatformOptions, ShellConfiguration";
+        let flag = format!("//:myflag, {BASE}");
+        let direct = run("fragments=direct").await;
+        let expected = [
+            (
+                "//:cpp",
+                "BazelRuleClassProvider$StrictActionEnvConfiguration, CoreOptions, CppConfiguration, PlatformConfiguration, PlatformOptions, ShellConfiguration",
+            ),
+            ("//:fgs", BASE),
+            ("//:myflag", flag.as_str()),
+            ("//:on", flag.as_str()),
+            ("//:outer", BASE),
+            ("//:reads", flag.as_str()),
+            ("//:s", ""),
+            ("//:sels", flag.as_str()),
+            ("//:x.txt", ""),
+        ];
+        for (label, fragments) in expected {
+            let line = direct
+                .lines()
+                .find(|l| l.starts_with(&format!("{label} ")))
+                .unwrap_or_else(|| panic!("{label} in {direct}"));
+            assert!(line.ends_with(&format!("[{fragments}]")), "{line}");
+        }
+        // Through its dependencies //:outer reads the flag too.
+        let transitive = run("fragments=transitive").await;
+        let outer = transitive
+            .lines()
+            .find(|l| l.starts_with("//:outer "))
+            .unwrap();
+        assert!(outer.ends_with(&format!("[{flag}]")), "{outer}");
+        assert!(run("label").await.lines().all(|l| !l.ends_with(']')));
     }
 
     #[tokio::test(flavor = "multi_thread")]

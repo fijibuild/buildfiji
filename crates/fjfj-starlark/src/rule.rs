@@ -606,7 +606,7 @@ fn make_rule<'v>(
         .map(|s| s.spec());
 
     if let Some(fragments) = arg("fragments") {
-        strings_of("fragments", fragments, heap)?;
+        schema.fragments = strings_of("fragments", fragments, heap)?;
     }
     if let Some(toolchains) = arg("toolchains") {
         for item in sequence(toolchains, heap).unwrap_or_default() {

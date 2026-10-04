@@ -15,6 +15,7 @@ pub(crate) const IMPLEMENTED: &[&str] = &[
     "order_output",
     "implicit_deps",
     "tool_deps",
+    "nodep_deps",
     "keep_going",
     "line_terminator_null",
 ];
@@ -29,6 +30,7 @@ pub(crate) struct Flags {
     pub graph: fjfj_query::output::GraphOptions,
     pub relative_locations: bool,
     pub consistent_labels: bool,
+    pub double_slash: bool,
 }
 
 /// `--output=bogus` is refused with Bazel's list of the valid ones.
@@ -49,6 +51,7 @@ pub(crate) fn extract(args: &[String]) -> Result<(Flags, Vec<String>), CliError>
         graph: Default::default(),
         relative_locations: false,
         consistent_labels: false,
+        double_slash: true,
     };
     let mut rest = Vec::new();
     let mut iter = args.iter();
@@ -83,6 +86,8 @@ pub(crate) fn extract(args: &[String]) -> Result<(Flags, Vec<String>), CliError>
             "noimplicit_deps" => flags.options.implicit_deps = false,
             "tool_deps" => flags.options.tool_deps = true,
             "notool_deps" => flags.options.tool_deps = false,
+            "nodep_deps" => flags.options.nodep_deps = true,
+            "nonodep_deps" => flags.options.nodep_deps = false,
             // The graph has no edge that comes from an aspect.
             "aspect_deps" => {
                 let value = take(value).ok_or_else(|| bad("--aspect_deps needs a value"))?;
@@ -96,6 +101,8 @@ pub(crate) fn extract(args: &[String]) -> Result<(Flags, Vec<String>), CliError>
             | "noinclude_aspects"
             | "experimental_explicit_aspects"
             | "noexperimental_explicit_aspects" => {}
+            "incompatible_package_group_includes_double_slash" => flags.double_slash = true,
+            "noincompatible_package_group_includes_double_slash" => flags.double_slash = false,
             "consistent_labels" => flags.consistent_labels = true,
             "noconsistent_labels" => flags.consistent_labels = false,
             "relative_locations" => flags.relative_locations = true,
@@ -171,7 +178,8 @@ pub(crate) async fn run(args: QueryArgs) -> Result<(), CliError> {
         let repos = Arc::new(repos);
         let graph = QueryGraph::new(repos.clone())
             .with_relative_locations(flags.relative_locations)
-            .with_consistent_labels(flags.consistent_labels);
+            .with_consistent_labels(flags.consistent_labels)
+            .with_double_slash(flags.double_slash);
         let evaluator = Evaluator::new(&graph, flags.options);
         let text = evaluator
             .eval(&expr)

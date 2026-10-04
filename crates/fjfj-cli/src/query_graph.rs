@@ -27,6 +27,9 @@ pub(crate) struct QueryGraph {
     relative: bool,
     /// `--consistent_labels`: labels as `@@repo//pkg:name`.
     consistent: bool,
+    /// `--incompatible_package_group_includes_double_slash` (default true): a
+    /// package group's packages keep their leading `//`.
+    double_slash: bool,
 }
 
 impl QueryGraph {
@@ -46,12 +49,19 @@ impl QueryGraph {
             apparent,
             relative: false,
             consistent: false,
+            double_slash: true,
         }
     }
 
     /// Write every label as `@@repo//pkg:name` (`--consistent_labels`).
     pub(crate) fn with_consistent_labels(mut self, on: bool) -> QueryGraph {
         self.consistent = on;
+        self
+    }
+
+    /// `--[no]incompatible_package_group_includes_double_slash`.
+    pub(crate) fn with_double_slash(mut self, on: bool) -> QueryGraph {
+        self.double_slash = on;
         self
     }
 
@@ -214,6 +224,7 @@ impl QueryGraph {
                         implicit,
                         tool,
                         condition: condition.map(|c| self.display_text(&c)),
+                        nodep: false,
                         visibility: false,
                         attr: attr.name.clone(),
                         transition,
@@ -232,6 +243,7 @@ impl QueryGraph {
                                 implicit,
                                 tool: false,
                                 condition: None,
+                                nodep: false,
                                 visibility: false,
                                 attr: String::new(),
                                 transition: false,
@@ -327,6 +339,7 @@ impl QueryGraph {
                         implicit: true,
                         tool: false,
                         condition: None,
+                        nodep: false,
                         visibility: false,
                         attr: name.to_owned(),
                         transition: false,
@@ -371,6 +384,7 @@ impl QueryGraph {
                 implicit: true,
                 tool: false,
                 condition: None,
+                nodep: false,
                 visibility: false,
                 attr: "$allowlist_function_transition".to_owned(),
                 transition: false,
@@ -389,6 +403,7 @@ impl QueryGraph {
                     implicit: false,
                     tool: false,
                     condition: None,
+                    nodep: true,
                     visibility: true,
                     attr: String::new(),
                     transition: false,
@@ -404,6 +419,7 @@ impl QueryGraph {
                 tool: false,
                 condition: None,
                 // A dependency, but not among the inputs of the rule.
+                nodep: false,
                 visibility: true,
                 attr: String::new(),
                 transition: false,
@@ -422,6 +438,7 @@ impl QueryGraph {
                 implicit: true,
                 tool: false,
                 condition: None,
+                nodep: false,
                 visibility: false,
                 attr: "$genrule_setup".to_owned(),
                 transition: false,
@@ -545,6 +562,7 @@ impl QueryGraph {
                         implicit: true,
                         tool,
                         condition: None,
+                        nodep: false,
                         visibility: false,
                         attr: attr.name.clone(),
                         transition: false,
@@ -766,6 +784,7 @@ impl QueryGraph {
     fn spec_text(&self, spec: &fjfj_graph::visibility::PackageSpec) -> String {
         use fjfj_graph::visibility::PackageScope;
         let body = match &spec.scope {
+            PackageScope::Public if !self.double_slash => "//...".to_owned(),
             PackageScope::Public => "public".to_owned(),
             PackageScope::Repo(r) => format!("{}//...", self.repo_prefix(r)),
             PackageScope::Package { repo, package } => {
@@ -774,6 +793,12 @@ impl QueryGraph {
             PackageScope::Subpackages { repo, package } => {
                 format!("{}//{package}/...", self.repo_prefix(repo))
             }
+        };
+        // Without the flag a package of the main repo loses its `//`, but
+        // for the whole repo, which stays `//...`.
+        let body = match body.strip_prefix("//") {
+            Some(rest) if !self.double_slash && rest != "..." => rest.to_owned(),
+            _ => body,
         };
         if spec.negated {
             format!("-{body}")
@@ -1029,6 +1054,7 @@ impl Graph for QueryGraph {
                             implicit: false,
                             tool: false,
                             condition: None,
+                            nodep: false,
                             visibility: false,
                             attr: String::new(),
                             transition: false,
@@ -1054,6 +1080,7 @@ impl Graph for QueryGraph {
                         implicit: false,
                         tool: false,
                         condition: None,
+                        nodep: false,
                         visibility: false,
                         attr: String::new(),
                         transition: false,
@@ -2221,5 +2248,50 @@ allk(
             one("let x = //a:lib in $y"),
             "ERROR: Evaluation of subquery \"$y\" failed (did you want to use --keep_going?): undefined variable 'y'\n"
         );
+    }
+
+    #[test]
+    fn nonodep_deps_drops_the_visibility_groups_and_double_slash_the_leading_slashes() {
+        let (_dir, repos) = workspace_of(&[
+            ("MODULE.bazel", ""),
+            (
+                "BUILD",
+                "package_group(name='g', packages=['public', '//other', '//pkg/...', '//...', '-//x'], includes=[':h'])\npackage_group(name='h', packages=['//foo'])\ngenrule(name='a', outs=['a.txt'], cmd='', visibility=[':g'])\n",
+            ),
+        ]);
+        // What bazel printed for `deps(//:a)` with and without --nodep_deps,
+        // and for the packages of //:g without the double slash.
+        let graph = QueryGraph::new(repos.clone());
+        let deps = |nodep_deps| {
+            query(
+                &graph,
+                "deps(//:a)",
+                Format::Label,
+                Order::Auto,
+                Options {
+                    nodep_deps,
+                    implicit_deps: false,
+                    ..Options::default()
+                },
+            )
+        };
+        assert_eq!(deps(true), "//:a\n//:g\n//:h\n");
+        assert_eq!(deps(false), "//:a\n");
+        let packages = |graph: &QueryGraph| {
+            query(graph, "//:g", Format::Xml, Order::Auto, Options::default())
+                .lines()
+                .filter(|l| l.contains("<string"))
+                .map(|l| l.trim().to_owned())
+                .collect::<Vec<_>>()
+        };
+        assert!(packages(&graph).contains(&"<string value=\"//other\"/>".to_owned()));
+        let graph = QueryGraph::new(repos).with_double_slash(false);
+        let got = packages(&graph);
+        for want in ["other", "pkg/...", "//...", "-x"] {
+            assert!(
+                got.contains(&format!("<string value=\"{want}\"/>")),
+                "{want} in {got:?}"
+            );
+        }
     }
 }

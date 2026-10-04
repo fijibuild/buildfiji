@@ -386,6 +386,7 @@ impl Graph for ConfiguredGraph<'_> {
                 implicit: loaded.is_some_and(|e| e.implicit),
                 tool: loaded.is_some_and(|e| e.tool),
                 condition: loaded.and_then(|e| e.condition.clone()),
+                nodep: false,
                 visibility: false,
                 attr: loaded.map(|e| e.attr.clone()).unwrap_or_default(),
                 transition: loaded.is_some_and(|e| e.transition),
@@ -516,5 +517,135 @@ impl Graph for ConfiguredGraph<'_> {
             _ => "null".to_owned(),
         };
         format!("{} ({configuration})", self.display(label))
+    }
+}
+
+/// The fragments every configured target has, whatever its rule asks for.
+const BASE_FRAGMENTS: [&str; 5] = [
+    "BazelRuleClassProvider$StrictActionEnvConfiguration",
+    "CoreOptions",
+    "PlatformConfiguration",
+    "PlatformOptions",
+    "ShellConfiguration",
+];
+
+/// What Bazel names the fragment a rule asks for with `fragments = [name]`.
+/// The others (`platform`, `py`, `shell`, ...) add nothing to the base.
+fn fragment_class(name: &str) -> Option<&'static str> {
+    Some(match name {
+        "android" => "AndroidConfiguration",
+        "apple" => "AppleConfiguration",
+        "bazel_android" => "BazelAndroidConfiguration",
+        "coverage" => "CoverageConfiguration",
+        "cpp" => "CppConfiguration",
+        "j2objc" => "J2ObjcConfiguration",
+        "java" => "JavaConfiguration",
+        "objc" => "ObjcConfiguration",
+        "proto" => "ProtoConfiguration",
+        _ => return None,
+    })
+}
+
+impl ConfiguredGraph<'_> {
+    /// `--show_config_fragments`: the fragments the configured target `label`
+    /// reads, sorted; with `transitive`, those of everything it depends on
+    /// too.
+    pub(crate) fn config_fragments(&self, label: &Label, transitive: bool) -> Vec<String> {
+        let Some(target) = self.target(label) else {
+            return Vec::new();
+        };
+        let mut out = BTreeSet::new();
+        let mut seen = BTreeSet::new();
+        let mut stack = vec![target];
+        while let Some(t) = stack.pop() {
+            self.direct_fragments(t, &mut out);
+            if !transitive {
+                continue;
+            }
+            for key in &t.deps {
+                let Some(&at) = self.index.get(key) else {
+                    continue;
+                };
+                if seen.insert(at) {
+                    stack.push(&self.targets[at]);
+                }
+            }
+        }
+        out.into_iter().collect()
+    }
+
+    fn direct_fragments(&self, t: &ConfiguredTarget, out: &mut BTreeSet<String>) {
+        // A target with no configuration to read has none, and a constraint
+        // is analysed in an empty one.
+        if !t.has_configuration()
+            || matches!(
+                t.rule_class.as_deref(),
+                Some("constraint_setting" | "constraint_value")
+            )
+        {
+            return;
+        }
+        out.extend(BASE_FRAGMENTS.map(str::to_owned));
+        if let Some(info) = &t.rule_info {
+            out.extend(
+                info.schema
+                    .fragments
+                    .iter()
+                    .filter_map(|f| fragment_class(f))
+                    .map(str::to_owned),
+            );
+        }
+        match t.rule_class.as_deref() {
+            Some("config_feature_flag") => {
+                out.insert("ConfigFeatureFlagConfiguration".to_owned());
+            }
+            Some("test_suite") => {
+                out.insert("TestConfiguration".to_owned());
+            }
+            _ => {}
+        }
+        if t.test.is_some() {
+            out.insert("TestConfiguration".to_owned());
+        }
+        // A build setting is its own fragment: a target that reads one, as
+        // an attribute's value or in a `select()`, has it too.
+        let setting = |t: &ConfiguredTarget| {
+            t.rule_info
+                .as_ref()
+                .is_some_and(|i| i.schema.build_setting.is_some())
+                || matches!(
+                    t.rule_class.as_deref(),
+                    Some("label_flag" | "label_setting")
+                )
+        };
+        if setting(t) {
+            out.insert(self.loading.display(&t.label));
+        }
+        for key in &t.deps {
+            if let Some(&at) = self.index.get(key)
+                && setting(&self.targets[at])
+            {
+                out.insert(self.loading.display(&key.label));
+            }
+        }
+        let flags_of = |label: &Label| -> Vec<Label> {
+            self.loading
+                .node(label)
+                .ok()
+                .and_then(|n| {
+                    n.attrs
+                        .iter()
+                        .find(|a| a.name == "flag_values")
+                        .map(|a| a.labels.clone())
+                })
+                .unwrap_or_default()
+        };
+        let mut settings = vec![t.label.clone()];
+        if let Ok(node) = self.loading.node(&t.label) {
+            settings.extend(node.config_deps.iter().cloned());
+        }
+        for flag in settings.iter().flat_map(flags_of) {
+            out.insert(self.loading.display(&flag));
+        }
     }
 }
