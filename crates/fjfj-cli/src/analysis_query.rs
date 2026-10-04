@@ -485,11 +485,31 @@ fn evaluate(
         );
     }
     let top_level = options.configuration.clone();
+    let platform_text = options.platform.clone();
+    let host_platform_text = options.host_platform.clone();
     let request = build_command::Request {
         layout: layout.clone(),
         options,
     };
-    let targets: Vec<Label> = named.into_iter().collect();
+    // The platforms are dependencies of what resolves toolchains: analysed
+    // too, so the graph can hold them.
+    let mut platforms: Vec<Label> = Vec::new();
+    for text in [platform_text.as_deref(), host_platform_text.as_deref()] {
+        let text = text.unwrap_or("@bazel_tools//tools:host_platform");
+        if let Ok(found) = graph.pattern(text) {
+            for label in found {
+                if !platforms.contains(&label) {
+                    platforms.push(label);
+                }
+            }
+        }
+    }
+    let mut targets: Vec<Label> = named.into_iter().collect();
+    for platform in &platforms {
+        if !targets.contains(platform) {
+            targets.push(platform.clone());
+        }
+    }
     let report = build_command::run(repos, &targets, &request);
     if let Some((label, message)) = report.analysis_errors.first() {
         return Err(CliError::Query(anyhow::anyhow!(
@@ -497,7 +517,7 @@ fn evaluate(
             build_command::label_name(label)
         )));
     }
-    let configured = ConfiguredGraph::new(&graph, &report.analysed, &top_level);
+    let configured = ConfiguredGraph::new(&graph, &report.analysed, &top_level, platforms);
     let evaluator = Evaluator::new(&configured, query.options);
     let labels = evaluator
         .eval(&query.expr)

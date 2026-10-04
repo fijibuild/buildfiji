@@ -26,6 +26,9 @@ pub(crate) struct ConfiguredGraph<'a> {
     aspects: HashMap<ConfiguredTargetKey, Vec<Arc<ConfiguredTarget>>>,
     /// The configuration of the top-level targets: `config(x, target)`.
     top_level: Configuration,
+    /// The target and execution platforms: a dependency of every target that
+    /// resolves toolchains.
+    platforms: Vec<Label>,
     /// The checksum of each configuration the targets were analysed in.
     checksums: BTreeSet<String>,
 }
@@ -59,6 +62,7 @@ impl<'a> ConfiguredGraph<'a> {
         loading: &'a QueryGraph,
         analysed: &[Arc<ConfiguredTarget>],
         top_level: &Configuration,
+        platforms: Vec<Label>,
     ) -> ConfiguredGraph<'a> {
         // In label order, so a label of this graph sorts as its target does.
         let mut analysed: Vec<&Arc<ConfiguredTarget>> = analysed.iter().collect();
@@ -116,6 +120,7 @@ impl<'a> ConfiguredGraph<'a> {
             by_label,
             aspects,
             top_level: top_level.clone(),
+            platforms,
             checksums,
         }
     }
@@ -139,6 +144,30 @@ impl<'a> ConfiguredGraph<'a> {
                 configuration: target.configuration.clone(),
             })
             .map_or(&[], Vec::as_slice)
+    }
+
+    /// Whether Bazel resolves toolchains for the target, which makes the
+    /// platforms its dependencies: a rule, but not one that describes a
+    /// platform or a toolchain, a `config_setting` or a build setting.
+    fn resolves_toolchains(&self, target: &ConfiguredTarget) -> bool {
+        const EXEMPT: [&str; 8] = [
+            "platform",
+            "constraint_setting",
+            "constraint_value",
+            "toolchain_type",
+            "toolchain",
+            "config_setting",
+            "package_group",
+            "label_flag",
+        ];
+        target
+            .rule_class
+            .as_deref()
+            .is_some_and(|class| !EXEMPT.contains(&class))
+            && !target
+                .rule_info
+                .as_ref()
+                .is_some_and(|i| i.schema.build_setting.is_some())
     }
 
     /// Every configured target of `label`.
@@ -392,6 +421,33 @@ impl Graph for ConfiguredGraph<'_> {
                 transition: loaded.is_some_and(|e| e.transition),
                 aspect: loaded.is_some_and(|e| e.aspect),
             });
+        }
+        // The platforms a target that resolves toolchains was analysed for.
+        if self.resolves_toolchains(target) {
+            for platform in &self.platforms {
+                let Some(at) = self.by_label.get(platform).and_then(|all| {
+                    all.iter()
+                        .find(|&&i| self.targets[i].configuration == target.configuration)
+                        .or(all.first())
+                }) else {
+                    continue;
+                };
+                let to = synthetic(platform, *at);
+                if edges.iter().any(|e| e.to == to) {
+                    continue;
+                }
+                edges.push(Edge {
+                    to,
+                    implicit: true,
+                    tool: false,
+                    condition: None,
+                    nodep: false,
+                    visibility: false,
+                    attr: String::new(),
+                    transition: false,
+                    aspect: false,
+                });
+            }
         }
         // The values the target has in this configuration: a `select()` is
         // the branch that was taken.

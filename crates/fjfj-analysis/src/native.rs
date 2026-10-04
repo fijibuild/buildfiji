@@ -518,6 +518,13 @@ async fn config_setting(
     }
     if let Some(AttrValue::LabelKeyedStringDict(flags)) = attr(attrs, "flag_values") {
         for (flag, wanted) in flags {
+            // The setting is a dependency of the `config_setting`.
+            let flag_key = ConfiguredTargetKey {
+                label: flag.clone(),
+                configuration: config.clone(),
+            };
+            ctx.get(flag_key.clone()).await?;
+            target.deps.push(flag_key);
             let current = if crate::transition::is_build_setting(ctx, flag).await? {
                 crate::transition::setting_in(ctx, config, flag).await?
             } else {

@@ -420,6 +420,13 @@ pub(crate) async fn resolve_toolchains(
         let mut unmet: Vec<Label> = Vec::new();
         let mut toolchain_keys: Vec<ConfiguredTargetKey> = Vec::new();
         for (toolchain_type, mandatory) in types {
+            // The type is a dependency of the target, resolved or not.
+            let type_key = ConfiguredTargetKey {
+                label: toolchain_type.clone(),
+                configuration: key.configuration.clone(),
+            };
+            ctx.get(type_key.clone()).await?;
+            toolchain_keys.push(type_key);
             match crate::toolchain::resolve(ctx, key, toolchain_type, &platform).await? {
                 Some(decl) => {
                     let implementation = ConfiguredTargetKey {
