@@ -258,7 +258,8 @@ fn ctx_members(builder: &mut MethodsBuilder) {
         match &state(this).build_setting_value {
             Some(SettingValue::Bool(b)) => Ok(Value::new_bool(*b)),
             Some(SettingValue::Int(i)) => Ok(heap.alloc(*i)),
-            Some(SettingValue::Str(s)) => Ok(heap.alloc(s.as_str())),
+            Some(SettingValue::Str(s) | SettingValue::Label(s)) => Ok(heap.alloc(s.as_str())),
+            Some(SettingValue::None) => Ok(Value::new_none()),
             Some(SettingValue::List(items)) => {
                 Ok(heap.alloc(AllocList(items.iter().map(String::as_str))))
             }

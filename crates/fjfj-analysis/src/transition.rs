@@ -156,7 +156,8 @@ pub(crate) fn matches_text(value: &SettingValue, wanted: &str) -> bool {
     match value {
         SettingValue::Bool(b) => wanted.eq_ignore_ascii_case(&b.to_string()),
         SettingValue::Int(i) => wanted.parse() == Ok(*i),
-        SettingValue::Str(s) => s.eq_ignore_ascii_case(wanted),
+        SettingValue::Str(s) | SettingValue::Label(s) => s.eq_ignore_ascii_case(wanted),
+        SettingValue::None => false,
         SettingValue::List(items) => wanted.split(',').eq(items.iter().map(String::as_str)),
     }
 }

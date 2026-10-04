@@ -87,6 +87,18 @@ pub(super) fn to_starlark<'v>(heap: Heap<'v>, name: &str, value: &SettingValue) 
         SettingValue::Bool(b) => Value::new_bool(*b),
         SettingValue::Int(i) => heap.alloc(*i),
         SettingValue::Str(s) => heap.alloc(s.as_str()),
+        SettingValue::None => Value::new_none(),
+        SettingValue::Label(text) => fjfj_graph::Label::parse(
+            text,
+            fjfj_graph::LabelContext {
+                repo: "",
+                package: "",
+            },
+        )
+        .map_or_else(
+            |_| heap.alloc(text.as_str()),
+            |l| heap.alloc(crate::label::StarlarkLabel::from(l)),
+        ),
         SettingValue::List(items) => heap.alloc(starlark::values::list::AllocList(
             items.iter().map(String::as_str),
         )),

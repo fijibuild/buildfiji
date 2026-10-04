@@ -19,6 +19,10 @@ pub enum SettingValue {
     Int(i64),
     Str(String),
     List(Vec<String>),
+    /// A label, as `build_options` shows an option that names a target.
+    Label(String),
+    /// An option that is unset.
+    None,
 }
 
 impl SettingValue {
@@ -30,6 +34,8 @@ impl SettingValue {
             SettingValue::Int(i) => i.to_string(),
             SettingValue::Str(s) => s.clone(),
             SettingValue::List(items) => format!("[{}]", items.join(", ")),
+            SettingValue::Label(l) => l.clone(),
+            SettingValue::None => "null".to_owned(),
         }
     }
 }
@@ -191,10 +197,14 @@ impl Configuration {
 
     /// The options of the configuration as `build_options(target)` of
     /// `cquery --output=starlark` shows them, by `//command_line_option:name`
-    /// or the label of the build setting. Only what fjfj models is here.
+    /// or the label of the build setting: every option of Bazel's configuration at
+    /// its default, then what this configuration sets.
     pub fn build_options(&self) -> BTreeMap<String, SettingValue> {
         let option = |name: &str| format!("{COMMAND_LINE_OPTION}{name}");
-        let mut out = BTreeMap::new();
+        let mut out: BTreeMap<String, SettingValue> = crate::build_options::DEFAULTS
+            .iter()
+            .map(|(name, default)| (option(name), default.value()))
+            .collect();
         out.insert(option("cpu"), SettingValue::Str(self.cpu.clone()));
         out.insert(
             option("compilation_mode"),
@@ -355,6 +365,28 @@ mod tests {
         );
         copt.affected.insert(format!("{COMMAND_LINE_OPTION}copt"));
         assert_eq!(copt.mnemonic(), "k8-fastbuild-ST-bf371aea6388");
+    }
+
+    #[test]
+    fn build_options_has_every_option_of_bazels_configuration() {
+        let options = Configuration::default().build_options();
+        // Probed: 313 keys on a bare workspace under Bazel 9.2.0.
+        assert_eq!(options.len(), 313);
+        assert_eq!(
+            options["//command_line_option:java_runtime_version"],
+            SettingValue::Str("local_jdk".into())
+        );
+        assert_eq!(
+            options["//command_line_option:xcode_version"],
+            SettingValue::None
+        );
+        let mut config = Configuration::default();
+        config.options.insert("copt".into(), "-O2".into());
+        assert_eq!(
+            config.build_options()["//command_line_option:copt"],
+            SettingValue::List(vec!["-O2".into()])
+        );
+        assert_eq!(config.build_options().len(), 313);
     }
 
     #[test]
