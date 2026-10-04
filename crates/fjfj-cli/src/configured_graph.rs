@@ -640,6 +640,14 @@ impl ConfiguredGraph<'_> {
                 out.insert(self.loading.display(&key.label));
             }
         }
+        // Fragments name an external setting by its canonical repo.
+        let canonical = |l: &Label| {
+            if l.repo.is_empty() {
+                self.loading.display(l)
+            } else {
+                format!("@@{}//{}:{}", l.repo, l.package, l.name)
+            }
+        };
         let flags_of = |label: &Label| -> Vec<Label> {
             self.loading
                 .node(label)
@@ -657,7 +665,7 @@ impl ConfiguredGraph<'_> {
             settings.extend(node.config_deps.iter().cloned());
         }
         for flag in settings.iter().flat_map(flags_of) {
-            out.insert(self.loading.display(&flag));
+            out.insert(canonical(&flag));
         }
         // The options a `config_setting` lists are the fragments' own.
         for label in &settings {
@@ -679,10 +687,26 @@ impl ConfiguredGraph<'_> {
                 } else if let Some(classes) = option_fragments().get(option.as_str()) {
                     out.extend(classes.iter().cloned());
                 }
+                // rules_python's flags are build settings that alias these options.
+                if RULES_PYTHON_FLAGS.contains(&option.as_str())
+                    && let Ok(flags) = self
+                        .loading
+                        .pattern(&format!("@rules_python//python/config_settings:{option}"))
+                {
+                    out.extend(flags.iter().map(canonical));
+                }
             }
         }
     }
 }
+
+/// The `values` options that rules_python also exposes as build settings.
+const RULES_PYTHON_FLAGS: [&str; 4] = [
+    "build_python_zip",
+    "python_path",
+    "experimental_python_import_all_repositories",
+    "incompatible_default_to_explicit_init_py",
+];
 
 /// The fragment options each option of a `config_setting`'s `values` belongs
 /// to, recorded from Bazel 9.2.0 for the options that belong to one beyond
