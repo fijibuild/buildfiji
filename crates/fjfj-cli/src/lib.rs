@@ -87,6 +87,10 @@ pub enum CliError {
     /// The build failed and has said why: only the exit code is left.
     #[error("the build failed")]
     Reported,
+    /// A `--keep_going` query skipped some patterns and has said which:
+    /// Bazel exits 3.
+    #[error("query result incomplete")]
+    QueryIncomplete,
     /// The build worked and some tests did not.
     #[error("tests failed")]
     TestsFailed,
@@ -103,7 +107,8 @@ impl CliError {
         match self {
             CliError::CommandLine(_) => ExitCode::CommandLineProblem,
             CliError::Build(_) | CliError::Reported | CliError::Program(_) => ExitCode::BuildFailed,
-            CliError::TestsFailed => ExitCode::TestsFailed,
+            // Bazel gives a partial query result the code it gives failed tests.
+            CliError::TestsFailed | CliError::QueryIncomplete => ExitCode::TestsFailed,
             CliError::NoTests => ExitCode::NoTestsFound,
             CliError::Fetch(_) => ExitCode::Interrupted,
             CliError::Query(_) => ExitCode::PartialAnalysisFailure,
@@ -123,6 +128,7 @@ impl CliError {
             CliError::Reported
             | CliError::Program(_)
             | CliError::TestsFailed
+            | CliError::QueryIncomplete
             | CliError::NoTests => String::new(),
         }
     }

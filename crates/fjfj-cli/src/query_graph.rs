@@ -2472,4 +2472,32 @@ mr = rule(
         );
         assert_eq!(labels(&graph, "deps(//p:t)"), ["//p:t", "//p:tt"]);
     }
+
+    #[test]
+    fn keep_going_skips_a_failing_pattern_and_says_so() {
+        let (_dir, repos) =
+            workspace_of(&[("MODULE.bazel", ""), ("BUILD", "filegroup(name='b')\n")]);
+        let graph = QueryGraph::new(repos);
+        let options = Options {
+            keep_going: true,
+            ..Options::default()
+        };
+        let ev = Evaluator::new(&graph, options);
+        let set = ev
+            .eval(&fjfj_query::parse("//:b + //nopkg:x").unwrap())
+            .unwrap();
+        assert_eq!(set.len(), 1);
+        let skipped = ev.skipped();
+        assert_eq!(skipped.len(), 1);
+        assert!(
+            skipped[0].starts_with("ERROR: Skipping '//nopkg:x': no such package 'nopkg':"),
+            "{skipped:?}"
+        );
+        // Without it the same query fails.
+        let ev = Evaluator::new(&graph, Options::default());
+        assert!(
+            ev.eval(&fjfj_query::parse("//:b + //nopkg:x").unwrap())
+                .is_err()
+        );
+    }
 }

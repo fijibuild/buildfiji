@@ -18,6 +18,9 @@ pub struct Options {
     pub tool_deps: bool,
     /// `--[no]nodep_deps`.
     pub nodep_deps: bool,
+    /// `--keep_going`: a pattern that fails is skipped (see
+    /// [`Evaluator::skipped`]) instead of failing the query.
+    pub keep_going: bool,
 }
 
 impl Default for Options {
@@ -26,6 +29,7 @@ impl Default for Options {
             implicit_deps: true,
             tool_deps: true,
             nodep_deps: true,
+            keep_going: false,
         }
     }
 }
@@ -37,6 +41,8 @@ pub struct Evaluator<'g> {
     /// The order the result of the query is listed in, when it is not label
     /// order: see [`Evaluator::eval_ordered`].
     listing: Vec<Label>,
+    /// The patterns `--keep_going` skipped, as `ERROR: Skipping ...` lines.
+    skipped: Mutex<Vec<String>>,
 }
 
 impl<'g> Evaluator<'g> {
@@ -46,7 +52,14 @@ impl<'g> Evaluator<'g> {
             options,
             nodes: Mutex::new(HashMap::new()),
             listing: Vec::new(),
+            skipped: Mutex::new(Vec::new()),
         }
+    }
+
+    /// The error lines of the patterns skipped under `--keep_going`; empty
+    /// if the result is complete.
+    pub fn skipped(&self) -> Vec<String> {
+        self.skipped.lock().unwrap().clone()
     }
 
     /// List results that are in `listing` in its order, the rest after them
@@ -191,7 +204,17 @@ impl<'g> Evaluator<'g> {
 
     fn eval_in(&self, expr: &Expr, env: &mut Vec<(String, Set)>) -> Result<Set, String> {
         match expr {
-            Expr::Word(word) => Ok(self.graph.pattern(word)?.into_iter().collect()),
+            Expr::Word(word) => match self.graph.pattern(word) {
+                Ok(labels) => Ok(labels.into_iter().collect()),
+                Err(e) if self.options.keep_going => {
+                    self.skipped
+                        .lock()
+                        .unwrap()
+                        .push(format!("ERROR: Skipping '{word}': {e}"));
+                    Ok(Set::new())
+                }
+                Err(e) => Err(e),
+            },
             Expr::Variable(name) => env
                 .iter()
                 .rev()

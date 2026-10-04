@@ -109,7 +109,8 @@ pub(crate) fn extract(args: &[String]) -> Result<(Flags, Vec<String>), CliError>
             "norelative_locations" => flags.relative_locations = false,
             "line_terminator_null" => flags.terminator = '\0',
             "noline_terminator_null" => flags.terminator = '\n',
-            "keep_going" | "nokeep_going" => {}
+            "keep_going" => flags.options.keep_going = true,
+            "nokeep_going" => flags.options.keep_going = false,
             n if n.starts_with("graph:") || n.starts_with("nograph:") => {
                 let value = if n == "graph:node_limit" {
                     take(value)
@@ -172,35 +173,46 @@ pub(crate) async fn run(args: QueryArgs) -> Result<(), CliError> {
                 workspace_root.display()
             ))
         })?;
-    let output = tokio::task::spawn_blocking(move || -> Result<Vec<u8>, CliError> {
-        let (resolved, repos) =
-            fetch_command::begin(&fetch, &bzlmod, &workspace_root, &module_bazel_text)?;
-        let repos = Arc::new(repos);
-        let graph = QueryGraph::new(repos.clone())
-            .with_relative_locations(flags.relative_locations)
-            .with_consistent_labels(flags.consistent_labels)
-            .with_double_slash(flags.double_slash);
-        let evaluator = Evaluator::new(&graph, flags.options);
-        let text = evaluator
-            .eval(&expr)
-            .and_then(|set| {
-                fjfj_query::output::render_bytes(
-                    &evaluator,
-                    &set,
-                    flags.format,
-                    flags.order,
-                    flags.terminator,
-                    &flags.proto,
-                    &flags.graph,
-                )
-            })
-            .map_err(|e| CliError::Query(anyhow::anyhow!(e)))?;
-        drop(evaluator);
-        fetch_command::finish(resolved, &repos)?;
-        Ok(text)
-    })
-    .await
-    .map_err(|e| CliError::Internal(anyhow::anyhow!("query task panicked: {e}")))??;
+    let output =
+        tokio::task::spawn_blocking(move || -> Result<(Vec<u8>, Vec<String>), CliError> {
+            let (resolved, repos) =
+                fetch_command::begin(&fetch, &bzlmod, &workspace_root, &module_bazel_text)?;
+            let repos = Arc::new(repos);
+            let graph = QueryGraph::new(repos.clone())
+                .with_relative_locations(flags.relative_locations)
+                .with_consistent_labels(flags.consistent_labels)
+                .with_double_slash(flags.double_slash);
+            let evaluator = Evaluator::new(&graph, flags.options);
+            let text = evaluator
+                .eval(&expr)
+                .and_then(|set| {
+                    fjfj_query::output::render_bytes(
+                        &evaluator,
+                        &set,
+                        flags.format,
+                        flags.order,
+                        flags.terminator,
+                        &flags.proto,
+                        &flags.graph,
+                    )
+                })
+                .map_err(|e| CliError::Query(anyhow::anyhow!(e)))?;
+            let skipped = evaluator.skipped();
+            drop(evaluator);
+            fetch_command::finish(resolved, &repos)?;
+            Ok((text, skipped))
+        })
+        .await
+        .map_err(|e| CliError::Internal(anyhow::anyhow!("query task panicked: {e}")))??;
+    let (output, skipped) = output;
     crate::query_io::write(&io, &output)?;
-    Ok(())
+    if skipped.is_empty() {
+        return Ok(());
+    }
+    // Bazel prints what it skipped, and the result it has, and exits 3.
+    for line in &skipped {
+        eprintln!("{line}");
+    }
+    eprintln!("WARNING: --keep_going specified, ignoring errors. Results may be inaccurate");
+    Err(CliError::QueryIncomplete)
 }
