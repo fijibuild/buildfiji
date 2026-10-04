@@ -669,6 +669,7 @@ fn make_aspect<'v>(
                 continue;
             };
             own.push(SchemaAttr {
+                info: Default::default(),
                 name: attr_name.to_owned(),
                 def: view.def.clone(),
                 values: crate::rule::value_strings(view.def.ty, &view.values),
@@ -694,6 +695,8 @@ fn make_aspect<'v>(
         incoming_transition: false,
         definition_stack: Vec::new(),
         fragments: Vec::new(),
+        doc: None,
+        provides: Vec::new(),
     };
     if let Some(toolchains) = arg("toolchains") {
         for item in crate::args::sequence(toolchains).unwrap_or_default() {

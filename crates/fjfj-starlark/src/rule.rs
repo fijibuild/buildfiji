@@ -529,6 +529,19 @@ fn make_rule<'v>(
                 )));
             }
             own.push(SchemaAttr {
+                info: fjfj_graph::schema::AttrInfo {
+                    values_repr: view.values.iter().map(|v| v.to_repr()).collect(),
+                    providers: view
+                        .providers
+                        .iter()
+                        .map(|alternative| {
+                            alternative
+                                .iter()
+                                .filter_map(|p| crate::provider::origin(*p))
+                                .collect()
+                        })
+                        .collect(),
+                },
                 name: name.to_owned(),
                 def: view.def.clone(),
                 values: value_strings(view.def.ty, &view.values),
@@ -608,6 +621,7 @@ fn make_rule<'v>(
     if let Some(fragments) = arg("fragments") {
         schema.fragments = strings_of("fragments", fragments, heap)?;
     }
+    schema.doc = arg("doc").and_then(|d| d.unpack_str()).map(str::to_owned);
     if let Some(toolchains) = arg("toolchains") {
         for item in sequence(toolchains, heap).unwrap_or_default() {
             if let Some(label) = label_of_value(item) {
@@ -654,6 +668,10 @@ fn make_rule<'v>(
             provides.push(*item);
         }
     }
+    schema.provides = provides
+        .iter()
+        .filter_map(|p| crate::provider::origin(*p))
+        .collect();
     if let Some(list) = arg("exec_compatible_with") {
         for text in strings_of("exec_compatible_with", list, heap)? {
             if let Err(e) = parse_in_caller(eval, "rule", &text)? {

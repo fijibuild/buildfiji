@@ -300,9 +300,10 @@ pub fn render_bytes(
     graph: &GraphOptions,
 ) -> Result<Vec<u8>, String> {
     let targets = |ev: &Evaluator<'_>| -> Result<Vec<crate::proto::Msg>, String> {
+        let mut classes = std::collections::BTreeSet::new();
         order(ev, set, wanted)?
             .iter()
-            .map(|l| crate::target_proto::target(ev, l, proto))
+            .map(|l| crate::target_proto::target(ev, l, proto, &mut classes))
             .collect()
     };
     Ok(match format {

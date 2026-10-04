@@ -22,9 +22,28 @@
 
 use crate::rule::{AttrDef, AttrFlag, AttrType, AttrValue, RuleClass};
 
+/// A provider as a rule class lists it: the name it is known by and the module
+/// that defined it (`<native>` for one Bazel implements).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProviderRef {
+    pub name: String,
+    pub file: String,
+}
+
+/// What `query --proto:rule_classes` shows of an attribute besides its
+/// definition.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct AttrInfo {
+    /// `values = [...]`, each as Starlark writes it.
+    pub values_repr: Vec<String>,
+    /// `providers = [...]`, one list for each alternative.
+    pub providers: Vec<Vec<ProviderRef>>,
+}
+
 /// One attribute of a rule, as its schema states it.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SchemaAttr {
+    pub info: AttrInfo,
     pub name: String,
     pub def: AttrDef,
     /// `values = [...]` of a string or int attribute, as the error that
@@ -45,6 +64,7 @@ impl SchemaAttr {
     pub fn new(name: &str, def: AttrDef) -> SchemaAttr {
         SchemaAttr {
             name: name.to_owned(),
+            info: AttrInfo::default(),
             values: Vec::new(),
             hidden: false,
             configurable: !matches!(def.ty, AttrType::Output | AttrType::OutputList),
@@ -71,7 +91,7 @@ impl SchemaAttr {
 }
 
 /// A rule class's schema. See the module docs.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuleSchema {
     /// Every attribute, in the order `existing_rule` lists them, `name`
     /// first (and printed with `kind`, which is not an attribute).
@@ -100,6 +120,10 @@ pub struct RuleSchema {
     /// `rule(fragments = ...)`: the configuration fragments the class reads,
     /// as written.
     pub fragments: Vec<String>,
+    /// `rule(doc = ...)`.
+    pub doc: Option<String>,
+    /// `rule(provides = [...])`.
+    pub provides: Vec<ProviderRef>,
 }
 
 /// The type of a build setting and whether the command line may set it.
@@ -171,6 +195,8 @@ impl RuleSchema {
             incoming_transition: false,
             definition_stack: Vec::new(),
             fragments: Vec::new(),
+            doc: None,
+            provides: Vec::new(),
         }
     }
 
@@ -219,6 +245,8 @@ impl RuleSchema {
             incoming_transition: false,
             definition_stack: Vec::new(),
             fragments: Vec::new(),
+            doc: None,
+            provides: Vec::new(),
         })
     }
 }

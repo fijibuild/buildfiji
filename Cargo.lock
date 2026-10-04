@@ -1195,6 +1195,7 @@ version = "0.0.1"
 dependencies = [
  "fjfj-graph",
  "regex",
+ "serde_json",
  "thiserror",
 ]
 

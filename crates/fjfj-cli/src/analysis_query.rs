@@ -623,12 +623,14 @@ fn cquery_proto(
     let mut results: Vec<Msg> = Vec::new();
     // A configuration is numbered where its first target is.
     let mut configurations: Vec<(String, Msg)> = Vec::new();
+    let mut classes = BTreeSet::new();
     for label in labels {
         let Some(target) = graph.target(label) else {
             continue;
         };
         let message =
-            fjfj_query::target_proto::target(evaluator, label, &query.proto).map_err(failed)?;
+            fjfj_query::target_proto::target(evaluator, label, &query.proto, &mut classes)
+                .map_err(failed)?;
         let mut result = Msg::new().one(1, "target", message);
         if target.has_configuration() {
             let checksum = target.configuration.checksum();

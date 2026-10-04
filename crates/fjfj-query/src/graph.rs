@@ -130,6 +130,8 @@ pub struct Node {
     /// For a rule of a class written in Starlark: a digest of the class,
     /// which Bazel shows as the attribute `$rule_implementation_hash`.
     pub implementation_hash: Option<String>,
+    /// For a rule: the schema of its class, for `--proto:rule_classes`.
+    pub schema: Option<Arc<fjfj_graph::schema::RuleSchema>>,
     /// For a rule with attributes that ask for aspects: the private label
     /// attributes of those aspects, which Bazel lists after the rule's own and
     /// the hash, by name and then in the order the aspects came.

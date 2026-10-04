@@ -366,6 +366,7 @@ fn make_macro<'v>(
             }
             let own = MacroAttr {
                 attr: SchemaAttr {
+                    info: Default::default(),
                     name: name.to_owned(),
                     def: view.def.clone(),
                     values: value_strings(view.def.ty, &view.values),

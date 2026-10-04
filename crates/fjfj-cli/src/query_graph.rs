@@ -497,6 +497,7 @@ impl QueryGraph {
             config_deps,
             stack,
             definition_stack,
+            schema: Some(schema.clone()),
             implementation_hash: defined_in.map(|bzl| {
                 use sha2::{Digest, Sha256};
                 hex::encode(Sha256::digest(
@@ -930,6 +931,7 @@ impl QueryGraph {
             stack: Vec::new(),
             definition_stack: Vec::new(),
             implementation_hash: None,
+            schema: None,
             aspect_attrs: Vec::new(),
             group: None,
         })
@@ -2293,5 +2295,57 @@ allk(
                 "{want} in {got:?}"
             );
         }
+    }
+
+    /// `query --output=streamed_jsonproto --proto:rule_classes` on a rule class
+    /// with docs, a values list and a provider, as Bazel 9.2.0 printed it.
+    #[test]
+    fn rule_classes_key_every_rule_and_describe_the_class_once() {
+        let (_dir, repos) = workspace_of(&[
+            ("MODULE.bazel", ""),
+            (
+                "r.bzl",
+                r#""""Module doc."""
+def _i(ctx): return []
+mr = rule(
+    implementation=_i,
+    doc="A rule that does nothing.\n\nSecond paragraph.",
+    attrs={
+        "srcs": attr.label_list(allow_files=True, doc="The sources."),
+        "opt": attr.string(default="d", values=["d","e"], doc="An option."),
+        "n": attr.int(mandatory=True),
+        "flag": attr.bool(),
+        "out": attr.output(doc="An output."),
+        "kv": attr.string_dict(),
+        "dep": attr.label(providers=[DefaultInfo], doc="A dep."),
+    },
+    provides=[DefaultInfo],
+)
+"#,
+            ),
+            (
+                "BUILD",
+                "load(':r.bzl', 'mr')\nmr(name='a', n=1, out='o.txt')\nmr(name='b', n=2, out='p.txt')\nfilegroup(name='fg')\n",
+            ),
+        ]);
+        let graph = QueryGraph::new(repos);
+        let proto = fjfj_query::target_proto::ProtoOptions {
+            rule_classes: true,
+            ..Default::default()
+        };
+        let targets = jsonproto(&graph, "//:a + //:b + //:fg", &proto);
+        let rule = |at: usize| targets[at]["rule"].clone();
+        let expected: serde_json::Value = serde_json::from_str(r#"{"ruleClassKey":"//:r.bzl%mr","ruleClassInfo":{"ruleName":"mr","docString":"A rule that does nothing.\n\nSecond paragraph.","attribute":[{"name":"name","docString":"A unique name for this target.","type":"NAME","mandatory":true},{"name":"expect_failure","type":"STRING","defaultValue":"\"\"","nativelyDefined":true},{"name":"visibility","type":"LABEL_LIST","defaultValue":"[]","nonconfigurable":true,"nativelyDefined":true},{"name":"transitive_configs","type":"LABEL_LIST","defaultValue":"[]","nonconfigurable":true,"nativelyDefined":true},{"name":"deprecation","type":"STRING","defaultValue":"<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$2>","nonconfigurable":true,"nativelyDefined":true},{"name":"tags","type":"STRING_LIST","defaultValue":"[]","nonconfigurable":true,"nativelyDefined":true},{"name":"testonly","type":"BOOLEAN","defaultValue":"<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$1>","nonconfigurable":true,"nativelyDefined":true},{"name":"features","type":"STRING_LIST","defaultValue":"[]","nativelyDefined":true},{"name":"compatible_with","type":"LABEL_LIST","defaultValue":"[]","nonconfigurable":true,"nativelyDefined":true},{"name":"restricted_to","type":"LABEL_LIST","defaultValue":"[]","nonconfigurable":true,"nativelyDefined":true},{"name":"package_metadata","type":"LABEL_LIST","defaultValue":"<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$4>","nonconfigurable":true,"nativelyDefined":true},{"name":"aspect_hints","type":"LABEL_LIST","defaultValue":"[]","nativelyDefined":true},{"name":"toolchains","type":"LABEL_LIST","providerNameGroup":[{"providerName":["TemplateVariableInfo"],"originKey":[{"name":"TemplateVariableInfo","file":"<native>"}]}],"defaultValue":"[]","nativelyDefined":true},{"name":"exec_properties","type":"STRING_DICT","defaultValue":"{}","nativelyDefined":true},{"name":"exec_compatible_with","type":"LABEL_LIST","defaultValue":"[]","nonconfigurable":true,"nativelyDefined":true},{"name":"exec_group_compatible_with","type":"LABEL_LIST_DICT","defaultValue":"{}","nonconfigurable":true,"nativelyDefined":true},{"name":"target_compatible_with","type":"LABEL_LIST","providerNameGroup":[{"providerName":["ConstraintValueInfo"],"originKey":[{"name":"ConstraintValueInfo","file":"<native>"}]}],"defaultValue":"[]","nativelyDefined":true},{"name":"srcs","docString":"The sources.","type":"LABEL_LIST","defaultValue":"[]"},{"name":"opt","docString":"An option.","type":"STRING","defaultValue":"\"d\"","values":["\"d\"","\"e\""]},{"name":"n","type":"INT","mandatory":true},{"name":"flag","type":"BOOLEAN","defaultValue":"False"},{"name":"out","docString":"An output.","type":"OUTPUT","defaultValue":"None","nonconfigurable":true},{"name":"kv","type":"STRING_DICT","defaultValue":"{}"},{"name":"dep","docString":"A dep.","type":"LABEL","providerNameGroup":[{"providerName":["DefaultInfo"],"originKey":[{"name":"DefaultInfo","file":"<native>"}]}],"defaultValue":"None"}],"originKey":{"name":"mr","file":"//:r.bzl"},"advertisedProviders":{"providerName":["DefaultInfo"],"originKey":[{"name":"DefaultInfo","file":"<native>"}]}}}"#).unwrap();
+        assert_eq!(rule(0)["ruleClassKey"], expected["ruleClassKey"]);
+        assert_eq!(rule(0)["ruleClassInfo"], expected["ruleClassInfo"]);
+        // The second rule of the class has the key and not the class.
+        assert_eq!(rule(1)["ruleClassKey"], "//:r.bzl%mr");
+        assert!(rule(1).get("ruleClassInfo").is_none());
+        // A class Bazel implements is its name.
+        assert_eq!(rule(2)["ruleClassKey"], "filegroup");
+        assert_eq!(rule(2)["ruleClassInfo"]["ruleName"], "filegroup");
+        // Without the flag, neither.
+        let plain = jsonproto(&graph, "//:a", &Default::default());
+        assert!(plain[0]["rule"].get("ruleClassKey").is_none());
     }
 }

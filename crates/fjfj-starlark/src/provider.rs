@@ -82,6 +82,10 @@ pub(crate) struct ProviderGen<V> {
     #[trace(static)]
     #[allocative(skip)]
     name: OnceLock<String>,
+    /// The `.bzl` that made it, `None` for a built-in one.
+    #[trace(static)]
+    #[allocative(skip)]
+    file: Option<String>,
 }
 
 starlark_complex_value!(pub(crate) Provider);
@@ -100,6 +104,7 @@ impl<'v> Freeze for Provider<'v> {
                 .map(|v| v.freeze(freezer))
                 .collect::<FreezeResult<Vec<FrozenValue>>>()?,
             name: self.name,
+            file: self.file,
         })
     }
 }
@@ -142,6 +147,7 @@ struct View<'v> {
     id: u64,
     fields: Option<&'v [String]>,
     name: &'v OnceLock<String>,
+    file: Option<&'v str>,
 }
 
 fn view<'v>(value: Value<'v>) -> Option<View<'v>> {
@@ -150,6 +156,7 @@ fn view<'v>(value: Value<'v>) -> Option<View<'v>> {
             id: p.id,
             fields: p.fields.as_deref(),
             name: &p.name,
+            file: p.file.as_deref(),
         }
     }
     if let Some(live) = value.downcast_ref::<Provider<'v>>() {
@@ -163,6 +170,15 @@ fn view<'v>(value: Value<'v>) -> Option<View<'v>> {
 /// built-in one.
 pub(crate) fn is_provider(value: Value<'_>) -> bool {
     view(value).is_some()
+}
+
+/// A provider as a rule class lists it: its name and the file that defined it.
+pub(crate) fn origin(value: Value<'_>) -> Option<fjfj_graph::schema::ProviderRef> {
+    let p = view(value)?;
+    Some(fjfj_graph::schema::ProviderRef {
+        name: p.name.get()?.clone(),
+        file: p.file.unwrap_or("<native>").to_owned(),
+    })
 }
 
 /// A provider, for [`crate::exports`] to name.
@@ -468,6 +484,10 @@ fn make_provider<'v>(
         doc: doc.and_then(|d| d.unpack_str()).map(str::to_owned),
         init,
         name,
+        // What the builtins define is Bazel's own.
+        file: crate::label::evaluating_file(eval)
+            .filter(|l| l.repo != "_builtins")
+            .map(|l| fjfj_graph::expand::label_text(&l)),
     });
     if !has_init {
         return Ok(provider);

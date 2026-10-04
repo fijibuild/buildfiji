@@ -1,0 +1,4174 @@
+{
+ "builtin": {
+  "plain": [
+   {
+    "name": "expect_failure",
+    "type": "STRING",
+    "defaultValue": "\"\"",
+    "nativelyDefined": true
+   },
+   {
+    "name": "visibility",
+    "type": "LABEL_LIST",
+    "defaultValue": "[]",
+    "nonconfigurable": true,
+    "nativelyDefined": true
+   },
+   {
+    "name": "transitive_configs",
+    "type": "LABEL_LIST",
+    "defaultValue": "[]",
+    "nonconfigurable": true,
+    "nativelyDefined": true
+   },
+   {
+    "name": "deprecation",
+    "type": "STRING",
+    "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$2>",
+    "nonconfigurable": true,
+    "nativelyDefined": true
+   },
+   {
+    "name": "tags",
+    "type": "STRING_LIST",
+    "defaultValue": "[]",
+    "nonconfigurable": true,
+    "nativelyDefined": true
+   },
+   {
+    "name": "testonly",
+    "type": "BOOLEAN",
+    "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$1>",
+    "nonconfigurable": true,
+    "nativelyDefined": true
+   },
+   {
+    "name": "features",
+    "type": "STRING_LIST",
+    "defaultValue": "[]",
+    "nativelyDefined": true
+   },
+   {
+    "name": "compatible_with",
+    "type": "LABEL_LIST",
+    "defaultValue": "[]",
+    "nonconfigurable": true,
+    "nativelyDefined": true
+   },
+   {
+    "name": "restricted_to",
+    "type": "LABEL_LIST",
+    "defaultValue": "[]",
+    "nonconfigurable": true,
+    "nativelyDefined": true
+   },
+   {
+    "name": "package_metadata",
+    "type": "LABEL_LIST",
+    "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$4>",
+    "nonconfigurable": true,
+    "nativelyDefined": true
+   },
+   {
+    "name": "aspect_hints",
+    "type": "LABEL_LIST",
+    "defaultValue": "[]",
+    "nativelyDefined": true
+   },
+   {
+    "name": "toolchains",
+    "type": "LABEL_LIST",
+    "providerNameGroup": [
+     {
+      "providerName": [
+       "TemplateVariableInfo"
+      ],
+      "originKey": [
+       {
+        "name": "TemplateVariableInfo",
+        "file": "<native>"
+       }
+      ]
+     }
+    ],
+    "defaultValue": "[]",
+    "nativelyDefined": true
+   },
+   {
+    "name": "exec_properties",
+    "type": "STRING_DICT",
+    "defaultValue": "{}",
+    "nativelyDefined": true
+   },
+   {
+    "name": "exec_compatible_with",
+    "type": "LABEL_LIST",
+    "defaultValue": "[]",
+    "nonconfigurable": true,
+    "nativelyDefined": true
+   },
+   {
+    "name": "exec_group_compatible_with",
+    "type": "LABEL_LIST_DICT",
+    "defaultValue": "{}",
+    "nonconfigurable": true,
+    "nativelyDefined": true
+   },
+   {
+    "name": "target_compatible_with",
+    "type": "LABEL_LIST",
+    "providerNameGroup": [
+     {
+      "providerName": [
+       "ConstraintValueInfo"
+      ],
+      "originKey": [
+       {
+        "name": "ConstraintValueInfo",
+        "file": "<native>"
+       }
+      ]
+     }
+    ],
+    "defaultValue": "[]",
+    "nativelyDefined": true
+   }
+  ],
+  "executable": [
+   {
+    "name": "expect_failure",
+    "type": "STRING",
+    "defaultValue": "\"\"",
+    "nativelyDefined": true
+   },
+   {
+    "name": "visibility",
+    "type": "LABEL_LIST",
+    "defaultValue": "[]",
+    "nonconfigurable": true,
+    "nativelyDefined": true
+   },
+   {
+    "name": "transitive_configs",
+    "type": "LABEL_LIST",
+    "defaultValue": "[]",
+    "nonconfigurable": true,
+    "nativelyDefined": true
+   },
+   {
+    "name": "deprecation",
+    "type": "STRING",
+    "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$2>",
+    "nonconfigurable": true,
+    "nativelyDefined": true
+   },
+   {
+    "name": "tags",
+    "type": "STRING_LIST",
+    "defaultValue": "[]",
+    "nonconfigurable": true,
+    "nativelyDefined": true
+   },
+   {
+    "name": "testonly",
+    "type": "BOOLEAN",
+    "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$1>",
+    "nonconfigurable": true,
+    "nativelyDefined": true
+   },
+   {
+    "name": "features",
+    "type": "STRING_LIST",
+    "defaultValue": "[]",
+    "nativelyDefined": true
+   },
+   {
+    "name": "compatible_with",
+    "type": "LABEL_LIST",
+    "defaultValue": "[]",
+    "nonconfigurable": true,
+    "nativelyDefined": true
+   },
+   {
+    "name": "restricted_to",
+    "type": "LABEL_LIST",
+    "defaultValue": "[]",
+    "nonconfigurable": true,
+    "nativelyDefined": true
+   },
+   {
+    "name": "package_metadata",
+    "type": "LABEL_LIST",
+    "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$4>",
+    "nonconfigurable": true,
+    "nativelyDefined": true
+   },
+   {
+    "name": "aspect_hints",
+    "type": "LABEL_LIST",
+    "defaultValue": "[]",
+    "nativelyDefined": true
+   },
+   {
+    "name": "toolchains",
+    "type": "LABEL_LIST",
+    "providerNameGroup": [
+     {
+      "providerName": [
+       "TemplateVariableInfo"
+      ],
+      "originKey": [
+       {
+        "name": "TemplateVariableInfo",
+        "file": "<native>"
+       }
+      ]
+     }
+    ],
+    "defaultValue": "[]",
+    "nativelyDefined": true
+   },
+   {
+    "name": "exec_properties",
+    "type": "STRING_DICT",
+    "defaultValue": "{}",
+    "nativelyDefined": true
+   },
+   {
+    "name": "exec_compatible_with",
+    "type": "LABEL_LIST",
+    "defaultValue": "[]",
+    "nonconfigurable": true,
+    "nativelyDefined": true
+   },
+   {
+    "name": "exec_group_compatible_with",
+    "type": "LABEL_LIST_DICT",
+    "defaultValue": "{}",
+    "nonconfigurable": true,
+    "nativelyDefined": true
+   },
+   {
+    "name": "target_compatible_with",
+    "type": "LABEL_LIST",
+    "providerNameGroup": [
+     {
+      "providerName": [
+       "ConstraintValueInfo"
+      ],
+      "originKey": [
+       {
+        "name": "ConstraintValueInfo",
+        "file": "<native>"
+       }
+      ]
+     }
+    ],
+    "defaultValue": "[]",
+    "nativelyDefined": true
+   },
+   {
+    "name": "args",
+    "type": "STRING_LIST",
+    "defaultValue": "[]",
+    "nativelyDefined": true
+   },
+   {
+    "name": "output_licenses",
+    "type": "STRING_LIST",
+    "defaultValue": "[]",
+    "nativelyDefined": true
+   }
+  ],
+  "test": [
+   {
+    "name": "expect_failure",
+    "type": "STRING",
+    "defaultValue": "\"\"",
+    "nativelyDefined": true
+   },
+   {
+    "name": "visibility",
+    "type": "LABEL_LIST",
+    "defaultValue": "[]",
+    "nonconfigurable": true,
+    "nativelyDefined": true
+   },
+   {
+    "name": "transitive_configs",
+    "type": "LABEL_LIST",
+    "defaultValue": "[]",
+    "nonconfigurable": true,
+    "nativelyDefined": true
+   },
+   {
+    "name": "deprecation",
+    "type": "STRING",
+    "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$2>",
+    "nonconfigurable": true,
+    "nativelyDefined": true
+   },
+   {
+    "name": "tags",
+    "type": "STRING_LIST",
+    "defaultValue": "[]",
+    "nonconfigurable": true,
+    "nativelyDefined": true
+   },
+   {
+    "name": "testonly",
+    "type": "BOOLEAN",
+    "defaultValue": "True",
+    "nonconfigurable": true,
+    "nativelyDefined": true
+   },
+   {
+    "name": "features",
+    "type": "STRING_LIST",
+    "defaultValue": "[]",
+    "nativelyDefined": true
+   },
+   {
+    "name": "compatible_with",
+    "type": "LABEL_LIST",
+    "defaultValue": "[]",
+    "nonconfigurable": true,
+    "nativelyDefined": true
+   },
+   {
+    "name": "restricted_to",
+    "type": "LABEL_LIST",
+    "defaultValue": "[]",
+    "nonconfigurable": true,
+    "nativelyDefined": true
+   },
+   {
+    "name": "package_metadata",
+    "type": "LABEL_LIST",
+    "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$4>",
+    "nonconfigurable": true,
+    "nativelyDefined": true
+   },
+   {
+    "name": "aspect_hints",
+    "type": "LABEL_LIST",
+    "defaultValue": "[]",
+    "nativelyDefined": true
+   },
+   {
+    "name": "toolchains",
+    "type": "LABEL_LIST",
+    "providerNameGroup": [
+     {
+      "providerName": [
+       "TemplateVariableInfo"
+      ],
+      "originKey": [
+       {
+        "name": "TemplateVariableInfo",
+        "file": "<native>"
+       }
+      ]
+     }
+    ],
+    "defaultValue": "[]",
+    "nativelyDefined": true
+   },
+   {
+    "name": "exec_properties",
+    "type": "STRING_DICT",
+    "defaultValue": "{}",
+    "nativelyDefined": true
+   },
+   {
+    "name": "exec_compatible_with",
+    "type": "LABEL_LIST",
+    "defaultValue": "[]",
+    "nonconfigurable": true,
+    "nativelyDefined": true
+   },
+   {
+    "name": "exec_group_compatible_with",
+    "type": "LABEL_LIST_DICT",
+    "defaultValue": "{}",
+    "nonconfigurable": true,
+    "nativelyDefined": true
+   },
+   {
+    "name": "target_compatible_with",
+    "type": "LABEL_LIST",
+    "providerNameGroup": [
+     {
+      "providerName": [
+       "ConstraintValueInfo"
+      ],
+      "originKey": [
+       {
+        "name": "ConstraintValueInfo",
+        "file": "<native>"
+       }
+      ]
+     }
+    ],
+    "defaultValue": "[]",
+    "nativelyDefined": true
+   },
+   {
+    "name": "size",
+    "type": "STRING",
+    "defaultValue": "\"medium\"",
+    "nonconfigurable": true,
+    "nativelyDefined": true
+   },
+   {
+    "name": "timeout",
+    "type": "STRING",
+    "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$3>",
+    "nonconfigurable": true,
+    "nativelyDefined": true
+   },
+   {
+    "name": "flaky",
+    "type": "BOOLEAN",
+    "defaultValue": "False",
+    "nonconfigurable": true,
+    "nativelyDefined": true
+   },
+   {
+    "name": "shard_count",
+    "type": "INT",
+    "defaultValue": "-1",
+    "nativelyDefined": true
+   },
+   {
+    "name": "local",
+    "type": "BOOLEAN",
+    "defaultValue": "False",
+    "nonconfigurable": true,
+    "nativelyDefined": true
+   },
+   {
+    "name": "args",
+    "type": "STRING_LIST",
+    "defaultValue": "[]",
+    "nativelyDefined": true
+   }
+  ]
+ },
+ "classes": {
+  "action_listener": {
+   "ruleName": "action_listener",
+   "attribute": [
+    {
+     "name": "name",
+     "docString": "A unique name for this target.",
+     "type": "NAME",
+     "mandatory": true
+    },
+    {
+     "name": "visibility",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "transitive_configs",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "deprecation",
+     "type": "STRING",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$2>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "tags",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "testonly",
+     "type": "BOOLEAN",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$1>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "features",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "compatible_with",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "restricted_to",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "package_metadata",
+     "type": "LABEL_LIST",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$4>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "aspect_hints",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "licenses",
+     "type": "STRING_LIST",
+     "defaultValue": "[\"none\"]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "distribs",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "target_compatible_with",
+     "type": "LABEL_LIST",
+     "providerNameGroup": [
+      {
+       "providerName": [
+        "ConstraintValueInfo"
+       ],
+       "originKey": [
+        {
+         "name": "ConstraintValueInfo",
+         "file": "<native>"
+        }
+       ]
+      }
+     ],
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "exec_properties",
+     "type": "STRING_DICT",
+     "defaultValue": "{}",
+     "nativelyDefined": true
+    },
+    {
+     "name": "exec_compatible_with",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "exec_group_compatible_with",
+     "type": "LABEL_LIST_DICT",
+     "defaultValue": "{}",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "mnemonics",
+     "type": "STRING_LIST",
+     "mandatory": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "extra_actions",
+     "type": "LABEL_LIST",
+     "mandatory": true,
+     "nativelyDefined": true
+    }
+   ],
+   "originKey": {
+    "name": "action_listener",
+    "file": "<native>"
+   }
+  },
+  "cc_libc_top_alias": {
+   "ruleName": "cc_libc_top_alias",
+   "attribute": [
+    {
+     "name": "name",
+     "docString": "A unique name for this target.",
+     "type": "NAME",
+     "mandatory": true
+    },
+    {
+     "name": "visibility",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "transitive_configs",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "deprecation",
+     "type": "STRING",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$2>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "tags",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "testonly",
+     "type": "BOOLEAN",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$1>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "features",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "compatible_with",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "restricted_to",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "package_metadata",
+     "type": "LABEL_LIST",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$4>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "aspect_hints",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "target_compatible_with",
+     "type": "LABEL_LIST",
+     "providerNameGroup": [
+      {
+       "providerName": [
+        "ConstraintValueInfo"
+       ],
+       "originKey": [
+        {
+         "name": "ConstraintValueInfo",
+         "file": "<native>"
+        }
+       ]
+      }
+     ],
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    }
+   ],
+   "originKey": {
+    "name": "cc_libc_top_alias",
+    "file": "<native>"
+   }
+  },
+  "config_feature_flag": {
+   "ruleName": "config_feature_flag",
+   "attribute": [
+    {
+     "name": "name",
+     "docString": "A unique name for this target.",
+     "type": "NAME",
+     "mandatory": true
+    },
+    {
+     "name": "visibility",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "deprecation",
+     "type": "STRING",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$2>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "tags",
+     "type": "STRING_LIST",
+     "defaultValue": "[\"manual\"]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "testonly",
+     "type": "BOOLEAN",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$1>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "features",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "package_metadata",
+     "type": "LABEL_LIST",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$4>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "aspect_hints",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "licenses",
+     "type": "STRING_LIST",
+     "defaultValue": "[\"none\"]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "distribs",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "allowed_values",
+     "type": "STRING_LIST",
+     "mandatory": true,
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "default_value",
+     "type": "STRING",
+     "defaultValue": "\"\"",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "scope",
+     "type": "STRING",
+     "defaultValue": "\"universal\"",
+     "nonconfigurable": true,
+     "nativelyDefined": true,
+     "values": [
+      "\"universal\"",
+      "\"target\"",
+      "\"project\""
+     ]
+    }
+   ],
+   "originKey": {
+    "name": "config_feature_flag",
+    "file": "<native>"
+   }
+  },
+  "config_setting": {
+   "ruleName": "config_setting",
+   "attribute": [
+    {
+     "name": "name",
+     "docString": "A unique name for this target.",
+     "type": "NAME",
+     "mandatory": true
+    },
+    {
+     "name": "visibility",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "transitive_configs",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "deprecation",
+     "type": "STRING",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$2>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "tags",
+     "type": "STRING_LIST",
+     "defaultValue": "[\"manual\"]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "testonly",
+     "type": "BOOLEAN",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$1>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "features",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "package_metadata",
+     "type": "LABEL_LIST",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$4>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "aspect_hints",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "licenses",
+     "type": "STRING_LIST",
+     "defaultValue": "[\"none\"]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "distribs",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "values",
+     "type": "STRING_DICT",
+     "defaultValue": "{}",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "define_values",
+     "type": "STRING_DICT",
+     "defaultValue": "{}",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "flag_values",
+     "type": "LABEL_STRING_DICT",
+     "defaultValue": "{}",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "constraint_values",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    }
+   ],
+   "originKey": {
+    "name": "config_setting",
+    "file": "<native>"
+   }
+  },
+  "constraint_setting": {
+   "ruleName": "constraint_setting",
+   "attribute": [
+    {
+     "name": "name",
+     "docString": "A unique name for this target.",
+     "type": "NAME",
+     "mandatory": true
+    },
+    {
+     "name": "visibility",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "transitive_configs",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "deprecation",
+     "type": "STRING",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$2>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "tags",
+     "type": "STRING_LIST",
+     "defaultValue": "[\"manual\"]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "testonly",
+     "type": "BOOLEAN",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$1>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "features",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "aspect_hints",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "licenses",
+     "type": "STRING_LIST",
+     "defaultValue": "[\"none\"]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "distribs",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "default_constraint_value",
+     "type": "LABEL",
+     "defaultValue": "None",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "refines_constraint_value",
+     "type": "LABEL",
+     "providerNameGroup": [
+      {
+       "providerName": [
+        "ConstraintValueInfo"
+       ],
+       "originKey": [
+        {
+         "name": "ConstraintValueInfo",
+         "file": "<native>"
+        }
+       ]
+      }
+     ],
+     "defaultValue": "None",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    }
+   ],
+   "originKey": {
+    "name": "constraint_setting",
+    "file": "<native>"
+   },
+   "advertisedProviders": {
+    "providerName": [
+     "ConstraintSettingInfo"
+    ],
+    "originKey": [
+     {
+      "name": "ConstraintSettingInfo",
+      "file": "<native>"
+     }
+    ]
+   }
+  },
+  "constraint_value": {
+   "ruleName": "constraint_value",
+   "attribute": [
+    {
+     "name": "name",
+     "docString": "A unique name for this target.",
+     "type": "NAME",
+     "mandatory": true
+    },
+    {
+     "name": "visibility",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "transitive_configs",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "deprecation",
+     "type": "STRING",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$2>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "tags",
+     "type": "STRING_LIST",
+     "defaultValue": "[\"manual\"]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "testonly",
+     "type": "BOOLEAN",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$1>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "features",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "aspect_hints",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "licenses",
+     "type": "STRING_LIST",
+     "defaultValue": "[\"none\"]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "distribs",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "constraint_setting",
+     "type": "LABEL",
+     "mandatory": true,
+     "providerNameGroup": [
+      {
+       "providerName": [
+        "ConstraintSettingInfo"
+       ],
+       "originKey": [
+        {
+         "name": "ConstraintSettingInfo",
+         "file": "<native>"
+        }
+       ]
+      }
+     ],
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    }
+   ],
+   "originKey": {
+    "name": "constraint_value",
+    "file": "<native>"
+   },
+   "advertisedProviders": {
+    "providerName": [
+     "ConstraintValueInfo"
+    ],
+    "originKey": [
+     {
+      "name": "ConstraintValueInfo",
+      "file": "<native>"
+     }
+    ]
+   }
+  },
+  "environment": {
+   "ruleName": "environment",
+   "attribute": [
+    {
+     "name": "name",
+     "docString": "A unique name for this target.",
+     "type": "NAME",
+     "mandatory": true
+    },
+    {
+     "name": "visibility",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "transitive_configs",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "deprecation",
+     "type": "STRING",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$2>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "tags",
+     "type": "STRING_LIST",
+     "defaultValue": "[\"manual\"]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "testonly",
+     "type": "BOOLEAN",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$1>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "features",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "package_metadata",
+     "type": "LABEL_LIST",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$4>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "aspect_hints",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "licenses",
+     "type": "STRING_LIST",
+     "defaultValue": "[\"none\"]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "distribs",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "fulfills",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    }
+   ],
+   "originKey": {
+    "name": "environment",
+    "file": "<native>"
+   }
+  },
+  "extra_action": {
+   "ruleName": "extra_action",
+   "attribute": [
+    {
+     "name": "name",
+     "docString": "A unique name for this target.",
+     "type": "NAME",
+     "mandatory": true
+    },
+    {
+     "name": "visibility",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "transitive_configs",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "deprecation",
+     "type": "STRING",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$2>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "tags",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "testonly",
+     "type": "BOOLEAN",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$1>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "features",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "compatible_with",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "restricted_to",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "package_metadata",
+     "type": "LABEL_LIST",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$4>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "aspect_hints",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "licenses",
+     "type": "STRING_LIST",
+     "defaultValue": "[\"none\"]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "distribs",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "target_compatible_with",
+     "type": "LABEL_LIST",
+     "providerNameGroup": [
+      {
+       "providerName": [
+        "ConstraintValueInfo"
+       ],
+       "originKey": [
+        {
+         "name": "ConstraintValueInfo",
+         "file": "<native>"
+        }
+       ]
+      }
+     ],
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "data",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "exec_properties",
+     "type": "STRING_DICT",
+     "defaultValue": "{}",
+     "nativelyDefined": true
+    },
+    {
+     "name": "exec_compatible_with",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "exec_group_compatible_with",
+     "type": "LABEL_LIST_DICT",
+     "defaultValue": "{}",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "toolchains",
+     "type": "LABEL_LIST",
+     "providerNameGroup": [
+      {
+       "providerName": [
+        "TemplateVariableInfo"
+       ],
+       "originKey": [
+        {
+         "name": "TemplateVariableInfo",
+         "file": "<native>"
+        }
+       ]
+      }
+     ],
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "tools",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "out_templates",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "cmd",
+     "type": "STRING",
+     "mandatory": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "requires_action_output",
+     "type": "BOOLEAN",
+     "defaultValue": "False",
+     "nativelyDefined": true
+    }
+   ],
+   "originKey": {
+    "name": "extra_action",
+    "file": "<native>"
+   }
+  },
+  "genquery": {
+   "ruleName": "genquery",
+   "attribute": [
+    {
+     "name": "name",
+     "docString": "A unique name for this target.",
+     "type": "NAME",
+     "mandatory": true
+    },
+    {
+     "name": "visibility",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "transitive_configs",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "deprecation",
+     "type": "STRING",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$2>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "tags",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "testonly",
+     "type": "BOOLEAN",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$1>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "features",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "compatible_with",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "restricted_to",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "package_metadata",
+     "type": "LABEL_LIST",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$4>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "aspect_hints",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "licenses",
+     "type": "STRING_LIST",
+     "defaultValue": "[\"none\"]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "distribs",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "target_compatible_with",
+     "type": "LABEL_LIST",
+     "providerNameGroup": [
+      {
+       "providerName": [
+        "ConstraintValueInfo"
+       ],
+       "originKey": [
+        {
+         "name": "ConstraintValueInfo",
+         "file": "<native>"
+        }
+       ]
+      }
+     ],
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "deps",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "data",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "exec_properties",
+     "type": "STRING_DICT",
+     "defaultValue": "{}",
+     "nativelyDefined": true
+    },
+    {
+     "name": "exec_compatible_with",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "exec_group_compatible_with",
+     "type": "LABEL_LIST_DICT",
+     "defaultValue": "{}",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "scope",
+     "type": "LABEL_LIST",
+     "mandatory": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "strict",
+     "type": "BOOLEAN",
+     "defaultValue": "True",
+     "nativelyDefined": true
+    },
+    {
+     "name": "expression",
+     "type": "STRING",
+     "mandatory": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "opts",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "compressed_output",
+     "type": "BOOLEAN",
+     "defaultValue": "False",
+     "nativelyDefined": true
+    }
+   ],
+   "originKey": {
+    "name": "genquery",
+    "file": "<native>"
+   }
+  },
+  "genrule": {
+   "ruleName": "genrule",
+   "attribute": [
+    {
+     "name": "name",
+     "docString": "A unique name for this target.",
+     "type": "NAME",
+     "mandatory": true
+    },
+    {
+     "name": "visibility",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "transitive_configs",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "deprecation",
+     "type": "STRING",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$2>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "tags",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "testonly",
+     "type": "BOOLEAN",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$1>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "features",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "compatible_with",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "restricted_to",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "package_metadata",
+     "type": "LABEL_LIST",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$4>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "aspect_hints",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "licenses",
+     "type": "STRING_LIST",
+     "defaultValue": "[\"none\"]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "distribs",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "target_compatible_with",
+     "type": "LABEL_LIST",
+     "providerNameGroup": [
+      {
+       "providerName": [
+        "ConstraintValueInfo"
+       ],
+       "originKey": [
+        {
+         "name": "ConstraintValueInfo",
+         "file": "<native>"
+        }
+       ]
+      }
+     ],
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "exec_properties",
+     "type": "STRING_DICT",
+     "defaultValue": "{}",
+     "nativelyDefined": true
+    },
+    {
+     "name": "exec_compatible_with",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "exec_group_compatible_with",
+     "type": "LABEL_LIST_DICT",
+     "defaultValue": "{}",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "toolchains",
+     "type": "LABEL_LIST",
+     "providerNameGroup": [
+      {
+       "providerName": [
+        "TemplateVariableInfo"
+       ],
+       "originKey": [
+        {
+         "name": "TemplateVariableInfo",
+         "file": "<native>"
+        }
+       ]
+      },
+      {
+       "providerName": [
+        "ToolchainTypeInfo"
+       ],
+       "originKey": [
+        {
+         "name": "ToolchainTypeInfo",
+         "file": "<native>"
+        }
+       ]
+      }
+     ],
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "srcs",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "tools",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "outs",
+     "type": "OUTPUT_LIST",
+     "mandatory": true,
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "cmd",
+     "type": "STRING",
+     "defaultValue": "\"\"",
+     "nativelyDefined": true
+    },
+    {
+     "name": "cmd_bash",
+     "type": "STRING",
+     "defaultValue": "\"\"",
+     "nativelyDefined": true
+    },
+    {
+     "name": "cmd_bat",
+     "type": "STRING",
+     "defaultValue": "\"\"",
+     "nativelyDefined": true
+    },
+    {
+     "name": "cmd_ps",
+     "type": "STRING",
+     "defaultValue": "\"\"",
+     "nativelyDefined": true
+    },
+    {
+     "name": "output_to_bindir",
+     "type": "BOOLEAN",
+     "defaultValue": "False",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "local",
+     "type": "BOOLEAN",
+     "defaultValue": "False",
+     "nativelyDefined": true
+    },
+    {
+     "name": "message",
+     "type": "STRING",
+     "defaultValue": "\"\"",
+     "nativelyDefined": true
+    },
+    {
+     "name": "output_licenses",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "executable",
+     "type": "BOOLEAN",
+     "defaultValue": "False",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "heuristic_label_expansion",
+     "type": "BOOLEAN",
+     "defaultValue": "False",
+     "nativelyDefined": true
+    },
+    {
+     "name": "stamp",
+     "type": "INT",
+     "defaultValue": "0",
+     "nativelyDefined": true
+    }
+   ],
+   "originKey": {
+    "name": "genrule",
+    "file": "<native>"
+   },
+   "executable": true
+  },
+  "label_flag": {
+   "ruleName": "label_flag",
+   "attribute": [
+    {
+     "name": "name",
+     "docString": "A unique name for this target.",
+     "type": "NAME",
+     "mandatory": true
+    },
+    {
+     "name": "visibility",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "transitive_configs",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "deprecation",
+     "type": "STRING",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$2>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "tags",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "testonly",
+     "type": "BOOLEAN",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$1>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "features",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "compatible_with",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "restricted_to",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "package_metadata",
+     "type": "LABEL_LIST",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$4>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "aspect_hints",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "target_compatible_with",
+     "type": "LABEL_LIST",
+     "providerNameGroup": [
+      {
+       "providerName": [
+        "ConstraintValueInfo"
+       ],
+       "originKey": [
+        {
+         "name": "ConstraintValueInfo",
+         "file": "<native>"
+        }
+       ]
+      }
+     ],
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "scope",
+     "type": "STRING",
+     "defaultValue": "\"universal\"",
+     "nonconfigurable": true,
+     "nativelyDefined": true,
+     "values": [
+      "\"universal\"",
+      "\"target\"",
+      "\"project\""
+     ]
+    },
+    {
+     "name": "build_setting_default",
+     "type": "LABEL",
+     "mandatory": true,
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "help",
+     "type": "STRING",
+     "defaultValue": "\"\"",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    }
+   ],
+   "originKey": {
+    "name": "label_flag",
+    "file": "<native>"
+   }
+  },
+  "label_setting": {
+   "ruleName": "label_setting",
+   "attribute": [
+    {
+     "name": "name",
+     "docString": "A unique name for this target.",
+     "type": "NAME",
+     "mandatory": true
+    },
+    {
+     "name": "visibility",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "transitive_configs",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "deprecation",
+     "type": "STRING",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$2>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "tags",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "testonly",
+     "type": "BOOLEAN",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$1>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "features",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "compatible_with",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "restricted_to",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "package_metadata",
+     "type": "LABEL_LIST",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$4>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "aspect_hints",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "target_compatible_with",
+     "type": "LABEL_LIST",
+     "providerNameGroup": [
+      {
+       "providerName": [
+        "ConstraintValueInfo"
+       ],
+       "originKey": [
+        {
+         "name": "ConstraintValueInfo",
+         "file": "<native>"
+        }
+       ]
+      }
+     ],
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "scope",
+     "type": "STRING",
+     "defaultValue": "\"universal\"",
+     "nonconfigurable": true,
+     "nativelyDefined": true,
+     "values": [
+      "\"universal\"",
+      "\"target\"",
+      "\"project\""
+     ]
+    },
+    {
+     "name": "build_setting_default",
+     "type": "LABEL",
+     "mandatory": true,
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "help",
+     "type": "STRING",
+     "defaultValue": "\"\"",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    }
+   ],
+   "originKey": {
+    "name": "label_setting",
+    "file": "<native>"
+   }
+  },
+  "platform": {
+   "ruleName": "platform",
+   "attribute": [
+    {
+     "name": "name",
+     "docString": "A unique name for this target.",
+     "type": "NAME",
+     "mandatory": true
+    },
+    {
+     "name": "visibility",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "transitive_configs",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "deprecation",
+     "type": "STRING",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$2>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "tags",
+     "type": "STRING_LIST",
+     "defaultValue": "[\"manual\"]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "testonly",
+     "type": "BOOLEAN",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$1>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "features",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "aspect_hints",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "licenses",
+     "type": "STRING_LIST",
+     "defaultValue": "[\"none\"]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "distribs",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "constraint_values",
+     "type": "LABEL_LIST",
+     "providerNameGroup": [
+      {
+       "providerName": [
+        "ConstraintValueInfo"
+       ],
+       "originKey": [
+        {
+         "name": "ConstraintValueInfo",
+         "file": "<native>"
+        }
+       ]
+      }
+     ],
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "parents",
+     "type": "LABEL_LIST",
+     "providerNameGroup": [
+      {
+       "providerName": [
+        "PlatformInfo"
+       ],
+       "originKey": [
+        {
+         "name": "PlatformInfo",
+         "file": "<native>"
+        }
+       ]
+      }
+     ],
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "remote_execution_properties",
+     "type": "STRING",
+     "defaultValue": "\"\"",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "exec_properties",
+     "type": "STRING_DICT",
+     "defaultValue": "{}",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "flags",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "required_settings",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "missing_toolchain_error",
+     "type": "STRING",
+     "defaultValue": "\"For more information on platforms or toolchains see https://bazel.build/concepts/platforms-intro.\"",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "check_toolchain_types",
+     "type": "BOOLEAN",
+     "defaultValue": "False",
+     "nativelyDefined": true
+    },
+    {
+     "name": "allowed_toolchain_types",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    }
+   ],
+   "originKey": {
+    "name": "platform",
+    "file": "<native>"
+   },
+   "advertisedProviders": {
+    "providerName": [
+     "PlatformInfo"
+    ],
+    "originKey": [
+     {
+      "name": "PlatformInfo",
+      "file": "<native>"
+     }
+    ]
+   }
+  },
+  "test_suite": {
+   "ruleName": "test_suite",
+   "attribute": [
+    {
+     "name": "name",
+     "docString": "A unique name for this target.",
+     "type": "NAME",
+     "mandatory": true
+    },
+    {
+     "name": "visibility",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "transitive_configs",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "deprecation",
+     "type": "STRING",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$2>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "tags",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "testonly",
+     "type": "BOOLEAN",
+     "defaultValue": "True",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "features",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "compatible_with",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "restricted_to",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "package_metadata",
+     "type": "LABEL_LIST",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$4>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "aspect_hints",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "licenses",
+     "type": "STRING_LIST",
+     "defaultValue": "[\"none\"]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "distribs",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "target_compatible_with",
+     "type": "LABEL_LIST",
+     "providerNameGroup": [
+      {
+       "providerName": [
+        "ConstraintValueInfo"
+       ],
+       "originKey": [
+        {
+         "name": "ConstraintValueInfo",
+         "file": "<native>"
+        }
+       ]
+      }
+     ],
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "tests",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    }
+   ],
+   "originKey": {
+    "name": "test_suite",
+    "file": "<native>"
+   }
+  },
+  "toolchain": {
+   "ruleName": "toolchain",
+   "attribute": [
+    {
+     "name": "name",
+     "docString": "A unique name for this target.",
+     "type": "NAME",
+     "mandatory": true
+    },
+    {
+     "name": "visibility",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "transitive_configs",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "deprecation",
+     "type": "STRING",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$2>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "tags",
+     "type": "STRING_LIST",
+     "defaultValue": "[\"manual\"]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "testonly",
+     "type": "BOOLEAN",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$1>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "features",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "package_metadata",
+     "type": "LABEL_LIST",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$4>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "aspect_hints",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "licenses",
+     "type": "STRING_LIST",
+     "defaultValue": "[\"none\"]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "distribs",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "toolchain_type",
+     "type": "LABEL",
+     "mandatory": true,
+     "providerNameGroup": [
+      {
+       "providerName": [
+        "ToolchainTypeInfo"
+       ],
+       "originKey": [
+        {
+         "name": "ToolchainTypeInfo",
+         "file": "<native>"
+        }
+       ]
+      }
+     ],
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "exec_compatible_with",
+     "type": "LABEL_LIST",
+     "providerNameGroup": [
+      {
+       "providerName": [
+        "ConstraintValueInfo"
+       ],
+       "originKey": [
+        {
+         "name": "ConstraintValueInfo",
+         "file": "<native>"
+        }
+       ]
+      }
+     ],
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "target_compatible_with",
+     "type": "LABEL_LIST",
+     "providerNameGroup": [
+      {
+       "providerName": [
+        "ConstraintValueInfo"
+       ],
+       "originKey": [
+        {
+         "name": "ConstraintValueInfo",
+         "file": "<native>"
+        }
+       ]
+      }
+     ],
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "use_target_platform_constraints",
+     "type": "BOOLEAN",
+     "defaultValue": "False",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "target_settings",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "toolchain",
+     "type": "LABEL",
+     "mandatory": true,
+     "nativelyDefined": true
+    }
+   ],
+   "originKey": {
+    "name": "toolchain",
+    "file": "<native>"
+   }
+  },
+  "toolchain_type": {
+   "ruleName": "toolchain_type",
+   "attribute": [
+    {
+     "name": "name",
+     "docString": "A unique name for this target.",
+     "type": "NAME",
+     "mandatory": true
+    },
+    {
+     "name": "visibility",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "transitive_configs",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "deprecation",
+     "type": "STRING",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$2>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "tags",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "testonly",
+     "type": "BOOLEAN",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$1>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "features",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "compatible_with",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "restricted_to",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "package_metadata",
+     "type": "LABEL_LIST",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$4>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "aspect_hints",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "target_compatible_with",
+     "type": "LABEL_LIST",
+     "providerNameGroup": [
+      {
+       "providerName": [
+        "ConstraintValueInfo"
+       ],
+       "originKey": [
+        {
+         "name": "ConstraintValueInfo",
+         "file": "<native>"
+        }
+       ]
+      }
+     ],
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "no_match_error",
+     "type": "STRING",
+     "defaultValue": "\"\"",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    }
+   ],
+   "originKey": {
+    "name": "toolchain_type",
+    "file": "<native>"
+   },
+   "advertisedProviders": {
+    "providerName": [
+     "ToolchainTypeInfo"
+    ],
+    "originKey": [
+     {
+      "name": "ToolchainTypeInfo",
+      "file": "<native>"
+     }
+    ]
+   }
+  },
+  "filegroup": {
+   "ruleName": "filegroup",
+   "attribute": [
+    {
+     "name": "name",
+     "docString": "A unique name for this target.",
+     "type": "NAME",
+     "mandatory": true
+    },
+    {
+     "name": "visibility",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "transitive_configs",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "deprecation",
+     "type": "STRING",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$2>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "tags",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "testonly",
+     "type": "BOOLEAN",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$1>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "features",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "compatible_with",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "restricted_to",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "package_metadata",
+     "type": "LABEL_LIST",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$4>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "aspect_hints",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "licenses",
+     "type": "STRING_LIST",
+     "defaultValue": "[\"none\"]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "distribs",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "target_compatible_with",
+     "type": "LABEL_LIST",
+     "providerNameGroup": [
+      {
+       "providerName": [
+        "ConstraintValueInfo"
+       ],
+       "originKey": [
+        {
+         "name": "ConstraintValueInfo",
+         "file": "<native>"
+        }
+       ]
+      }
+     ],
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "srcs",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "output_group",
+     "type": "STRING",
+     "defaultValue": "\"\"",
+     "nativelyDefined": true
+    },
+    {
+     "name": "data",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "output_licenses",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    }
+   ],
+   "originKey": {
+    "name": "filegroup",
+    "file": "<native>"
+   }
+  },
+  "alias": {
+   "ruleName": "alias",
+   "attribute": [
+    {
+     "name": "name",
+     "docString": "A unique name for this target.",
+     "type": "NAME",
+     "mandatory": true
+    },
+    {
+     "name": "visibility",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "transitive_configs",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "deprecation",
+     "type": "STRING",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$2>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "tags",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "testonly",
+     "type": "BOOLEAN",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$1>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "features",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "compatible_with",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "restricted_to",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "package_metadata",
+     "type": "LABEL_LIST",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$4>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "aspect_hints",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "target_compatible_with",
+     "type": "LABEL_LIST",
+     "providerNameGroup": [
+      {
+       "providerName": [
+        "ConstraintValueInfo"
+       ],
+       "originKey": [
+        {
+         "name": "ConstraintValueInfo",
+         "file": "<native>"
+        }
+       ]
+      }
+     ],
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "actual",
+     "type": "LABEL",
+     "mandatory": true,
+     "nativelyDefined": true
+    }
+   ],
+   "originKey": {
+    "name": "alias",
+    "file": "<native>"
+   }
+  },
+  "starlark_doc_extract": {
+   "ruleName": "starlark_doc_extract",
+   "attribute": [
+    {
+     "name": "name",
+     "docString": "A unique name for this target.",
+     "type": "NAME",
+     "mandatory": true
+    },
+    {
+     "name": "visibility",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "transitive_configs",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "deprecation",
+     "type": "STRING",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$2>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "tags",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "testonly",
+     "type": "BOOLEAN",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$1>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "features",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "compatible_with",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "restricted_to",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "package_metadata",
+     "type": "LABEL_LIST",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$4>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "aspect_hints",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "licenses",
+     "type": "STRING_LIST",
+     "defaultValue": "[\"none\"]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "distribs",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "target_compatible_with",
+     "type": "LABEL_LIST",
+     "providerNameGroup": [
+      {
+       "providerName": [
+        "ConstraintValueInfo"
+       ],
+       "originKey": [
+        {
+         "name": "ConstraintValueInfo",
+         "file": "<native>"
+        }
+       ]
+      }
+     ],
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "deps",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "data",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "exec_properties",
+     "type": "STRING_DICT",
+     "defaultValue": "{}",
+     "nativelyDefined": true
+    },
+    {
+     "name": "exec_compatible_with",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "exec_group_compatible_with",
+     "type": "LABEL_LIST_DICT",
+     "defaultValue": "{}",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "src",
+     "type": "LABEL",
+     "mandatory": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "symbol_names",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "render_main_repo_name",
+     "type": "BOOLEAN",
+     "defaultValue": "False",
+     "nativelyDefined": true
+    },
+    {
+     "name": "allow_unused_doc_comments",
+     "type": "BOOLEAN",
+     "defaultValue": "False",
+     "nativelyDefined": true
+    }
+   ],
+   "originKey": {
+    "name": "starlark_doc_extract",
+    "file": "<native>"
+   }
+  },
+  "java_library": {
+   "ruleName": "java_library",
+   "attribute": [
+    {
+     "name": "name",
+     "docString": "A unique name for this target.",
+     "type": "NAME",
+     "mandatory": true
+    },
+    {
+     "name": "visibility",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "transitive_configs",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "deprecation",
+     "type": "STRING",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$2>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "tags",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "testonly",
+     "type": "BOOLEAN",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$1>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "features",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "compatible_with",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "restricted_to",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "package_metadata",
+     "type": "LABEL_LIST",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$4>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "aspect_hints",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "licenses",
+     "type": "STRING_LIST",
+     "defaultValue": "[\"none\"]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "distribs",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "target_compatible_with",
+     "type": "LABEL_LIST",
+     "providerNameGroup": [
+      {
+       "providerName": [
+        "ConstraintValueInfo"
+       ],
+       "originKey": [
+        {
+         "name": "ConstraintValueInfo",
+         "file": "<native>"
+        }
+       ]
+      }
+     ],
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "exec_properties",
+     "type": "STRING_DICT",
+     "defaultValue": "{}",
+     "nativelyDefined": true
+    },
+    {
+     "name": "exec_compatible_with",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "exec_group_compatible_with",
+     "type": "LABEL_LIST_DICT",
+     "defaultValue": "{}",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    }
+   ],
+   "originKey": {
+    "name": "java_library",
+    "file": "<native>"
+   }
+  },
+  "java_binary": {
+   "ruleName": "java_binary",
+   "attribute": [
+    {
+     "name": "name",
+     "docString": "A unique name for this target.",
+     "type": "NAME",
+     "mandatory": true
+    },
+    {
+     "name": "visibility",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "transitive_configs",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "deprecation",
+     "type": "STRING",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$2>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "tags",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "testonly",
+     "type": "BOOLEAN",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$1>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "features",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "compatible_with",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "restricted_to",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "package_metadata",
+     "type": "LABEL_LIST",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$4>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "aspect_hints",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "licenses",
+     "type": "STRING_LIST",
+     "defaultValue": "[\"none\"]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "distribs",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "target_compatible_with",
+     "type": "LABEL_LIST",
+     "providerNameGroup": [
+      {
+       "providerName": [
+        "ConstraintValueInfo"
+       ],
+       "originKey": [
+        {
+         "name": "ConstraintValueInfo",
+         "file": "<native>"
+        }
+       ]
+      }
+     ],
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "exec_properties",
+     "type": "STRING_DICT",
+     "defaultValue": "{}",
+     "nativelyDefined": true
+    },
+    {
+     "name": "exec_compatible_with",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "exec_group_compatible_with",
+     "type": "LABEL_LIST_DICT",
+     "defaultValue": "{}",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    }
+   ],
+   "originKey": {
+    "name": "java_binary",
+    "file": "<native>"
+   }
+  },
+  "java_import": {
+   "ruleName": "java_import",
+   "attribute": [
+    {
+     "name": "name",
+     "docString": "A unique name for this target.",
+     "type": "NAME",
+     "mandatory": true
+    },
+    {
+     "name": "visibility",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "transitive_configs",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "deprecation",
+     "type": "STRING",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$2>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "tags",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "testonly",
+     "type": "BOOLEAN",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$1>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "features",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "compatible_with",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "restricted_to",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "package_metadata",
+     "type": "LABEL_LIST",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$4>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "aspect_hints",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "licenses",
+     "type": "STRING_LIST",
+     "defaultValue": "[\"none\"]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "distribs",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "target_compatible_with",
+     "type": "LABEL_LIST",
+     "providerNameGroup": [
+      {
+       "providerName": [
+        "ConstraintValueInfo"
+       ],
+       "originKey": [
+        {
+         "name": "ConstraintValueInfo",
+         "file": "<native>"
+        }
+       ]
+      }
+     ],
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "exec_properties",
+     "type": "STRING_DICT",
+     "defaultValue": "{}",
+     "nativelyDefined": true
+    },
+    {
+     "name": "exec_compatible_with",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "exec_group_compatible_with",
+     "type": "LABEL_LIST_DICT",
+     "defaultValue": "{}",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    }
+   ],
+   "originKey": {
+    "name": "java_import",
+    "file": "<native>"
+   }
+  },
+  "java_plugin": {
+   "ruleName": "java_plugin",
+   "attribute": [
+    {
+     "name": "name",
+     "docString": "A unique name for this target.",
+     "type": "NAME",
+     "mandatory": true
+    },
+    {
+     "name": "visibility",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "transitive_configs",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "deprecation",
+     "type": "STRING",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$2>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "tags",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "testonly",
+     "type": "BOOLEAN",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$1>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "features",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "compatible_with",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "restricted_to",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "package_metadata",
+     "type": "LABEL_LIST",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$4>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "aspect_hints",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "licenses",
+     "type": "STRING_LIST",
+     "defaultValue": "[\"none\"]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "distribs",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "target_compatible_with",
+     "type": "LABEL_LIST",
+     "providerNameGroup": [
+      {
+       "providerName": [
+        "ConstraintValueInfo"
+       ],
+       "originKey": [
+        {
+         "name": "ConstraintValueInfo",
+         "file": "<native>"
+        }
+       ]
+      }
+     ],
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "exec_properties",
+     "type": "STRING_DICT",
+     "defaultValue": "{}",
+     "nativelyDefined": true
+    },
+    {
+     "name": "exec_compatible_with",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "exec_group_compatible_with",
+     "type": "LABEL_LIST_DICT",
+     "defaultValue": "{}",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    }
+   ],
+   "originKey": {
+    "name": "java_plugin",
+    "file": "<native>"
+   }
+  },
+  "java_runtime": {
+   "ruleName": "java_runtime",
+   "attribute": [
+    {
+     "name": "name",
+     "docString": "A unique name for this target.",
+     "type": "NAME",
+     "mandatory": true
+    },
+    {
+     "name": "visibility",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "transitive_configs",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "deprecation",
+     "type": "STRING",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$2>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "tags",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "testonly",
+     "type": "BOOLEAN",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$1>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "features",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "compatible_with",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "restricted_to",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "package_metadata",
+     "type": "LABEL_LIST",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$4>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "aspect_hints",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "licenses",
+     "type": "STRING_LIST",
+     "defaultValue": "[\"none\"]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "distribs",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "target_compatible_with",
+     "type": "LABEL_LIST",
+     "providerNameGroup": [
+      {
+       "providerName": [
+        "ConstraintValueInfo"
+       ],
+       "originKey": [
+        {
+         "name": "ConstraintValueInfo",
+         "file": "<native>"
+        }
+       ]
+      }
+     ],
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "exec_properties",
+     "type": "STRING_DICT",
+     "defaultValue": "{}",
+     "nativelyDefined": true
+    },
+    {
+     "name": "exec_compatible_with",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "exec_group_compatible_with",
+     "type": "LABEL_LIST_DICT",
+     "defaultValue": "{}",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    }
+   ],
+   "originKey": {
+    "name": "java_runtime",
+    "file": "<native>"
+   }
+  },
+  "java_toolchain": {
+   "ruleName": "java_toolchain",
+   "attribute": [
+    {
+     "name": "name",
+     "docString": "A unique name for this target.",
+     "type": "NAME",
+     "mandatory": true
+    },
+    {
+     "name": "visibility",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "transitive_configs",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "deprecation",
+     "type": "STRING",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$2>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "tags",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "testonly",
+     "type": "BOOLEAN",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$1>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "features",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "compatible_with",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "restricted_to",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "package_metadata",
+     "type": "LABEL_LIST",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$4>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "aspect_hints",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "licenses",
+     "type": "STRING_LIST",
+     "defaultValue": "[\"none\"]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "distribs",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "target_compatible_with",
+     "type": "LABEL_LIST",
+     "providerNameGroup": [
+      {
+       "providerName": [
+        "ConstraintValueInfo"
+       ],
+       "originKey": [
+        {
+         "name": "ConstraintValueInfo",
+         "file": "<native>"
+        }
+       ]
+      }
+     ],
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "exec_properties",
+     "type": "STRING_DICT",
+     "defaultValue": "{}",
+     "nativelyDefined": true
+    },
+    {
+     "name": "exec_compatible_with",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "exec_group_compatible_with",
+     "type": "LABEL_LIST_DICT",
+     "defaultValue": "{}",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    }
+   ],
+   "originKey": {
+    "name": "java_toolchain",
+    "file": "<native>"
+   }
+  },
+  "java_package_configuration": {
+   "ruleName": "java_package_configuration",
+   "attribute": [
+    {
+     "name": "name",
+     "docString": "A unique name for this target.",
+     "type": "NAME",
+     "mandatory": true
+    },
+    {
+     "name": "visibility",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "transitive_configs",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "deprecation",
+     "type": "STRING",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$2>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "tags",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "testonly",
+     "type": "BOOLEAN",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$1>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "features",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "compatible_with",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "restricted_to",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "package_metadata",
+     "type": "LABEL_LIST",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$4>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "aspect_hints",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "licenses",
+     "type": "STRING_LIST",
+     "defaultValue": "[\"none\"]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "distribs",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "target_compatible_with",
+     "type": "LABEL_LIST",
+     "providerNameGroup": [
+      {
+       "providerName": [
+        "ConstraintValueInfo"
+       ],
+       "originKey": [
+        {
+         "name": "ConstraintValueInfo",
+         "file": "<native>"
+        }
+       ]
+      }
+     ],
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "exec_properties",
+     "type": "STRING_DICT",
+     "defaultValue": "{}",
+     "nativelyDefined": true
+    },
+    {
+     "name": "exec_compatible_with",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "exec_group_compatible_with",
+     "type": "LABEL_LIST_DICT",
+     "defaultValue": "{}",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    }
+   ],
+   "originKey": {
+    "name": "java_package_configuration",
+    "file": "<native>"
+   }
+  },
+  "java_plugins_flag_alias": {
+   "ruleName": "java_plugins_flag_alias",
+   "attribute": [
+    {
+     "name": "name",
+     "docString": "A unique name for this target.",
+     "type": "NAME",
+     "mandatory": true
+    },
+    {
+     "name": "visibility",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "transitive_configs",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "deprecation",
+     "type": "STRING",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$2>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "tags",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "testonly",
+     "type": "BOOLEAN",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$1>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "features",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "compatible_with",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "restricted_to",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "package_metadata",
+     "type": "LABEL_LIST",
+     "defaultValue": "<unknown object com.google.devtools.build.lib.analysis.BaseRuleClasses$4>",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "aspect_hints",
+     "type": "LABEL_LIST",
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    },
+    {
+     "name": "licenses",
+     "type": "STRING_LIST",
+     "defaultValue": "[\"none\"]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "distribs",
+     "type": "STRING_LIST",
+     "defaultValue": "[]",
+     "nonconfigurable": true,
+     "nativelyDefined": true
+    },
+    {
+     "name": "target_compatible_with",
+     "type": "LABEL_LIST",
+     "providerNameGroup": [
+      {
+       "providerName": [
+        "ConstraintValueInfo"
+       ],
+       "originKey": [
+        {
+         "name": "ConstraintValueInfo",
+         "file": "<native>"
+        }
+       ]
+      }
+     ],
+     "defaultValue": "[]",
+     "nativelyDefined": true
+    }
+   ],
+   "originKey": {
+    "name": "java_plugins_flag_alias",
+    "file": "<native>"
+   }
+  }
+ }
+}

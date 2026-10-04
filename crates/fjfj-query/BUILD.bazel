@@ -5,12 +5,14 @@ package(default_visibility = ["//visibility:public"])
 rust_library(
     name = "fjfj-query",
     srcs = glob(["src/**/*.rs"]),
+    compile_data = ["src/native_rule_classes.json"],
     crate_name = "fjfj_query",
     edition = "2024",
     version = "0.0.1",
     deps = [
         "//crates/fjfj-graph",
         "@crates//:regex",
+        "@crates//:serde_json",
         "@crates//:thiserror",
     ],
 )

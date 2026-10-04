@@ -12,6 +12,7 @@ pub mod graph;
 pub mod output;
 pub mod parse;
 pub mod proto;
+pub mod rule_class;
 pub mod target_proto;
 
 pub use ast::Dialect;

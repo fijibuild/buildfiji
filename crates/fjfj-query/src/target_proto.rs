@@ -32,6 +32,9 @@ pub struct ProtoOptions {
     pub include_configurations: bool,
     /// `--[no]proto:include_attribute_source_aspects` (default false).
     pub include_attribute_source_aspects: bool,
+    /// `--[no]proto:rule_classes` (default false): each rule says which class
+    /// it is of and the first of a class describes it.
+    pub rule_classes: bool,
 }
 
 impl Default for ProtoOptions {
@@ -46,6 +49,7 @@ impl Default for ProtoOptions {
             definition_stack: false,
             include_configurations: true,
             include_attribute_source_aspects: false,
+            rule_classes: false,
         }
     }
 }
@@ -74,6 +78,9 @@ impl ProtoOptions {
             "definition_stack" => self.definition_stack = on,
             "include_configurations" => self.include_configurations = on,
             "include_attribute_source_aspects" => self.include_attribute_source_aspects = on,
+            "rule_classes" => self.rule_classes = on,
+            // Bazel 9.2.0 shows the same hash with it as without.
+            "include_starlark_rule_env" => {}
             // Bazel shows the hash whatever this says.
             "include_synthetic_attribute_hash" => {}
             "output_rule_attrs" => {
@@ -416,7 +423,12 @@ fn outputs(node: &Node, graph: &dyn Graph) -> Vec<String> {
 }
 
 /// The `Target` for `label`.
-pub fn target(ev: &Evaluator<'_>, label: &Label, options: &ProtoOptions) -> Result<Msg, String> {
+pub fn target(
+    ev: &Evaluator<'_>,
+    label: &Label,
+    options: &ProtoOptions,
+    classes: &mut BTreeSet<String>,
+) -> Result<Msg, String> {
     let graph = ev.graph();
     let node: std::sync::Arc<Node> = ev.node(label)?;
     let name = graph.display(label);
@@ -515,6 +527,16 @@ pub fn target(ev: &Evaluator<'_>, label: &Label, options: &ProtoOptions) -> Resu
             }
             if options.definition_stack {
                 rule = rule.many(14, "definition_stack", shown(&node.definition_stack));
+            }
+            if options.rule_classes
+                && let Some(key) = crate::rule_class::class_key(&node, graph)
+            {
+                // Only the first rule of a class describes it.
+                let first = classes.insert(key.clone());
+                rule = rule.one(16, "rule_class_key", key);
+                if first && let Some(info) = crate::rule_class::class_info(&node, graph) {
+                    rule = rule.one(17, "rule_class_info", info);
+                }
             }
             Msg::new()
                 .one(1, "type", Val::Enum("RULE", 1))
