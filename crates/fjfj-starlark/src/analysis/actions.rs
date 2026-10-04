@@ -241,7 +241,7 @@ impl CtxState {
         progress_message: Option<String>,
         kind: ActionKind,
         inputs: Vec<Artifact>,
-        input_set: Option<NestedSet<Artifact>>,
+        input_set: Option<Arc<NestedSet<Artifact>>>,
         outputs: Vec<Artifact>,
     ) {
         let progress = match progress_message {
@@ -753,14 +753,13 @@ fn spawn<'v>(
     // How the inputs nest, as aquery shows: the `inputs` as given, the
     // `tools` as a list, then the files the action adds.
     let mut nested = vec![match bound[1] {
-        Some(v) if is_depset(v) => {
-            nested_of(v, &artifact_of).unwrap_or_else(|| NestedSet::of(inputs.clone()))
-        }
-        _ => NestedSet::of(unique(&inputs)),
+        Some(v) if is_depset(v) => nested_of(v, &artifact_of, &mut s.nested.lock().unwrap())
+            .unwrap_or_else(|| Arc::new(NestedSet::of(inputs.clone()))),
+        _ => Arc::new(NestedSet::of(unique(&inputs))),
     }];
     if let Some(v) = bound[2] {
         let tools = files_of(eval, function, "tools", v)?;
-        nested.push(NestedSet::of(unique(&tools)));
+        nested.push(Arc::new(NestedSet::of(unique(&tools))));
         inputs.extend(tools);
     }
     let mut arguments: Vec<String> = Vec::new();
@@ -803,7 +802,7 @@ fn spawn<'v>(
                             vec![file.clone()],
                         );
                         arguments.push(param.pattern.replacen("%s", &file.exec_path(), 1));
-                        nested.push(NestedSet::of(vec![file.clone()]));
+                        nested.push(Arc::new(NestedSet::of(vec![file.clone()])));
                         inputs.push(file);
                     }
                     _ => arguments.extend(state.items.iter().cloned()),
@@ -848,13 +847,13 @@ fn spawn<'v>(
         argv
     } else {
         let executable = if let Some(file) = artifact_of(last) {
-            nested.push(NestedSet::of(vec![file.clone()]));
+            nested.push(Arc::new(NestedSet::of(vec![file.clone()])));
             inputs.push(file.clone());
             file.exec_path()
         } else if let Some(files) = files_to_run_inputs(last)
             && let Some(file) = files.first().cloned()
         {
-            nested.push(NestedSet::of(files.clone()));
+            nested.push(Arc::new(NestedSet::of(files.clone())));
             inputs.extend(files);
             file.exec_path()
         } else if let Some(path) = last.unpack_str() {

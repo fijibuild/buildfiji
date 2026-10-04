@@ -11,6 +11,7 @@ use fjfj_query::proto::Msg;
 use fjfj_starlark::AspectRef;
 use regex::Regex;
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 /// The `--include_*` flags.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -651,7 +652,8 @@ struct Dump {
     aspects: BTreeMap<String, i64>,
     artifacts: BTreeMap<String, i64>,
     fragments: BTreeMap<String, i64>,
-    dep_sets: BTreeMap<String, i64>,
+    dep_sets: BTreeMap<usize, i64>,
+    held: Vec<Arc<NestedSet<Artifact>>>,
 }
 
 impl Dump {
@@ -663,21 +665,19 @@ impl Dump {
         });
     }
 
-    /// The id of the dep set of `set`. Ids go to a set before the sets below
-    /// it, and the sets and artifacts below it are written first, as Bazel's
-    /// dump does.
-    fn dep_set(&mut self, set: &NestedSet<Artifact>) -> i64 {
-        fn key(set: &NestedSet<Artifact>) -> String {
-            let direct: Vec<String> = set.direct().iter().map(|a| a.exec_path()).collect();
-            let below: Vec<String> = set.transitive().iter().map(|t| key(t)).collect();
-            format!("[{}|{}]", direct.join(","), below.join(","))
-        }
-        let key = key(set);
+    /// The id of the dep set of `set`. Bazel gives one id to one set, however
+    /// many sets and actions hold it, and two sets that happen to hold the
+    /// same files are two. Ids go to a set before the sets below it, and the
+    /// sets and artifacts below it are written first, as Bazel's dump does.
+    fn dep_set(&mut self, set: &Arc<NestedSet<Artifact>>) -> i64 {
+        let key = Arc::as_ptr(set) as usize;
         if let Some(id) = self.dep_sets.get(&key) {
             return *id;
         }
         let id = self.dep_sets.len() as i64 + 1;
         self.dep_sets.insert(key, id);
+        // The pointer names the set only while the set lives.
+        self.held.push(set.clone());
         let below: Vec<i64> = set
             .transitive()
             .iter()
@@ -815,7 +815,7 @@ impl Dump {
                         .cloned()
                         .collect();
                     if !inputs.is_empty() {
-                        input_sets.push(self.dep_set(&NestedSet::of(inputs)));
+                        input_sets.push(self.dep_set(&Arc::new(NestedSet::of(inputs))));
                     }
                 }
             }

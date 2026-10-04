@@ -184,6 +184,7 @@ pub fn run_aspect(req: &AspectRequest) -> Result<RuleResult, String> {
             rule,
             aspect_ids: req.aspect_ids.clone(),
             actions: Mutex::new(Vec::new()),
+            nested: Mutex::default(),
             declared: Mutex::new(Default::default()),
         })
     };

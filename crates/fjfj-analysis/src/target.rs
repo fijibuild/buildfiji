@@ -81,7 +81,7 @@ pub struct ConfiguredTarget {
     /// The native rule or `.bzl` rule class, `None` for a file.
     pub rule_class: Option<String>,
     /// `DefaultInfo.files`: what building the target builds.
-    pub files: NestedSet<Artifact>,
+    pub files: Arc<NestedSet<Artifact>>,
     /// `DefaultInfo.executable`.
     pub executable: Option<Artifact>,
     /// `DefaultInfo.default_runfiles`.
@@ -165,7 +165,7 @@ impl ConfiguredTarget {
             label: key.label.clone(),
             configuration: key.configuration.clone(),
             rule_class: None,
-            files: NestedSet::empty(),
+            files: Arc::new(NestedSet::empty()),
             executable: None,
             runfiles: fjfj_graph::Runfiles::default(),
             outputs: BTreeMap::new(),
@@ -272,7 +272,7 @@ impl Key for ConfiguredTargetKey {
                     let artifact = made.outputs.get(&label.name).cloned().ok_or_else(|| {
                         Error::msg(format!("rule '{rule}' does not create '{}'", label.name))
                     })?;
-                    target.files = NestedSet::of(vec![artifact]);
+                    target.files = Arc::new(NestedSet::of(vec![artifact]));
                     target.deps.push(producer);
                     Ok(target)
                 }
@@ -310,11 +310,11 @@ fn declared_conditions(attrs: &[(String, AttrValue)]) -> Vec<Label> {
 
 /// The target of a source file.
 fn source_file(key: &ConfiguredTargetKey, mut target: ConfiguredTarget) -> ConfiguredTarget {
-    target.files = NestedSet::of(vec![Artifact::source(
+    target.files = Arc::new(NestedSet::of(vec![Artifact::source(
         &key.label.repo,
         &key.label.package,
         &key.label.name,
-    )]);
+    )]));
     target
 }
 

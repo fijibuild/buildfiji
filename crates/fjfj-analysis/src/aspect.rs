@@ -17,6 +17,7 @@ use fjfj_starlark::{
     AspectRef, AspectRequest, DepInfo, aspect_applies, aspect_spec, labels_of_attrs, run_aspect,
 };
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 /// An aspect applied to a target.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -168,7 +169,7 @@ impl Key for AspectKey {
                     label_text(&bzl)
                 ))
             })?;
-        out.files = NestedSet::of(result.files);
+        out.files = Arc::new(NestedSet::of(result.files));
         out.runfiles = result.runfiles;
         out.actions = result.actions;
         out.providers = result.providers;

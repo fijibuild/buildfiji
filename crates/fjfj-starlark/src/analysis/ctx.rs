@@ -50,6 +50,9 @@ pub(crate) struct CtxState {
     /// For an aspect: the aspects applied to this target so far, then this one.
     pub(crate) aspect_ids: Vec<String>,
     pub(crate) actions: Mutex<Vec<Action>>,
+    /// The nested sets made of the depsets actions took, by depset, so a
+    /// depset several actions take is one set.
+    pub(crate) nested: Mutex<std::collections::HashMap<u64, Arc<fjfj_graph::NestedSet<Artifact>>>>,
     /// Exec paths declared so far, which another declaration may not repeat.
     pub(crate) declared: Mutex<BTreeSet<String>>,
 }

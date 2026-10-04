@@ -716,6 +716,12 @@ use = rule(implementation = _use, attrs = {"t": attr.label(cfg = "exec", executa
         argv[2].contains("bazel-out/k8-opt-exec/bin/tool.sh"),
         "{argv:?}"
     );
+    // An executable tool brings its runfiles tree, as `bazel aquery` showed.
+    let inputs: Vec<String> = g.actions[0].inputs.iter().map(|a| a.exec_path()).collect();
+    assert!(
+        inputs.contains(&"bazel-out/k8-opt-exec/bin/tool.sh.runfiles".to_owned()),
+        "{inputs:?}"
+    );
 }
 
 /// Probed with `bazel build` on the same files: the output directories, and

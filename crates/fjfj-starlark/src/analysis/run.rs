@@ -228,6 +228,7 @@ pub fn run_rule(req: &RuleRequest) -> Result<RuleResult, String> {
         rule: None,
         aspect_ids: Vec::new(),
         actions: Mutex::new(Vec::new()),
+        nested: Mutex::default(),
         declared: Mutex::new(outputs.iter().map(|(_, a)| a.exec_path()).collect()),
     });
     execute(

@@ -182,9 +182,10 @@ impl<T: Clone + Ord> NestedSet<T> {
     }
 
     /// `sets` as Bazel's `NestedSetBuilder` joins them: a set of one element
-    /// is that element, direct; any other set is nested; and when that
-    /// leaves one nested set and nothing direct, it is that set.
-    pub fn join<'a>(sets: impl IntoIterator<Item = &'a NestedSet<T>>) -> NestedSet<T>
+    /// is that element, direct; any other set is nested, as the same set;
+    /// and when that leaves one nested set and nothing direct, it is that
+    /// set.
+    pub fn join<'a>(sets: impl IntoIterator<Item = &'a Arc<NestedSet<T>>>) -> Arc<NestedSet<T>>
     where
         T: 'a,
     {
@@ -200,13 +201,13 @@ impl<T: Clone + Ord> NestedSet<T> {
                         direct.push(only.clone());
                     }
                 }
-                _ => transitive.push(Arc::new(set.clone())),
+                _ => transitive.push(set.clone()),
             }
         }
         if direct.is_empty() && transitive.len() == 1 {
-            return transitive[0].as_ref().clone();
+            return transitive.remove(0);
         }
-        NestedSet::new(direct, transitive)
+        Arc::new(NestedSet::new(direct, transitive))
     }
 
     /// Every element once, the elements of a nested set before the set's own

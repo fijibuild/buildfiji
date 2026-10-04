@@ -327,7 +327,7 @@ pub(crate) async fn analyze(
         })?;
     let run_time = started.elapsed();
     let started = std::time::Instant::now();
-    target.files = NestedSet::of(result.files);
+    target.files = Arc::new(NestedSet::of(result.files));
     target.executable = result.executable;
     target.runfiles = result.runfiles;
     target.actions = result.actions;

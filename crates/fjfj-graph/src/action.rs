@@ -69,7 +69,7 @@ pub struct Action {
     pub inputs: Vec<Artifact>,
     /// How the inputs nest, which aquery shows; `None` is one flat set of
     /// `inputs`.
-    pub input_set: Option<crate::NestedSet<Artifact>>,
+    pub input_set: Option<std::sync::Arc<crate::NestedSet<Artifact>>>,
     pub outputs: Vec<Artifact>,
 }
 

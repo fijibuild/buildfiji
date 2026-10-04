@@ -477,9 +477,9 @@ pub(crate) fn depset_globals(builder: &mut GlobalsBuilder) {
 pub fn nested_of<'v, T: Clone + Ord>(
     value: Value<'v>,
     element: &dyn Fn(Value<'v>) -> Option<T>,
-) -> Option<fjfj_graph::NestedSet<T>> {
+    built: &mut std::collections::HashMap<u64, std::sync::Arc<fjfj_graph::NestedSet<T>>>,
+) -> Option<std::sync::Arc<fjfj_graph::NestedSet<T>>> {
     use fjfj_graph::NestedSet;
-    use std::collections::HashMap;
     use std::sync::Arc;
     struct Frame<'v, T> {
         value: Value<'v>,
@@ -489,7 +489,15 @@ pub fn nested_of<'v, T: Clone + Ord>(
         transitive: Vec<Arc<NestedSet<T>>>,
     }
     let top = layout_of(value)?;
-    let mut built: HashMap<ValueIdentity<'v>, Arc<NestedSet<T>>> = HashMap::new();
+    let key = |set: Value<'v>| {
+        use std::hash::{DefaultHasher, Hasher};
+        let mut hasher = DefaultHasher::new();
+        set.identity().hash(&mut hasher);
+        hasher.finish()
+    };
+    if let Some(done) = built.get(&key(value)) {
+        return Some(done.clone());
+    }
     let mut stack = vec![Frame {
         value,
         layout: top,
@@ -510,7 +518,7 @@ pub fn nested_of<'v, T: Clone + Ord>(
                     }
                 }
                 Kid::Set(set) => {
-                    if let Some(done) = built.get(&set.identity()) {
+                    if let Some(done) = built.get(&key(set)) {
                         frame.transitive.push(done.clone());
                     } else if let Some(layout) = layout_of(set) {
                         stack.push(Frame {
@@ -527,10 +535,10 @@ pub fn nested_of<'v, T: Clone + Ord>(
         }
         let frame = stack.pop()?;
         let set = Arc::new(NestedSet::new(frame.direct, frame.transitive));
-        built.insert(frame.value.identity(), set.clone());
+        built.insert(key(frame.value), set.clone());
         match stack.last_mut() {
             Some(parent) => parent.transitive.push(set),
-            None => return Some(Arc::unwrap_or_clone(set)),
+            None => return Some(set),
         }
     }
 }

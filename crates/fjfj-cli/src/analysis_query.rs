@@ -1760,7 +1760,8 @@ execution_platform: "@@platforms//host:host"
     /// What `bazel aquery --output=jsonproto` printed for an action whose
     /// `inputs` is a depset with a depset below it: the dep sets nest as the
     /// depsets do, the outer set has the lower id, and the artifacts of the
-    /// inner set are numbered first.
+    /// inner set are numbered first. A flat list of the same files is a set of
+    /// its own.
     #[tokio::test(flavor = "multi_thread")]
     async fn aquery_nests_the_dep_sets_of_a_depset_input() {
         let files = [
@@ -1769,7 +1770,7 @@ execution_platform: "@@platforms//host:host"
             ("b.txt", ""),
             (
                 "defs.bzl",
-                "def _i(ctx):\n    o = ctx.actions.declare_file(ctx.label.name + \".out\")\n    d = depset(ctx.files.srcs, transitive = [depset(ctx.files.deps)])\n    ctx.actions.run_shell(inputs = d, outputs = [o], command = \"true\")\n    return [DefaultInfo(files = depset([o]))]\nr = rule(_i, attrs = {\"srcs\": attr.label_list(allow_files = True), \"deps\": attr.label_list(allow_files = True)})\n",
+                "def _i(ctx):\n    o = ctx.actions.declare_file(ctx.label.name + \".out\")\n    d = depset(ctx.files.srcs, transitive = [depset(ctx.files.deps)])\n    ctx.actions.run_shell(inputs = d, outputs = [o], command = \"true\")\n    p = ctx.actions.declare_file(ctx.label.name + \".l\")\n    ctx.actions.run_shell(inputs = ctx.files.srcs + ctx.files.deps, outputs = [p], command = \"true\")\n    return [DefaultInfo(files = depset([o, p]))]\nr = rule(_i, attrs = {\"srcs\": attr.label_list(allow_files = True), \"deps\": attr.label_list(allow_files = True)})\n",
             ),
             (
                 "BUILD",
@@ -1797,6 +1798,8 @@ execution_platform: "@@platforms//host:host"
             serde_json::json!([
                 {"id": 2, "directArtifactIds": [1, 2]},
                 {"id": 1, "transitiveDepSetIds": [2], "directArtifactIds": [1]},
+                // The same files in another set are another set.
+                {"id": 3, "directArtifactIds": [1, 2]},
             ]),
             "{json}"
         );

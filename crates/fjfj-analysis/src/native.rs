@@ -267,7 +267,6 @@ async fn genrule(
     let _ = package;
 
     let src_files: Vec<Artifact> = srcs.iter().flat_map(|(_, t)| t.files.to_vec()).collect();
-    let tool_files: Vec<Artifact> = tools.iter().flat_map(|(_, t)| t.files.to_vec()).collect();
     let prerequisites: Vec<Prerequisite> = srcs
         .iter()
         .chain(&tools)
@@ -299,9 +298,20 @@ async fn genrule(
 
     let setup_script = setup[0].1.files.to_vec();
     // Bazel nests them as the setup script, the sources and the tools.
+    // A tool that is an executable brings its runfiles tree.
+    let tool_sets: Vec<Arc<NestedSet<Artifact>>> = tools
+        .iter()
+        .map(|(_, t)| {
+            let tree = t.executable.as_ref().and(t.extra_outputs.first());
+            NestedSet::join([
+                &t.files,
+                &Arc::new(NestedSet::of(tree.cloned().into_iter().collect())),
+            ])
+        })
+        .collect();
     let input_set = NestedSet::join([
         &NestedSet::join(srcs.iter().map(|(_, t)| &t.files)),
-        &NestedSet::join(tools.iter().map(|(_, t)| &t.files)),
+        &NestedSet::join(&tool_sets),
         &setup[0].1.files,
     ]);
     let script = setup_script
@@ -310,7 +320,7 @@ async fn genrule(
         .ok_or_else(|| Error::msg("@bazel_tools has no genrule-setup.sh"))?;
     let mut inputs = setup_script;
     inputs.extend(src_files);
-    inputs.extend(tool_files);
+    inputs.extend(tool_sets.iter().flat_map(|set| set.to_vec()));
 
     let mut execution_requirements = BTreeMap::new();
     if flag(label, attrs, "local")? {
@@ -343,7 +353,7 @@ async fn genrule(
     if flag(label, attrs, "executable")? && outs.len() == 1 {
         target.executable = Some(outs[0].clone());
     }
-    target.files = NestedSet::of(outs);
+    target.files = Arc::new(NestedSet::of(outs));
     target.outputs = outputs;
     target.deps = srcs
         .into_iter()
