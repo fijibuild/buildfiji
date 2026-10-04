@@ -39,9 +39,17 @@ impl Sandbox {
             if let Some(dir) = at.parent() {
                 std::fs::create_dir_all(dir)?;
             }
-            match std::os::unix::fs::symlink(layout.resolve(input), &at) {
-                Err(e) if e.kind() != io::ErrorKind::AlreadyExists => return Err(e),
-                _ => {}
+            let real = layout.resolve(input);
+            if real.is_dir() {
+                // A directory input, a runfiles tree or a tree artifact, is
+                // made of directories here, so a command can make files next
+                // to what it holds, as under Bazel's sandbox.
+                mirror(&real, &at)?;
+            } else {
+                match std::os::unix::fs::symlink(&real, &at) {
+                    Err(e) if e.kind() != io::ErrorKind::AlreadyExists => return Err(e),
+                    _ => {}
+                }
             }
         }
         for out in &action.outputs {
@@ -85,4 +93,52 @@ fn inside_a_link(root: &Path, at: &Path) -> bool {
         .skip(1)
         .take_while(|dir| dir.starts_with(root) && *dir != root)
         .any(|dir| std::fs::symlink_metadata(dir).is_ok_and(|m| m.file_type().is_symlink()))
+}
+
+/// `to` as a directory holding a link to each file of the directory `from`,
+/// and a directory of its own for each directory of it.
+fn mirror(from: &Path, to: &Path) -> io::Result<()> {
+    std::fs::create_dir_all(to)?;
+    for entry in std::fs::read_dir(from)? {
+        let entry = entry?;
+        let (src, dst) = (entry.path(), to.join(entry.file_name()));
+        if src.is_dir() {
+            mirror(&src, &dst)?;
+        } else {
+            match std::os::unix::fs::symlink(&src, &dst) {
+                Err(e) if e.kind() != io::ErrorKind::AlreadyExists => return Err(e),
+                _ => {}
+            }
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_directory_input_is_made_of_directories_so_files_can_be_made_beside_its_own() {
+        let dir = tempfile::tempdir().unwrap();
+        let from = dir.path().join("from");
+        std::fs::create_dir_all(from.join("sub")).unwrap();
+        std::fs::write(from.join("sub/a"), "a").unwrap();
+        let to = dir.path().join("to");
+        mirror(&from, &to).unwrap();
+        assert!(!std::fs::symlink_metadata(&to).unwrap().is_symlink());
+        assert!(
+            !std::fs::symlink_metadata(to.join("sub"))
+                .unwrap()
+                .is_symlink()
+        );
+        assert!(
+            std::fs::symlink_metadata(to.join("sub/a"))
+                .unwrap()
+                .is_symlink()
+        );
+        assert_eq!(std::fs::read_to_string(to.join("sub/a")).unwrap(), "a");
+        std::fs::write(to.join("sub/new"), "n").unwrap();
+        assert!(!from.join("sub/new").exists());
+    }
 }
