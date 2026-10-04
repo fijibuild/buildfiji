@@ -601,12 +601,27 @@ fn xml_element(ev: &Evaluator<'_>, label: &Label) -> Result<Vec<String>, String>
                     xml_attr(graph, attr, &mut out);
                 }
             }
-            let inputs: BTreeSet<Label> = ev
+            let edges: Vec<_> = ev
                 .edges(&node)
                 .into_iter()
                 .filter(|e| !e.visibility)
-                .map(|e| e.to)
                 .collect();
+            // The rule's own inputs in label order, then those of its
+            // aspects in theirs; a label in both is listed twice, as Bazel
+            // does.
+            let mut inputs: Vec<Label> = edges
+                .iter()
+                .filter(|e| !e.aspect)
+                .map(|e| e.to.clone())
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect();
+            let mut seen = BTreeSet::new();
+            for e in edges.iter().filter(|e| e.aspect) {
+                if seen.insert(e.to.clone()) {
+                    inputs.push(e.to.clone());
+                }
+            }
             for to in &inputs {
                 out.push(format!(
                     "        <rule-input name=\"{}\"/>",

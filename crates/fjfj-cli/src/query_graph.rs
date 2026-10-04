@@ -507,9 +507,7 @@ impl QueryGraph {
         let mut aspects: Vec<fjfj_starlark::AspectRef> = Vec::new();
         for attr in &schema.attrs {
             for aspect in fjfj_starlark::attr_aspects(&module, class, &attr.name) {
-                if !aspects.contains(&aspect) {
-                    aspects.push(aspect);
-                }
+                self.push_with_required(aspect, &mut aspects, 0);
             }
         }
         let mut found = Vec::new();
@@ -567,6 +565,32 @@ impl QueryGraph {
         }
         found.sort_by(|a, b| a.name.cmp(&b.name));
         found
+    }
+
+    /// `aspect` after the aspects it `requires`, which Bazel runs first, each
+    /// once.
+    fn push_with_required(
+        &self,
+        aspect: fjfj_starlark::AspectRef,
+        out: &mut Vec<fjfj_starlark::AspectRef>,
+        depth: usize,
+    ) {
+        if out.contains(&aspect) || depth > 16 {
+            return;
+        }
+        if let Some(spec) = self
+            .repos
+            .module(&aspect.bzl)
+            .ok()
+            .and_then(|module| fjfj_starlark::aspect_spec(&module, &aspect.name))
+        {
+            for required in spec.requires {
+                self.push_with_required(required, out, depth + 1);
+            }
+        }
+        if !out.contains(&aspect) {
+            out.push(aspect);
+        }
     }
 
     /// The BUILD file of the package of `label`.
@@ -2109,6 +2133,64 @@ allk(
             .collect();
         let hash = names.iter().position(|n| *n == "$rule_implementation_hash");
         assert_eq!(hash, Some(names.len() - 6));
+    }
+
+    /// What `bazel query` printed for a rule whose aspect `requires` another:
+    /// the required one's attributes count, and its labels come first.
+    #[test]
+    fn the_aspects_an_aspect_requires_add_their_attributes_and_xml_lists_the_aspect_inputs_last() {
+        let (_dir, repos) = workspace_of(&[
+            ("MODULE.bazel", ""),
+            (
+                "defs.bzl",
+                "def _ai(target, ctx):\n    return []\ninner = aspect(implementation = _ai, attrs = {\"_in\": attr.label(default = \"//:t\")})\nouter = aspect(implementation = _ai, requires = [inner], attrs = {\"_out\": attr.label(default = \"//:u\")})\nr = rule(implementation = lambda ctx: [], attrs = {\"dep\": attr.label(aspects = [outer])})\n",
+            ),
+            (
+                "BUILD",
+                "load(\":defs.bzl\", \"r\")\nfilegroup(name = \"t\")\nfilegroup(name = \"u\")\nr(name = \"x\", dep = \":t\")\n",
+            ),
+        ]);
+        let graph = QueryGraph::new(repos);
+        let proto = fjfj_query::target_proto::ProtoOptions {
+            include_attribute_source_aspects: true,
+            ..Default::default()
+        };
+        let rules = jsonproto(&graph, "//:x", &proto);
+        let rule = &rules[0]["rule"];
+        let aspects: Vec<(&str, &str)> = rule["attribute"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|a| {
+                a["sourceAspectName"]
+                    .as_str()
+                    .is_some_and(|s| !s.is_empty())
+            })
+            .map(|a| {
+                (
+                    a["name"].as_str().unwrap(),
+                    a["sourceAspectName"].as_str().unwrap(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            aspects,
+            [("$in", "//:defs.bzl%inner"), ("$out", "//:defs.bzl%outer")]
+        );
+        assert_eq!(
+            rule["ruleInput"],
+            serde_json::json!(["//:t", "//:u", "//:t"])
+        );
+        let xml = query(&graph, "//:x", Format::Xml, Order::Auto, Options::default());
+        let inputs: Vec<&str> = xml.lines().filter(|l| l.contains("rule-input")).collect();
+        assert_eq!(
+            inputs,
+            [
+                "        <rule-input name=\"//:t\"/>",
+                "        <rule-input name=\"//:t\"/>",
+                "        <rule-input name=\"//:u\"/>",
+            ]
+        );
     }
 
     #[test]
