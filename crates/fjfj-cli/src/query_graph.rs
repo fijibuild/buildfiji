@@ -2417,4 +2417,36 @@ mr = rule(
             ["@@bazel_tools//tools", "//m", "@@bazel_tools//a/..."]
         );
     }
+
+    #[test]
+    fn buildfiles_and_loadfiles_follow_nested_loads() {
+        let (_dir, repos) = workspace_of(&[
+            ("MODULE.bazel", ""),
+            ("BUILD", ""),
+            ("rules.bzl", "load('//lib:util.bzl', 'u')\nr = u\n"),
+            ("lib/BUILD", ""),
+            ("lib/util.bzl", "load(':deep.bzl', 'd')\nu = d\n"),
+            ("lib/deep.bzl", "d = 1\n"),
+            (
+                "a/BUILD",
+                "load('//:rules.bzl', 'r')\nfilegroup(name = 'x')\n",
+            ),
+        ]);
+        let graph = QueryGraph::new(repos);
+        assert_eq!(
+            labels(&graph, "loadfiles(//a:x)"),
+            ["//:rules.bzl", "//lib:deep.bzl", "//lib:util.bzl"]
+        );
+        assert_eq!(
+            labels(&graph, "buildfiles(//a:x)"),
+            [
+                "//:BUILD",
+                "//:rules.bzl",
+                "//a:BUILD",
+                "//lib:BUILD",
+                "//lib:deep.bzl",
+                "//lib:util.bzl"
+            ]
+        );
+    }
 }
