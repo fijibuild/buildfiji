@@ -102,7 +102,20 @@ pub struct BzlLoader {
     evaluations: AtomicUsize,
     /// The transitive digest of each file evaluated.
     digests: Mutex<HashMap<(String, String, String), [u8; 32]>>,
+    /// The same for a file loaded from a BUILD file, which Bazel also folds
+    /// its builtins' digest into.
+    build_digests: Mutex<HashMap<(String, String, String), [u8; 32]>>,
 }
+
+/// The digest of Bazel 9.2.0's bundled builtins (`@_builtins`): the
+/// transitive digest of `exports.bzl`, where the digest of each file is the
+/// SHA-256 of its path in the builtins file system (`/virtual_builtins_bzl/
+/// exports.bzl`), not of its contents. Taken from `builtins_bzl.zip` in the
+/// server jar; a Bazel with other builtins files has another.
+const BUILTINS_DIGEST: [u8; 32] = [
+    0xb1, 0x8c, 0x6d, 0x6c, 0x28, 0x5e, 0x24, 0x8c, 0x23, 0x0b, 0xf7, 0x2d, 0xeb, 0x29, 0xc3, 0x40,
+    0x96, 0x85, 0x2a, 0xbf, 0x56, 0x32, 0x74, 0x79, 0xef, 0x42, 0x2b, 0xf2, 0x61, 0xc6, 0x47, 0x17,
+];
 
 /// A loader for the loads one file makes: who is loading decides what a
 /// relative label means, which repos it can name, and what it may load.
@@ -161,6 +174,7 @@ impl BzlLoader {
             waiting: Mutex::new(HashMap::new()),
             evaluations: AtomicUsize::new(0),
             digests: Mutex::new(HashMap::new()),
+            build_digests: Mutex::new(HashMap::new()),
         }
     }
 
@@ -186,6 +200,15 @@ impl BzlLoader {
     pub fn transitive_digest(&self, file: &Label) -> Option<[u8; 32]> {
         let key = (file.repo.clone(), file.package.clone(), file.name.clone());
         self.digests.lock().unwrap().get(&key).copied()
+    }
+
+    /// The transitive digest of a `.bzl` a BUILD file loads, as Bazel shows
+    /// it for a rule defined there (`$rule_implementation_hash`): the digest
+    /// of the file's text, those of the files it loads, and last the digest
+    /// of the builtins.
+    pub fn build_digest(&self, file: &Label) -> Option<[u8; 32]> {
+        let key = (file.repo.clone(), file.package.clone(), file.name.clone());
+        self.build_digests.lock().unwrap().get(&key).copied()
     }
 
     /// Evaluate the BUILD file of `package` in `repo`: what `fjfj build`
@@ -451,6 +474,22 @@ impl BzlLoader {
                 }
             }
             let key = (file.repo.clone(), file.package.clone(), file.name.clone());
+            let mut build = sha2::Sha256::new();
+            build.update(sha2::Sha256::digest(source.as_bytes()));
+            {
+                let digests = self.build_digests.lock().unwrap();
+                for load in loader.loads.borrow().iter() {
+                    let key = (load.repo.clone(), load.package.clone(), load.name.clone());
+                    if let Some(digest) = digests.get(&key) {
+                        build.update(digest);
+                    }
+                }
+            }
+            build.update(BUILTINS_DIGEST);
+            self.build_digests
+                .lock()
+                .unwrap()
+                .insert(key.clone(), build.finalize().into());
             self.digests
                 .lock()
                 .unwrap()

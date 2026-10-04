@@ -508,11 +508,11 @@ impl QueryGraph {
             stack,
             definition_stack,
             schema: Some(schema.clone()),
-            implementation_hash: defined_in.map(|bzl| {
-                use sha2::{Digest, Sha256};
-                hex::encode(Sha256::digest(
-                    format!("{}%{class}", fjfj_graph::expand::label_text(bzl)).as_bytes(),
-                ))
+            implementation_hash: defined_in.and_then(|bzl| {
+                self.repos
+                    .loader()
+                    .build_digest(bzl)
+                    .map(hex::encode)
             }),
             aspect_attrs,
             group: None,
@@ -1751,6 +1751,20 @@ genrule(name="gen", outs=["gen.txt"], cmd="echo > $@")
             .collect();
         // Bazel adds the digest of a Starlark rule class whatever is asked for.
         assert_eq!(names, ["name", "opt", "$rule_implementation_hash"]);
+        // It is the digest of the file that defines the class followed by
+        // that of Bazel 9.2.0's builtins, as Bazel computed it.
+        use sha2::Digest as _;
+        let text = std::fs::read(_dir.path().join("ws/rules.bzl")).unwrap();
+        let mut digest = sha2::Sha256::new();
+        digest.update(sha2::Sha256::digest(&text));
+        digest.update(
+            hex::decode("b18c6d6c285e248c230bf72deb29c34096852abf56327479ef422bf261c64717")
+                .unwrap(),
+        );
+        assert_eq!(
+            rule_narrow["attribute"][2]["stringValue"],
+            hex::encode(digest.finalize())
+        );
         assert!(rule_narrow.get("ruleInput").is_none());
         assert!(rule_narrow.get("location").is_none());
     }
