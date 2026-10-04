@@ -784,15 +784,23 @@ impl QueryGraph {
     /// A `packages` entry of a `package_group` as it is written.
     fn spec_text(&self, spec: &fjfj_graph::visibility::PackageSpec) -> String {
         use fjfj_graph::visibility::PackageScope;
+        // A package group names its repos by their canonical names.
+        let canon = |r: &str| {
+            if r.is_empty() {
+                String::new()
+            } else {
+                format!("@@{r}")
+            }
+        };
         let body = match &spec.scope {
             PackageScope::Public if !self.double_slash => "//...".to_owned(),
             PackageScope::Public => "public".to_owned(),
-            PackageScope::Repo(r) => format!("{}//...", self.repo_prefix(r)),
+            PackageScope::Repo(r) => format!("{}//...", canon(r)),
             PackageScope::Package { repo, package } => {
-                format!("{}//{package}", self.repo_prefix(repo))
+                format!("{}//{package}", canon(repo))
             }
             PackageScope::Subpackages { repo, package } => {
-                format!("{}//{package}/...", self.repo_prefix(repo))
+                format!("{}//{package}/...", canon(repo))
             }
         };
         // Without the flag a package of the main repo loses its `//`, but
@@ -1044,10 +1052,19 @@ impl Graph for QueryGraph {
                 TargetKind::PackageGroup(group) => {
                     let mut node = self.file_node(label, NodeKind::PackageGroup)?;
                     node.location = self.rule_location(&label.repo, &target.location)?;
-                    node.group = Some((
-                        group.includes.clone(),
-                        group.specs.iter().map(|s| self.spec_text(s)).collect(),
-                    ));
+                    node.group = Some((group.includes.clone(), {
+                        // Bazel lists the packages, then the subtrees, then
+                        // what is taken away, then `public`.
+                        use fjfj_graph::visibility::PackageScope;
+                        let mut specs: Vec<_> = group.specs.iter().collect();
+                        specs.sort_by_key(|s| match (&s.scope, s.negated) {
+                            (PackageScope::Public, _) => 3,
+                            (_, true) => 2,
+                            (PackageScope::Package { .. }, _) => 0,
+                            _ => 1,
+                        });
+                        specs.into_iter().map(|s| self.spec_text(s)).collect()
+                    }));
                     node.edges = group
                         .includes
                         .iter()
@@ -2347,5 +2364,33 @@ mr = rule(
         // Without the flag, neither.
         let plain = jsonproto(&graph, "//:a", &Default::default());
         assert!(plain[0]["rule"].get("ruleClassKey").is_none());
+    }
+
+    #[test]
+    fn package_group_packages_come_as_bazel_lists_them() {
+        let (_dir, repos) = workspace_of(&[
+            ("MODULE.bazel", ""),
+            (
+                "BUILD",
+                "package_group(name='b', packages=['//x/...', '//x', '//...', 'public', '-//q', '-//p/...'])\npackage_group(name='c', packages=['@bazel_tools//tools', '@bazel_tools//a/...', '//m'])\n",
+            ),
+        ]);
+        let graph = QueryGraph::new(repos);
+        let strings = |target: &str| -> Vec<String> {
+            query(&graph, target, Format::Xml, Order::Auto, Options::default())
+                .lines()
+                .filter_map(|l| l.trim().strip_prefix("<string value=\""))
+                .map(|l| l.trim_end_matches("\"/>").to_owned())
+                .collect()
+        };
+        // As Bazel 9.2.0 printed them.
+        assert_eq!(
+            strings("//:b"),
+            ["//x", "//x/...", "//...", "-//q", "-//p/...", "public"]
+        );
+        assert_eq!(
+            strings("//:c"),
+            ["@@bazel_tools//tools", "//m", "@@bazel_tools//a/..."]
+        );
     }
 }
