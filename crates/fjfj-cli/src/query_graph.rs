@@ -2449,4 +2449,27 @@ mr = rule(
             ]
         );
     }
+
+    #[test]
+    fn deps_include_visibility_groups_constraints_and_toolchain_types() {
+        let (_dir, repos) = workspace_of(&[
+            ("MODULE.bazel", ""),
+            ("BUILD", ""),
+            (
+                "r.bzl",
+                "r = rule(implementation = lambda ctx: [], toolchains = ['//p:tt'])\n",
+            ),
+            (
+                "p/BUILD",
+                "load('//:r.bzl', 'r')\npackage_group(name='g', packages=['//...'])\nconstraint_setting(name='cs')\nconstraint_value(name='cv', constraint_setting=':cs')\ntoolchain_type(name='tt')\nfilegroup(name='a', srcs=[], visibility=[':g'], compatible_with=[':cv'])\nr(name='t')\n",
+            ),
+        ]);
+        let graph = QueryGraph::new(repos);
+        // As Bazel 9.2.0 listed them.
+        assert_eq!(
+            labels(&graph, "deps(//p:a)"),
+            ["//p:a", "//p:cs", "//p:cv", "//p:g"]
+        );
+        assert_eq!(labels(&graph, "deps(//p:t)"), ["//p:t", "//p:tt"]);
+    }
 }
