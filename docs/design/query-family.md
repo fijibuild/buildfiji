@@ -72,16 +72,25 @@ These are known; each has a bead.
   textproto and of the labels merged into a factored graph node depends on
   hashes (`buildfiji-ddw`, `buildfiji-c19`). fjfj prints label order. Bazel's
   own order changes from one run to the next for the graph.
+
+  The contract fjfj keeps, and tests rely on: within a rank (`minrank`,
+  `maxrank`) targets are in label order; `--output=graph` nodes are in
+  reverse DFS postorder from the sorted roots, edges in label order; a
+  cquery union is listed in the order of its operands (`buildfiji-c8g`,
+  where Bazel is deterministic). Tests assert an order only where Bazel's
+  is deterministic; elsewhere they compare sets.
 - **Dependency sets** (`buildfiji-gon`). An aquery proto lists the inputs of
   an action as one set; Bazel nests them (a genrule's setup script, its
   sources and its tools are three).
-- **`$rule_implementation_hash`** is a digest of the rule's `.bzl` and name,
-  not Bazel's.
+- **`$rule_implementation_hash`** is Bazel's digest (`buildfiji-q60`) for
+  rules defined in the main repo's `.bzl` files, with the Bazel 9.2.0
+  builtins digest hardcoded; external-repo bzls are not verified.
 - **`build_options()`** has what a `Configuration` holds, not Bazel's ~330
   options (`buildfiji-lcc`). `--transitions=full` lists the native options of
   that table that changed.
-- **Targets Bazel adds as dependencies**: the target platform and the targets
-  it reaches (`buildfiji-ihl`).
+- **Targets Bazel adds as dependencies**: platforms, constraints and
+  toolchain types match (`buildfiji-pst`); licence, apple and xcode targets
+  of external rulesets do not.
 - **Runfiles.** fjfj makes one action; aquery lists the four Bazel does
   (`RepoMappingManifest`, `SourceSymlinkManifest`, `SymlinkTree`,
   `RunfilesTree`) from it.
