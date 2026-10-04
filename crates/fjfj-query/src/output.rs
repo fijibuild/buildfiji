@@ -223,7 +223,7 @@ fn dependency_order(graph: &BTreeMap<Label, Vec<Edge>>) -> Vec<Label> {
 fn order(ev: &Evaluator<'_>, set: &Set, order: Order) -> Result<Vec<Label>, String> {
     Ok(match order {
         Order::Full => dependency_order(&subgraph(ev, set)?),
-        _ => set.iter().cloned().collect(),
+        _ => ev.listed(set),
     })
 }
 

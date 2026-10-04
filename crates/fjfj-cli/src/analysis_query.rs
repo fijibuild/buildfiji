@@ -518,7 +518,10 @@ fn evaluate(
         )));
     }
     let configured = ConfiguredGraph::new(&graph, &report.analysed, &top_level, platforms);
-    let evaluator = Evaluator::new(&configured, query.options);
+    let listing = Evaluator::new(&configured, query.options)
+        .eval_ordered(&query.expr)
+        .map_err(|e| CliError::Query(anyhow::anyhow!("Error doing post analysis query: {e}")))?;
+    let evaluator = Evaluator::new(&configured, query.options).with_listing(listing);
     let labels = evaluator
         .eval(&query.expr)
         .map_err(|e| CliError::Query(anyhow::anyhow!("Error doing post analysis query: {e}")))?;
@@ -1119,6 +1122,19 @@ r(name = "sel", ss = select({":fast": ["f"], "//conditions:default": ["d"]}))
             below.lines().next().unwrap(),
             "//:b below //:a is not the //:b that was built on its own"
         );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_union_is_listed_in_the_order_of_its_operands() {
+        let union = cquery("//:s.txt + //:b + //:a").await;
+        assert_eq!(
+            undigested(&union),
+            ["//:s.txt (null)", "//:b (7)", "//:b (7)", "//:a (7)"]
+        );
+        let sorted = cquery("(//:s.txt + //:b + //:a) - //:b").await;
+        assert_eq!(undigested(&sorted), ["//:s.txt (null)", "//:a (7)"]);
+        let functions = cquery("deps(//:a) - //:a").await;
+        assert_eq!(undigested(&functions), ["//:b (7)", "//:s.txt (null)"]);
     }
 
     #[tokio::test(flavor = "multi_thread")]

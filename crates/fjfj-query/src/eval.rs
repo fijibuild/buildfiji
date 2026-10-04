@@ -34,6 +34,9 @@ pub struct Evaluator<'g> {
     graph: &'g dyn Graph,
     options: Options,
     nodes: Mutex<HashMap<Label, Arc<Node>>>,
+    /// The order the result of the query is listed in, when it is not label
+    /// order: see [`Evaluator::eval_ordered`].
+    listing: Vec<Label>,
 }
 
 impl<'g> Evaluator<'g> {
@@ -42,7 +45,80 @@ impl<'g> Evaluator<'g> {
             graph,
             options,
             nodes: Mutex::new(HashMap::new()),
+            listing: Vec::new(),
         }
+    }
+
+    /// List results that are in `listing` in its order, the rest after them
+    /// in label order.
+    pub fn with_listing(mut self, listing: Vec<Label>) -> Evaluator<'g> {
+        self.listing = listing;
+        self
+    }
+
+    /// `set` in the order of the listing.
+    pub fn listed(&self, set: &Set) -> Vec<Label> {
+        let mut out: Vec<Label> = self
+            .listing
+            .iter()
+            .filter(|l| set.contains(*l))
+            .cloned()
+            .collect();
+        let placed: BTreeSet<&Label> = out.iter().collect();
+        let rest: Vec<Label> = set
+            .iter()
+            .filter(|l| !placed.contains(l))
+            .cloned()
+            .collect();
+        out.extend(rest);
+        out
+    }
+
+    /// The result of `expr` in the order Bazel's cquery lists it: a union
+    /// keeps its operands' order, an intersection and a difference the order
+    /// of the left operand; anything a function computes is in label order.
+    pub fn eval_ordered(&self, expr: &Expr) -> Result<Vec<Label>, String> {
+        let mut seen = BTreeSet::new();
+        let mut out = Vec::new();
+        let mut push = |label: Label| {
+            if seen.insert(label.clone()) {
+                out.push(label);
+            }
+        };
+        match expr {
+            // A pattern's targets are in label order.
+            Expr::Word(word) => self
+                .graph
+                .pattern(word)?
+                .into_iter()
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .for_each(&mut push),
+            Expr::Set(words) => {
+                for word in words {
+                    self.graph
+                        .pattern(word)?
+                        .into_iter()
+                        .collect::<BTreeSet<_>>()
+                        .into_iter()
+                        .for_each(&mut push);
+                }
+            }
+            Expr::Binary(Op::Union, l, r) => {
+                self.eval_ordered(l)?.into_iter().for_each(&mut push);
+                self.eval_ordered(r)?.into_iter().for_each(&mut push);
+            }
+            Expr::Binary(op, l, r) => {
+                let right = self.eval(r)?;
+                for label in self.eval_ordered(l)? {
+                    if right.contains(&label) == (*op == Op::Intersect) {
+                        push(label);
+                    }
+                }
+            }
+            _ => self.eval(expr)?.into_iter().for_each(&mut push),
+        }
+        Ok(out)
     }
 
     pub fn graph(&self) -> &'g dyn Graph {
