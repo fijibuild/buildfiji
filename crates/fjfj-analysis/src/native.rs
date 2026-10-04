@@ -298,6 +298,12 @@ async fn genrule(
         .map_err(|e| Error::msg(e.to_string()))?;
 
     let setup_script = setup[0].1.files.to_vec();
+    // Bazel nests them as the setup script, the sources and the tools.
+    let input_set = NestedSet::join([
+        &NestedSet::join(srcs.iter().map(|(_, t)| &t.files)),
+        &NestedSet::join(tools.iter().map(|(_, t)| &t.files)),
+        &setup[0].1.files,
+    ]);
     let script = setup_script
         .first()
         .map(Artifact::exec_path)
@@ -331,6 +337,7 @@ async fn genrule(
             execution_requirements,
         },
         inputs,
+        input_set: Some(input_set),
         outputs: outs.clone(),
     });
     if flag(label, attrs, "executable")? && outs.len() == 1 {

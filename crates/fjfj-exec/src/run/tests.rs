@@ -38,6 +38,7 @@ fn shell(script: &str, inputs: Vec<Artifact>, outputs: Vec<Artifact>) -> Action 
             execution_requirements: BTreeMap::new(),
         },
         inputs,
+        input_set: None,
         outputs,
     }
 }
@@ -196,6 +197,7 @@ async fn write_file_and_symlink_actions_make_their_outputs() {
                 executable: false,
             },
             inputs: vec![],
+            input_set: None,
             outputs: vec![w.clone()],
         },
         Action {
@@ -209,6 +211,7 @@ async fn write_file_and_symlink_actions_make_their_outputs() {
                 target: w.exec_path(),
             },
             inputs: vec![w.clone()],
+            input_set: None,
             outputs: vec![l.clone()],
         },
     ];

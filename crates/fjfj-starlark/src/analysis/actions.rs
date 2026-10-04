@@ -15,9 +15,9 @@
 use super::ctx::CtxState;
 use super::file::{FileValue, alloc_file, artifact_of};
 use crate::args::{Wording, bind, describe, fatal, param, sequence};
-use crate::depset::{depset_to_list, is_depset};
+use crate::depset::{depset_to_list, is_depset, nested_of};
 use allocative::Allocative;
-use fjfj_graph::{Action, ActionKind, Artifact};
+use fjfj_graph::{Action, ActionKind, Artifact, NestedSet};
 use starlark::environment::{Methods, MethodsBuilder, MethodsStatic};
 use starlark::eval::{Arguments, Evaluator};
 use starlark::starlark_module;
@@ -111,6 +111,17 @@ fn files_of<'v>(
         }
     }
     Ok(out)
+}
+
+/// `files` without repeats, in order.
+fn unique(files: &[Artifact]) -> Vec<Artifact> {
+    let mut out: Vec<Artifact> = Vec::with_capacity(files.len());
+    for file in files {
+        if !out.contains(file) {
+            out.push(file.clone());
+        }
+    }
+    out
 }
 
 /// What an action that uses a `FilesToRunProvider` needs: the executable, and
@@ -220,6 +231,19 @@ impl CtxState {
         inputs: Vec<Artifact>,
         outputs: Vec<Artifact>,
     ) {
+        self.register_nested(mnemonic, progress_message, kind, inputs, None, outputs);
+    }
+
+    /// Register an action whose inputs nest as `input_set`.
+    fn register_nested(
+        &self,
+        mnemonic: &str,
+        progress_message: Option<String>,
+        kind: ActionKind,
+        inputs: Vec<Artifact>,
+        input_set: Option<NestedSet<Artifact>>,
+        outputs: Vec<Artifact>,
+    ) {
         let progress = match progress_message {
             // `%{label}`, `%{input}` and `%{output}` stand for the label of
             // the target, the first input and the first output.
@@ -250,6 +274,7 @@ impl CtxState {
             progress_message: Some(progress),
             kind,
             inputs,
+            input_set,
             outputs,
         });
     }
@@ -725,8 +750,18 @@ fn spawn<'v>(
         Some(v) => files_of(eval, function, "inputs", v)?,
         None => Vec::new(),
     };
+    // How the inputs nest, as aquery shows: the `inputs` as given, the
+    // `tools` as a list, then the files the action adds.
+    let mut nested = vec![match bound[1] {
+        Some(v) if is_depset(v) => {
+            nested_of(v, &artifact_of).unwrap_or_else(|| NestedSet::of(inputs.clone()))
+        }
+        _ => NestedSet::of(unique(&inputs)),
+    }];
     if let Some(v) = bound[2] {
-        inputs.extend(files_of(eval, function, "tools", v)?);
+        let tools = files_of(eval, function, "tools", v)?;
+        nested.push(NestedSet::of(unique(&tools)));
+        inputs.extend(tools);
     }
     let mut arguments: Vec<String> = Vec::new();
     let mut param_files = 0;
@@ -768,6 +803,7 @@ fn spawn<'v>(
                             vec![file.clone()],
                         );
                         arguments.push(param.pattern.replacen("%s", &file.exec_path(), 1));
+                        nested.push(NestedSet::of(vec![file.clone()]));
                         inputs.push(file);
                     }
                     _ => arguments.extend(state.items.iter().cloned()),
@@ -812,11 +848,13 @@ fn spawn<'v>(
         argv
     } else {
         let executable = if let Some(file) = artifact_of(last) {
+            nested.push(NestedSet::of(vec![file.clone()]));
             inputs.push(file.clone());
             file.exec_path()
         } else if let Some(files) = files_to_run_inputs(last)
             && let Some(file) = files.first().cloned()
         {
+            nested.push(NestedSet::of(files.clone()));
             inputs.extend(files);
             file.exec_path()
         } else if let Some(path) = last.unpack_str() {
@@ -831,7 +869,8 @@ fn spawn<'v>(
         argv.extend(arguments);
         argv
     };
-    s.register(
+    let input_set = NestedSet::join(&nested);
+    s.register_nested(
         &mnemonic,
         progress,
         ActionKind::Spawn {
@@ -840,6 +879,7 @@ fn spawn<'v>(
             execution_requirements,
         },
         inputs,
+        Some(input_set),
         outputs,
     );
     Ok(NoneType)

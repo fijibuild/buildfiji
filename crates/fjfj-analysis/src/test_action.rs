@@ -284,6 +284,7 @@ pub(crate) async fn register(
             execution_requirements: requirements,
         },
         inputs,
+        input_set: None,
         outputs: vec![log.clone(), xml.clone()],
     };
     target.test = Some(TestInfo {

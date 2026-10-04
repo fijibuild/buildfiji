@@ -138,6 +138,7 @@ pub(crate) fn register(
             empty_files,
         },
         inputs: entries.into_iter().map(|(_, a)| a).collect(),
+        input_set: None,
         outputs: vec![dir.clone(), manifest.clone(), repo_mapping.clone()],
     });
     target.extra_outputs = vec![dir, manifest, repo_mapping];

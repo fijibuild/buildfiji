@@ -470,6 +470,71 @@ pub(crate) fn depset_globals(builder: &mut GlobalsBuilder) {
     }
 }
 
+/// The depset `value` as the nested set it is, each depset once however
+/// many sets hold it, or `None` if it is not a depset or an element is not
+/// one `element` knows. Order is not kept: the nested set lists a set's own
+/// elements and the sets below it apart.
+pub fn nested_of<'v, T: Clone + Ord>(
+    value: Value<'v>,
+    element: &dyn Fn(Value<'v>) -> Option<T>,
+) -> Option<fjfj_graph::NestedSet<T>> {
+    use fjfj_graph::NestedSet;
+    use std::collections::HashMap;
+    use std::sync::Arc;
+    struct Frame<'v, T> {
+        value: Value<'v>,
+        layout: &'v dyn Layout<'v>,
+        next: usize,
+        direct: Vec<T>,
+        transitive: Vec<Arc<NestedSet<T>>>,
+    }
+    let top = layout_of(value)?;
+    let mut built: HashMap<ValueIdentity<'v>, Arc<NestedSet<T>>> = HashMap::new();
+    let mut stack = vec![Frame {
+        value,
+        layout: top,
+        next: 0,
+        direct: Vec::new(),
+        transitive: Vec::new(),
+    }];
+    loop {
+        let frame = stack.last_mut()?;
+        if frame.next < frame.layout.len() {
+            let kid = frame.layout.kid(frame.next);
+            frame.next += 1;
+            match kid {
+                Kid::Item(item) => {
+                    let item = element(item)?;
+                    if !frame.direct.contains(&item) {
+                        frame.direct.push(item);
+                    }
+                }
+                Kid::Set(set) => {
+                    if let Some(done) = built.get(&set.identity()) {
+                        frame.transitive.push(done.clone());
+                    } else if let Some(layout) = layout_of(set) {
+                        stack.push(Frame {
+                            value: set,
+                            layout,
+                            next: 0,
+                            direct: Vec::new(),
+                            transitive: Vec::new(),
+                        });
+                    }
+                }
+            }
+            continue;
+        }
+        let frame = stack.pop()?;
+        let set = Arc::new(NestedSet::new(frame.direct, frame.transitive));
+        built.insert(frame.value.identity(), set.clone());
+        match stack.last_mut() {
+            Some(parent) => parent.transitive.push(set),
+            None => return Some(Arc::unwrap_or_clone(set)),
+        }
+    }
+}
+
 /// Whether `value` is a depset.
 pub fn is_depset(value: Value<'_>) -> bool {
     layout_of(value).is_some()

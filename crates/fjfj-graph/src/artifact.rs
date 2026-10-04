@@ -171,6 +171,44 @@ impl<T: Clone + Ord> NestedSet<T> {
         self.direct.is_empty() && self.transitive.iter().all(|t| t.is_empty())
     }
 
+    /// The elements this set holds itself.
+    pub fn direct(&self) -> &[T] {
+        &self.direct
+    }
+
+    /// The sets this set holds.
+    pub fn transitive(&self) -> &[Arc<NestedSet<T>>] {
+        &self.transitive
+    }
+
+    /// `sets` as Bazel's `NestedSetBuilder` joins them: a set of one element
+    /// is that element, direct; any other set is nested; and when that
+    /// leaves one nested set and nothing direct, it is that set.
+    pub fn join<'a>(sets: impl IntoIterator<Item = &'a NestedSet<T>>) -> NestedSet<T>
+    where
+        T: 'a,
+    {
+        let mut direct = Vec::new();
+        let mut transitive: Vec<Arc<NestedSet<T>>> = Vec::new();
+        for set in sets {
+            if set.is_empty() {
+                continue;
+            }
+            match (set.direct.as_slice(), set.transitive.is_empty()) {
+                ([only], true) => {
+                    if !direct.contains(only) {
+                        direct.push(only.clone());
+                    }
+                }
+                _ => transitive.push(Arc::new(set.clone())),
+            }
+        }
+        if direct.is_empty() && transitive.len() == 1 {
+            return transitive[0].as_ref().clone();
+        }
+        NestedSet::new(direct, transitive)
+    }
+
     /// Every element once, the elements of a nested set before the set's own
     /// (`postorder`, the default order of a Starlark `depset`'s `to_list`
     /// being `default`, which Bazel makes the same).

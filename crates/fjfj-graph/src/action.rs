@@ -67,6 +67,9 @@ pub struct Action {
     pub progress_message: Option<String>,
     pub kind: ActionKind,
     pub inputs: Vec<Artifact>,
+    /// How the inputs nest, which aquery shows; `None` is one flat set of
+    /// `inputs`.
+    pub input_set: Option<crate::NestedSet<Artifact>>,
     pub outputs: Vec<Artifact>,
 }
 

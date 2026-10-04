@@ -1757,6 +1757,55 @@ execution_platform: "@@platforms//host:host"
         );
     }
 
+    /// What `bazel aquery --output=jsonproto` printed for an action whose
+    /// `inputs` is a depset with a depset below it: the dep sets nest as the
+    /// depsets do, the outer set has the lower id, and the artifacts of the
+    /// inner set are numbered first.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn aquery_nests_the_dep_sets_of_a_depset_input() {
+        let files = [
+            ("MODULE.bazel", ""),
+            ("a.txt", ""),
+            ("b.txt", ""),
+            (
+                "defs.bzl",
+                "def _i(ctx):\n    o = ctx.actions.declare_file(ctx.label.name + \".out\")\n    d = depset(ctx.files.srcs, transitive = [depset(ctx.files.deps)])\n    ctx.actions.run_shell(inputs = d, outputs = [o], command = \"true\")\n    return [DefaultInfo(files = depset([o]))]\nr = rule(_i, attrs = {\"srcs\": attr.label_list(allow_files = True), \"deps\": attr.label_list(allow_files = True)})\n",
+            ),
+            (
+                "BUILD",
+                "load(\":defs.bzl\", \"r\")\nfilegroup(name = \"fg\", srcs = [\"a.txt\", \"b.txt\"])\nr(name = \"s\", srcs = [\"a.txt\"], deps = [\":fg\"])\n",
+            ),
+        ];
+        let json = tokio::task::spawn_blocking(move || {
+            query_on(
+                &files,
+                Kind::Aquery,
+                "jsonproto",
+                "//:s",
+                None,
+                &[],
+                aquery::Settings::default(),
+            )
+            .map(|bytes| String::from_utf8(bytes).unwrap())
+            .unwrap()
+        })
+        .await
+        .unwrap();
+        let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            value["depSetOfFiles"],
+            serde_json::json!([
+                {"id": 2, "directArtifactIds": [1, 2]},
+                {"id": 1, "transitiveDepSetIds": [2], "directArtifactIds": [1]},
+            ]),
+            "{json}"
+        );
+        assert_eq!(
+            value["actions"][0]["inputDepSetIds"],
+            serde_json::json!([1])
+        );
+    }
+
     /// The descriptions of the actions an `aquery` printed.
     fn actions(text: &str) -> Vec<&str> {
         text.lines().filter(|l| l.starts_with("action '")).collect()

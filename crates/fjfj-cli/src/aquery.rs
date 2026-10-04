@@ -5,7 +5,7 @@
 use crate::build_command;
 use fjfj_analysis::ConfiguredTarget;
 use fjfj_exec::execroot::Layout;
-use fjfj_graph::{Action, ActionKind, Artifact, Label};
+use fjfj_graph::{Action, ActionKind, Artifact, Label, NestedSet};
 use fjfj_query::ast::{Arg, Expr, Function};
 use fjfj_query::proto::Msg;
 use fjfj_starlark::AspectRef;
@@ -192,6 +192,7 @@ fn expand_runfiles(row: Row<'_>) -> Vec<Row<'_>> {
             progress_message: Some(message),
             kind,
             inputs,
+            input_set: None,
             outputs,
         }),
         aspect: row.aspect.clone(),
@@ -650,7 +651,7 @@ struct Dump {
     aspects: BTreeMap<String, i64>,
     artifacts: BTreeMap<String, i64>,
     fragments: BTreeMap<String, i64>,
-    dep_sets: BTreeMap<Vec<String>, i64>,
+    dep_sets: BTreeMap<String, i64>,
 }
 
 impl Dump {
@@ -660,6 +661,40 @@ impl Dump {
             name,
             message,
         });
+    }
+
+    /// The id of the dep set of `set`. Ids go to a set before the sets below
+    /// it, and the sets and artifacts below it are written first, as Bazel's
+    /// dump does.
+    fn dep_set(&mut self, set: &NestedSet<Artifact>) -> i64 {
+        fn key(set: &NestedSet<Artifact>) -> String {
+            let direct: Vec<String> = set.direct().iter().map(|a| a.exec_path()).collect();
+            let below: Vec<String> = set.transitive().iter().map(|t| key(t)).collect();
+            format!("[{}|{}]", direct.join(","), below.join(","))
+        }
+        let key = key(set);
+        if let Some(id) = self.dep_sets.get(&key) {
+            return *id;
+        }
+        let id = self.dep_sets.len() as i64 + 1;
+        self.dep_sets.insert(key, id);
+        let below: Vec<i64> = set
+            .transitive()
+            .iter()
+            .filter(|t| !t.is_empty())
+            .map(|t| self.dep_set(t))
+            .collect();
+        let direct: Vec<i64> = set.direct().iter().map(|a| self.artifact(a)).collect();
+        let mut message = Msg::new().one(1, "id", id);
+        if !below.is_empty() {
+            message = message.packed(2, "transitive_dep_set_ids", below);
+        }
+        self.add(
+            4,
+            "dep_set_of_files",
+            message.packed(3, "direct_artifact_ids", direct),
+        );
+        id
     }
 
     /// The id of `key` in `ids`, and whether it is new.
@@ -767,27 +802,22 @@ impl Dump {
         let mut input_sets = Vec::new();
         let mut outputs = Vec::new();
         if settings.artifacts {
-            // In the order the action lists them, each once.
-            let mut seen = std::collections::BTreeSet::new();
-            let inputs: Vec<&Artifact> = action
-                .inputs
-                .iter()
-                .filter(|a| seen.insert(a.exec_path()))
-                .collect();
-            let ids: Vec<i64> = inputs.iter().map(|a| self.artifact(a)).collect();
-            if !ids.is_empty() {
-                let paths: Vec<String> = inputs.iter().map(|a| a.exec_path()).collect();
-                let (id, new) = Self::id(&mut self.dep_sets, &paths);
-                if new {
-                    self.add(
-                        4,
-                        "dep_set_of_files",
-                        Msg::new()
-                            .one(1, "id", id)
-                            .packed(3, "direct_artifact_ids", ids),
-                    );
+            match &action.input_set {
+                Some(set) if !set.is_empty() => input_sets.push(self.dep_set(set)),
+                Some(_) => {}
+                None => {
+                    // In the order the action lists them, each once.
+                    let mut seen = std::collections::BTreeSet::new();
+                    let inputs: Vec<Artifact> = action
+                        .inputs
+                        .iter()
+                        .filter(|a| seen.insert(a.exec_path()))
+                        .cloned()
+                        .collect();
+                    if !inputs.is_empty() {
+                        input_sets.push(self.dep_set(&NestedSet::of(inputs)));
+                    }
                 }
-                input_sets.push(id);
             }
             outputs = action.outputs.iter().map(|a| self.artifact(a)).collect();
         }
