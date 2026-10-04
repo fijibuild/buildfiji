@@ -90,7 +90,8 @@ impl<'g> Evaluator<'g> {
         });
     }
 
-    /// The edges of `node` the options keep, without repeats.
+    /// The edges of `node` the options keep, without repeats: a target that
+    /// an aspect's attribute and the rule's both name is two.
     pub fn edges(&self, node: &Node) -> Vec<Edge> {
         let mut seen = BTreeSet::new();
         node.edges
@@ -98,7 +99,7 @@ impl<'g> Evaluator<'g> {
             .filter(|e| {
                 (self.options.implicit_deps || !e.implicit) && (self.options.tool_deps || !e.tool)
             })
-            .filter(|e| seen.insert(e.to.clone()))
+            .filter(|e| seen.insert((e.to.clone(), e.aspect)))
             .cloned()
             .collect()
     }

@@ -154,6 +154,7 @@ impl QueryGraph {
                     ty: AttrType::LabelList,
                     value: AttrValue::StringList(self.visibility_parts(package, target)),
                     unset: false,
+                    source_aspect: None,
                 });
                 continue;
             }
@@ -193,19 +194,13 @@ impl QueryGraph {
                     ty: attr.def.ty,
                     value: AttrValue::StringList(Vec::new()),
                     unset: true,
+                    source_aspect: None,
                 });
                 continue;
             };
             let mut labels = Vec::new();
             let implicit = attr.name.starts_with('_') || attr.name.starts_with('$');
-            let is_label = matches!(
-                attr.def.ty,
-                AttrType::Label
-                    | AttrType::LabelList
-                    | AttrType::LabelKeyedStringDict
-                    | AttrType::StringKeyedLabelDict
-                    | AttrType::LabelListDict
-            );
+            let is_label = is_label_type(attr.def.ty);
             if is_label {
                 let mut found: BTreeMap<Label, Option<Label>> = BTreeMap::new();
                 collect_labels(&value, None, &mut found);
@@ -222,6 +217,7 @@ impl QueryGraph {
                         visibility: false,
                         attr: attr.name.clone(),
                         transition,
+                        aspect: false,
                     });
                 }
             }
@@ -239,6 +235,7 @@ impl QueryGraph {
                                 visibility: false,
                                 attr: String::new(),
                                 transition: false,
+                                aspect: false,
                             });
                         }
                     }
@@ -252,8 +249,13 @@ impl QueryGraph {
                 ty: attr.def.ty,
                 value: value.clone(),
                 unset: false,
+                source_aspect: None,
             });
         }
+        let aspect_attrs = match defined_in {
+            Some(bzl) => self.aspect_attrs(bzl, class, &schema, &mut edges),
+            None => Vec::new(),
+        };
         // The attributes Bazel gives every executable and every test.
         if schema.executable || schema.test {
             attrs.push(NodeAttr {
@@ -264,6 +266,7 @@ impl QueryGraph {
                 ty: AttrType::Bool,
                 value: AttrValue::Bool(true),
                 unset: false,
+                source_aspect: None,
             });
         }
         if schema.test {
@@ -316,6 +319,7 @@ impl QueryGraph {
                     ty,
                     value,
                     unset: false,
+                    source_aspect: None,
                 });
                 for to in labels {
                     edges.push(Edge {
@@ -326,6 +330,7 @@ impl QueryGraph {
                         visibility: false,
                         attr: name.to_owned(),
                         transition: false,
+                        aspect: false,
                     });
                 }
             }
@@ -339,6 +344,7 @@ impl QueryGraph {
                     ty: AttrType::Label,
                     value: AttrValue::StringList(Vec::new()),
                     unset: true,
+                    source_aspect: None,
                 });
             }
         }
@@ -358,6 +364,7 @@ impl QueryGraph {
                 ty: AttrType::Label,
                 value: AttrValue::Label(allowlist.clone()),
                 unset: false,
+                source_aspect: None,
             });
             edges.push(Edge {
                 to: allowlist,
@@ -367,6 +374,7 @@ impl QueryGraph {
                 visibility: false,
                 attr: "$allowlist_function_transition".to_owned(),
                 transition: false,
+                aspect: false,
             });
         }
         // The `package_group`s that say who may see the rule.
@@ -384,6 +392,7 @@ impl QueryGraph {
                     visibility: true,
                     attr: String::new(),
                     transition: false,
+                    aspect: false,
                 });
             }
         }
@@ -398,6 +407,7 @@ impl QueryGraph {
                 visibility: true,
                 attr: String::new(),
                 transition: false,
+                aspect: false,
             });
         }
         // The one implicit dependency of a native rule that its attributes do
@@ -415,6 +425,7 @@ impl QueryGraph {
                 visibility: false,
                 attr: "$genrule_setup".to_owned(),
                 transition: false,
+                aspect: false,
             });
         }
         let location = target.location.clone();
@@ -475,8 +486,87 @@ impl QueryGraph {
                     format!("{}%{class}", fjfj_graph::expand::label_text(bzl)).as_bytes(),
                 ))
             }),
+            aspect_attrs,
             group: None,
         })
+    }
+
+    /// The private label attributes of the aspects the attributes of the rule
+    /// class ask for, by name and then in the order the aspects came, with the
+    /// dependencies they make added to `edges` aspect by aspect.
+    fn aspect_attrs(
+        &self,
+        bzl: &Label,
+        class: &str,
+        schema: &RuleSchema,
+        edges: &mut Vec<Edge>,
+    ) -> Vec<NodeAttr> {
+        let Ok(module) = self.repos.module(bzl) else {
+            return Vec::new();
+        };
+        let mut aspects: Vec<fjfj_starlark::AspectRef> = Vec::new();
+        for attr in &schema.attrs {
+            for aspect in fjfj_starlark::attr_aspects(&module, class, &attr.name) {
+                if !aspects.contains(&aspect) {
+                    aspects.push(aspect);
+                }
+            }
+        }
+        let mut found = Vec::new();
+        for aspect in aspects {
+            let Some(spec) = self
+                .repos
+                .module(&aspect.bzl)
+                .ok()
+                .and_then(|module| fjfj_starlark::aspect_spec(&module, &aspect.name))
+            else {
+                continue;
+            };
+            let defined = spec.schema.defined_in.clone().unwrap_or(aspect.bzl);
+            let source = format!(
+                "{}%{}",
+                fjfj_graph::expand::label_text(&defined),
+                aspect.name
+            );
+            let own: Vec<_> = spec
+                .schema
+                .attrs
+                .iter()
+                .filter(|a| a.name.starts_with('_') && is_label_type(a.def.ty))
+                .collect();
+            for attr in own {
+                let Some(value) = attr.def.default_value() else {
+                    continue;
+                };
+                let mut labels: BTreeMap<Label, Option<Label>> = BTreeMap::new();
+                collect_labels(&value, None, &mut labels);
+                let tool = matches!(attr.def.cfg, Cfg::Exec | Cfg::Host);
+                for to in labels.keys() {
+                    edges.push(Edge {
+                        to: to.clone(),
+                        implicit: true,
+                        tool,
+                        condition: None,
+                        visibility: false,
+                        attr: attr.name.clone(),
+                        transition: false,
+                        aspect: true,
+                    });
+                }
+                found.push(NodeAttr {
+                    name: shown_attr_name(&attr.name),
+                    text: self.attr_text(&value),
+                    labels: labels.into_keys().collect(),
+                    explicit: false,
+                    ty: attr.def.ty,
+                    value,
+                    unset: false,
+                    source_aspect: Some(source.clone()),
+                });
+            }
+        }
+        found.sort_by(|a, b| a.name.cmp(&b.name));
+        found
     }
 
     /// The BUILD file of the package of `label`.
@@ -791,9 +881,22 @@ impl QueryGraph {
             stack: Vec::new(),
             definition_stack: Vec::new(),
             implementation_hash: None,
+            aspect_attrs: Vec::new(),
             group: None,
         })
     }
+}
+
+/// Whether an attribute of this type names labels.
+fn is_label_type(ty: AttrType) -> bool {
+    matches!(
+        ty,
+        AttrType::Label
+            | AttrType::LabelList
+            | AttrType::LabelKeyedStringDict
+            | AttrType::StringKeyedLabelDict
+            | AttrType::LabelListDict
+    )
 }
 
 /// The name an attribute has in output: the private attribute `_x` of a
@@ -905,6 +1008,7 @@ impl Graph for QueryGraph {
                             visibility: false,
                             attr: String::new(),
                             transition: false,
+                            aspect: false,
                         })
                         .collect();
                     node
@@ -929,6 +1033,7 @@ impl Graph for QueryGraph {
                         visibility: false,
                         attr: String::new(),
                         transition: false,
+                        aspect: false,
                     }];
                     node
                 }
@@ -1937,6 +2042,73 @@ allk(
             .find(|a| a["name"] == "timeout")
             .unwrap();
         assert_eq!(timeout["stringValue"], "long");
+    }
+
+    /// What `bazel query --output=streamed_jsonproto
+    /// --proto:include_attribute_source_aspects` printed for the same rule.
+    #[test]
+    fn the_private_label_attributes_of_aspects_are_the_rules_after_its_own() {
+        let (_dir, repos) = workspace_of(&[
+            ("MODULE.bazel", ""),
+            (
+                "d3.bzl",
+                "def _ai(target, ctx):\n    return []\ndef mk(lbls):\n    return aspect(implementation = _ai, attrs = {\"_\" + k: attr.label(default = v) for k, v in lbls.items()} | {\"_s\": attr.string(default = \"s\")})\na1 = mk({\"p\": \"//:c\", \"q\": \"//:a\"})\na2 = mk({\"p\": \"//:b\", \"q\": \"//:c\"})\na3 = mk({\"p\": \"//:d\"})\nr3 = rule(implementation = lambda ctx: [], attrs = {\"x\": attr.label(aspects = [a2, a1]), \"y\": attr.label(aspects = [a3, a1]), \"_own\": attr.label(default = \"//:b\"), \"z\": attr.label_list()})\n",
+            ),
+            (
+                "BUILD",
+                "load(\":d3.bzl\", \"r3\")\nfilegroup(name = \"a\")\nfilegroup(name = \"b\")\nfilegroup(name = \"c\")\nfilegroup(name = \"d\")\nr3(name = \"w\", x = \":d\", y = \":a\", z = [\":c\", \":a\"])\n",
+            ),
+        ]);
+        let graph = QueryGraph::new(repos);
+        let proto = fjfj_query::target_proto::ProtoOptions {
+            include_attribute_source_aspects: true,
+            ..Default::default()
+        };
+        let rules = jsonproto(&graph, "//:w", &proto);
+        let rule = &rules[0]["rule"];
+        let aspects: Vec<(&str, &str, &str)> = rule["attribute"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|a| {
+                a["sourceAspectName"]
+                    .as_str()
+                    .is_some_and(|s| !s.is_empty())
+            })
+            .map(|a| {
+                (
+                    a["name"].as_str().unwrap(),
+                    a["sourceAspectName"].as_str().unwrap(),
+                    a["stringValue"].as_str().unwrap(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            aspects,
+            [
+                ("$p", "//:d3.bzl%a2", "//:b"),
+                ("$p", "//:d3.bzl%a1", "//:c"),
+                ("$p", "//:d3.bzl%a3", "//:d"),
+                ("$q", "//:d3.bzl%a2", "//:c"),
+                ("$q", "//:d3.bzl%a1", "//:a"),
+            ]
+        );
+        // The aspects' labels come first, once each, in the order of the
+        // aspects; then the rule's own, in label order.
+        assert_eq!(
+            rule["ruleInput"],
+            serde_json::json!([
+                "//:b", "//:c", "//:a", "//:d", "//:a", "//:b", "//:c", "//:d"
+            ])
+        );
+        let names: Vec<&str> = rule["attribute"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|a| a["name"].as_str().unwrap())
+            .collect();
+        let hash = names.iter().position(|n| *n == "$rule_implementation_hash");
+        assert_eq!(hash, Some(names.len() - 6));
     }
 
     #[test]

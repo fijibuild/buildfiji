@@ -389,6 +389,7 @@ impl Graph for ConfiguredGraph<'_> {
                 visibility: false,
                 attr: loaded.map(|e| e.attr.clone()).unwrap_or_default(),
                 transition: loaded.is_some_and(|e| e.transition),
+                aspect: loaded.is_some_and(|e| e.aspect),
             });
         }
         // The values the target has in this configuration: a `select()` is

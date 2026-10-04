@@ -66,6 +66,8 @@ pub struct NodeAttr {
     /// The attribute has no value: a label or an output the rule did not
     /// give and the class has no default for. `value` is then empty.
     pub unset: bool,
+    /// The aspect (`//pkg:file.bzl%name`) this attribute came from, if any.
+    pub source_aspect: Option<String>,
 }
 
 /// A dependency of a target.
@@ -87,6 +89,9 @@ pub struct Edge {
     pub attr: String,
     /// From an attribute whose `cfg` is a transition.
     pub transition: bool,
+    /// From a private attribute of an aspect that one of the rule's attributes
+    /// asks for; those come first among the rule's inputs.
+    pub aspect: bool,
 }
 
 impl Node {
@@ -123,6 +128,10 @@ pub struct Node {
     /// For a rule of a class written in Starlark: a digest of the class,
     /// which Bazel shows as the attribute `$rule_implementation_hash`.
     pub implementation_hash: Option<String>,
+    /// For a rule with attributes that ask for aspects: the private label
+    /// attributes of those aspects, which Bazel lists after the rule's own and
+    /// the hash, by name and then in the order the aspects came.
+    pub aspect_attrs: Vec<NodeAttr>,
     /// For a rule: the `config_setting`s its `select()`s read, once each in the
     /// order they were written (Bazel's `$config_dependencies`).
     pub config_deps: Vec<Label>,

@@ -263,6 +263,7 @@ fn internal(name: &'static str, ty: AttrType, value: Option<AttrValue>) -> NodeA
         ty,
         unset: value.is_none(),
         value: value.unwrap_or(AttrValue::StringList(Vec::new())),
+        source_aspect: None,
     }
 }
 
@@ -449,8 +450,7 @@ pub fn target(ev: &Evaluator<'_>, label: &Label, options: &ProtoOptions) -> Resu
                     }
                 })
                 .collect();
-            // Last, after the attributes by name and whatever is asked for: a
-            // digest of the rule class.
+            // Next, after the attributes by name: a digest of the rule class.
             if let Some(hash) = &node.implementation_hash {
                 shown.push(
                     Msg::new()
@@ -459,17 +459,43 @@ pub fn target(ev: &Evaluator<'_>, label: &Label, options: &ProtoOptions) -> Resu
                         .one(5, "string_value", hash.as_str()),
                 );
             }
+            // Then the attributes of the aspects its attributes ask for.
+            shown.extend(
+                node.aspect_attrs
+                    .iter()
+                    .filter(|a| options.default_values || a.explicit)
+                    .map(|a| {
+                        let message = attribute(graph, a, native, options);
+                        match (&a.source_aspect, options.include_attribute_source_aspects) {
+                            (Some(source), true) => {
+                                message.one(23, "source_aspect_name", source.as_str())
+                            }
+                            _ => message,
+                        }
+                    }),
+            );
             rule = rule.many(4, "attribute", shown);
             if options.rule_inputs_and_outputs {
                 // In label order, which compares the canonical names of the
                 // repositories.
-                let inputs: Vec<String> = ev
+                let edges: Vec<_> = ev
                     .edges(&*graph.declared_node(label)?)
                     .into_iter()
                     .filter(|e| !e.visibility)
-                    .map(|e| e.to)
-                    .collect::<BTreeSet<Label>>()
-                    .iter()
+                    .collect();
+                // Those the aspects' attributes make come first, once each, in
+                // the order the aspects came.
+                let mut aspect_inputs: Vec<&Label> = Vec::new();
+                for e in edges.iter().filter(|e| e.aspect) {
+                    if !aspect_inputs.contains(&&e.to) {
+                        aspect_inputs.push(&e.to);
+                    }
+                }
+                let own: BTreeSet<&Label> =
+                    edges.iter().filter(|e| !e.aspect).map(|e| &e.to).collect();
+                let inputs: Vec<String> = aspect_inputs
+                    .into_iter()
+                    .chain(own)
                     .map(|l| graph.display(l))
                     .collect();
                 rule = rule.many(5, "rule_input", inputs).many(
