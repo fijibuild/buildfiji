@@ -461,3 +461,28 @@ fn spawn_strategy_names_pick_the_first_strategy_that_runs() {
     );
     assert!(Strategy::parse("remote").is_err());
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn independent_actions_run_at_once_up_to_jobs() {
+    let (_dir, layout) = layout();
+    let outs: Vec<Artifact> = (0..4).map(|i| out(&format!("s{i}.txt"))).collect();
+    let actions = outs
+        .iter()
+        .map(|o| {
+            shell(
+                &format!("sleep 1; echo > {}", o.exec_path()),
+                vec![],
+                vec![o.clone()],
+            )
+        })
+        .collect();
+    let started = std::time::Instant::now();
+    let outcome = run(&layout, actions, &outs, false).await;
+    assert!(outcome.failures.is_empty(), "{:?}", outcome.failures);
+    assert_eq!(outcome.ran, 4);
+    assert!(
+        started.elapsed() < std::time::Duration::from_millis(2500),
+        "four one-second actions took {:?}",
+        started.elapsed()
+    );
+}

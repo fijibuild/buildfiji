@@ -215,8 +215,15 @@ impl Scheduler {
         if let Some(done) = memo.get(&id) {
             return done.clone();
         }
+        // A task of its own, so that one action's work does not wait on another's.
         let me = self.clone();
-        let done: Done = async move { me.run_now(id).await }.boxed().shared();
+        let task = tokio::spawn(async move { me.run_now(id).await });
+        let done: Done = async move {
+            task.await
+                .unwrap_or_else(|e| Err(Arc::new(stray(format!("the action's task ended: {e}")))))
+        }
+        .boxed()
+        .shared();
         memo.insert(id, done.clone());
         done
     }
@@ -253,11 +260,19 @@ impl Scheduler {
                 output: String::new(),
             }));
         }
-        let execroot = self.layout.execroot();
-        let key = self.cache.key(&execroot, &action);
-        if let Some(key) = &key
-            && self.cache.is_current(&execroot, &action, key)
-        {
+        let (key, current) = {
+            let (me, action) = (self.clone(), action.clone());
+            blocking(move || {
+                let execroot = me.layout.execroot();
+                let key = me.cache.key(&execroot, &action);
+                let current = key
+                    .as_ref()
+                    .is_some_and(|key| me.cache.is_current(&execroot, &action, key));
+                (key, current)
+            })
+            .await
+        };
+        if current {
             self.cached.fetch_add(1, Ordering::Relaxed);
             if let Some(first) = action.outputs.first() {
                 let took = self.cache.duration(&action).unwrap_or_default();
@@ -281,8 +296,11 @@ impl Scheduler {
         match outcome {
             Ok(()) => {
                 if let Some(key) = key {
-                    self.cache
-                        .record(&execroot, &action, key, started.elapsed());
+                    let (me, action, took) = (self.clone(), action.clone(), started.elapsed());
+                    blocking(move || {
+                        me.cache.record(&me.layout.execroot(), &action, key, took);
+                    })
+                    .await;
                 }
                 self.ran.fetch_add(1, Ordering::Relaxed);
                 Ok(())
@@ -292,28 +310,64 @@ impl Scheduler {
                 if action.mnemonic != "TestRunner" {
                     self.stopped.store(true, Ordering::Release);
                 }
-                self.failures.lock().unwrap().push(failure.clone());
-                Err(Arc::new(failure))
+                self.failures.lock().unwrap().push((*failure).clone());
+                Err(Arc::new(*failure))
             }
         }
     }
 
-    async fn execute_one(&self, action: &Action) -> Result<(), Failure> {
-        let fail = |message: String| Failure {
-            owner: label_text(&action.owner),
-            location: action.location.clone(),
-            repo: action.owner.repo.clone(),
-            progress: action
-                .progress_message
-                .clone()
-                .unwrap_or_else(|| format!("{} {}", action.mnemonic, label_text(&action.owner))),
-            mnemonic: action.mnemonic.clone(),
-            message,
-            details: Vec::new(),
-            exit_code: None,
-            timed_out: false,
-            output: String::new(),
-        };
+    /// `action` made, its blocking work on threads of their own and its command
+    /// run without holding a thread.
+    async fn execute_one(self: &Arc<Self>, action: &Arc<Action>) -> Result<(), Box<Failure>> {
+        let (me, a) = (self.clone(), action.clone());
+        let step = blocking(move || me.prepare(&a)).await?;
+        let (me, a) = (self.clone(), action.clone());
+        match step {
+            Step::Done => blocking(move || me.outputs_made(&a)).await,
+            Step::Run(pending) => {
+                let Pending {
+                    mut command,
+                    sandbox,
+                    limit,
+                    started,
+                } = *pending;
+                let program = command
+                    .as_std()
+                    .get_program()
+                    .to_string_lossy()
+                    .into_owned();
+                let fail = |message: String| Box::new(failure(action, message));
+                // `spawn` forks and waits for the exec: not on a runtime thread.
+                let child = blocking(move || command.spawn().map(|child| (child, command)))
+                    .await
+                    .map_err(|e| fail(format!("cannot run {program}: {e}")))?;
+                let (child, _command) = child;
+                let waited = child.wait_with_output();
+                let output = match limit {
+                    Some(limit) => match tokio::time::timeout(limit, waited).await {
+                        Ok(done) => done,
+                        Err(_) => {
+                            return Err(Box::new(Failure {
+                                timed_out: true,
+                                ..*fail(format!(
+                                    "(Timeout): killed after {} seconds",
+                                    limit.as_secs()
+                                ))
+                            }));
+                        }
+                    },
+                    None => waited.await,
+                }
+                .map_err(|e| fail("cannot run the command".to_owned() + &format!(": {e}")))?;
+                blocking(move || me.after_run(&a, sandbox, output, started)).await
+            }
+        }
+    }
+
+    /// The work before a command runs, or all of an action that makes its
+    /// outputs itself.
+    fn prepare(&self, action: &Action) -> Result<Step, Box<Failure>> {
+        let fail = |message: String| Box::new(failure(action, message));
         let execroot = self.layout.execroot();
         for input in action.inputs.iter().filter(|a| a.is_source()) {
             let at = execroot.join(input.exec_path());
@@ -513,82 +567,96 @@ impl Scheduler {
                     .get("timeout")
                     .and_then(|s| s.parse::<u64>().ok())
                     .map(std::time::Duration::from_secs);
-                let output = match limit {
-                    Some(limit) => match tokio::time::timeout(limit, command.output()).await {
-                        Ok(done) => done,
-                        Err(_) => {
-                            return Err(Failure {
-                                timed_out: true,
-                                ..fail(format!(
-                                    "(Timeout): killed after {} seconds",
-                                    limit.as_secs()
-                                ))
-                            });
-                        }
-                    },
-                    None => command.output().await,
-                }
-                .map_err(|e| fail(format!("cannot run {program}: {e}")))?;
-                if let Some(sandbox) = &sandbox {
-                    sandbox.collect(&self.layout, action).map_err(|e| {
-                        fail(format!("cannot take the outputs out of the sandbox: {e}"))
-                    })?;
-                }
-                let mut text = String::from_utf8_lossy(&output.stdout).into_owned();
-                text.push_str(&String::from_utf8_lossy(&output.stderr));
-                // A test's output is its log, whatever became of it.
-                if action.mnemonic == "TestRunner" {
-                    let log = execroot.join(action.outputs[0].exec_path());
-                    std::fs::write(&log, &text)
-                        .map_err(|e| fail(format!("cannot write {}: {e}", log.display())))?;
-                    text.clear();
-                    // Bazel writes the XML of a test that did not.
-                    let xml = execroot.join(action.outputs[1].exec_path());
-                    let missing =
-                        !xml.is_file() || std::fs::metadata(&xml).is_ok_and(|m| m.len() == 0);
-                    if missing
-                        && let Some(tool) = action
-                            .inputs
-                            .iter()
-                            .find(|i| i.path.ends_with("tools/test/generate-xml.sh"))
-                    {
-                        let _ = tokio::process::Command::new("/bin/bash")
-                            .arg(execroot.join(tool.exec_path()))
-                            .arg(&log)
-                            .arg(&xml)
-                            .arg(started.elapsed().as_secs().to_string())
-                            .arg(output.status.code().unwrap_or(1).to_string())
-                            .current_dir(&execroot)
-                            .env_clear()
-                            .envs(env)
-                            .output()
-                            .await;
-                    }
-                }
-                if !output.status.success() {
-                    let how = match output.status.code() {
-                        Some(code) => format!("(Exit {code})"),
-                        None => "(Killed by a signal)".to_owned(),
-                    };
-                    return Err(Failure {
-                        exit_code: output.status.code(),
-                        message: format!(
-                            "{how}: {} failed: error executing {} command (from {} rule target {}) {}",
-                            program.rsplit('/').next().unwrap_or(program),
-                            action.mnemonic,
-                            action.owner_kind,
-                            label_text(&action.owner),
-                            argv.iter().map(|a| quote(a)).collect::<Vec<_>>().join(" "),
-                        ),
-                        output: text,
-                        ..fail(String::new())
-                    });
-                }
-                if !text.is_empty() {
-                    self.progress.output(action, &text);
-                }
+                return Ok(Step::Run(Box::new(Pending {
+                    command,
+                    sandbox,
+                    limit,
+                    started,
+                })));
             }
         }
+        Ok(Step::Done)
+    }
+
+    /// After a command ran: its outputs out of the sandbox, a test's log and
+    /// XML, and its failure if it had one.
+    fn after_run(
+        &self,
+        action: &Action,
+        sandbox: Option<Sandbox>,
+        output: std::process::Output,
+        started: std::time::Instant,
+    ) -> Result<(), Box<Failure>> {
+        let fail = |message: String| Box::new(failure(action, message));
+        let execroot = self.layout.execroot();
+        let ActionKind::Spawn { argv, env, .. } = &action.kind else {
+            return Ok(());
+        };
+        let program = argv.first().map_or("", String::as_str);
+        if let Some(sandbox) = &sandbox {
+            sandbox
+                .collect(&self.layout, action)
+                .map_err(|e| fail(format!("cannot take the outputs out of the sandbox: {e}")))?;
+        }
+        let mut text = String::from_utf8_lossy(&output.stdout).into_owned();
+        text.push_str(&String::from_utf8_lossy(&output.stderr));
+        // A test's output is its log, whatever became of it.
+        if action.mnemonic == "TestRunner" {
+            let log = execroot.join(action.outputs[0].exec_path());
+            std::fs::write(&log, &text)
+                .map_err(|e| fail(format!("cannot write {}: {e}", log.display())))?;
+            text.clear();
+            // Bazel writes the XML of a test that did not.
+            let xml = execroot.join(action.outputs[1].exec_path());
+            let missing = !xml.is_file() || std::fs::metadata(&xml).is_ok_and(|m| m.len() == 0);
+            if missing
+                && let Some(tool) = action
+                    .inputs
+                    .iter()
+                    .find(|i| i.path.ends_with("tools/test/generate-xml.sh"))
+            {
+                let _ = std::process::Command::new("/bin/bash")
+                    .arg(execroot.join(tool.exec_path()))
+                    .arg(&log)
+                    .arg(&xml)
+                    .arg(started.elapsed().as_secs().to_string())
+                    .arg(output.status.code().unwrap_or(1).to_string())
+                    .current_dir(&execroot)
+                    .env_clear()
+                    .envs(env)
+                    .output();
+            }
+        }
+        if !output.status.success() {
+            let how = match output.status.code() {
+                Some(code) => format!("(Exit {code})"),
+                None => "(Killed by a signal)".to_owned(),
+            };
+            return Err(Box::new(Failure {
+                exit_code: output.status.code(),
+                message: format!(
+                    "{how}: {} failed: error executing {} command (from {} rule target {}) {}",
+                    program.rsplit('/').next().unwrap_or(program),
+                    action.mnemonic,
+                    action.owner_kind,
+                    label_text(&action.owner),
+                    argv.iter().map(|a| quote(a)).collect::<Vec<_>>().join(" "),
+                ),
+                output: text,
+                ..*fail(String::new())
+            }));
+        }
+        if !text.is_empty() {
+            self.progress.output(action, &text);
+        }
+        drop(sandbox);
+        self.outputs_made(action)
+    }
+
+    /// Every output exists, and is protected as Bazel protects it.
+    fn outputs_made(&self, action: &Action) -> Result<(), Box<Failure>> {
+        let fail = |message: String| Box::new(failure(action, message));
+        let execroot = self.layout.execroot();
         for out in &action.outputs {
             let at = execroot.join(out.exec_path());
             if std::fs::symlink_metadata(&at).is_err() {
@@ -600,10 +668,10 @@ impl Scheduler {
                 } else {
                     format!("output '{}' was not created", out.exec_path())
                 };
-                return Err(Failure {
+                return Err(Box::new(Failure {
                     details: vec![detail],
-                    ..fail("not all outputs were created or valid".to_owned())
-                });
+                    ..*fail("not all outputs were created or valid".to_owned())
+                }));
             }
             // Bazel writes a parameter file 0775, unlike its other outputs.
             let protected = if action.mnemonic == "ParameterFileWrite" {
@@ -615,6 +683,64 @@ impl Scheduler {
             protected.map_err(|e| fail(format!("cannot protect {}: {e}", at.display())))?;
         }
         Ok(())
+    }
+}
+
+/// What `prepare` leaves to do.
+enum Step {
+    /// The action made its outputs.
+    Done,
+    /// A command to run.
+    Run(Box<Pending>),
+}
+
+struct Pending {
+    command: tokio::process::Command,
+    sandbox: Option<Sandbox>,
+    limit: Option<std::time::Duration>,
+    started: std::time::Instant,
+}
+
+/// `work` on a thread for blocking work, so the runtime's threads stay free.
+async fn blocking<T: Send + 'static>(work: impl FnOnce() -> T + Send + 'static) -> T {
+    match tokio::task::spawn_blocking(work).await {
+        Ok(done) => done,
+        Err(e) => std::panic::resume_unwind(e.into_panic()),
+    }
+}
+
+/// A failure of `action`.
+fn failure(action: &Action, message: String) -> Failure {
+    Failure {
+        owner: label_text(&action.owner),
+        location: action.location.clone(),
+        repo: action.owner.repo.clone(),
+        progress: action
+            .progress_message
+            .clone()
+            .unwrap_or_else(|| format!("{} {}", action.mnemonic, label_text(&action.owner))),
+        mnemonic: action.mnemonic.clone(),
+        message,
+        details: Vec::new(),
+        exit_code: None,
+        timed_out: false,
+        output: String::new(),
+    }
+}
+
+/// A failure that belongs to no action.
+fn stray(message: String) -> Failure {
+    Failure {
+        owner: String::new(),
+        location: String::new(),
+        repo: String::new(),
+        progress: String::new(),
+        mnemonic: String::new(),
+        message,
+        details: Vec::new(),
+        exit_code: None,
+        timed_out: false,
+        output: String::new(),
     }
 }
 
