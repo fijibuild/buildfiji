@@ -822,6 +822,7 @@ async fn build_main(
         record_execution_platforms: false,
         test: test_flags.as_ref().map(|t| t.output),
         workspace_status: Some((status.render_stable(), status.render_volatile())),
+        run: run_mode,
         incompatible: Some(build_command::IncompatibleRoots {
             explicit: Default::default(),
             skip_explicit: build_flags.skip_incompatible_explicit_targets,
@@ -874,6 +875,16 @@ async fn build_main(
             "command succeeded, but there were errors parsing the target pattern"
         )));
     };
+    if let Some(label) = &report.not_executable {
+        eprintln!(
+            "ERROR: Cannot run target {}: Not executable",
+            build_command::label_name(label)
+        );
+        build_command::print_nothing_built(report.elapsed);
+        return Err(CliError::CommandLine(anyhow::anyhow!(
+            "Build failed. Not running target"
+        )));
+    }
     let layout = report.layout.clone();
     let succeeded = build_command::print(
         &report,
@@ -1242,6 +1253,7 @@ mod tests {
             test: None,
             workspace_status: None,
             incompatible: None,
+            run: false,
         };
         let patterns = ["//:g".to_owned(), "//:bad".to_owned()];
         // The build is blocking work that needs a runtime to be current.
@@ -1350,6 +1362,7 @@ my_test = rule(implementation = _impl, test = True, attrs = {"exit": attr.int()}
             test: Some(fjfj_bazel_compat::test_flags::TestOutput::Summary),
             workspace_status: None,
             incompatible: None,
+            run: false,
         };
         let runtime = tokio::runtime::Runtime::new().unwrap();
         let run_once = || {

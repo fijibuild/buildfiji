@@ -49,6 +49,9 @@ pub(crate) struct Options {
     /// What to do with a target the platform cannot build; `None` leaves them
     /// in, as `cquery` and `aquery` show them.
     pub incompatible: Option<IncompatibleRoots>,
+    /// `run`: every target asked for must be an executable, which Bazel
+    /// finds out when it has analysed them, before it builds anything.
+    pub run: bool,
 }
 
 /// How a build treats the targets it was asked for that its platform cannot
@@ -276,6 +279,8 @@ pub(crate) struct Report {
     pub analysis_errors: Vec<(Label, String)>,
     /// Targets named outright that the platform cannot build, and why.
     pub incompatible_errors: Vec<(Label, String)>,
+    /// `run`: the first target asked for that is not an executable.
+    pub not_executable: Option<Label>,
     /// The targets asked for whose analysis failed.
     pub failed_roots: Vec<Label>,
     /// Targets of the request left unbuilt as the platform cannot build them:
@@ -312,6 +317,7 @@ impl Report {
             results: Vec::new(),
             analysis_errors: Vec::new(),
             incompatible_errors: Vec::new(),
+            not_executable: None,
             failed_roots: Vec::new(),
             skipped: Vec::new(),
             analysis_sites: BTreeMap::new(),
@@ -697,6 +703,14 @@ pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> R
         split_incompatible(roots, request.options.incompatible.as_ref());
     let mut aspect_roots = aspect_roots;
     report.analysed = all.clone();
+    if request.options.run
+        && report.analysis_errors.is_empty()
+        && let Some((label, _)) = roots.iter().find(|(_, t)| t.executable.is_none())
+    {
+        report.not_executable = Some(label.clone());
+        report.elapsed = started.elapsed();
+        return report;
+    }
     let mut failed_prints: Vec<String> = Vec::new();
     for (_, message) in &mut report.analysis_errors {
         let (printed, rest) = fjfj_starlark::split_printed(message);

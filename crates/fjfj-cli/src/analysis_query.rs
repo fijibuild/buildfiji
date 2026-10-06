@@ -435,6 +435,7 @@ fn build_options(
         test: None,
         workspace_status: None,
         incompatible: None,
+        run: false,
     }
 }
 

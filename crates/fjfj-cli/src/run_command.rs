@@ -31,7 +31,9 @@ pub(crate) async fn run(args: TargetArgs) -> Result<(), CliError> {
     }
     let result = &results[0];
     let Some(executable) = &result.target.executable else {
-        return Err(not_executable(&result.label, &built));
+        return Err(CliError::Internal(anyhow::anyhow!(
+            "a target that is not an executable reached run"
+        )));
     };
     let program = layout.resolve(executable);
     let shown_of = |artifact| {
@@ -71,7 +73,9 @@ pub(crate) async fn run(args: TargetArgs) -> Result<(), CliError> {
             // Built after the target unless it is the target.
             let under = results.get(1).unwrap_or(result);
             let Some(under_exe) = &under.target.executable else {
-                return Err(not_executable(&under.label, &built));
+                return Err(CliError::Internal(anyhow::anyhow!(
+                    "a target that is not an executable reached run"
+                )));
             };
             let mut words = vec![layout.resolve(under_exe).display().to_string()];
             words.extend(options.iter().cloned());
@@ -160,17 +164,6 @@ pub(crate) async fn run(args: TargetArgs) -> Result<(), CliError> {
         (None, Some(signal)) => Err(CliError::Program(u8::try_from(128 + signal).unwrap_or(255))),
         _ => Err(CliError::Program(1)),
     }
-}
-
-/// Bazel finds a target that is no executable when it has analysed it, and
-/// says so with the closing lines of a build that built nothing.
-fn not_executable(label: &fjfj_graph::Label, built: &crate::Built) -> CliError {
-    eprintln!(
-        "ERROR: Cannot run target {}: Not executable",
-        crate::build_command::label_name(label)
-    );
-    crate::build_command::print_nothing_built(built.report.elapsed);
-    CliError::CommandLine(anyhow::anyhow!("Build failed. Not running target"))
 }
 
 /// What the program does not inherit: the runfiles variables of whatever ran
