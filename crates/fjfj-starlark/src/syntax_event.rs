@@ -70,6 +70,9 @@ fn parse_message(text: &str) -> String {
     if text.contains("`return` cannot be used outside of a `def`") {
         return "return statements must be inside a function".to_owned();
     }
+    if text.contains("Python-style generator expressions") {
+        return "syntax error at 'for': Starlark does not support Python-style generator expressions".to_owned();
+    }
     if text.contains("unfinished string literal") {
         return "unclosed string literal".to_owned();
     }
@@ -116,6 +119,8 @@ fn wanted_token(wanted: &str) -> String {
     match wanted {
         "new line" => "newline".to_owned(),
         "expression" => "expression".to_owned(),
+        // What can follow a comprehension: the list is Bazel's, quotes and all.
+        "']', 'for' or 'if'" | "'}', 'for' or 'if'" => wanted.to_owned(),
         other => quoted(other).unwrap_or(other).to_owned(),
     }
 }
@@ -191,6 +196,30 @@ mod tests {
         (
             "for x in []: pass\n",
             "BUILD:1:1: `for` statements are not allowed in BUILD files. You may inline the loop, move it to a function definition (in a .bzl file), or as a last resort use a list comprehension.",
+        ),
+        (
+            "x = 1 if 2\n",
+            "BUILD:1:5: missing else clause in conditional expression or semicolon before if",
+        ),
+        ("x = 0xZ\n", "BUILD:1:5: invalid hex literal"),
+        ("x = 0x\n", "BUILD:1:5: invalid hex literal"),
+        ("x = 0b2\n", "BUILD:1:5: invalid binary literal"),
+        ("x = 0o\n", "BUILD:1:5: invalid base-8 integer literal: 0o"),
+        (
+            "x = 0o9\n",
+            "BUILD:1:5: invalid base-8 integer literal: 0o9",
+        ),
+        (
+            "x = [i for i in 1 2]\n",
+            "BUILD:1:19: syntax error at '2': expected ']', 'for' or 'if'",
+        ),
+        (
+            "x = {i: i for i in 1 2}\n",
+            "BUILD:1:22: syntax error at '2': expected '}', 'for' or 'if'",
+        ),
+        (
+            "x = f(i for i in 1 2)\n",
+            "BUILD:1:9: syntax error at 'for': Starlark does not support Python-style generator expressions",
         ),
         ("f(a=1, a=2)\n", "BUILD:1:8: duplicate keyword argument: a"),
         (

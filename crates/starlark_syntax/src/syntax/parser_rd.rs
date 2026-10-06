@@ -152,6 +152,17 @@ impl<'a, I: Iterator<Item = Lexeme>> ParserRd<'a, I> {
         }
     }
 
+    /// `expect` of the end of a comprehension, which names what else could
+    /// have come.
+    fn expect_closing(&mut self, expected: &Token, what: &str) -> Result<(), EvalException> {
+        if self.peek() == Some(expected) {
+            self.advance();
+            Ok(())
+        } else {
+            Err(self.error_expected(what))
+        }
+    }
+
     #[inline]
     fn eat(&mut self, expected: &Token) -> bool {
         match &self.current {
@@ -193,6 +204,21 @@ impl<'a, I: Iterator<Item = Lexeme>> ParserRd<'a, I> {
             ),
         };
         EvalException::parser_error(msg, span, self.state.codemap)
+    }
+
+    /// `error_expected` for a construct that began at `start`.
+    fn error_expected_at(&mut self, start: usize, what: &str) -> EvalException {
+        let (end, msg) = match &self.current {
+            Some((_, tok, end)) => (
+                *end,
+                format!("Parse error: unexpected {}, expected {}", tok, what),
+            ),
+            None => (
+                start,
+                format!("Parse error: unexpected end of file, expected {}", what),
+            ),
+        };
+        self.error_at(start, end, msg)
     }
 
     fn error_at(&self, start: usize, end: usize, msg: String) -> EvalException {
@@ -865,6 +891,14 @@ impl<'a, I: Iterator<Item = Lexeme>> ParserRd<'a, I> {
                     let l = lhs.span.begin().get() as usize;
                     self.consume(&Token::OpeningRound);
                     let args = self.parse_comma_separated_args()?;
+                    if let Some((start, Token::For, end)) = self.current {
+                        return Err(self.error_at(
+                            start,
+                            end,
+                            "Parse error: Starlark does not support Python-style generator expressions"
+                                .to_owned(),
+                        ));
+                    }
                     self.expect(&Token::ClosingRound)?;
                     let r = self.last_end;
                     lhs = Expr::check_call(lhs, args, &mut self.state).ast(l, r);
@@ -1060,7 +1094,7 @@ impl<'a, I: Iterator<Item = Lexeme>> ParserRd<'a, I> {
         // Check for comprehension
         if self.peek() == Some(&Token::For) {
             let (for_clause, clauses) = self.parse_comp_clauses()?;
-            self.expect(&Token::ClosingSquare)?;
+            self.expect_closing(&Token::ClosingSquare, "']', 'for' or 'if'")?;
             let r = self.last_end;
             return Ok(
                 Expr::ListComprehension(Box::new(first), Box::new(for_clause), clauses).ast(l, r),
@@ -1096,7 +1130,7 @@ impl<'a, I: Iterator<Item = Lexeme>> ParserRd<'a, I> {
         // Check for comprehension
         if self.peek() == Some(&Token::For) {
             let (for_clause, clauses) = self.parse_comp_clauses()?;
-            self.expect(&Token::ClosingCurly)?;
+            self.expect_closing(&Token::ClosingCurly, "'}', 'for' or 'if'")?;
             let r = self.last_end;
             return Ok(Expr::DictComprehension(
                 Box::new((key, value)),
@@ -1457,7 +1491,11 @@ impl<'a, I: Iterator<Item = Lexeme>> ParserRd<'a, I> {
             let l = expr.span.begin().get() as usize;
             self.advance();
             let cond = self.parse_or_test()?;
-            self.expect(&Token::Else)?;
+            if self.peek() != Some(&Token::Else) {
+                // Bazel reports the missing else where the expression starts.
+                return Err(self.error_expected_at(l, &format!("{}", Token::Else)));
+            }
+            self.advance();
             let else_expr = self.parse_test()?;
             let r = self.last_end;
             Ok(Expr::If(Box::new((cond, expr, else_expr))).ast(l, r))

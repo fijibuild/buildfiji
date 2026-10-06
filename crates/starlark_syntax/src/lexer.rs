@@ -53,6 +53,12 @@ pub enum LexemeError {
     StartsZero(String),
     #[error("Parse error: failed to parse integer: `{0}`")]
     IntParse(String),
+    #[error("invalid hex literal")]
+    InvalidHex,
+    #[error("invalid binary literal")]
+    InvalidBinary,
+    #[error("invalid base-8 integer literal: {0}")]
+    InvalidOctal(String),
     #[error("Comment span is computed incorrectly (internal error)")]
     CommentSpanComputedIncorrectly,
     #[error("invalid base-{1} literal: \"{0}\"")]
@@ -735,6 +741,35 @@ impl<'a> Lexer<'a> {
                                     assert!(s.starts_with("0x") || s.starts_with("0X"));
                                     Some(self.int(&s[2..], 16))
                                 }
+                                Token::RawBadHexInt => {
+                                    return Some(self.err_span(
+                                        LexemeError::InvalidHex,
+                                        self.lexer.span().start,
+                                        self.lexer.span().end,
+                                    ));
+                                }
+                                Token::RawBadBinInt => {
+                                    return Some(self.err_span(
+                                        LexemeError::InvalidBinary,
+                                        self.lexer.span().start,
+                                        self.lexer.span().end,
+                                    ));
+                                }
+                                Token::RawBadOctInt => {
+                                    // Bazel reads the digits after the prefix too.
+                                    let span = self.lexer.span();
+                                    let rest = &self.codemap.source()[span.end..];
+                                    let digits =
+                                        rest.bytes().take_while(u8::is_ascii_digit).count();
+                                    let end = span.end + digits;
+                                    return Some(self.err_span(
+                                        LexemeError::InvalidOctal(
+                                            self.codemap.source()[span.start..end].to_owned(),
+                                        ),
+                                        span.start,
+                                        end,
+                                    ));
+                                }
                                 Token::RawBinInt => {
                                     let s = self.lexer.slice();
                                     assert!(s.starts_with("0b") || s.starts_with("0B"));
@@ -1296,6 +1331,13 @@ pub enum Token {
     RawBinInt,
     #[regex("0[oO][0-7]+")]
     RawOctInt,
+    // A prefix with no digits after it; the error says so.
+    #[regex("0[xX]")]
+    RawBadHexInt,
+    #[regex("0[bB]")]
+    RawBadBinInt,
+    #[regex("0[oO]")]
+    RawBadOctInt,
 
     Int(TokenInt), // An integer literal (123, 0x1, 0b1011, 0o755, ...)
 
@@ -1544,6 +1586,9 @@ impl Display for Token {
             Token::RawHexInt => write!(f, "hexadecimal integer literal"),
             Token::RawOctInt => write!(f, "octal integer literal"),
             Token::RawBinInt => write!(f, "binary integer literal"),
+            Token::RawBadHexInt | Token::RawBadBinInt | Token::RawBadOctInt => {
+                write!(f, "integer literal prefix")
+            }
             Token::Float(n) => write!(f, "float literal '{n}'"),
             Token::String(s) => write!(f, "string literal {s:?}"),
             Token::RawSingleQuote => write!(f, "starting '"),
