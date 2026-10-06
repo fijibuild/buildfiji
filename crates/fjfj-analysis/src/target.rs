@@ -288,6 +288,10 @@ impl ConfiguredTargetKey {
                     target.providers.push(info);
                     Ok(target)
                 }
+                TargetKind::EnvironmentGroup { .. } => Err(Error::msg(format!(
+                    "{} is an environment group, which no rule can depend on",
+                    label
+                ))),
                 TargetKind::GeneratedFile { rule } => {
                     let producer = ConfiguredTargetKey {
                         label: Label {

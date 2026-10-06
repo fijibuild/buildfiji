@@ -516,6 +516,7 @@ impl QueryGraph {
             }),
             aspect_attrs,
             group: None,
+            environment_group: None,
         })
     }
 
@@ -952,6 +953,7 @@ impl QueryGraph {
             schema: None,
             aspect_attrs: Vec::new(),
             group: None,
+            environment_group: None,
         })
     }
 }
@@ -1057,6 +1059,15 @@ impl Graph for QueryGraph {
                 TargetKind::SourceFile => {
                     let mut node = self.file_node(label, NodeKind::SourceFile)?;
                     node.visibility = self.visibility_parts(&package, target);
+                    node
+                }
+                TargetKind::EnvironmentGroup {
+                    environments,
+                    defaults,
+                } => {
+                    let mut node = self.file_node(label, NodeKind::EnvironmentGroup)?;
+                    node.location = self.rule_location(&label.repo, &target.location)?;
+                    node.environment_group = Some((environments.clone(), defaults.clone()));
                     node
                 }
                 TargetKind::PackageGroup(group) => {
@@ -2388,6 +2399,36 @@ mr = rule(
         // Without the flag, neither.
         let plain = jsonproto(&graph, "//:a", &Default::default());
         assert!(plain[0]["rule"].get("ruleClassKey").is_none());
+    }
+
+    #[test]
+    fn an_environment_group_is_a_target_with_its_own_outputs() {
+        let (dir, repos) = workspace_of(&[
+            ("MODULE.bazel", ""),
+            (
+                "BUILD",
+                "environment(name='e1')\nenvironment(name='e2')\nenvironment_group(name='g', environments=[':e1', ':e2'], defaults=[':e1'])\n",
+            ),
+        ]);
+        let graph = QueryGraph::new(repos);
+        let run = |text: &str, format| query(&graph, text, format, Order::Auto, Options::default());
+        // What Bazel 9.2.0 printed for `//:g`.
+        assert_eq!(run("//:g", Format::LabelKind), "environment group //:g\n");
+        // `:all` is the rules; a group has no dependencies of its own.
+        assert_eq!(run("//:all", Format::Label), "//:e1\n//:e2\n");
+        assert_eq!(run("deps(//:g)", Format::Label), "//:g\n");
+        let xml =
+            run("//:g", Format::Xml).replace(&dir.path().join("ws").display().to_string(), "<ws>");
+        assert_eq!(
+            xml,
+            "<?xml version=\"1.1\" encoding=\"UTF-8\" standalone=\"no\"?>\n<query version=\"2\">\n    <environment-group location=\"<ws>/BUILD:3:18\" name=\"//:g\">\n        <list name=\"environments\">\n            <label value=\"//:e1\"/>\n            <label value=\"//:e2\"/>\n        </list>\n        <list name=\"defaults\">\n            <label value=\"//:e1\"/>\n        </list>\n    </environment-group>\n</query>\n"
+        );
+        let json = jsonproto(&graph, "//:g", &Default::default());
+        assert_eq!(json[0]["type"], "ENVIRONMENT_GROUP");
+        assert_eq!(
+            json[0]["environmentGroup"],
+            serde_json::json!({"name": "//:g", "environment": ["//:e1", "//:e2"], "default": ["//:e1"]})
+        );
     }
 
     #[test]

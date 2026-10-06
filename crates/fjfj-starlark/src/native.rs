@@ -18,7 +18,7 @@
 //! run can list several. Events fail the package at the end.
 
 use crate::instantiate::{call_rule, native_schema, rule_view};
-use fjfj_graph::package::{Package, PackageBuilder, PackageSettings};
+use fjfj_graph::package::{Package, PackageBuilder, PackageSettings, TargetKind};
 use fjfj_graph::rule;
 use fjfj_graph::schema::RuleSchema;
 use fjfj_graph::visibility::{
@@ -149,6 +149,73 @@ fn invalid_license(kind: &str) -> Option<String> {
 /// Functions of a BUILD file that `native` does not have.
 #[starlark_module]
 fn build_only_functions(builder: &mut GlobalsBuilder) {
+    fn environment_group<'v>(
+        args: &Arguments<'v, '_>,
+        eval: &mut Evaluator<'v, '_, '_>,
+    ) -> starlark::Result<NoneType> {
+        let ctx = context(eval, "environment_group")?;
+        let at = location(eval);
+        let bound = bind(
+            "environment_group",
+            Wording::Signature,
+            &[
+                param("name", false, true),
+                param("environments", false, true),
+                param("defaults", false, true),
+            ],
+            args,
+            eval,
+        )?;
+        let name_value = bound[0].expect("required");
+        let name = name_value.unpack_str().ok_or_else(|| {
+            fatal(format!(
+                "in call to environment_group(), parameter 'name' got value of type '{}', want \
+                 'string'",
+                name_value.get_type()
+            ))
+        })?;
+        let mut lists = Vec::new();
+        for (slot, param) in [(1, "environments"), (2, "defaults")] {
+            let items = want_sequence(
+                "environment_group",
+                param,
+                bound[slot].expect("required"),
+                false,
+            )?
+            .unwrap_or_default();
+            lists.push(labels(ctx, &items, &format!("'{param}' argument"))?);
+        }
+        let defaults = lists.pop().expect("two lists");
+        let environments = lists.pop().expect("two lists");
+        if environments.is_empty() {
+            return Err(fatal(format!(
+                "environment group {name} must contain at least one environment"
+            )));
+        }
+        for (list, param) in [(&environments, "environments"), (&defaults, "defaults")] {
+            let duplicate = list
+                .iter()
+                .enumerate()
+                .find(|(i, l)| list[..*i].contains(l));
+            if let Some((_, label)) = duplicate {
+                ctx.event(
+                    &at,
+                    format!(
+                        "label '{}' is duplicated in the '{param}' list of '{name}'",
+                        crate::label::display_label(label)
+                    ),
+                );
+                return Ok(NoneType);
+            }
+        }
+        ctx.state
+            .borrow_mut()
+            .builder
+            .add_environment_group(name, environments, defaults, &at)
+            .map_err(|e| fatal(e.to_string()))?;
+        Ok(NoneType)
+    }
+
     fn licenses<'v>(
         args: &Arguments<'v, '_>,
         eval: &mut Evaluator<'v, '_, '_>,
@@ -402,6 +469,7 @@ pub fn evaluate_build_file(input: &BuildFile<'_>) -> Result<BuildFileOutput, Bui
         // Finalizers run when everything else has.
         run_finalizers(&ctx, &mut eval).map_err(stopped)
     })?;
+    check_environment_groups(&ctx);
     let BuildContext { state, printed, .. } = ctx;
     let mut state = state.into_inner();
     state.errors.append(&mut state.late);
@@ -415,6 +483,61 @@ pub fn evaluate_build_file(input: &BuildFile<'_>) -> Result<BuildFileOutput, Bui
         package: state.builder.build(),
         printed: printed.into_inner(),
     })
+}
+
+/// What Bazel checks of each `environment_group()` once the BUILD file has
+/// run: its environments are `environment` rules of this package, and its
+/// defaults are among them.
+fn check_environment_groups(ctx: &BuildContext<'_>) {
+    let mut events = Vec::new();
+    let state = ctx.state.borrow();
+    let shown = |label: &Label| crate::label::display_label(label);
+    for group in state.builder.environment_groups() {
+        let TargetKind::EnvironmentGroup {
+            environments,
+            defaults,
+        } = &group.kind
+        else {
+            continue;
+        };
+        let me = Label {
+            repo: ctx.repo.to_owned(),
+            package: ctx.package.to_owned(),
+            name: group.name.clone(),
+        };
+        let mut problems = Vec::new();
+        for env in environments {
+            if env.repo != ctx.repo || env.package != ctx.package {
+                problems.push(format!(
+                    "{} is not in the same package as group {}",
+                    shown(env),
+                    shown(&me)
+                ));
+            } else if !state.builder.has_target(&env.name) {
+                problems.push(format!("environment {} does not exist", shown(env)));
+            } else if state
+                .builder
+                .rule(&env.name)
+                .is_none_or(|t| !matches!(&t.kind, TargetKind::Rule { rule_class, .. } if rule_class == "environment"))
+            {
+                problems.push(format!("{} is not a valid environment", shown(env)));
+            }
+        }
+        for default in defaults {
+            if !environments.contains(default) {
+                problems.push(format!(
+                    "default {} is not a declared environment for group {}",
+                    shown(default),
+                    shown(&me)
+                ));
+            }
+        }
+        events.extend(problems.into_iter().map(|p| (group.location.clone(), p)));
+    }
+    drop(state);
+    for (at, problem) in events {
+        ctx.late_event(&at, problem);
+    }
 }
 
 /// The state a BUILD file's native calls accumulate into. `Evaluator::extra`
@@ -2528,6 +2651,77 @@ print(L == M, h(":a") == f(":a"), repr(h("//q")))"#,
         ] {
             let err = printed(build).unwrap_err();
             assert!(err.contains(want), "{build}: {err}");
+        }
+    }
+
+    #[test]
+    fn environment_group_declares_a_group_and_checks_it_as_bazel_does() {
+        let p = package(
+            "environment(name = \"e1\")\nenvironment(name = \"e2\")\nenvironment_group(name = \"g\", environments = [\":e1\", \":e2\"], defaults = [\":e1\"])\nprint(existing_rules().keys())",
+        );
+        let TargetKind::EnvironmentGroup {
+            environments,
+            defaults,
+        } = &p.target("g").unwrap().kind
+        else {
+            panic!()
+        };
+        assert_eq!(environments.len(), 2);
+        assert_eq!(defaults[0].to_string(), "//:e1");
+        let e = "environment(name = \"e1\")\nenvironment(name = \"e2\")\n";
+        // Every message is what Bazel 9.2.0 printed.
+        for (build, want) in [
+            (
+                "environment_group(name = \"g\")".to_owned(),
+                "environment_group() missing 2 required named arguments: environments, defaults",
+            ),
+            (
+                format!("{e}environment_group(name = \"g\", environments = \":e1\", defaults = [\":e1\"])"),
+                "in call to environment_group(), parameter 'environments' got value of type 'string', want 'sequence'",
+            ),
+            (
+                format!("{e}environment_group(name = 1, environments = [\":e1\"], defaults = [\":e1\"])"),
+                "in call to environment_group(), parameter 'name' got value of type 'int', want 'string'",
+            ),
+            (
+                format!("{e}environment_group(\"g\", environments = [\":e1\"], defaults = [\":e1\"])"),
+                "environment_group() got unexpected positional argument",
+            ),
+            (
+                format!("{e}environment_group(name = \"g\", environments = [\":e1\"], defaults = [\":e1\"], visibility = [])"),
+                "environment_group() got unexpected keyword argument 'visibility'",
+            ),
+            (
+                format!("{e}environment_group(name = \"g\", environments = [], defaults = [])"),
+                "environment group g must contain at least one environment",
+            ),
+            (
+                format!("{e}environment_group(name = \"e1\", environments = [\":e1\"], defaults = [\":e1\"])"),
+                "environment group 'e1' conflicts with existing environment rule, defined at",
+            ),
+            (
+                format!("{e}environment_group(name = \"g\", environments = [\":e1\", \":e1\"], defaults = [\":e1\"])"),
+                "label '//:e1' is duplicated in the 'environments' list of 'g'",
+            ),
+            (
+                format!("{e}environment_group(name = \"g\", environments = [\":nope\"], defaults = [\":nope\"])"),
+                "environment //:nope does not exist",
+            ),
+            (
+                format!("{e}environment_group(name = \"g\", environments = [\":e1\"], defaults = [\":e2\"])"),
+                "default //:e2 is not a declared environment for group //:g",
+            ),
+            (
+                "filegroup(name = \"f\")\nenvironment_group(name = \"g\", environments = [\":f\"], defaults = [\":f\"])".to_owned(),
+                "//:f is not a valid environment",
+            ),
+            (
+                format!("{e}environment_group(name = \"g\", environments = [\"//other:e1\"], defaults = [\"//other:e1\"])"),
+                "//other:e1 is not in the same package as group //:g",
+            ),
+        ] {
+            let got = failure(&build);
+            assert!(got.contains(want), "{build}\n{got}");
         }
     }
 }

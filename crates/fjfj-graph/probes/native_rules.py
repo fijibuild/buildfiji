@@ -8,6 +8,9 @@ attributes (name, type, default) and from `existing_rule("x").keys()` which of
 them `native.existing_rule` shows. Writes native_rules.json next to itself.
 
     BAZEL=/path/to/bazel python3 native_rules.py
+
+With ONLY="cls ..." only those classes are probed and merged into the
+existing native_rules.json.
 """
 import ast, json, os, re, subprocess, sys, tempfile
 
@@ -22,7 +25,7 @@ genquery genrule java_binary java_import java_library java_package_configuration
 java_plugin java_plugins_flag_alias java_runtime java_test java_toolchain
 label_flag label_setting memprof_profile objc_import objc_library platform
 propeller_optimize starlark_doc_extract test_suite toolchain toolchain_type
-alias""".split()
+alias environment_group""".split()
 
 # What to give an attribute of each type the error message names.
 BY_TYPE = {
@@ -144,7 +147,8 @@ def main():
     with tempfile.TemporaryDirectory() as ws:
         with open(os.path.join(ws, "MODULE.bazel"), "w") as f:
             f.write('module(name = "probe")\n')
-        for cls in dict.fromkeys(CLASSES):
+        only = os.environ.get("ONLY")
+        for cls in dict.fromkeys(only.split() if only else CLASSES):
             args, proto, keys, error, mandatory = instantiate(ws, cls)
             if proto is None:
                 out[cls] = {"error": error, "given": args}
@@ -160,7 +164,11 @@ def main():
             order, forced = definition_order(ws, cls, args, attrs)
             out[cls] = {"order": order, "forced": forced, "given": args, "mandatory": sorted(mandatory), "attributes": attrs, "keys": keys}
             print(f"{cls}: {len(attrs)} attributes, mandatory {sorted(mandatory)}", file=sys.stderr)
-    with open(os.path.join(HERE, "native_rules.json"), "w") as f:
+    path = os.path.join(HERE, "native_rules.json")
+    if only:
+        with open(path) as f:
+            out = {**json.load(f), **out}
+    with open(path, "w") as f:
         json.dump(out, f, indent=1, sort_keys=True)
 
 

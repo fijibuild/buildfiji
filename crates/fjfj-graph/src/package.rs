@@ -29,6 +29,12 @@ pub enum TargetKind {
     /// package are not targets.
     SourceFile,
     PackageGroup(PackageGroup),
+    /// `environment_group()`: the environments a group offers and which of
+    /// them a target that sets none is built for.
+    EnvironmentGroup {
+        environments: Vec<Label>,
+        defaults: Vec<Label>,
+    },
     /// A file a rule declares it creates: an `attr.output`, or one of the
     /// `outputs` of a `rule()`.
     GeneratedFile {
@@ -67,6 +73,7 @@ impl Target {
             TargetKind::Rule { rule_class, .. } => format!("{rule_class} rule"),
             TargetKind::SourceFile => "source file".to_owned(),
             TargetKind::PackageGroup(_) => "package group".to_owned(),
+            TargetKind::EnvironmentGroup { .. } => "environment group".to_owned(),
             TargetKind::GeneratedFile { rule } => format!("generated file from rule '{rule}'"),
         }
     }
@@ -436,6 +443,40 @@ impl<'a> PackageBuilder<'a> {
             stack: Vec::new(),
         });
         Ok(())
+    }
+
+    /// `environment_group(name, environments, defaults)`.
+    pub fn add_environment_group(
+        &mut self,
+        name: &str,
+        environments: Vec<Label>,
+        defaults: Vec<Label>,
+        location: &str,
+    ) -> Result<(), PackageError> {
+        label::validate_target_name(name).map_err(|source| PackageError::IllegalRuleName {
+            name: name.to_owned(),
+            source,
+        })?;
+        self.check_crossing(name)?;
+        self.check_conflict(name, &format!("environment group '{name}'"))?;
+        self.push(Target {
+            name: name.to_owned(),
+            kind: TargetKind::EnvironmentGroup {
+                environments,
+                defaults,
+            },
+            visibility: None,
+            location: location.to_owned(),
+            stack: Vec::new(),
+        });
+        Ok(())
+    }
+
+    /// The environment groups declared so far, in declaration order.
+    pub fn environment_groups(&self) -> impl Iterator<Item = &Target> {
+        self.targets
+            .iter()
+            .filter(|t| matches!(t.kind, TargetKind::EnvironmentGroup { .. }))
     }
 
     /// `exports_files([name], visibility = ...)`. With no `visibility` the

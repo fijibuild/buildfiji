@@ -1182,6 +1182,10 @@
    "fulfills"
   ]
  },
+ "environment_group": {
+  "error": "Starting local Bazel server (9.2.0) and connecting to it...\nERROR: Traceback (most recent call last):\n\tFile \"/tmp/tmpk_n7kxww/BUILD.bazel\", line 1, column 18, in <toplevel>\n\t\tenvironment_group(name = \"x\")\nError in environment_group: environment_group() missing 2 required named arguments: environments, defaults\nERROR: no such target '//:x': target 'x' not declared in package '' defined by /tmp/tmpk_n7kxww/BUILD.bazel",
+  "given": {}
+ },
  "extra_action": {
   "attributes": [
    {

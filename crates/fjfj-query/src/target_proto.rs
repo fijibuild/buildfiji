@@ -574,6 +574,23 @@ pub fn target(
                 .one(1, "type", Val::Enum("GENERATED_FILE", 3))
                 .one(4, "generated_file", file)
         }
+        NodeKind::EnvironmentGroup => {
+            let (environments, defaults) = node.environment_group.clone().unwrap_or_default();
+            Msg::new()
+                .one(1, "type", Val::Enum("ENVIRONMENT_GROUP", 5))
+                .one(
+                    6,
+                    "environment_group",
+                    Msg::new()
+                        .one(1, "name", name)
+                        .many(
+                            2,
+                            "environment",
+                            environments.iter().map(|l| graph.display(l)),
+                        )
+                        .many(3, "default", defaults.iter().map(|l| graph.display(l))),
+                )
+        }
         NodeKind::PackageGroup => {
             let (includes, packages) = node.group.clone().unwrap_or_default();
             Msg::new()

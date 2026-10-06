@@ -564,6 +564,27 @@ fn xml_element(ev: &Evaluator<'_>, label: &Label) -> Result<Vec<String>, String>
                 escape(&graph.output_name(rule))
             ));
         }
+        NodeKind::EnvironmentGroup => {
+            out.push(format!(
+                "    <environment-group location=\"{location}\" name=\"{name}\">"
+            ));
+            let (environments, defaults) = node.environment_group.clone().unwrap_or_default();
+            for (list, labels) in [("environments", environments), ("defaults", defaults)] {
+                if labels.is_empty() {
+                    out.push(format!("        <list name=\"{list}\"/>"));
+                    continue;
+                }
+                out.push(format!("        <list name=\"{list}\">"));
+                for l in &labels {
+                    out.push(format!(
+                        "            <label value=\"{}\"/>",
+                        escape(&graph.output_name(l))
+                    ));
+                }
+                out.push("        </list>".to_owned());
+            }
+            out.push("    </environment-group>".to_owned());
+        }
         NodeKind::PackageGroup => {
             out.push(format!(
                 "    <package-group location=\"{location}\" name=\"{name}\">"

@@ -34,6 +34,7 @@ pub enum NodeKind {
         rule: Label,
     },
     PackageGroup,
+    EnvironmentGroup,
 }
 
 impl NodeKind {
@@ -45,6 +46,7 @@ impl NodeKind {
             NodeKind::SourceFile => "source file".to_owned(),
             NodeKind::GeneratedFile { .. } => "generated file".to_owned(),
             NodeKind::PackageGroup => "package group".to_owned(),
+            NodeKind::EnvironmentGroup => "environment group".to_owned(),
         }
     }
 }
@@ -148,6 +150,8 @@ pub struct Node {
     /// For a `package_group`: the other groups it includes and its package
     /// specifications, as written.
     pub group: Option<(Vec<Label>, Vec<String>)>,
+    /// For an `environment_group`: its environments and its defaults.
+    pub environment_group: Option<(Vec<Label>, Vec<Label>)>,
 }
 
 /// Where a query's targets come from.

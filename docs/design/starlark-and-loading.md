@@ -275,6 +275,13 @@ Every rule below was read off Bazel 9.2.0, and each test names what it copies.
   returns the `package()` labels plus `//pkg:__pkg__`; public alone is just
   public. Both are errors outside a BUILD file or legacy macro, and
   `subpackages` is one inside a symbolic macro (buildfiji-hrx).
+- **`environment_group`.** A BUILD-only function (not under `native`) that
+  declares a target of its own kind, `TargetKind::EnvironmentGroup`, not a
+  rule: `query` prints it as `environment group //:g`, `<environment-group>`
+  in xml and `ENVIRONMENT_GROUP` in proto, `:all` and `existing_rules()` skip
+  it, and it has no edges. Once the BUILD file has run, each environment
+  must be an `environment` rule of the package and each default one of the
+  environments, or a located event says so (buildfiji-enf).
 - **Not here.** The native rules other than `filegroup` and `alias`
   (buildfiji-136.10). `package_relative_label` is in `label.rs` (below).
 
