@@ -5,6 +5,7 @@
 //! export* derived from the trace, not the primary data model.
 
 pub mod metrics;
+pub mod trace_file;
 
 use anyhow::Result;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
@@ -35,7 +36,16 @@ pub fn init() -> Result<TelemetryGuard> {
         .with_target(false)
         .with_span_events(span_events)
         .with_writer(std::io::stderr);
-    let registry = tracing_subscriber::registry().with(filter).with(fmt);
+    // FJFJ_TRACE_FILE=path writes the spans as a Chrome trace (see
+    // [`trace_file`]); `fjfj analyze-profile` reads it.
+    let trace_file = match std::env::var_os("FJFJ_TRACE_FILE") {
+        Some(path) => Some(trace_file::TraceFile::create(std::path::Path::new(&path))?),
+        None => None,
+    };
+    let registry = tracing_subscriber::registry()
+        .with(filter)
+        .with(fmt)
+        .with(trace_file.clone().map(trace_file::TraceLayer));
 
     if std::env::var_os("OTEL_EXPORTER_OTLP_ENDPOINT").is_some() {
         use opentelemetry::trace::TracerProvider as _;
@@ -61,12 +71,14 @@ pub fn init() -> Result<TelemetryGuard> {
         Ok(TelemetryGuard {
             tracer_provider: Some(tracer_provider),
             meter_provider: Some(meter_provider),
+            trace_file,
         })
     } else {
         registry.init();
         Ok(TelemetryGuard {
             tracer_provider: None,
             meter_provider: None,
+            trace_file,
         })
     }
 }
@@ -75,6 +87,7 @@ pub fn init() -> Result<TelemetryGuard> {
 pub struct TelemetryGuard {
     tracer_provider: Option<opentelemetry_sdk::trace::SdkTracerProvider>,
     meter_provider: Option<opentelemetry_sdk::metrics::SdkMeterProvider>,
+    trace_file: Option<std::sync::Arc<trace_file::TraceFile>>,
 }
 
 impl Drop for TelemetryGuard {
@@ -84,6 +97,9 @@ impl Drop for TelemetryGuard {
         }
         if let Some(p) = self.meter_provider.take() {
             let _ = p.shutdown();
+        }
+        if let Some(file) = self.trace_file.take() {
+            file.finish();
         }
     }
 }

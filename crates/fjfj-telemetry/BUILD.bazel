@@ -8,7 +8,7 @@ rust_library(
     crate_name = "fjfj_telemetry",
     edition = "2024",
     version = "0.0.1",
-    deps = ["@crates//:anyhow", "@crates//:opentelemetry_sdk", "@crates//:opentelemetry-otlp", "@crates//:opentelemetry", "@crates//:tracing-opentelemetry", "@crates//:tracing-subscriber", "@crates//:tracing", ],
+    deps = ["@crates//:anyhow", "@crates//:opentelemetry_sdk", "@crates//:opentelemetry-otlp", "@crates//:opentelemetry", "@crates//:serde_json", "@crates//:tracing-opentelemetry", "@crates//:tracing-subscriber", "@crates//:tracing", ],
 )
 
 rust_test(

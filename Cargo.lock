@@ -1137,6 +1137,7 @@ dependencies = [
  "fjfj-graph",
  "fjfj-remote",
  "fjfj-sandbox",
+ "fjfj-telemetry",
  "futures",
  "hex",
  "serde",
@@ -1147,6 +1148,7 @@ dependencies = [
  "time",
  "tokio",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -1277,6 +1279,7 @@ dependencies = [
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry_sdk",
+ "serde_json",
  "tracing",
  "tracing-opentelemetry",
  "tracing-subscriber",

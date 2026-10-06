@@ -31,6 +31,7 @@ use fjfj_graph::pattern::{PatternContext, TargetPattern};
 use fjfj_remote::execution_log::{CompactExecutionLogWriter, EntryType, ExecLogEntry, Invocation};
 
 mod analysis_query;
+mod analyze_profile;
 mod aquery;
 mod build_command;
 mod configured_graph;
@@ -519,6 +520,8 @@ async fn run(cli: Cli) -> Result<(), CliError> {
             .await
             .map_err(|e| CliError::Internal(anyhow::anyhow!("fetch task panicked: {e}")))?
         }
+        Command::AnalyzeProfile(args) => analyze_profile::run(&args)
+            .map_err(|e| CliError::CommandLine(anyhow::anyhow!("{}: {e}", args.path.display()))),
         other => Err(CliError::Build(anyhow::anyhow!(
             "command not implemented yet: {other:?}"
         ))),

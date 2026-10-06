@@ -136,3 +136,36 @@ context where blocking is not allowed"). `fjfj-cli` now runs the whole
 aren't async, so `resolve_bzlmod`'s own tests never ran inside a runtime —
 which is the case for dogfooding `fjfj build //...` against this
 repository's own `MODULE.bazel` after wiring in real console output.
+
+## Execution spans and the trace file (buildfiji-qcl8, k62.6, k62.12)
+
+Each action that the scheduler runs is a root `action` span (`mnemonic`,
+`target`, `output` = its first output, `cached`, `blocker` = the first output
+of the dependency that finished last). Under it, a `step` span per part of the
+work, named by its `step` field:
+
+| step | what it covers |
+|---|---|
+| `deps` | waiting for the actions that make its inputs |
+| `slot` | waiting for one of `--jobs` slots |
+| `key` | hashing the action and checking the action cache |
+| `prepare` | the sandbox, the command line, removing stale outputs |
+| `spawn` | fork, namespace setup and exec |
+| `command` | the program itself |
+| `collect` | outputs out of the sandbox, a test's log, the failure text |
+| `record` | writing the action cache entry |
+| `make` | an action that makes its outputs itself (no program) |
+
+A step that runs on the blocking pool starts when it is asked for, so it
+includes the wait for a pool thread. An action is a root, not a child of the
+action that asked for it: the dependency graph is `blocker`, not span nesting.
+
+`FJFJ_TRACE_FILE=path` writes the spans as a Chrome trace (one complete event
+per line, one row per action; Perfetto and chrome://tracing read it).
+`fjfj analyze-profile path` prints, for that file: time in each step, how many
+commands ran at once, time by mnemonic, the critical path (followed through
+`blocker`) and the slowest commands. The `--profile` flag does not write this
+file yet.
+
+The tracing subscriber has to be the process's global one: a span that closes
+on a blocking-pool thread releases its parent through that thread's default.

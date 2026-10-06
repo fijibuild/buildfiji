@@ -69,6 +69,18 @@ pub enum Command {
     CanonicalizeFlags(CanonicalizeFlagsArgs),
     /// Prints the license of this software.
     License,
+    /// Summarises a trace file written with FJFJ_TRACE_FILE: where the build
+    /// spent its time, its critical path, its slowest actions.
+    AnalyzeProfile(AnalyzeProfileArgs),
+}
+
+#[derive(Parser, Debug, Clone, Default)]
+pub struct AnalyzeProfileArgs {
+    /// The Chrome trace file.
+    pub path: std::path::PathBuf,
+    /// How many of the slowest actions and chain links to list.
+    #[arg(long, default_value_t = 15)]
+    pub top: usize,
 }
 
 #[derive(Parser, Debug, Clone, Default)]

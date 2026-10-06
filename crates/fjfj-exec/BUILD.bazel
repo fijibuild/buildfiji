@@ -14,5 +14,5 @@ rust_library(
 rust_test(
     name = "fjfj-exec_test",
     crate = ":fjfj-exec",
-    deps = ["@crates//:tempfile"],
+    deps = ["@crates//:tempfile", "@crates//:tracing-subscriber", "//crates/fjfj-telemetry"],
 )

@@ -20,6 +20,7 @@ use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use tokio::sync::Semaphore;
+use tracing::Instrument;
 
 #[derive(Debug, Clone)]
 pub struct Options {
@@ -217,7 +218,18 @@ impl Scheduler {
         }
         // A task of its own, so that one action's work does not wait on another's.
         let me = self.clone();
-        let task = tokio::spawn(async move { me.run_now(id).await });
+        let action = &self.actions[id];
+        // A root: the action that asked for this one is not its parent.
+        let span = tracing::info_span!(
+            parent: None,
+            "action",
+            mnemonic = %action.mnemonic,
+            target = %label_text(&action.owner),
+            output = action.outputs.first().map(|o| o.exec_path()).unwrap_or_default(),
+            cached = tracing::field::Empty,
+            blocker = tracing::field::Empty,
+        );
+        let task = tokio::spawn(async move { me.run_now(id).await }.instrument(span));
         let done: Done = async move {
             task.await
                 .unwrap_or_else(|e| Err(Arc::new(stray(format!("the action's task ended: {e}")))))
@@ -238,12 +250,24 @@ impl Scheduler {
             .collect();
         wait.sort_unstable();
         wait.dedup();
-        for result in join_all(wait.into_iter().map(|other| self.run(other))).await {
+        // The dependency that finished last is what this action waited for.
+        let finished = join_all(wait.into_iter().map(|other| {
+            self.run(other)
+                .map(move |result| (other, std::time::Instant::now(), result))
+        }))
+        .instrument(tracing::info_span!("step", step = "deps"))
+        .await;
+        if let Some((last, ..)) = finished.iter().max_by_key(|(_, at, _)| *at) {
+            let blocker = self.actions[*last].outputs.first().map(|o| o.exec_path());
+            tracing::Span::current().record("blocker", blocker.unwrap_or_default());
+        }
+        for (_, _, result) in finished {
             result?;
         }
         let _slot = self
             .slots
             .acquire()
+            .instrument(tracing::info_span!("step", step = "slot"))
             .await
             .expect("the semaphore stays open");
         if self.stopped.load(Ordering::Acquire) && !self.keep_going {
@@ -262,7 +286,7 @@ impl Scheduler {
         }
         let (key, current) = {
             let (me, action) = (self.clone(), action.clone());
-            blocking(move || {
+            blocking("key", move || {
                 let execroot = me.layout.execroot();
                 let key = me.cache.key(&execroot, &action);
                 let current = key
@@ -272,6 +296,7 @@ impl Scheduler {
             })
             .await
         };
+        tracing::Span::current().record("cached", current);
         if current {
             self.cached.fetch_add(1, Ordering::Relaxed);
             if let Some(first) = action.outputs.first() {
@@ -297,7 +322,7 @@ impl Scheduler {
             Ok(()) => {
                 if let Some(key) = key {
                     let (me, action, took) = (self.clone(), action.clone(), started.elapsed());
-                    blocking(move || {
+                    blocking("record", move || {
                         me.cache.record(&me.layout.execroot(), &action, key, took);
                     })
                     .await;
@@ -320,10 +345,10 @@ impl Scheduler {
     /// run without holding a thread.
     async fn execute_one(self: &Arc<Self>, action: &Arc<Action>) -> Result<(), Box<Failure>> {
         let (me, a) = (self.clone(), action.clone());
-        let step = blocking(move || me.prepare(&a)).await?;
+        let step = blocking("prepare", move || me.prepare(&a)).await?;
         let (me, a) = (self.clone(), action.clone());
         match step {
-            Step::Done => blocking(move || me.outputs_made(&a)).await,
+            Step::Done => blocking("make", move || me.outputs_made(&a)).await,
             Step::Run(pending) => {
                 let Pending {
                     mut command,
@@ -338,11 +363,15 @@ impl Scheduler {
                     .into_owned();
                 let fail = |message: String| Box::new(failure(action, message));
                 // `spawn` forks and waits for the exec: not on a runtime thread.
-                let child = blocking(move || command.spawn().map(|child| (child, command)))
-                    .await
-                    .map_err(|e| fail(format!("cannot run {program}: {e}")))?;
+                let child = blocking("spawn", move || {
+                    command.spawn().map(|child| (child, command))
+                })
+                .await
+                .map_err(|e| fail(format!("cannot run {program}: {e}")))?;
                 let (child, _command) = child;
-                let waited = child.wait_with_output();
+                let waited = child
+                    .wait_with_output()
+                    .instrument(tracing::info_span!("step", step = "command"));
                 let output = match limit {
                     Some(limit) => match tokio::time::timeout(limit, waited).await {
                         Ok(done) => done,
@@ -359,7 +388,10 @@ impl Scheduler {
                     None => waited.await,
                 }
                 .map_err(|e| fail("cannot run the command".to_owned() + &format!(": {e}")))?;
-                blocking(move || me.after_run(&a, sandbox, output, started)).await
+                blocking("collect", move || {
+                    me.after_run(&a, sandbox, output, started)
+                })
+                .await
             }
         }
     }
@@ -702,8 +734,13 @@ struct Pending {
 }
 
 /// `work` on a thread for blocking work, so the runtime's threads stay free.
-async fn blocking<T: Send + 'static>(work: impl FnOnce() -> T + Send + 'static) -> T {
-    match tokio::task::spawn_blocking(work).await {
+/// The `step` span covers the wait for a thread of the blocking pool too.
+async fn blocking<T: Send + 'static>(
+    step: &'static str,
+    work: impl FnOnce() -> T + Send + 'static,
+) -> T {
+    let span = tracing::info_span!("step", step);
+    match tokio::task::spawn_blocking(move || span.in_scope(work)).await {
         Ok(done) => done,
         Err(e) => std::panic::resume_unwind(e.into_panic()),
     }

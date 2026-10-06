@@ -486,3 +486,72 @@ async fn independent_actions_run_at_once_up_to_jobs() {
         started.elapsed()
     );
 }
+
+/// Spans reach the file from every thread, so the subscriber is the process's:
+/// a span that closes on a blocking thread releases its parent through that
+/// thread's default.
+#[tokio::test]
+async fn each_action_that_runs_has_a_span_with_a_span_for_each_step() {
+    use tracing_subscriber::layer::SubscriberExt;
+    let (dir, layout) = layout();
+    let path = dir.path().join("trace.json");
+    let trace = fjfj_telemetry::trace_file::TraceFile::create(&path).unwrap();
+    tracing::subscriber::set_global_default(
+        tracing_subscriber::registry().with(fjfj_telemetry::trace_file::TraceLayer(trace.clone())),
+    )
+    .unwrap();
+    let (a, b) = (out("span-a.txt"), out("span-b.txt"));
+    let actions = vec![
+        shell(
+            &format!("echo > {}", a.exec_path()),
+            vec![],
+            vec![a.clone()],
+        ),
+        shell(
+            &format!("cat {} > {}", a.exec_path(), b.exec_path()),
+            vec![a.clone()],
+            vec![b.clone()],
+        ),
+    ];
+    let outcome = run(&layout, actions, std::slice::from_ref(&b), false).await;
+    assert!(outcome.failures.is_empty(), "{:?}", outcome.failures);
+
+    // The action spans close as their tasks end, a moment after the outcome.
+    let mut events: Vec<serde_json::Value> = Vec::new();
+    for _ in 0..100 {
+        trace.flush();
+        events = std::fs::read_to_string(&path)
+            .unwrap()
+            .lines()
+            .filter_map(|l| serde_json::from_str(l.trim_end_matches(',')).ok())
+            .filter(|e: &serde_json::Value| e["cat"].is_string())
+            .collect();
+        if events.iter().filter(|e| e["cat"] == "action").count() == 2 {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    let action = |out: &str| {
+        events
+            .iter()
+            .find(|e| e["cat"] == "action" && e["args"]["output"] == out)
+            .unwrap_or_else(|| panic!("no action span for {out}: {events:?}"))
+    };
+    let steps = |row: &serde_json::Value| -> Vec<String> {
+        let mut names: Vec<String> = events
+            .iter()
+            .filter(|e| e["cat"] == "step" && e["tid"] == row["tid"])
+            .map(|e| e["name"].as_str().unwrap().to_owned())
+            .collect();
+        names.sort();
+        names
+    };
+    let (first, second) = (action(&a.exec_path()), action(&b.exec_path()));
+    let all = [
+        "collect", "command", "deps", "key", "prepare", "record", "slot", "spawn",
+    ];
+    assert_eq!(steps(first), all);
+    assert_eq!(steps(second), all);
+    assert_eq!(first["args"]["cached"], false);
+    assert_eq!(second["args"]["blocker"], a.exec_path());
+}
