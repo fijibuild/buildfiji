@@ -53,7 +53,7 @@ pub enum Command {
     /// Removes output tree.
     Clean,
     /// Displays runtime info about the server.
-    Info,
+    Info(QueryArgs),
     /// Prints version information.
     Version,
     /// Stops the persistent server.

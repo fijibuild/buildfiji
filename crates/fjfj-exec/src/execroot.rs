@@ -58,7 +58,7 @@ impl Layout {
             if text.starts_with("bazel-") || text == "bazel-out" {
                 continue;
             }
-            link(&entry.path(), &execroot.join(&name))?;
+            let _ = link(&entry.path(), &execroot.join(&name))?;
         }
         let external = execroot.join("external");
         std::fs::create_dir_all(&external)?;
@@ -77,7 +77,7 @@ impl Layout {
                 if name.to_str().is_some_and(|n| n.starts_with('.')) {
                     continue;
                 }
-                link(&entry.path(), &external.join(&name))?;
+                let _ = link(&entry.path(), &external.join(&name))?;
             }
         }
         Ok(())
@@ -88,7 +88,16 @@ impl Layout {
     /// The links `bazel build` leaves in the workspace: `bazel-bin`,
     /// `bazel-out`, `bazel-testlogs` and `bazel-<workspace name>`, each
     /// `<prefix><name>`. `mnemonic` is the configuration, `k8-fastbuild`.
-    pub fn convenience_links(&self, prefix: &str, mnemonic: &str) -> io::Result<()> {
+    ///
+    /// A prefix of `/` asks for no links; a prefix with a directory in it
+    /// (`out/x-`) makes the directory. A link that cannot be made because a
+    /// file or directory is in the way is not an error: the returned lines say
+    /// which, as Bazel's warning does.
+    pub fn convenience_links(&self, prefix: &str, mnemonic: &str) -> io::Result<Vec<String>> {
+        let mut failed = Vec::new();
+        if prefix == "/" {
+            return Ok(failed);
+        }
         let workspace_name = self.workspace.file_name().map_or_else(
             || "workspace".to_owned(),
             |n| n.to_string_lossy().into_owned(),
@@ -100,24 +109,34 @@ impl Layout {
             ("testlogs", out.join(mnemonic).join("testlogs")),
             (workspace_name.as_str(), self.execroot()),
         ] {
-            link(&target, &self.workspace.join(format!("{prefix}{name}")))?;
+            let at = self.workspace.join(format!("{prefix}{name}"));
+            if let Some(dir) = at.parent() {
+                std::fs::create_dir_all(dir)?;
+            }
+            if let Err(why) = link(&target, &at)? {
+                failed.push(format!(
+                    "  cannot create symbolic link {prefix}{name} -> {}:  {} {why}",
+                    target.display(),
+                    at.display()
+                ));
+            }
         }
-        Ok(())
+        Ok(failed)
     }
 }
 
 /// `to` as a symlink to `from`, replacing a symlink that points elsewhere.
-fn link(from: &Path, to: &Path) -> io::Result<()> {
+/// `Ok(Err(why))` when something that is not a link is in the way.
+fn link(from: &Path, to: &Path) -> io::Result<Result<(), &'static str>> {
     match std::fs::read_link(to) {
-        Ok(current) if current == from => return Ok(()),
+        Ok(current) if current == from => return Ok(Ok(())),
         Ok(_) => std::fs::remove_file(to)?,
         Err(e) if e.kind() == io::ErrorKind::NotFound => {}
-        // Something that is not a link is in the way.
-        Err(_) => return Ok(()),
+        Err(_) => return Ok(Err("is not a symlink")),
     }
     #[cfg(unix)]
     {
-        std::os::unix::fs::symlink(from, to)
+        std::os::unix::fs::symlink(from, to).map(Ok)
     }
     #[cfg(not(unix))]
     {
@@ -148,7 +167,12 @@ mod tests {
         assert!(root.join("external/dep+").is_dir());
         assert!(root.join("bazel-out").is_dir());
         assert!(!root.join("bazel-bin").exists());
-        layout.convenience_links("bazel-", "k8-fastbuild").unwrap();
+        assert!(
+            layout
+                .convenience_links("bazel-", "k8-fastbuild")
+                .unwrap()
+                .is_empty()
+        );
         let bin = std::fs::read_link(layout.workspace.join("bazel-bin")).unwrap();
         assert_eq!(bin, root.join("bazel-out/k8-fastbuild/bin"));
         assert_eq!(
@@ -160,5 +184,29 @@ mod tests {
         layout.prepare().unwrap();
         assert!(!root.join("external/dep+").exists());
         assert!(std::fs::symlink_metadata(root.join("external/dep+")).is_err());
+    }
+
+    #[test]
+    fn a_slash_prefix_makes_no_links_a_directory_prefix_makes_the_directory_and_an_obstacle_is_reported()
+     {
+        let dir = tempfile::tempdir().unwrap();
+        let layout = Layout {
+            workspace: dir.path().join("ws"),
+            output_base: dir.path().join("ob"),
+        };
+        std::fs::create_dir_all(&layout.workspace).unwrap();
+        assert!(layout.convenience_links("/", "k8-opt").unwrap().is_empty());
+        assert_eq!(std::fs::read_dir(&layout.workspace).unwrap().count(), 0);
+        layout.convenience_links("o/x-", "k8-opt").unwrap();
+        assert!(
+            std::fs::read_link(layout.workspace.join("o/x-testlogs"))
+                .unwrap()
+                .ends_with("k8-opt/testlogs")
+        );
+        std::fs::create_dir(layout.workspace.join("bazel-bin")).unwrap();
+        let failed = layout.convenience_links("bazel-", "k8-opt").unwrap();
+        assert_eq!(failed.len(), 1);
+        assert!(failed[0].starts_with("  cannot create symbolic link bazel-bin -> "));
+        assert!(failed[0].ends_with("bazel-bin is not a symlink"));
     }
 }

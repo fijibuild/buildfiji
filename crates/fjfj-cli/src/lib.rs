@@ -35,6 +35,7 @@ mod aquery;
 mod build_command;
 mod configured_graph;
 mod fetch_command;
+mod info_command;
 mod mod_command;
 mod query_command;
 mod query_graph;
@@ -447,6 +448,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
         }
         Command::Build(args) => build_main(args, "build", false).await.map(|_| ()),
         Command::Query(args) => query_command::run(args).await,
+        Command::Info(args) => info_command::run(args).await,
         Command::Cquery(args) => analysis_query::run(args, analysis_query::Kind::Cquery).await,
         Command::Aquery(args) => analysis_query::run(args, analysis_query::Kind::Aquery).await,
         Command::Run(args) => run_command::run(args).await,

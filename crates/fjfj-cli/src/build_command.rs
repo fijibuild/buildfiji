@@ -903,10 +903,16 @@ pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> R
     report.tests.sort_by_key(|t| label_text(&t.label));
     let prefix = &request.options.symlink_prefix;
     // Bazel makes no links when it builds nothing (`--nobuild`, `cquery`).
-    if request.options.build {
-        let _ = request
+    if request.options.build
+        && let Ok(failed) = request
             .layout
-            .convenience_links(prefix, &request.options.configuration.mnemonic());
+            .convenience_links(prefix, &request.options.configuration.mnemonic())
+        && !failed.is_empty()
+    {
+        eprintln!(
+            "WARNING: failed to create one or more convenience symlinks for prefix '{prefix}':\n{}",
+            failed.join("\n")
+        );
     }
     // Which targets a root needs matters only once something has failed; the walk clones and
     // hashes a key per target, so a build that failed nothing does not make it.
