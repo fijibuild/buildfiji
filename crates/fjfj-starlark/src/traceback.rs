@@ -73,8 +73,59 @@ pub fn traceback(error: &starlark::Error) -> String {
             _ => format!("Error: {}", plain(error)),
         },
     };
+    let (message, text) = match missing_symbol(error) {
+        Some((label, symbol, column)) => (
+            format!("Error: file '{label}' does not contain symbol '{symbol}'"),
+            with_last_column(text, column),
+        ),
+        None => (message, text),
+    };
+    let mut text = text;
     text.push_str(&message);
     text
+}
+
+/// A `load()` of a symbol the file does not have: the label as written, the
+/// symbol and the column Bazel puts it at, which is inside the quotes of the
+/// symbol's string.
+fn missing_symbol(error: &starlark::Error) -> Option<(String, String, usize)> {
+    let message = error.without_diagnostic().to_string();
+    let symbol = message
+        .strip_prefix("Module has no symbol `")?
+        .split('`')
+        .next()?
+        .to_owned();
+    let at = error.span()?;
+    let source = at.file.source();
+    let begin = at.span.begin().get() as usize;
+    let statement = &source[source[..begin].rfind("load(")?..];
+    let quoted = |from: &str| -> Option<(usize, String)> {
+        let open = from.find(['"', '\''])?;
+        let quote = from[open..].chars().next()?;
+        let close = from[open + 1..].find(quote)?;
+        Some((open, from[open + 1..open + 1 + close].to_owned()))
+    };
+    let (_, label) = quoted(statement)?;
+    let (open, _) = quoted(&source[begin..])?;
+    let line = at
+        .file
+        .find_line(starlark::codemap::Pos::new((begin + open) as u32));
+    let line_start = at.file.line_span(line).begin().get() as usize;
+    let column = source[line_start..begin + open].chars().count() + 2;
+    Some((label, symbol, column))
+}
+
+/// `text` with the column of its last entry replaced.
+fn with_last_column(text: String, column: usize) -> String {
+    const KEY: &str = ", column ";
+    let Some(at) = text.rfind(KEY) else {
+        return text;
+    };
+    let from = at + KEY.len();
+    let digits = text[from..]
+        .find(|c: char| !c.is_ascii_digit())
+        .unwrap_or(text.len() - from);
+    format!("{}{column}{}", &text[..from], &text[from + digits..])
 }
 
 /// Whether the error is a call of a value that is not a function, which Bazel
@@ -273,6 +324,16 @@ mod tests {
             "r = 1\n",
             "x = \"abc\".split(1)",
             "column 16, in <toplevel>\n\t\tx = \"abc\".split(1)\nError in split: in call to split(), parameter 'sep' got value of type 'int', want 'string'",
+        ),
+        (
+            "r = 1\n",
+            "load(':u.bzl', 'nope')",
+            "column 17, in <toplevel>\n\t\tload(':u.bzl', 'nope')\nError: file ':u.bzl' does not contain symbol 'nope'",
+        ),
+        (
+            "r = 1\n",
+            "load(':u.bzl', Y = 'nope')",
+            "column 21, in <toplevel>\n\t\tload(':u.bzl', Y = 'nope')\nError: file ':u.bzl' does not contain symbol 'nope'",
         ),
         (
             "r = 1\n",

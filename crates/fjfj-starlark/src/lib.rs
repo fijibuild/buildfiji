@@ -127,6 +127,7 @@ mod select_matrix;
 mod select_tests;
 mod set;
 mod structs;
+mod syntax_event;
 #[cfg(test)]
 mod test_support;
 mod traceback;
@@ -159,6 +160,7 @@ pub use repo_ctx::{
 };
 pub use repo_download::{Downloader, HttpRequest};
 pub use structs::{FrozenStruct, Struct, StructGen};
+pub use syntax_event::syntax_event;
 pub use traceback::{LoadFailed, absolute_files, traceback};
 
 pub use starlark::environment::FrozenModule;

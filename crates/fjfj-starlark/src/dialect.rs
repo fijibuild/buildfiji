@@ -81,11 +81,15 @@ pub fn bzl_dialect() -> Dialect {
 /// parser does not: in a `.bzl`, `load()` statements come before every other
 /// statement and no top-level name is declared twice.
 pub fn parse(path: &str, src: &str, kind: FileKind) -> anyhow::Result<AstModule> {
-    let ast =
-        AstModule::parse(path, src.to_owned(), &kind.dialect()).map_err(|e| e.into_anyhow())?;
-    check_string_escapes(&ast).map_err(|e| e.into_anyhow())?;
+    parse_checked(path, src, kind).map_err(|e| e.into_anyhow())
+}
+
+/// [`parse`], with the error as the `starlark` error it is, which says where.
+pub fn parse_checked(path: &str, src: &str, kind: FileKind) -> Result<AstModule, starlark::Error> {
+    let ast = AstModule::parse(path, src.to_owned(), &kind.dialect())?;
+    check_string_escapes(&ast)?;
     if kind == FileKind::Bzl {
-        check_bzl_top_level(&ast).map_err(|e| e.into_anyhow())?;
+        check_bzl_top_level(&ast)?;
     }
     Ok(ast)
 }

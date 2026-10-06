@@ -33,6 +33,24 @@ const ROWS: &[Row] = &[
         ],
         error: "Error evaluating '//b:all': error loading package 'b': Package 'b' contains errors",
     },
+    // A BUILD file that does not parse: one event, at the token.
+    Row {
+        files: &[("s/BUILD", "x = 1 +\n")],
+        events: &[
+            "{ws}/s/BUILD:1:8: syntax error at 'newline': expected expression",
+            "package contains errors: s: syntax error at 'newline': expected expression",
+        ],
+        error: "Error evaluating '//s:all': error loading package 's': Package 's' contains errors",
+    },
+    // A name that is not defined is an event at the name, not a traceback.
+    Row {
+        files: &[("t/BUILD", "x = 1\ny = z\n")],
+        events: &[
+            "{ws}/t/BUILD:2:5: name 'z' is not defined",
+            "package contains errors: t: name 'z' is not defined",
+        ],
+        error: "Error evaluating '//t:all': error loading package 't': Package 't' contains errors",
+    },
     // A call that fails in a macro: every call is in the traceback.
     Row {
         files: &[

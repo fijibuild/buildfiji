@@ -34,6 +34,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::FileKind;
 use crate::args::{
     Wording, bind, describe, fatal, param, positional_only, sequence, want_sequence,
 };
@@ -52,7 +53,6 @@ use crate::rule::rule_globals;
 use crate::select::select_globals;
 use crate::set::set_globals;
 use crate::structs::struct_globals;
-use crate::{FileKind, parse};
 
 /// Everything one BUILD file evaluation hands back.
 #[derive(Debug)]
@@ -273,6 +273,15 @@ fn internal_ctx_globals(builder: &mut GlobalsBuilder) {
 fn failure(error: starlark::Error) -> BuildFileError {
     match crate::LoadFailed::of(&error) {
         Some(load) => BuildFileError::Load(load.0.clone()),
+        // A name that is not defined is found before the file runs, and
+        // Bazel reports it as an event at the name.
+        None if matches!(error.kind(), starlark::ErrorKind::Scope(_)) && error.span().is_some() => {
+            let file = error.span().map(|at| at.filename().to_owned());
+            BuildFileError::Package {
+                events: vec![crate::syntax_event(&file.unwrap_or_default(), &error)],
+                printed: Vec::new(),
+            }
+        }
         None => BuildFileError::Eval(anyhow::anyhow!("{}", crate::traceback(&error))),
     }
 }
@@ -282,7 +291,12 @@ pub fn evaluate_build_file(input: &BuildFile<'_>) -> Result<BuildFileOutput, Bui
     let _span = tracing::debug_span!("evaluate_build_file", package = input.package).entered();
     let ast = {
         let _span = tracing::debug_span!("parse", file = input.path).entered();
-        parse(input.path, input.source, FileKind::Build).map_err(BuildFileError::Eval)?
+        crate::dialect::parse_checked(input.path, input.source, FileKind::Build).map_err(|e| {
+            BuildFileError::Package {
+                events: vec![crate::syntax_event(input.path, &e)],
+                printed: Vec::new(),
+            }
+        })?
     };
     let is_package = |p: &str| input.lookup.is_package(p);
     let ctx = BuildContext {

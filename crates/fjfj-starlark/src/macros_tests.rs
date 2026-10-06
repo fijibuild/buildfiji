@@ -8,11 +8,7 @@ use crate::test_support::{replay, replay_build};
 
 /// Probes whose answer is the Starlark runtime's generic wording, which
 /// belongs to buildfiji-v32.
-const GENERIC: &[&str] = &[
-    "no native function or rule",
-    "not found in view",
-    "does not contain symbol",
-];
+const GENERIC: &[&str] = &["no native function or rule", "not found in view"];
 
 /// Probes the crate cannot answer the way Bazel does.
 const SKIPPED: &[&str] = &[

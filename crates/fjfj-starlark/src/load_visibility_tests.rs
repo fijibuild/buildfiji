@@ -243,6 +243,13 @@ fn visibility_is_declared_once_and_at_the_top() {
         crate::test_support::run("def f():\n    visibility('public')\nY = 1\nvisibility(['//b'])")
             .is_ok()
     );
-    let err = crate::test_support::run_build("r = 1", "visibility('public')").fatal;
-    assert!(err.is_some());
+    // A BUILD file has no `visibility()`, which Bazel reports as an undefined name.
+    let out = crate::test_support::run_build("r = 1", "visibility('public')");
+    assert!(
+        out.events
+            .iter()
+            .any(|e| e.contains("name 'visibility' is not defined")),
+        "{:?}",
+        out.events
+    );
 }
