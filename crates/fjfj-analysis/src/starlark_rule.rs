@@ -282,7 +282,8 @@ pub(crate) async fn analyze(
         key.configuration.to_exec()
     };
 
-    // Each dependency, with the edge it is of and, for a split, the key of its branch.
+    // Each dependency, with the edge it is of and, for an edge with a
+    // transition, the key of its branch: empty when the transition is no split.
     let mut dep_keys: Vec<ConfiguredTargetKey> = Vec::new();
     let mut dep_edges: Vec<(usize, Option<String>)> = Vec::new();
     for (index, edge) in edges.iter().enumerate() {
@@ -312,7 +313,7 @@ pub(crate) async fn analyze(
                 // The branches of a split are in the order of their configurations.
                 made.sort_by_key(|(_, c)| c.bin_dir());
                 made.into_iter()
-                    .map(|(split, c)| ((!split.is_empty()).then_some(split), c))
+                    .map(|(split, c)| (Some(split), c))
                     .collect()
             }
         };

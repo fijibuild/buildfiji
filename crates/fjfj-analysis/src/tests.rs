@@ -1387,7 +1387,9 @@ def _top(ctx):
     print({k: [f.path for f in v[DefaultInfo].files.to_list()] for k, v in ctx.split_attr.dep.items()})
     return []
 def _one(ctx):
-    print([f.path for f in ctx.attr.dep[DefaultInfo].files.to_list()])
+    # A transition of a label attribute makes it a list, even if it is no split.
+    print(type(ctx.attr.dep), [f.path for f in ctx.attr.dep[0][DefaultInfo].files.to_list()])
+    print(ctx.split_attr.dep.keys())
     return []
 one = rule(implementation = _one, attrs = {"dep": attr.label(cfg = first.and_then(second))})
 two = rule(implementation = _top, attrs = {"dep": attr.label(cfg = by_mode.and_then(by_copt))})
@@ -1400,7 +1402,9 @@ two = rule(implementation = _top, attrs = {"dep": attr.label(cfg = by_mode.and_t
     ]);
     let o = analyse(&repos, "//:o").await.unwrap();
     let printed = o.printed.without_sites();
+    assert!(printed[0].starts_with("list [\""), "{printed:?}");
     assert!(printed[0].contains("k8-opt"), "{printed:?}");
+    assert_eq!(printed[1], "[None]");
     let w = analyse(&repos, "//:w").await.unwrap();
     let printed = w.printed.without_sites();
     for key in ["a,x", "a,y", "b,x", "b,y"] {

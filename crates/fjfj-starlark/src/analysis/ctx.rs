@@ -216,8 +216,8 @@ impl CtxState {
         }
     }
 
-    /// `attr_value`, except that an attribute with a split transition is the
-    /// list of the targets of every branch of the split.
+    /// `attr_value`, except that an attribute with a transition is the list of
+    /// the targets of every branch, one if the transition is no split.
     fn attr_or_split<'v>(&self, heap: Heap<'v>, name: &str, value: &AttrValue) -> Value<'v> {
         match self.splits.get(name) {
             Some(branches) => heap.alloc(AllocList(
@@ -529,8 +529,9 @@ fn ctx_members(builder: &mut MethodsBuilder) {
         Ok(new_struct(heap, fields))
     }
 
-    /// An attribute with a split transition, by the key of each branch: a
-    /// target (a label) or a list of them (a list of labels).
+    /// An attribute with a transition, by the key of each branch (`None` for
+    /// one that is no split): a target (a label) or a list of them (a list of
+    /// labels).
     #[starlark(attribute)]
     fn split_attr<'v>(this: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
         let s = state(this);
@@ -549,7 +550,13 @@ fn ctx_members(builder: &mut MethodsBuilder) {
                     } else {
                         heap.alloc(AllocList(targets))
                     };
-                    (heap.alloc(key.as_str()), value)
+                    // A transition that is no split has no key.
+                    let key = if key.is_empty() {
+                        Value::new_none()
+                    } else {
+                        heap.alloc(key.as_str())
+                    };
+                    (key, value)
                 })
                 .collect();
             fields.push((name.clone(), heap.alloc(AllocDict(entries))));
