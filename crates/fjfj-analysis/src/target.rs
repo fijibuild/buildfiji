@@ -128,6 +128,9 @@ pub struct ConfiguredTarget {
     /// A rule that asked for no toolchain, whose execution platform was
     /// worked out only because `--toolchain_resolution_debug` was on.
     pub debug_no_toolchains: bool,
+    /// For an `alias` or `label_flag`: the label of the target it is, which
+    /// is the label a rule that depends on it sees.
+    pub actual: Option<Label>,
     /// The actions this target registered.
     pub actions: Vec<Action>,
     /// The targets it read, for finding every action a build needs.
@@ -217,6 +220,7 @@ impl ConfiguredTarget {
             exec_group_platforms: Vec::new(),
             toolchain_platforms: Vec::new(),
             debug_no_toolchains: false,
+            actual: None,
             attrs: Vec::new(),
             aspect: None,
             actions: Vec::new(),

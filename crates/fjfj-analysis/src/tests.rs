@@ -2110,3 +2110,36 @@ async fn recording_execution_platforms_does_not_cycle_through_an_extra_platform(
         Some("px")
     );
 }
+
+/// A rule that depends on an `alias` or a `label_flag` sees the label of the
+/// target it points to.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_dep_through_an_alias_or_label_flag_has_the_actual_targets_label() {
+    let (_dir, repos) = workspace(&[
+        ("MODULE.bazel", ""),
+        (
+            "defs.bzl",
+            r#"
+def _impl(ctx):
+    print("label:", ctx.attr.dep.label)
+    return []
+r = rule(implementation = _impl, attrs = {"dep": attr.label()})
+"#,
+        ),
+        (
+            "BUILD.bazel",
+            r#"
+load(":defs.bzl", "r")
+filegroup(name = "a")
+alias(name = "al", actual = ":a")
+label_flag(name = "f", build_setting_default = ":a")
+r(name = "via_alias", dep = ":al")
+r(name = "via_flag", dep = ":f")
+"#,
+        ),
+    ]);
+    for name in ["//:via_alias", "//:via_flag"] {
+        let t = analyse(&repos, name).await.unwrap();
+        assert_eq!(t.printed.without_sites(), ["label: @@//:a"]);
+    }
+}

@@ -22,7 +22,7 @@ fn label_text(label: &Label) -> String {
 /// What a rule sees of a target it depends on.
 pub fn dep_info(target: &ConfiguredTarget, generated: bool) -> DepInfo {
     DepInfo {
-        label: target.label.clone(),
+        label: target.actual.as_ref().unwrap_or(&target.label).clone(),
         rule_class: target.rule_class.clone(),
         generated,
         files: target.files.to_vec(),

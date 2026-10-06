@@ -197,6 +197,7 @@ async fn forward(
     target.extra_outputs = actual.extra_outputs.clone();
     target.providers = actual.providers.clone();
     target.config_matching = actual.config_matching.clone();
+    target.actual = Some(actual.actual.clone().unwrap_or_else(|| k.label.clone()));
     target.deps.push(k);
     Ok(target)
 }
