@@ -729,7 +729,17 @@ pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> R
     }
     // The build of what was asked stops at the first of them, which leaves
     // only what every build does.
+    let mut stopped_tests: Vec<(Label, String)> = Vec::new();
     if !report.incompatible_errors.is_empty() && !request.options.keep_going {
+        // The tests among them are in the summary, with no status.
+        if request.options.test.is_some() {
+            stopped_tests.extend(roots.iter().filter_map(|(label, target)| {
+                target
+                    .test
+                    .as_ref()
+                    .map(|test| (label.clone(), test.size.clone()))
+            }));
+        }
         roots.clear();
         aspect_roots.clear();
     }
@@ -862,6 +872,16 @@ pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> R
             cached,
             log: request.layout.execroot().join(&log),
             size: test.size.clone(),
+        });
+    }
+    for (label, size) in stopped_tests {
+        report.tests.push(TestResult {
+            label,
+            status: TestStatus::NoStatus,
+            took: Duration::ZERO,
+            cached: false,
+            log: std::path::PathBuf::new(),
+            size,
         });
     }
     for label in skipped_tests {
@@ -1224,9 +1244,14 @@ pub(crate) fn print(
     } else {
         eprintln!("ERROR: Build did NOT complete successfully");
     }
-    if test_output.is_some() && (ok || (keep_going && incompatible)) {
+    // What was built is tested, and the summary says so whatever else failed.
+    if test_output.is_some() && !report.tests.is_empty() {
         print_test_summary(report);
-        if !ok {
+        let none_failed = report
+            .tests
+            .iter()
+            .all(|t| matches!(t.status, TestStatus::Passed | TestStatus::Skipped));
+        if !ok && keep_going && none_failed {
             eprintln!("All tests passed but there were other errors during the build.");
             eprintln!();
         }
@@ -1292,6 +1317,13 @@ fn print_test_output(report: &Report, mode: fjfj_bazel_compat::test_flags::TestO
 
 /// The table of results and the count under it.
 fn print_test_summary(report: &Report) {
+    for line in test_summary_lines(report) {
+        eprintln!("{line}");
+    }
+}
+
+fn test_summary_lines(report: &Report) -> Vec<String> {
+    let mut lines: Vec<String> = Vec::new();
     let mut too_big = false;
     // What was skipped comes after what ran.
     let skipped_last = report
@@ -1321,26 +1353,24 @@ fn print_test_summary(report: &Report) {
         } else {
             format!(" in {:.1}s", test.took.as_secs_f64())
         };
-        eprintln!("{label:<width$}{prefix}{status}{took}");
+        lines.push(format!("{label:<width$}{prefix}{status}{took}"));
         if !matches!(
             test.status,
             TestStatus::Passed | TestStatus::NoStatus | TestStatus::Skipped
         ) {
-            eprintln!("  {}", test.log.display());
+            lines.push(format!("  {}", test.log.display()));
         }
         if test.status == TestStatus::Passed && is_too_big(test) {
             too_big = true;
         }
     }
-    let skipped = report
-        .tests
-        .iter()
-        .filter(|t| t.status == TestStatus::Skipped)
-        .count();
+    // A test that never got a status was not run, as one skipped was not.
+    let not_run = |t: &&TestResult| matches!(t.status, TestStatus::Skipped | TestStatus::NoStatus);
+    let skipped = report.tests.iter().filter(not_run).count();
     let ran = report
         .tests
         .iter()
-        .filter(|t| !t.cached && t.status != TestStatus::Skipped)
+        .filter(|t| !t.cached && !not_run(t))
         .count();
     let total = report.tests.len();
     let passed = report
@@ -1380,17 +1410,16 @@ fn print_test_summary(report: &Report) {
             format!("{skipped} were skipped")
         });
     }
-    eprintln!();
-    eprintln!(
+    lines.push(String::new());
+    lines.push(format!(
         "Executed {ran} out of {}: {}.",
         plural(total, "test", "tests"),
         parts.join(" and ")
-    );
+    ));
     if too_big {
-        eprintln!(
-            "There were tests whose specified size is too big. Use the --test_verbose_timeout_warnings command line option to see which ones these are."
-        );
+        lines.push("There were tests whose specified size is too big. Use the --test_verbose_timeout_warnings command line option to see which ones these are.".to_owned());
     }
+    lines
 }
 
 /// Whether a test that passed asked for more time than it needed: it would
@@ -1608,5 +1637,34 @@ mod incompatible_tests {
         assert!(skipped[0].error.is_none());
         let (kept, skipped) = split_incompatible(roots(), None);
         assert_eq!((kept.len(), skipped.len()), (2, 0));
+    }
+
+    /// `bazel test //p:t //p:t_ok` stopped by an incompatible //p:t: the test
+    /// that did not run has no status and counts among the skipped.
+    #[test]
+    fn a_test_that_never_ran_has_no_status_and_was_skipped() {
+        let mut report = Report::new(Layout {
+            workspace: "ws".into(),
+            output_base: "ob".into(),
+        });
+        let result = |name: &str, status| TestResult {
+            label: key(name).label,
+            status,
+            took: Duration::ZERO,
+            cached: false,
+            log: std::path::PathBuf::new(),
+            size: String::new(),
+        };
+        report.tests.push(result("t1", TestStatus::NoStatus));
+        report.tests.push(result("t2", TestStatus::Passed));
+        let lines = test_summary_lines(&report);
+        assert_eq!(
+            lines[0],
+            "//p:t1                                                                NO STATUS"
+        );
+        assert_eq!(
+            lines.last().unwrap(),
+            "Executed 1 out of 2 tests: 1 test passes and 1 was skipped."
+        );
     }
 }
