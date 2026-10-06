@@ -1142,6 +1142,7 @@ dependencies = [
  "fjfj-telemetry",
  "futures",
  "hex",
+ "libc",
  "serde",
  "serde_json",
  "sha2",

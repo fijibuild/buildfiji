@@ -29,6 +29,9 @@ pub(crate) struct Action {
     start: u64,
     dur: u64,
     steps: BTreeMap<String, u64>,
+    /// Per blocking step: the wait for a thread and the thread's CPU time.
+    queued: BTreeMap<String, u64>,
+    cpu: BTreeMap<String, u64>,
 }
 
 impl Action {
@@ -45,7 +48,7 @@ impl Action {
 
 pub(crate) fn parse(text: &str) -> Vec<Action> {
     let mut by_row: HashMap<u64, Action> = HashMap::new();
-    let mut steps: Vec<(u64, String, u64)> = Vec::new();
+    let mut steps: Vec<(u64, String, u64, u64, u64)> = Vec::new();
     for line in text.lines() {
         let Ok(event) = serde_json::from_str::<Value>(line.trim().trim_end_matches(',')) else {
             continue;
@@ -71,12 +74,20 @@ pub(crate) fn parse(text: &str) -> Vec<Action> {
                     },
                 );
             }
-            "step" => steps.push((row, event["name"].as_str().unwrap_or("").to_owned(), dur)),
+            "step" => steps.push((
+                row,
+                event["name"].as_str().unwrap_or("").to_owned(),
+                dur,
+                event["args"]["queued_us"].as_u64().unwrap_or(0),
+                event["args"]["cpu_us"].as_u64().unwrap_or(0),
+            )),
             _ => {}
         }
     }
-    for (row, name, dur) in steps {
+    for (row, name, dur, queued, cpu) in steps {
         if let Some(action) = by_row.get_mut(&row) {
+            *action.queued.entry(name.clone()).or_default() += queued;
+            *action.cpu.entry(name.clone()).or_default() += cpu;
             *action.steps.entry(name).or_default() += dur;
         }
     }
@@ -145,6 +156,35 @@ pub(crate) fn report(actions: &[Action], top: usize) -> String {
             millis(*times.last().unwrap()),
             times.len(),
             total as f64 / wall.max(1) as f64
+        );
+    }
+    let _ = writeln!(
+        out,
+        "\nBlocking steps: waiting for a thread, on the CPU, and the rest"
+    );
+    let _ = writeln!(
+        out,
+        "  {:<9} {:>8} {:>8} {:>8} {:>8}",
+        "step", "total", "queued", "cpu", "other"
+    );
+    for step in STEPS {
+        let (mut total, mut queued, mut cpu) = (0, 0, 0);
+        for a in &ran {
+            total += a.step(step);
+            queued += a.queued.get(*step).copied().unwrap_or(0);
+            cpu += a.cpu.get(*step).copied().unwrap_or(0);
+        }
+        if queued + cpu == 0 {
+            continue;
+        }
+        let _ = writeln!(
+            out,
+            "  {:<9} {:>8} {:>8} {:>8} {:>8}",
+            step,
+            secs(total),
+            secs(queued),
+            secs(cpu),
+            secs(total.saturating_sub(queued + cpu))
         );
     }
     let command: u64 = ran.iter().map(|a| a.step("command")).sum();

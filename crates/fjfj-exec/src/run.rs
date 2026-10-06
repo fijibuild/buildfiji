@@ -754,11 +754,37 @@ async fn blocking<T: Send + 'static>(
     step: &'static str,
     work: impl FnOnce() -> T + Send + 'static,
 ) -> T {
-    let span = tracing::info_span!("step", step);
-    match tokio::task::spawn_blocking(move || span.in_scope(work)).await {
+    let span = tracing::info_span!(
+        "step",
+        step,
+        queued_us = tracing::field::Empty,
+        cpu_us = tracing::field::Empty
+    );
+    let requested = std::time::Instant::now();
+    let run = move || {
+        // What the step cost in wall time splits into the wait for a thread,
+        // the thread's time on a CPU, and the rest (blocked, or not scheduled).
+        span.record("queued_us", requested.elapsed().as_micros() as u64);
+        let cpu = thread_cpu_us();
+        let done = span.in_scope(work);
+        span.record("cpu_us", thread_cpu_us().saturating_sub(cpu));
+        done
+    };
+    match tokio::task::spawn_blocking(run).await {
         Ok(done) => done,
         Err(e) => std::panic::resume_unwind(e.into_panic()),
     }
+}
+
+/// The CPU time this thread has used, in microseconds.
+fn thread_cpu_us() -> u64 {
+    let mut at = libc::timespec {
+        tv_sec: 0,
+        tv_nsec: 0,
+    };
+    // SAFETY: `at` is a valid timespec for the call to fill.
+    unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &mut at) };
+    at.tv_sec as u64 * 1_000_000 + at.tv_nsec as u64 / 1000
 }
 
 /// A failure of `action`.
