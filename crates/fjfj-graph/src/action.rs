@@ -25,21 +25,22 @@ pub enum ActionKind {
     /// Make the output a symlink whose text is `target`, as written (a path
     /// that need not exist, relative to the link).
     UnresolvedSymlink { target: String },
-    /// Make the runfiles tree of an executable: a directory of symlinks at
-    /// `dir`, a manifest and a repository mapping beside it.
-    RunfilesTree {
+    /// Make the tree of an executable's runfiles (`SymlinkTree`): a directory
+    /// of symlinks at `dir`, and the `MANIFEST` in it that lists them.
+    SymlinkTree {
         /// `bazel-out/k8-fastbuild/bin/pkg/bin.runfiles`.
         dir: String,
-        /// `bin.runfiles_manifest`.
-        manifest: String,
-        /// `bin.repo_mapping`, and what it holds.
+        /// `bin.repo_mapping`, linked from the tree as `_repo_mapping`.
         repo_mapping: String,
-        repo_mapping_contents: String,
         /// Each link as a path under `dir` and the file it leads to.
         entries: Vec<(String, Artifact)>,
         /// Paths under `dir` of empty regular files.
         empty_files: Vec<String>,
     },
+    /// The runfiles tree as an input (`RunfilesTree`): it makes nothing, its
+    /// output is the directory a `SymlinkTree` filled, and it reads what the
+    /// tree links so that whatever reads the tree waits for all of it.
+    RunfilesTree,
     /// Write `stable-status.txt` and `volatile-status.txt`, the build's
     /// workspace status, to the action's two outputs.
     WorkspaceStatus { stable: String, volatile: String },
@@ -119,19 +120,16 @@ impl Action {
                 field(b"unresolved-symlink");
                 field(target.as_bytes());
             }
-            ActionKind::RunfilesTree {
+            ActionKind::RunfilesTree => field(b"runfiles-tree"),
+            ActionKind::SymlinkTree {
                 dir,
-                manifest,
                 repo_mapping,
-                repo_mapping_contents,
                 entries,
                 empty_files,
             } => {
                 field(b"runfiles");
                 field(dir.as_bytes());
-                field(manifest.as_bytes());
                 field(repo_mapping.as_bytes());
-                field(repo_mapping_contents.as_bytes());
                 for (path, artifact) in entries {
                     field(path.as_bytes());
                     field(artifact.exec_path().as_bytes());

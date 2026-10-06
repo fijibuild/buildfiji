@@ -630,7 +630,12 @@ impl Scheduler {
                 )));
             }
         }
-        for out in &action.outputs {
+        // What a runfiles tree makes is not its own: it is what the `SymlinkTree` filled.
+        let outputs: &[Artifact] = match action.kind {
+            ActionKind::RunfilesTree => &[],
+            _ => &action.outputs,
+        };
+        for out in outputs {
             let at = execroot.join(out.exec_path());
             remove(&at).map_err(|e| fail(format!("cannot remove {}: {e}", at.display())))?;
             if let Some(dir) = at.parent() {
@@ -676,18 +681,13 @@ impl Scheduler {
                     .map_err(|e| fail(format!("cannot write {}: {e}", at.display())))?;
                 let _ = executable;
             }
-            ActionKind::RunfilesTree {
+            ActionKind::SymlinkTree {
                 dir,
-                manifest,
                 repo_mapping,
-                repo_mapping_contents,
                 entries,
                 empty_files,
             } => {
-                let manifest_at = execroot.join(manifest);
                 let mapping_at = execroot.join(repo_mapping);
-                std::fs::write(&mapping_at, repo_mapping_contents)
-                    .map_err(|e| fail(format!("cannot write {}: {e}", mapping_at.display())))?;
                 // Sorted by path, an empty file with nothing after its path.
                 let mut listed: Vec<(&str, String)> = entries
                     .iter()
@@ -722,9 +722,10 @@ impl Scheduler {
                         lines.push_str(&format!("{path} {target}\n"));
                     }
                 }
-                std::fs::write(&manifest_at, lines)
-                    .map_err(|e| fail(format!("cannot write {}: {e}", manifest_at.display())))?;
+                // Not what an earlier run left: it may have linked more.
                 let tree = execroot.join(dir);
+                remove(&tree)
+                    .map_err(|e| fail(format!("cannot remove {}: {e}", tree.display())))?;
                 std::fs::create_dir_all(&tree)
                     .map_err(|e| fail(format!("cannot create {}: {e}", tree.display())))?;
                 for (path, artifact) in entries {
@@ -747,12 +748,17 @@ impl Scheduler {
                     std::fs::write(&file, b"")
                         .map_err(|e| fail(format!("cannot write {}: {e}", file.display())))?;
                 }
-                std::os::unix::fs::symlink(&manifest_at, tree.join("MANIFEST"))
-                    .and_then(|()| {
-                        std::os::unix::fs::symlink(&mapping_at, tree.join("_repo_mapping"))
-                    })
+                std::fs::write(tree.join("MANIFEST"), lines).map_err(|e| {
+                    fail(format!(
+                        "cannot write the manifest in {}: {e}",
+                        tree.display()
+                    ))
+                })?;
+                std::os::unix::fs::symlink(&mapping_at, tree.join("_repo_mapping"))
                     .map_err(|e| fail(format!("cannot link in {}: {e}", tree.display())))?;
             }
+            // The directory is the `SymlinkTree`'s: nothing is made.
+            ActionKind::RunfilesTree => {}
             ActionKind::Symlink { target } => {
                 let at = execroot.join(action.outputs[0].exec_path());
                 std::os::unix::fs::symlink(execroot.join(target), &at)

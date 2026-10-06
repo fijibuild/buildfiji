@@ -765,6 +765,82 @@ fn internal(
     }
 }
 
+/// The four actions of a runfiles tree for one file `data`.
+fn runfiles(data: &Artifact) -> (Vec<Action>, Artifact) {
+    let (dir, manifest, mapping) = (
+        out("bin.runfiles"),
+        out("bin.runfiles_manifest"),
+        out("bin.repo_mapping"),
+    );
+    let tree_manifest = out("bin.runfiles/MANIFEST");
+    let actions = vec![
+        internal(
+            "RepoMappingManifest",
+            ActionKind::WriteFile {
+                contents: b",m,_main\n".to_vec(),
+                executable: false,
+            },
+            vec![],
+            vec![mapping.clone()],
+        ),
+        internal(
+            "SourceSymlinkManifest",
+            ActionKind::WriteFile {
+                contents: b"_main/data d\n".to_vec(),
+                executable: false,
+            },
+            vec![],
+            vec![manifest.clone()],
+        ),
+        internal(
+            "SymlinkTree",
+            ActionKind::SymlinkTree {
+                dir: dir.exec_path(),
+                repo_mapping: mapping.exec_path(),
+                entries: vec![("_main/data".into(), data.clone())],
+                empty_files: vec![],
+            },
+            vec![manifest],
+            vec![tree_manifest.clone()],
+        ),
+        internal(
+            "RunfilesTree",
+            ActionKind::RunfilesTree,
+            vec![data.clone(), tree_manifest, mapping],
+            vec![dir.clone()],
+        ),
+    ];
+    (actions, dir)
+}
+
+#[tokio::test]
+async fn a_runfiles_tree_is_four_actions_and_its_directory_is_left_as_the_tree_made_it() {
+    let (_dir, layout) = layout();
+    let data = out("data");
+    let mut actions = vec![shell(
+        &format!("echo d > {}", data.exec_path()),
+        vec![],
+        vec![data.clone()],
+    )];
+    let (tree, dir) = runfiles(&data);
+    actions.extend(tree);
+    let outcome = run(&layout, actions.clone(), std::slice::from_ref(&dir), false).await;
+    assert!(outcome.failures.is_empty(), "{:?}", outcome.failures);
+    assert_eq!((outcome.closure, outcome.ran), (5, 5));
+    let at = layout.execroot().join(dir.exec_path());
+    let listing = std::fs::read_to_string(at.join("MANIFEST")).unwrap();
+    assert!(listing.starts_with("_main/data "), "{listing}");
+    assert!(listing.contains("_repo_mapping "), "{listing}");
+    assert_eq!(
+        std::fs::read_to_string(at.join("_main/data")).unwrap(),
+        "d\n"
+    );
+    // Run again with nothing changed: the directory is as it was.
+    let again = run(&layout, actions, &[dir], false).await;
+    assert_eq!((again.ran, again.cached), (0, 5));
+    assert!(at.join("_main/data").exists());
+}
+
 #[tokio::test]
 async fn the_workspace_status_action_writes_both_files() {
     let (_dir, layout) = layout();

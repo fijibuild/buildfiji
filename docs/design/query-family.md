@@ -91,9 +91,11 @@ These are known; each has a bead.
 - **Targets Bazel adds as dependencies**: platforms, constraints and
   toolchain types match (`buildfiji-pst`); licence, apple and xcode targets
   of external rulesets do not.
-- **Runfiles.** fjfj makes one action; aquery lists the four Bazel does
+- **Runfiles.** fjfj registers the four actions Bazel does
   (`RepoMappingManifest`, `SourceSymlinkManifest`, `SymlinkTree`,
-  `RunfilesTree`) from it.
+  `RunfilesTree`) and the executor runs them, so what aquery lists is what
+  runs. `RunfilesTree` makes nothing: its output is the directory the
+  `SymlinkTree` filled.
 
 ## Probing Bazel
 

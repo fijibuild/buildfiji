@@ -122,25 +122,80 @@ pub(crate) fn register(
         at(".runfiles_manifest"),
         at(".repo_mapping"),
     );
-    target.actions.push(Action {
+    // The four actions Bazel registers: what each reads is what Bazel lists,
+    // which is less than it needs: the tree only links what its manifest
+    // names, so the `RunfilesTree` is what waits for the files themselves.
+    let tree_manifest = Artifact {
+        root: exe.root.clone(),
+        path: format!("{}/MANIFEST", dir.path),
+        tree: false,
+    };
+    let sources: String = entries
+        .iter()
+        .map(|(path, file)| format!("{path} {}\n", file.exec_path()))
+        .collect();
+    let label = fjfj_graph::expand::label_text(&target.label);
+    let made = |mnemonic: &str,
+                message: String,
+                kind: ActionKind,
+                inputs: Vec<Artifact>,
+                outputs: Vec<Artifact>| Action {
         owner: target.label.clone(),
         owner_kind: target.rule_class.clone().unwrap_or_default(),
         location: String::new(),
         configuration: target.configuration.mnemonic(),
-        mnemonic: "SymlinkTree".to_owned(),
-        progress_message: Some(format!("Creating runfiles tree {}", dir.exec_path())),
-        kind: ActionKind::RunfilesTree {
-            dir: dir.exec_path(),
-            manifest: manifest.exec_path(),
-            repo_mapping: repo_mapping.exec_path(),
-            repo_mapping_contents,
-            entries: entries.clone(),
-            empty_files,
-        },
-        inputs: entries.into_iter().map(|(_, a)| a).collect(),
+        mnemonic: mnemonic.to_owned(),
+        progress_message: Some(message),
+        kind,
+        inputs,
         input_set: None,
-        outputs: vec![dir.clone(), manifest.clone(), repo_mapping.clone()],
-    });
+        outputs,
+    };
+    let mut linked: Vec<Artifact> = entries.iter().map(|(_, a)| a.clone()).collect();
+    linked.push(tree_manifest.clone());
+    linked.push(repo_mapping.clone());
+    let actions = [
+        made(
+            "RepoMappingManifest",
+            format!("Writing repo mapping manifest for {label}"),
+            ActionKind::WriteFile {
+                contents: repo_mapping_contents.into_bytes(),
+                executable: false,
+            },
+            Vec::new(),
+            vec![repo_mapping.clone()],
+        ),
+        made(
+            "SourceSymlinkManifest",
+            format!("Creating source manifest for {label}"),
+            ActionKind::WriteFile {
+                contents: sources.into_bytes(),
+                executable: false,
+            },
+            Vec::new(),
+            vec![manifest.clone()],
+        ),
+        made(
+            "SymlinkTree",
+            format!("Creating runfiles tree {}", dir.exec_path()),
+            ActionKind::SymlinkTree {
+                dir: dir.exec_path(),
+                repo_mapping: repo_mapping.exec_path(),
+                entries: entries.clone(),
+                empty_files,
+            },
+            vec![manifest.clone()],
+            vec![tree_manifest],
+        ),
+        made(
+            "RunfilesTree",
+            format!("runfiles for {label}"),
+            ActionKind::RunfilesTree,
+            linked,
+            vec![dir.clone()],
+        ),
+    ];
+    target.actions.extend(actions);
     target.extra_outputs = vec![dir, manifest, repo_mapping];
 }
 

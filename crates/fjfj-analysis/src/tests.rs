@@ -349,12 +349,7 @@ my_bin = rule(implementation = _impl, executable = True, attrs = {"data": attr.l
         .iter()
         .find(|a| a.mnemonic == "SymlinkTree")
         .unwrap();
-    let ActionKind::RunfilesTree {
-        entries,
-        repo_mapping_contents,
-        ..
-    } = &tree.kind
-    else {
+    let ActionKind::SymlinkTree { entries, .. } = &tree.kind else {
         panic!()
     };
     let entries: Vec<(String, String)> = entries
@@ -368,7 +363,32 @@ my_bin = rule(implementation = _impl, executable = True, attrs = {"data": attr.l
             ("_main/pkg/data.txt".to_owned(), "pkg/data.txt".to_owned()),
         ]
     );
-    assert_eq!(repo_mapping_contents, ",m,_main\n");
+    let mapping = bin
+        .actions
+        .iter()
+        .find(|a| a.mnemonic == "RepoMappingManifest")
+        .unwrap();
+    let ActionKind::WriteFile { contents, .. } = &mapping.kind else {
+        panic!()
+    };
+    assert_eq!(contents, b",m,_main\n");
+    // Bazel's four: the mapping and the manifest it writes, the tree it links
+    // from the manifest and the directory that stands for the tree.
+    let mnemonics: Vec<&str> = bin
+        .actions
+        .iter()
+        .filter(|a| a.mnemonic != "FileWrite")
+        .map(|a| a.mnemonic.as_str())
+        .collect();
+    assert_eq!(
+        mnemonics,
+        [
+            "RepoMappingManifest",
+            "SourceSymlinkManifest",
+            "SymlinkTree",
+            "RunfilesTree"
+        ]
+    );
 }
 
 /// Python's `legacy_create_init`, probed with `bazel build` of a py_binary: an
@@ -405,7 +425,7 @@ my_bin = rule(implementation = _impl, executable = True, attrs = {"data": attr.l
         .iter()
         .find(|a| a.mnemonic == "SymlinkTree")
         .unwrap();
-    let ActionKind::RunfilesTree { empty_files, .. } = &tree.kind else {
+    let ActionKind::SymlinkTree { empty_files, .. } = &tree.kind else {
         panic!()
     };
     assert_eq!(
