@@ -434,6 +434,7 @@ fn build_options(
         record_execution_platforms: true,
         test: None,
         workspace_status: None,
+        incompatible: None,
     }
 }
 

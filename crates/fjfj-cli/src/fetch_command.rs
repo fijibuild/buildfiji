@@ -288,6 +288,9 @@ pub(crate) fn run_for_build(
     let report = match build {
         Some(options) if targets.failures.is_empty() || options.keep_going => {
             let mut options = options.clone();
+            if let Some(incompatible) = &mut options.incompatible {
+                incompatible.explicit = targets.explicit.clone();
+            }
             if let Some(platforms) = repos.module_repo("platforms") {
                 for (setting, value) in fjfj_graph::config::host_constraints() {
                     options.configuration.constraints.insert(fjfj_graph::Label {

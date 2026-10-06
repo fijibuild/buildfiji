@@ -35,6 +35,27 @@ pub fn dep_info(target: &ConfiguredTarget, generated: bool) -> DepInfo {
 /// The repository that stands for the builtins as the file a rule is defined in.
 pub(crate) const NATIVE_REPO: &str = "_builtins";
 
+/// Whether the rule class is one of tests, which is known without analysing a
+/// target of it.
+pub(crate) async fn is_test(ctx: &Ctx, rule_class: &str, bzl: Option<&Label>) -> bool {
+    let native = || {
+        fjfj_graph::rule::native_rule(rule_class)
+            .is_some_and(|class| fjfj_graph::schema::RuleSchema::native(class).test)
+    };
+    let Some(bzl) = bzl.filter(|b| b.repo != NATIVE_REPO) else {
+        return native();
+    };
+    let Ok(env) = ctx.data::<Env>() else {
+        return false;
+    };
+    let (rules, bzl) = (env.rules.clone(), bzl.clone());
+    let module = tokio::task::spawn_blocking(move || rules.module(&bzl)).await;
+    match module {
+        Ok(Ok(module)) => rule_schema(&module, rule_class).is_some_and(|s| s.test),
+        _ => false,
+    }
+}
+
 pub(crate) async fn analyze(
     ctx: &Ctx,
     key: &ConfiguredTargetKey,

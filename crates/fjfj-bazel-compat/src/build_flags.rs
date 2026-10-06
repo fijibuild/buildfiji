@@ -23,6 +23,7 @@ pub const IMPLEMENTED: &[&str] = &[
     "symlink_prefix",
     "show_result",
     "build",
+    "skip_incompatible_explicit_targets",
     "copt",
     "cxxopt",
     "conlyopt",
@@ -102,6 +103,9 @@ pub struct BuildFlags {
     pub show_result: Option<String>,
     /// `--build` (default true): `--nobuild` stops after analysis.
     pub build: Option<bool>,
+    /// `--skip_incompatible_explicit_targets`: a target named outright that
+    /// the platform cannot build is skipped, as one a wildcard selects is.
+    pub skip_incompatible_explicit_targets: bool,
     /// `--copt` and the like, by flag name, each value in order.
     pub options: Vec<(String, String)>,
     /// `--//pkg:flag=value`, in order.
@@ -156,6 +160,10 @@ pub fn extract(args: &[String], command: &str) -> (BuildFlags, Vec<String>) {
         }
         if name == "build" {
             flags.build = Some(!m.negated);
+            continue;
+        }
+        if name == "skip_incompatible_explicit_targets" {
+            flags.skip_incompatible_explicit_targets = !m.negated;
             continue;
         }
         let Some(value) = m.value.map(str::to_string).or_else(|| iter.next().cloned()) else {
@@ -227,6 +235,24 @@ mod tests {
 
     fn args(words: &[&str]) -> Vec<String> {
         words.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn skip_incompatible_explicit_targets_is_a_switch() {
+        let (flags, rest) = extract(
+            &args(&["--skip_incompatible_explicit_targets", "//a:a"]),
+            "build",
+        );
+        assert!(flags.skip_incompatible_explicit_targets);
+        assert_eq!(rest, ["//a:a"]);
+        let (flags, _) = extract(
+            &args(&[
+                "--skip_incompatible_explicit_targets",
+                "--noskip_incompatible_explicit_targets",
+            ]),
+            "build",
+        );
+        assert!(!flags.skip_incompatible_explicit_targets);
     }
 
     #[test]

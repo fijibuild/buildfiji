@@ -1200,3 +1200,83 @@ b = rule(implementation = _b, executable = True, attrs = {
         ]
     );
 }
+
+/// What `bazel cquery 'deps(//p:c)'` showed: a target whose `target_compatible_with`
+/// the platform does not meet is analysed no further than the constraint values,
+/// and what reads it is incompatible too, with its dependencies still analysed.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_target_the_platform_cannot_build_is_incompatible_and_so_is_what_reads_it() {
+    let (_dir, repos) = workspace(&[(
+        "BUILD.bazel",
+        r#"
+constraint_setting(name = "cs")
+constraint_value(name = "cv", constraint_setting = ":cs")
+constraint_setting(name = "os")
+constraint_value(name = "linux", constraint_setting = ":os")
+genrule(name = "c", outs = ["c.txt"], cmd = "true", target_compatible_with = [":linux", ":cv"])
+genrule(name = "ok", outs = ["ok.txt"], cmd = "true", target_compatible_with = [":linux"])
+genrule(name = "reads", srcs = [":c"], outs = ["r.txt"], cmd = "true")
+genrule(name = "reads_ok", srcs = [":ok"], outs = ["ro.txt"], cmd = "true")
+genrule(name = "unless", outs = ["u.txt"], cmd = "true", target_compatible_with = select({":linux": ["//:cv"], "//conditions:default": []}))
+"#,
+    )]);
+    let mut on_linux = config();
+    on_linux.constraints.insert(Label {
+        repo: String::new(),
+        package: String::new(),
+        name: "linux".into(),
+    });
+    let label = |name: &str| Label {
+        repo: String::new(),
+        package: String::new(),
+        name: name.into(),
+    };
+    let c = analyse_in(&repos, "//:c", on_linux.clone()).await.unwrap();
+    let why = c.incompatible.as_ref().unwrap();
+    assert_eq!(why.unsatisfied, [label("cv")]);
+    assert_eq!(why.chain.len(), 1);
+    // Only what decided it is a dependency, not the genrule's own.
+    let deps: Vec<Label> = c.deps.iter().map(|k| k.label.clone()).collect();
+    assert_eq!(deps, [label("linux"), label("cv")]);
+    assert!(c.actions.is_empty());
+    // A platform with all of them builds it.
+    let mut both = on_linux.clone();
+    both.constraints.insert(label("cv"));
+    assert!(
+        analyse_in(&repos, "//:c", both)
+            .await
+            .unwrap()
+            .incompatible
+            .is_none()
+    );
+    let ok = analyse_in(&repos, "//:ok", on_linux.clone()).await.unwrap();
+    assert!(ok.incompatible.is_none());
+    assert!(!ok.actions.is_empty());
+    // What reads an incompatible target is, after being analysed in full.
+    let reads = analyse_in(&repos, "//:reads", on_linux.clone())
+        .await
+        .unwrap();
+    let why = reads.incompatible.as_ref().unwrap();
+    let chain: Vec<Label> = why.chain.iter().map(|k| k.label.clone()).collect();
+    assert_eq!(chain, [label("reads"), label("c")]);
+    assert_eq!(why.unsatisfied, [label("cv")]);
+    assert!(!reads.actions.is_empty());
+    assert!(
+        analyse_in(&repos, "//:reads_ok", on_linux.clone())
+            .await
+            .unwrap()
+            .incompatible
+            .is_none()
+    );
+    // The `select()` that decides what is asked is read to get there.
+    let unless = analyse_in(&repos, "//:unless", on_linux).await.unwrap();
+    assert!(unless.incompatible.is_some());
+    // A configuration with no platform asks for nothing.
+    assert!(
+        analyse(&repos, "//:c")
+            .await
+            .unwrap()
+            .incompatible
+            .is_none()
+    );
+}

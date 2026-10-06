@@ -69,6 +69,9 @@ pub struct Failure {
 pub struct Resolved {
     /// The targets selected, first selected first, each once.
     pub targets: Vec<Label>,
+    /// Those of `targets` a pattern names, not one that selects what is in a
+    /// package or below a directory.
+    pub explicit: std::collections::BTreeSet<Label>,
     pub failures: Vec<Failure>,
 }
 
@@ -346,11 +349,15 @@ pub fn resolve_with(
     };
     let mut selected: Vec<Label> = Vec::new();
     let mut removed: HashSet<Label> = HashSet::new();
+    let mut explicit: std::collections::BTreeSet<Label> = std::collections::BTreeSet::new();
     let mut failures = Vec::new();
     for pattern in patterns {
         match resolver.select(&pattern.pattern) {
             Ok(labels) if pattern.negative => removed.extend(labels),
             Ok(labels) => {
+                if matches!(pattern.pattern, Pattern::Target(_) | Pattern::Path { .. }) {
+                    explicit.extend(labels.iter().cloned());
+                }
                 for label in labels {
                     if !selected.contains(&label) {
                         selected.push(label);
@@ -364,8 +371,10 @@ pub fn resolve_with(
         }
     }
     selected.retain(|l| !removed.contains(l));
+    explicit.retain(|l| selected.contains(l));
     Resolved {
         targets: selected,
+        explicit,
         failures,
     }
 }

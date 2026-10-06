@@ -12,7 +12,11 @@ pub(crate) async fn run(args: TargetArgs) -> Result<(), CliError> {
         eprintln!("ERROR: No test targets were found, yet testing was requested");
         return Err(CliError::NoTests);
     }
-    if report.tests.iter().any(|t| t.status != TestStatus::Passed) {
+    if report
+        .tests
+        .iter()
+        .any(|t| !matches!(t.status, TestStatus::Passed | TestStatus::Skipped))
+    {
         return Err(CliError::TestsFailed);
     }
     Ok(())

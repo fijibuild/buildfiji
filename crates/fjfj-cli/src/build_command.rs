@@ -46,6 +46,20 @@ pub(crate) struct Options {
     /// The contents of `stable-status.txt` and `volatile-status.txt`, for the
     /// action that writes them; none for a command that builds nothing.
     pub workspace_status: Option<(String, String)>,
+    /// What to do with a target the platform cannot build; `None` leaves them
+    /// in, as `cquery` and `aquery` show them.
+    pub incompatible: Option<IncompatibleRoots>,
+}
+
+/// How a build treats the targets it was asked for that its platform cannot
+/// build: those a wildcard selected are skipped, and one named outright is an
+/// error unless it is skipped too.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct IncompatibleRoots {
+    /// The targets a pattern names, not selects.
+    pub explicit: BTreeSet<Label>,
+    /// `--skip_incompatible_explicit_targets`.
+    pub skip_explicit: bool,
 }
 
 /// The configuration the build flags ask for.
@@ -180,6 +194,8 @@ pub(crate) enum TestStatus {
     Timeout,
     /// It did not run: something it needs failed to build.
     NoStatus,
+    /// The platform cannot build it.
+    Skipped,
 }
 
 /// A test that was run.
@@ -258,6 +274,11 @@ pub(crate) struct Report {
     pub results: Vec<TargetResult>,
     /// Analysis errors, one message each, with the target they stopped.
     pub analysis_errors: Vec<(Label, String)>,
+    /// Targets named outright that the platform cannot build, and why.
+    pub incompatible_errors: Vec<(Label, String)>,
+    /// Targets of the request left unbuilt as the platform cannot build them:
+    /// they were analysed, and are not among the results.
+    pub skipped: Vec<Label>,
     /// Where each of those stopped, for the targets that could be placed.
     pub analysis_sites: BTreeMap<Label, Site>,
     pub failures: Vec<Failure>,
@@ -288,6 +309,8 @@ impl Report {
             printed: Vec::new(),
             results: Vec::new(),
             analysis_errors: Vec::new(),
+            incompatible_errors: Vec::new(),
+            skipped: Vec::new(),
             analysis_sites: BTreeMap::new(),
             failures: Vec::new(),
             analysed: Vec::new(),
@@ -305,7 +328,9 @@ impl Report {
     }
 
     pub fn succeeded(&self) -> bool {
-        self.analysis_errors.is_empty() && self.failures.is_empty()
+        self.analysis_errors.is_empty()
+            && self.incompatible_errors.is_empty()
+            && self.failures.is_empty()
     }
 }
 
@@ -478,6 +503,81 @@ fn host_constraints(repos: &Repos) -> Option<std::collections::BTreeSet<fjfj_gra
     )
 }
 
+/// A requested target the platform cannot build.
+struct SkippedRoot {
+    label: Label,
+    is_test: bool,
+    /// What a target named outright says, which is an error.
+    error: Option<String>,
+}
+
+/// `roots` without the targets the platform cannot build, and those.
+fn split_incompatible(
+    roots: Vec<(Label, Arc<ConfiguredTarget>)>,
+    how: Option<&IncompatibleRoots>,
+) -> (Vec<(Label, Arc<ConfiguredTarget>)>, Vec<SkippedRoot>) {
+    let Some(how) = how else {
+        return (roots, Vec::new());
+    };
+    let mut kept = Vec::new();
+    let mut skipped = Vec::new();
+    for (label, target) in roots {
+        let Some(why) = &target.incompatible else {
+            kept.push((label, target));
+            continue;
+        };
+        let error = (how.explicit.contains(&label) && !how.skip_explicit)
+            .then(|| incompatible_message(&label, why));
+        skipped.push(SkippedRoot {
+            is_test: target.test.is_some() || why.is_test,
+            label,
+            error,
+        });
+    }
+    (kept, skipped)
+}
+
+/// What Bazel says of a target it was asked for and cannot build: the chain
+/// of targets that led to the one the platform does not suit, and what
+/// that one lacked.
+fn incompatible_message(label: &Label, why: &fjfj_analysis::Incompatible) -> String {
+    let mut chain = String::new();
+    let platform = why
+        .chain
+        .first()
+        .and_then(|key| {
+            key.configuration
+                .settings
+                .get("//command_line_option:platforms")
+        })
+        .and_then(|value| match value {
+            fjfj_graph::SettingValue::List(items) => items.first().cloned(),
+            _ => None,
+        })
+        .unwrap_or_else(|| "@@platforms//host:host".to_owned());
+    for (n, key) in why.chain.iter().enumerate() {
+        chain.push_str(&format!(
+            "\n    {} ({})",
+            label_text(&key.label),
+            &key.configuration.checksum()[..6]
+        ));
+        if n + 1 == why.chain.len() {
+            let wanted: Vec<String> = why.unsatisfied.iter().map(label_text).collect();
+            let wanted = match wanted.as_slice() {
+                [one] => format!("constraint {one}"),
+                many => format!("constraints [{}]", many.join(", ")),
+            };
+            chain.push_str(&format!(
+                "   <-- target platform ({platform}) didn't satisfy {wanted}"
+            ));
+        }
+    }
+    format!(
+        "Target {} is incompatible and cannot be built, but was explicitly requested.\nDependency chain:{chain}",
+        label_text(label)
+    )
+}
+
 /// Build `targets`. Blocking; run where a Tokio runtime is current.
 pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> Report {
     let started = Instant::now();
@@ -587,6 +687,9 @@ pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> R
         &configuration,
         &mut report,
     ));
+    let (mut roots, skipped_roots) =
+        split_incompatible(roots, request.options.incompatible.as_ref());
+    let mut aspect_roots = aspect_roots;
     report.analysed = all.clone();
     let mut failed_prints: Vec<String> = Vec::new();
     for (_, message) in &mut report.analysis_errors {
@@ -613,6 +716,22 @@ pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> R
     if !report.analysis_errors.is_empty() && !request.options.keep_going {
         report.elapsed = started.elapsed();
         return report;
+    }
+    let mut skipped_tests: Vec<Label> = Vec::new();
+    for skipped in skipped_roots {
+        report.skipped.push(skipped.label.clone());
+        if skipped.is_test && request.options.test.is_some() && skipped.error.is_none() {
+            skipped_tests.push(skipped.label.clone());
+        }
+        if let Some(message) = skipped.error {
+            report.incompatible_errors.push((skipped.label, message));
+        }
+    }
+    // The build of what was asked stops at the first of them, which leaves
+    // only what every build does.
+    if !report.incompatible_errors.is_empty() && !request.options.keep_going {
+        roots.clear();
+        aspect_roots.clear();
     }
 
     let mut actions: Vec<Action> = all.iter().flat_map(|t| t.actions.clone()).collect();
@@ -743,6 +862,16 @@ pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> R
             cached,
             log: request.layout.execroot().join(&log),
             size: test.size.clone(),
+        });
+    }
+    for label in skipped_tests {
+        report.tests.push(TestResult {
+            label,
+            status: TestStatus::Skipped,
+            took: Duration::ZERO,
+            cached: false,
+            log: std::path::PathBuf::new(),
+            size: String::new(),
         });
     }
     report.tests.sort_by_key(|t| label_text(&t.label));
@@ -930,10 +1059,18 @@ pub(crate) fn print(
     for line in analysis_error_lines(report, layout, keep_going) {
         eprintln!("{line}");
     }
-    if report.analysis_errors.is_empty() || keep_going {
-        let analysed = report.results.len();
+    let incompatible = !report.incompatible_errors.is_empty();
+    // What the platform cannot build was analysed as well.
+    let analysed = report.results.len() + report.skipped.len();
+    if (report.analysis_errors.is_empty() && !incompatible) || keep_going {
         let what = if analysed == 1 {
-            format!("target {}", label_text(&report.results[0].label))
+            let only = report
+                .results
+                .first()
+                .map(|r| &r.label)
+                .or(report.skipped.first());
+            only.map(|label| format!("target {}", label_text(label)))
+                .unwrap_or_default()
         } else {
             plural(analysed, "target", "targets")
         };
@@ -942,6 +1079,14 @@ pub(crate) fn print(
             plural(report.packages, "package loaded", "packages loaded"),
             plural(report.configured, "target configured", "targets configured"),
         );
+    }
+    if keep_going {
+        for (label, message) in &report.incompatible_errors {
+            eprintln!(
+                "WARNING: errors encountered while analyzing target '{}', it will not be built.\n{message}",
+                label_text(label)
+            );
+        }
     }
     for (what, text) in &report.outputs {
         eprintln!("INFO: From {what}:\n{}", text.trim_end());
@@ -975,6 +1120,18 @@ pub(crate) fn print(
     if !failed_owners.is_empty() && !verbose_failures {
         eprintln!("Use --verbose_failures to see the command lines of failed build steps.");
     }
+    // A target named outright that cannot be built stops the build, and with
+    // one target asked for it is the one that failed.
+    if !keep_going && let Some((label, message)) = report.incompatible_errors.first() {
+        if requested == 1 {
+            eprintln!("Target {} failed to build", label_text(label));
+        }
+        eprintln!("Use --verbose_failures to see the command lines of failed build steps.");
+        eprintln!(
+            "ERROR: Analysis of target '{}' failed; build aborted: {message}",
+            label_text(label)
+        );
+    }
     let ok = report.succeeded();
     if ok || keep_going {
         let built: Vec<&TargetResult> = report.results.iter().filter(|r| r.built).collect();
@@ -996,8 +1153,12 @@ pub(crate) fn print(
             ),
         };
         eprintln!("INFO: Found {found}...");
+        if keep_going && incompatible {
+            eprintln!("Use --verbose_failures to see the command lines of failed build steps.");
+            eprintln!("ERROR: command succeeded, but not all targets were analyzed");
+        }
         // `--show_result=1`: say where the result is when there is one target.
-        if report.results.len() <= show_result {
+        if analysed <= show_result {
             for result in &built {
                 if result.files.is_empty() {
                     eprintln!(
@@ -1042,7 +1203,7 @@ pub(crate) fn print(
     let tests_failed = report
         .tests
         .iter()
-        .filter(|t| t.status != TestStatus::Passed)
+        .filter(|t| !matches!(t.status, TestStatus::Passed | TestStatus::Skipped))
         .count();
     if ok && tests_failed > 0 {
         eprintln!(
@@ -1063,8 +1224,12 @@ pub(crate) fn print(
     } else {
         eprintln!("ERROR: Build did NOT complete successfully");
     }
-    if ok && test_output.is_some() {
+    if test_output.is_some() && (ok || (keep_going && incompatible)) {
         print_test_summary(report);
+        if !ok {
+            eprintln!("All tests passed but there were other errors during the build.");
+            eprintln!();
+        }
     }
     ok
 }
@@ -1091,7 +1256,7 @@ fn print_test_output(report: &Report, mode: fjfj_bazel_compat::test_flags::TestO
                 );
                 true
             }
-            TestStatus::NoStatus => continue,
+            TestStatus::NoStatus | TestStatus::Skipped => continue,
         };
         let show = match mode {
             TestOutput::Summary => false,
@@ -1128,30 +1293,55 @@ fn print_test_output(report: &Report, mode: fjfj_bazel_compat::test_flags::TestO
 /// The table of results and the count under it.
 fn print_test_summary(report: &Report) {
     let mut too_big = false;
-    for test in &report.tests {
+    // What was skipped comes after what ran.
+    let skipped_last = report
+        .tests
+        .iter()
+        .filter(|t| t.status != TestStatus::Skipped)
+        .chain(
+            report
+                .tests
+                .iter()
+                .filter(|t| t.status == TestStatus::Skipped),
+        );
+    for test in skipped_last {
         let (status, cached) = match &test.status {
             TestStatus::Passed => ("PASSED", test.cached),
             TestStatus::Failed(_) => ("FAILED", false),
             TestStatus::Timeout => ("TIMEOUT", false),
             TestStatus::NoStatus => ("NO STATUS", false),
+            TestStatus::Skipped => ("SKIPPED", false),
         };
         let label = label_text(&test.label);
         let prefix = if cached { "(cached) " } else { "" };
-        let width = 73 - prefix.len();
-        let took = if matches!(test.status, TestStatus::NoStatus) {
+        // The status ends where PASSED does.
+        let width = 73 - prefix.len() - status.len().saturating_sub(6);
+        let took = if matches!(test.status, TestStatus::NoStatus | TestStatus::Skipped) {
             String::new()
         } else {
             format!(" in {:.1}s", test.took.as_secs_f64())
         };
         eprintln!("{label:<width$}{prefix}{status}{took}");
-        if !matches!(test.status, TestStatus::Passed | TestStatus::NoStatus) {
+        if !matches!(
+            test.status,
+            TestStatus::Passed | TestStatus::NoStatus | TestStatus::Skipped
+        ) {
             eprintln!("  {}", test.log.display());
         }
         if test.status == TestStatus::Passed && is_too_big(test) {
             too_big = true;
         }
     }
-    let ran = report.tests.iter().filter(|t| !t.cached).count();
+    let skipped = report
+        .tests
+        .iter()
+        .filter(|t| t.status == TestStatus::Skipped)
+        .count();
+    let ran = report
+        .tests
+        .iter()
+        .filter(|t| !t.cached && t.status != TestStatus::Skipped)
+        .count();
     let total = report.tests.len();
     let passed = report
         .tests
@@ -1161,7 +1351,12 @@ fn print_test_summary(report: &Report) {
     let failed = report
         .tests
         .iter()
-        .filter(|t| !matches!(t.status, TestStatus::Passed | TestStatus::NoStatus))
+        .filter(|t| {
+            !matches!(
+                t.status,
+                TestStatus::Passed | TestStatus::NoStatus | TestStatus::Skipped
+            )
+        })
         .count();
     let mut parts = Vec::new();
     if passed > 0 {
@@ -1176,6 +1371,13 @@ fn print_test_summary(report: &Report) {
             "1 fails locally".to_owned()
         } else {
             format!("{failed} fail locally")
+        });
+    }
+    if skipped > 0 {
+        parts.push(if skipped == 1 {
+            "1 was skipped".to_owned()
+        } else {
+            format!("{skipped} were skipped")
         });
     }
     eprintln!();
@@ -1325,5 +1527,86 @@ mod tests {
             lines[0].contains("File \"ws/k/l.bzl\", line 2"),
             "{lines:?}"
         );
+    }
+}
+
+#[cfg(test)]
+mod incompatible_tests {
+    use super::*;
+
+    fn key(name: &str) -> ConfiguredTargetKey {
+        ConfiguredTargetKey {
+            label: Label {
+                repo: String::new(),
+                package: "p".into(),
+                name: name.into(),
+            },
+            configuration: Configuration::default(),
+        }
+    }
+
+    /// What `bazel build //p:chain2` said, but for the digits of the
+    /// configuration, which are fjfj's own.
+    #[test]
+    fn the_chain_ends_at_the_target_that_lacked_the_constraints() {
+        let why = fjfj_analysis::Incompatible {
+            chain: vec![key("chain2"), key("c")],
+            unsatisfied: vec![key("cv").label, key("cv2").label],
+            is_test: false,
+        };
+        let digits = &key("c").configuration.checksum()[..6].to_owned();
+        assert_eq!(
+            incompatible_message(&key("chain2").label, &why),
+            format!(
+                "Target //p:chain2 is incompatible and cannot be built, but was explicitly requested.\nDependency chain:\n    //p:chain2 ({digits})\n    //p:c ({digits})   <-- target platform (@@platforms//host:host) didn't satisfy constraints [//p:cv, //p:cv2]"
+            )
+        );
+        let one = fjfj_analysis::Incompatible {
+            chain: vec![key("c")],
+            unsatisfied: vec![key("cv").label],
+            is_test: false,
+        };
+        assert!(
+            incompatible_message(&key("c").label, &one)
+                .ends_with("didn't satisfy constraint //p:cv")
+        );
+    }
+
+    #[test]
+    fn a_target_named_outright_is_an_error_and_one_a_wildcard_selected_is_skipped() {
+        let why = Arc::new(fjfj_analysis::Incompatible {
+            chain: vec![key("c")],
+            unsatisfied: vec![key("cv").label],
+            is_test: false,
+        });
+        let mut incompatible = ConfiguredTarget::new(&key("c"));
+        incompatible.incompatible = Some(why);
+        let incompatible = Arc::new(incompatible);
+        let fine = Arc::new(ConfiguredTarget::new(&key("ok")));
+        let roots = || {
+            vec![
+                (key("c").label, incompatible.clone()),
+                (key("ok").label, fine.clone()),
+            ]
+        };
+        let how = |named: &[&str], skip_explicit| IncompatibleRoots {
+            explicit: named.iter().map(|n| key(n).label).collect(),
+            skip_explicit,
+        };
+        let (kept, skipped) = split_incompatible(roots(), Some(&how(&["c"], false)));
+        assert_eq!(kept.len(), 1);
+        assert!(
+            skipped[0]
+                .error
+                .as_ref()
+                .unwrap()
+                .contains("explicitly requested")
+        );
+        let (_, skipped) = split_incompatible(roots(), Some(&how(&["c"], true)));
+        assert!(skipped[0].error.is_none());
+        let (_, skipped) = split_incompatible(roots(), Some(&how(&[], false)));
+        assert!(skipped[0].error.is_none());
+        let (kept, skipped) = split_incompatible(roots(), None);
+        assert_eq!((kept.len(), skipped.len()), (2, 0));
     }
 }

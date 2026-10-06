@@ -148,7 +148,8 @@ impl<'a> ConfiguredGraph<'a> {
 
     /// Whether Bazel resolves toolchains for the target, which makes the
     /// platforms its dependencies: a rule, but not one that describes a
-    /// platform or a toolchain, a `config_setting` or a build setting.
+    /// platform or a toolchain, a `config_setting` or a build setting, and not
+    /// one the platform cannot build, which stops before it gets to them.
     fn resolves_toolchains(&self, target: &ConfiguredTarget) -> bool {
         const EXEMPT: [&str; 8] = [
             "platform",
@@ -168,6 +169,10 @@ impl<'a> ConfiguredGraph<'a> {
                 .rule_info
                 .as_ref()
                 .is_some_and(|i| i.schema.build_setting.is_some())
+            && target
+                .incompatible
+                .as_ref()
+                .is_none_or(|i| i.chain.len() > 1)
     }
 
     /// Every configured target of `label`.

@@ -39,6 +39,18 @@ const FILES: &[(&str, &str)] = &[
 ];
 
 fn resolved(offset: &str, patterns: &[&str]) -> (Vec<String>, Vec<(String, String)>, String) {
+    let (out, ws) = resolved_all(offset, patterns);
+    let mut targets: Vec<String> = out.targets.iter().map(ToString::to_string).collect();
+    targets.sort();
+    let failures = out
+        .failures
+        .into_iter()
+        .map(|f| (f.pattern, f.message))
+        .collect();
+    (targets, failures, ws)
+}
+
+fn resolved_all(offset: &str, patterns: &[&str]) -> (fjfj_loading::Resolved, String) {
     let dir = tempfile::tempdir().unwrap();
     let ws = dir.path().join("ws");
     for (file, text) in FILES {
@@ -69,15 +81,18 @@ fn resolved(offset: &str, patterns: &[&str]) -> (Vec<String>, Vec<(String, Strin
         .iter()
         .map(|p| TargetPattern::parse(p, ctx, &mut |r| r.to_owned()).unwrap())
         .collect();
-    let out = resolve(&parsed, &repos);
-    let mut targets: Vec<String> = out.targets.iter().map(ToString::to_string).collect();
-    targets.sort();
-    let failures = out
-        .failures
-        .into_iter()
-        .map(|f| (f.pattern, f.message))
-        .collect();
-    (targets, failures, ws.display().to_string())
+    (resolve(&parsed, &repos), ws.display().to_string())
+}
+
+/// What a pattern names outright, as opposed to what a wildcard selects,
+/// which `--skip_incompatible_explicit_targets` is about.
+#[test]
+fn the_targets_a_pattern_names_are_explicit_and_those_a_wildcard_selects_are_not() {
+    let (out, _) = resolved_all("", &["//a:a", "//a:all", "//c:*", "a/x.txt", "-//a:other"]);
+    let named: Vec<String> = out.explicit.iter().map(ToString::to_string).collect();
+    assert_eq!(named, ["//a:a", "//a:x.txt"]);
+    let (out, _) = resolved_all("", &["//a:other", "-//a:other"]);
+    assert_eq!(out.explicit.len(), 0);
 }
 
 #[test]

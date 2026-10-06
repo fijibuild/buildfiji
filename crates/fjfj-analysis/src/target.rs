@@ -128,6 +128,23 @@ pub struct ConfiguredTarget {
     /// its own: what Bazel calls the transitive packages, which decide the
     /// source repositories of a runfiles tree's repo mapping.
     pub transitive_repos: Arc<BTreeSet<String>>,
+    /// Why the target cannot be built for its configuration's platform, if it
+    /// cannot: it, or a target it reads, asks for constraints the platform
+    /// lacks.
+    pub incompatible: Option<Arc<Incompatible>>,
+}
+
+/// Why a target is incompatible with the platform it is configured for.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Incompatible {
+    /// From the target that reads an incompatible one, to the one that is
+    /// incompatible itself, which is last.
+    pub chain: Vec<ConfiguredTargetKey>,
+    /// The `target_compatible_with` constraint values of the last that the
+    /// platform does not have.
+    pub unsatisfied: Vec<Label>,
+    /// The rule of the incompatible target is a test rule.
+    pub is_test: bool,
 }
 
 /// What an aspect sees of the rule that made a target.
@@ -189,6 +206,7 @@ impl ConfiguredTarget {
             aspect_deps: Vec::new(),
             rule_info: None,
             transitive_repos: Arc::new(BTreeSet::from([key.label.repo.clone()])),
+            incompatible: None,
         }
     }
 }
@@ -199,6 +217,22 @@ impl Key for ConfiguredTargetKey {
     async fn compute(&self, ctx: &Ctx) -> Result<ConfiguredTarget, Error> {
         let mut target = self.analyse(ctx).await?;
         target.transitive_repos = transitive_repos(ctx, &target).await?;
+        // A target that reads an incompatible one is incompatible too, which
+        // is known once what it reads is analysed.
+        if target.incompatible.is_none() && target.aspect.is_none() {
+            for dep in ctx.get_all(target.deps.clone()).await {
+                if let Some(inner) = &dep?.incompatible {
+                    target.incompatible = Some(Arc::new(Incompatible {
+                        chain: std::iter::once(self.clone())
+                            .chain(inner.chain.iter().cloned())
+                            .collect(),
+                        unsatisfied: inner.unsatisfied.clone(),
+                        is_test: target.test.is_some(),
+                    }));
+                    break;
+                }
+            }
+        }
         Ok(target)
     }
 }
@@ -239,6 +273,37 @@ impl ConfiguredTargetKey {
                     let attrs_declared = attrs;
                     let attrs = crate::select::resolve(ctx, self, attrs).await?;
                     target.attrs = attrs.clone();
+                    // A platform without the constraints the target asks for
+                    // cannot build it, and what it reads is not analysed: only
+                    // the constraint values that decided it are.
+                    if let Some((values, unsatisfied)) =
+                        unsatisfied_constraints(&self.configuration, rule_class, &attrs)
+                    {
+                        // The `select()` conditions were read to get here.
+                        for label in values
+                            .into_iter()
+                            .chain(declared_conditions(attrs_declared))
+                        {
+                            let key = ConfiguredTargetKey {
+                                label,
+                                configuration: self.configuration.clone(),
+                            };
+                            if !target.deps.contains(&key) {
+                                target.deps.push(key);
+                            }
+                        }
+                        target.incompatible = Some(Arc::new(Incompatible {
+                            chain: vec![self.clone()],
+                            unsatisfied,
+                            is_test: crate::starlark_rule::is_test(
+                                ctx,
+                                rule_class,
+                                defined_in.as_ref(),
+                            )
+                            .await,
+                        }));
+                        return Ok(target);
+                    }
                     if ctx.data::<Env>()?.record_execution_platforms {
                         let exec: Vec<Label> = attrs
                             .iter()
@@ -318,6 +383,30 @@ impl ConfiguredTargetKey {
             }
         }
     }
+}
+
+/// The `target_compatible_with` values of a rule and those among them the
+/// platform of `configuration` lacks, when there are any. A configuration
+/// that does not know its platform (no `@platforms`) asks nothing, and a
+/// `toolchain` says what it is for by the attribute, not what it needs.
+fn unsatisfied_constraints(
+    configuration: &Configuration,
+    rule_class: &str,
+    attrs: &[(String, AttrValue)],
+) -> Option<(Vec<Label>, Vec<Label>)> {
+    if rule_class == "toolchain" || configuration.constraints.is_empty() {
+        return None;
+    }
+    let values = attrs.iter().find_map(|(name, value)| match value {
+        AttrValue::LabelList(list) if name == "target_compatible_with" => Some(list.clone()),
+        _ => None,
+    })?;
+    let missing: Vec<Label> = values
+        .iter()
+        .filter(|v| !configuration.constraints.contains(v))
+        .cloned()
+        .collect();
+    (!missing.is_empty()).then_some((values, missing))
 }
 
 /// The conditions of every `select()` among `attrs`, once each, in the order
