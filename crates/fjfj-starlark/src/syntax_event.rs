@@ -205,6 +205,9 @@ fn parse_message(text: &str) -> String {
     if text.contains("`for` cannot be used outside `def`") {
         return "`for` statements are not allowed in BUILD files. You may inline the loop, move it to a function definition (in a .bzl file), or as a last resort use a list comprehension.".to_owned();
     }
+    if text.contains("`if` cannot be used outside `def`") {
+        return "`if` statements are not allowed in BUILD files. You may move conditional logic to a function definition (in a .bzl file), or use an `if` expression for simple cases.".to_owned();
+    }
     if text.contains("`return` cannot be used outside of a `def`") {
         return "return statements must be inside a function".to_owned();
     }
@@ -337,6 +340,10 @@ mod tests {
         (
             "for x in []: pass\n",
             "BUILD:1:1: `for` statements are not allowed in BUILD files. You may inline the loop, move it to a function definition (in a .bzl file), or as a last resort use a list comprehension.",
+        ),
+        (
+            "if x: pass\n",
+            "BUILD:1:1: `if` statements are not allowed in BUILD files. You may move conditional logic to a function definition (in a .bzl file), or use an `if` expression for simple cases.",
         ),
         (
             "x = 1 if 2\n",
