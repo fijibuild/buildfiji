@@ -18,6 +18,9 @@ use starlark::values::{Heap, Value};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
 
+/// Toolchain types, each with the target that implements the toolchain resolved for it.
+pub type ResolvedToolchains = Vec<(Label, Option<DepInfo>)>;
+
 /// What the engine hands a rule to analyse it.
 pub struct RuleRequest {
     /// The `.bzl` whose `rule()` this is, evaluated.
@@ -44,6 +47,8 @@ pub struct RuleRequest {
     /// The toolchain types the rule asked for, each with the target that
     /// implements the toolchain resolved for it, if one was.
     pub toolchains: Vec<(Label, Option<DepInfo>)>,
+    /// The same for each exec group the rule declared, by name.
+    pub exec_groups: Vec<(String, ResolvedToolchains)>,
     /// For a build setting: its value in this configuration.
     pub build_setting_value: Option<fjfj_graph::SettingValue>,
     /// The schema of a native rule whose analysis is the function
@@ -279,6 +284,19 @@ pub fn run_rule(req: &RuleRequest) -> Result<RuleResult, String> {
             .toolchains
             .iter()
             .map(|(l, d)| (l.clone(), d.clone().map(Arc::new)))
+            .collect(),
+        exec_groups: req
+            .exec_groups
+            .iter()
+            .map(|(name, types)| {
+                (
+                    name.clone(),
+                    types
+                        .iter()
+                        .map(|(l, d)| (l.clone(), d.clone().map(Arc::new)))
+                        .collect(),
+                )
+            })
             .collect(),
         rule: None,
         aspect_ids: Vec::new(),

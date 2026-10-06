@@ -48,6 +48,7 @@ fn request_in(
         outputs: Vec::new(),
         mappings: Arc::new(crate::test_support::probe_mappings()),
         toolchains: Vec::new(),
+        exec_groups: Vec::new(),
         build_setting_value: None,
         native: None,
     }

@@ -181,6 +181,7 @@ pub fn run_aspect(req: &AspectRequest) -> Result<RuleResult, String> {
                 .iter()
                 .map(|(l, d)| (l.clone(), d.clone().map(Arc::new)))
                 .collect(),
+            exec_groups: Vec::new(),
             rule,
             aspect_ids: req.aspect_ids.clone(),
             actions: Mutex::new(Vec::new()),

@@ -265,8 +265,16 @@ pub(crate) async fn analyze(
             _ => None,
         })
         .unwrap_or_default();
-    let (toolchains, toolchain_keys, chosen_platform) =
+    let (toolchains, mut toolchain_keys, chosen_platform) =
         resolve_toolchains(ctx, key, &schema.toolchains, &exec_compatible).await?;
+    // Each exec group runs on a platform of its own, with its own toolchains.
+    let mut exec_groups = Vec::new();
+    for group in &schema.exec_groups {
+        let (resolved, keys, _) =
+            resolve_toolchains(ctx, key, &group.toolchains, &group.exec_compatible_with).await?;
+        toolchain_keys.extend(keys);
+        exec_groups.push((group.name.clone(), resolved));
+    }
     if chosen_platform.is_some() {
         target.execution_platform = chosen_platform;
     }
@@ -332,6 +340,7 @@ pub(crate) async fn analyze(
         outputs,
         mappings: rules.mappings(),
         toolchains,
+        exec_groups,
         build_setting_value,
         native,
     };

@@ -740,6 +740,17 @@ fn spawn<'v>(
         param("unused_inputs_list", false, false),
     ];
     let bound = bind(function, Wording::Signature, &params, args, eval)?;
+    // An aspect's own groups are not read yet, so only a rule's are checked.
+    if let Some(group) = bound[10].filter(|v| !v.is_none())
+        && s.rule.is_none()
+    {
+        let name = group.unpack_str().unwrap_or_default();
+        if !s.schema.exec_groups.iter().any(|g| g.name == name) {
+            return Err(fatal(format!(
+                "Action declared for non-existent exec group '{name}'."
+            )));
+        }
+    }
     let outputs = files_of(eval, function, "outputs", bound[0].expect("required"))?;
     if outputs.is_empty() {
         return Err(fatal(format!("{function}() requires at least one output")));

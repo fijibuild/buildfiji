@@ -682,6 +682,7 @@ fn make_rule<'v>(
         }
     }
     let mut declared: Vec<(&'static str, Value<'v>)> = Vec::new();
+    let mut exec_groups = Vec::new();
     if let Some(subrules) = arg("subrules") {
         let items = all_of_type("subrules", subrules, heap, "Subrule", "Subrule")?;
         check_subrules_exported(&items, eval)?;
@@ -690,6 +691,17 @@ fn make_rule<'v>(
     if let Some(groups) = arg("exec_groups").and_then(DictRef::from_value) {
         check_exec_groups(&groups)?;
         declared.push(("exec_groups", arg("exec_groups").expect("given")));
+        exec_groups = groups
+            .iter()
+            .filter_map(|(name, group)| {
+                let group = group.downcast_ref::<crate::decl::ExecGroup>()?;
+                Some(fjfj_graph::schema::ExecGroupSchema {
+                    name: name.unpack_str()?.to_owned(),
+                    exec_compatible_with: group.exec_compatible_with.clone(),
+                    toolchains: group.toolchains.clone(),
+                })
+            })
+            .collect();
     }
     if let Some(cfg) = arg("cfg") {
         if !is_transition(cfg) {
@@ -719,6 +731,7 @@ fn make_rule<'v>(
         return Err(fatal(format!("Unable to parse label '{text}': {e}")));
     }
 
+    schema.exec_groups = exec_groups;
     let doc = arg("doc").and_then(|d| d.unpack_str()).map(str::to_owned);
     let name = OnceLock::new();
     name_at_assignment(eval, Kind::Rule { test }, &name)?;

@@ -24,6 +24,9 @@ use std::fmt;
 use std::sync::{Arc, Mutex};
 
 /// Everything one run of an `implementation` knows and builds.
+/// A toolchain type and the toolchain resolved for it.
+pub(crate) type ResolvedType = (Label, Option<Arc<DepInfo>>);
+
 pub(crate) struct CtxState {
     pub(crate) label: Label,
     pub(crate) rule_kind: String,
@@ -44,6 +47,8 @@ pub(crate) struct CtxState {
     pub(crate) outputs: Vec<(String, Artifact)>,
     /// `ctx.toolchains`: each type and the implementation resolved for it.
     pub(crate) toolchains: Vec<(Label, Option<Arc<DepInfo>>)>,
+    /// `ctx.exec_groups`: each declared group and its own toolchains.
+    pub(crate) exec_groups: Vec<(String, Vec<ResolvedType>)>,
     /// For an aspect: the rule it is looking at, as a `ctx` of the rule's own
     /// attributes (`ctx.rule`).
     pub(crate) rule: Option<Arc<CtxState>>,
@@ -364,11 +369,12 @@ fn ctx_members(builder: &mut MethodsBuilder) {
             .map_err(fatal)
     }
 
-    /// `ctx.exec_groups`: no exec group is declared yet (buildfiji-136.7).
+    /// `ctx.exec_groups`: the groups `rule(exec_groups = ...)` declared.
     #[starlark(attribute)]
     fn exec_groups<'v>(this: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
-        let _ = this;
-        Ok(heap.alloc(AllocDict(Vec::<(Value<'v>, Value<'v>)>::new())))
+        Ok(heap.alloc(ExecGroupCollection {
+            state: state(this).clone(),
+        }))
     }
 
     /// The features the rule asks for: its `features` attribute (the package's
@@ -451,6 +457,7 @@ fn ctx_members(builder: &mut MethodsBuilder) {
     fn toolchains<'v>(this: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
         Ok(heap.alloc(ToolchainsValue {
             state: state(this).clone(),
+            group: None,
         }))
     }
 
@@ -896,6 +903,17 @@ pub(crate) fn target_cpu(cpu: &str) -> &str {
 pub(crate) struct ToolchainsValue {
     #[allocative(skip)]
     state: Arc<CtxState>,
+    /// The exec group these are of; the rule's own when none.
+    group: Option<usize>,
+}
+
+impl ToolchainsValue {
+    fn types(&self) -> &[(Label, Option<Arc<DepInfo>>)] {
+        match self.group {
+            Some(i) => &self.state.exec_groups[i].1,
+            None => &self.state.toolchains,
+        }
+    }
 }
 
 starlark_simple_value!(ToolchainsValue);
@@ -908,7 +926,15 @@ impl fmt::Debug for ToolchainsValue {
 
 impl fmt::Display for ToolchainsValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("<toolchain context>")
+        write!(
+            f,
+            "<toolchain_context.resolved_labels: {}>",
+            self.types()
+                .iter()
+                .map(|(l, _)| crate::label::display_label(l))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
     }
 }
 
@@ -940,14 +966,13 @@ impl<'v> StarlarkValue<'v> for ToolchainsValue {
                 .map_err(|e| fatal(format!("invalid toolchain type '{text}': {e}")))?
             }
         };
-        let Some((_, resolved)) = self.state.toolchains.iter().find(|(l, _)| *l == wanted) else {
+        let Some((_, resolved)) = self.types().iter().find(|(l, _)| *l == wanted) else {
             return Err(fatal(format!(
                 "In {} rule {}, toolchain type {} was requested but only types [{}] are configured",
                 self.state.rule_kind,
                 crate::label::display_label(&self.state.label),
                 crate::label::display_label(&wanted),
-                self.state
-                    .toolchains
+                self.types()
                     .iter()
                     .map(|(l, _)| crate::label::display_label(l))
                     .collect::<Vec<_>>()
@@ -978,9 +1003,106 @@ impl<'v> StarlarkValue<'v> for ToolchainsValue {
     fn is_in(&self, other: Value<'v>) -> starlark::Result<bool> {
         let label = crate::label::label_of_value(other);
         Ok(self
-            .state
-            .toolchains
+            .types()
             .iter()
             .any(|(l, r)| Some(l) == label.as_ref() && r.is_some()))
+    }
+}
+
+/// `ctx.exec_groups`: indexed by a group's name.
+#[derive(ProvidesStaticType, NoSerialize, Allocative)]
+pub(crate) struct ExecGroupCollection {
+    #[allocative(skip)]
+    state: Arc<CtxState>,
+}
+
+starlark_simple_value!(ExecGroupCollection);
+
+impl fmt::Debug for ExecGroupCollection {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("exec groups")
+    }
+}
+
+impl fmt::Display for ExecGroupCollection {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("<exec_group_collection>")
+    }
+}
+
+#[starlark_value(type = "ExecGroupCollection")]
+impl<'v> StarlarkValue<'v> for ExecGroupCollection {
+    fn at(&self, index: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
+        let name = index.unpack_str().ok_or_else(|| {
+            fatal(format!(
+                "in index, got a {} for the exec group name",
+                index.get_type()
+            ))
+        })?;
+        match self.state.exec_groups.iter().position(|(n, _)| n == name) {
+            Some(group) => Ok(heap.alloc(ExecGroupContext {
+                state: self.state.clone(),
+                group,
+            })),
+            None => Err(fatal(format!(
+                "In {} rule {}, unrecognized exec group '{name}' requested. Available exec groups: [{}]",
+                self.state.rule_kind,
+                crate::label::display_label(&self.state.label),
+                self.state
+                    .exec_groups
+                    .iter()
+                    .map(|(n, _)| n.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ))),
+        }
+    }
+
+    fn is_in(&self, other: Value<'v>) -> starlark::Result<bool> {
+        Ok(other
+            .unpack_str()
+            .is_some_and(|name| self.state.exec_groups.iter().any(|(n, _)| n == name)))
+    }
+}
+
+/// One of `ctx.exec_groups`: what the group resolved.
+#[derive(ProvidesStaticType, NoSerialize, Allocative)]
+pub(crate) struct ExecGroupContext {
+    #[allocative(skip)]
+    state: Arc<CtxState>,
+    group: usize,
+}
+
+starlark_simple_value!(ExecGroupContext);
+
+impl fmt::Debug for ExecGroupContext {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("exec group")
+    }
+}
+
+impl fmt::Display for ExecGroupContext {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("<exec_group_context>")
+    }
+}
+
+#[starlark_value(type = "ExecGroupContext")]
+impl<'v> StarlarkValue<'v> for ExecGroupContext {
+    fn get_attr(&self, attribute: &str, heap: Heap<'v>) -> Option<Value<'v>> {
+        (attribute == "toolchains").then(|| {
+            heap.alloc(ToolchainsValue {
+                state: self.state.clone(),
+                group: Some(self.group),
+            })
+        })
+    }
+
+    fn has_attr(&self, attribute: &str, _heap: Heap<'v>) -> bool {
+        attribute == "toolchains"
+    }
+
+    fn dir_attr(&self) -> Vec<String> {
+        vec!["toolchains".to_owned()]
     }
 }

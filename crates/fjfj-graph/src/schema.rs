@@ -105,6 +105,9 @@ pub struct RuleSchema {
     pub defined_in: Option<crate::Label>,
     /// The toolchain types the class asks for and whether each must resolve.
     pub toolchains: Vec<(crate::Label, bool)>,
+    /// `rule(exec_groups = {...})`: each group's name, the constraints its
+    /// execution platform has and the toolchain types it asks for.
+    pub exec_groups: Vec<ExecGroupSchema>,
     /// Implicit outputs given as templates: the output's name in the
     /// rule's `outputs` and its template (`%{name}.txt`).
     pub outputs: Vec<(String, String)>,
@@ -124,6 +127,15 @@ pub struct RuleSchema {
     pub doc: Option<String>,
     /// `rule(provides = [...])`.
     pub provides: Vec<ProviderRef>,
+}
+
+/// An `exec_group()` a rule declares.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExecGroupSchema {
+    pub name: String,
+    pub exec_compatible_with: Vec<crate::Label>,
+    /// Each type and whether it must resolve.
+    pub toolchains: Vec<(crate::Label, bool)>,
 }
 
 /// The type of a build setting and whether the command line may set it.
@@ -190,6 +202,7 @@ impl RuleSchema {
             starlark: false,
             defined_in: None,
             toolchains: Vec::new(),
+            exec_groups: Vec::new(),
             outputs: Vec::new(),
             build_setting: None,
             incoming_transition: false,
@@ -240,6 +253,7 @@ impl RuleSchema {
             starlark: true,
             defined_in: None,
             toolchains: Vec::new(),
+            exec_groups: Vec::new(),
             outputs,
             build_setting: None,
             incoming_transition: false,

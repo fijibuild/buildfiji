@@ -623,6 +623,93 @@ r(name = "t")
     assert!(error.contains("No matching toolchains found"), "{error}");
 }
 
+/// Probed with `bazel build` of the same files: a group has toolchains of
+/// its own, `ctx.toolchains` stays the rule's, and an action may only name a
+/// group the rule declared.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_exec_group_resolves_its_own_toolchains_and_an_action_names_only_declared_groups() {
+    let (_dir, repos) = workspace(&[
+        ("MODULE.bazel", ""),
+        (
+            "defs.bzl",
+            r#"
+def _tc_impl(ctx):
+    return [platform_common.ToolchainInfo(name = ctx.attr.n)]
+my_toolchain = rule(implementation = _tc_impl, attrs = {"n": attr.string()})
+
+def _impl(ctx):
+    group = ctx.exec_groups["eg"]
+    print("groups:", "eg" in ctx.exec_groups, "" in ctx.exec_groups, group.toolchains["//:tt2"].name, group.toolchains["//:opt"], ctx.toolchains)
+    print("group:", group.toolchains)
+    if ctx.attr.bad == "get":
+        ctx.exec_groups["nope"]
+    if ctx.attr.bad == "type":
+        group.toolchains["//:other"]
+    if ctx.attr.bad == "action":
+        ctx.actions.run_shell(outputs = [ctx.actions.declare_file("o")], command = "true", exec_group = "nope")
+    return []
+r = rule(
+    implementation = _impl,
+    attrs = {"bad": attr.string()},
+    toolchains = ["//:tt"],
+    exec_groups = {"eg": exec_group(toolchains = ["//:tt2", config_common.toolchain_type("//:opt", mandatory = False)])},
+)
+"#,
+        ),
+        (
+            "BUILD.bazel",
+            r#"
+load(":defs.bzl", "my_toolchain", "r")
+toolchain_type(name = "tt")
+toolchain_type(name = "tt2")
+toolchain_type(name = "opt")
+toolchain_type(name = "other")
+my_toolchain(name = "one", n = "one")
+my_toolchain(name = "two", n = "two")
+toolchain(name = "tc1", toolchain_type = ":tt", toolchain = ":one")
+toolchain(name = "tc2", toolchain_type = ":tt2", toolchain = ":two")
+r(name = "ok")
+r(name = "get", bad = "get")
+r(name = "type", bad = "type")
+r(name = "action", bad = "action")
+"#,
+        ),
+    ]);
+    let registered = vec![
+        (String::new(), "//:tc1".to_owned()),
+        (String::new(), "//:tc2".to_owned()),
+    ];
+    let ok = analyse_registering(&repos, "//:ok", config(), registered.clone())
+        .await
+        .unwrap();
+    assert_eq!(
+        ok.printed.without_sites(),
+        [
+            "groups: True False two None <toolchain_context.resolved_labels: //:tt>",
+            "group: <toolchain_context.resolved_labels: //:tt2, //:opt>"
+        ]
+    );
+    for (target, wanted) in [
+        (
+            "//:get",
+            "In r rule //:get, unrecognized exec group 'nope' requested. Available exec groups: [eg]",
+        ),
+        (
+            "//:type",
+            "In r rule //:type, toolchain type //:other was requested but only types [//:tt2, //:opt] are configured",
+        ),
+        (
+            "//:action",
+            "Action declared for non-existent exec group 'nope'.",
+        ),
+    ] {
+        let error = analyse_registering(&repos, target, config(), registered.clone())
+            .await
+            .unwrap_err();
+        assert!(error.contains(wanted), "{error}");
+    }
+}
+
 /// Bazel picks the execution platform among the registered ones: the first
 /// that meets the target's `exec_compatible_with` and has a toolchain of each
 /// mandatory type whose `exec_compatible_with` it meets.

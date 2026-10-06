@@ -255,15 +255,15 @@ fn toolchain_types<'v>(
     function: &str,
     value: Value<'v>,
     eval: &Evaluator<'v, '_, '_>,
-) -> starlark::Result<Vec<Label>> {
+) -> starlark::Result<Vec<(Label, bool)>> {
     let mut labels = Vec::new();
     for item in sequence(value, eval.heap()).unwrap_or_default() {
         if let Some(label) = label_of_value(item) {
-            labels.push(label);
+            labels.push((label, true));
             continue;
         }
         if let Some(requirement) = item.downcast_ref::<ToolchainTypeRequirement>() {
-            labels.push(requirement.label.clone());
+            labels.push((requirement.label.clone(), requirement.mandatory));
             continue;
         }
         let Some(text) = item.unpack_str() else {
@@ -273,7 +273,7 @@ fn toolchain_types<'v>(
             )));
         };
         match parse_in_caller(eval, function, text)? {
-            Ok(label) => labels.push(label),
+            Ok(label) => labels.push((label, true)),
             Err(e) => {
                 return Err(fatal(format!(
                     "Unable to parse toolchain_type label '{text}': {e}"
@@ -691,6 +691,7 @@ fn make_aspect<'v>(
         starlark: true,
         defined_in: crate::label::evaluating_file(eval),
         toolchains: Vec::new(),
+        exec_groups: Vec::new(),
         outputs: Vec::new(),
         build_setting: None,
         incoming_transition: false,
@@ -1014,7 +1015,7 @@ pub(crate) struct ExecGroup {
     #[allocative(skip)]
     pub(crate) exec_compatible_with: Vec<Label>,
     #[allocative(skip)]
-    pub(crate) toolchains: Vec<Label>,
+    pub(crate) toolchains: Vec<(Label, bool)>,
 }
 
 starlark_simple_value!(ExecGroup);
@@ -1026,6 +1027,10 @@ impl fmt::Display for ExecGroup {
             "<unknown object com.google.devtools.build.lib.packages.DeclaredExecGroup>"
         )
     }
+}
+
+fn toolchain_labels(types: &[(Label, bool)]) -> Vec<Label> {
+    types.iter().map(|(l, _)| l.clone()).collect()
 }
 
 fn label_set(labels: &[Label]) -> Vec<String> {
@@ -1043,7 +1048,8 @@ impl<'v> StarlarkValue<'v> for ExecGroup {
         };
         Ok(
             label_set(&self.exec_compatible_with) == label_set(&other.exec_compatible_with)
-                && label_set(&self.toolchains) == label_set(&other.toolchains),
+                && label_set(&toolchain_labels(&self.toolchains))
+                    == label_set(&toolchain_labels(&other.toolchains)),
         )
     }
 }
