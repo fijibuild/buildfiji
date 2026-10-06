@@ -516,6 +516,7 @@ fn evaluate(
             }
         }
     }
+    let named_count = named.len();
     let mut targets: Vec<Label> = named.into_iter().collect();
     for platform in &platforms {
         if !targets.contains(platform) {
@@ -533,12 +534,10 @@ fn evaluate(
     top_level
         .settings
         .extend(report.starlark_settings.iter().cloned());
-    if let Some((label, message)) = report.analysis_errors.first() {
-        return Err(CliError::Query(anyhow::anyhow!(
-            "{}: {}",
-            build_command::label_name(label),
-            fjfj_starlark::error_events(message).join("\n")
-        )));
+    if !report.analysis_errors.is_empty() {
+        // The events of the failure are the build's, and so is the exit code.
+        build_command::print(&report, named_count, 0, false, false, None, false);
+        return Err(CliError::Reported);
     }
     let configured = ConfiguredGraph::new(&graph, &report.analysed, &top_level, platforms);
     let listing = Evaluator::new(&configured, query.options)
