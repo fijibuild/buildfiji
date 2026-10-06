@@ -30,18 +30,20 @@ pub(crate) async fn run(args: TargetArgs) -> Result<(), CliError> {
         )));
     }
     let result = &results[0];
-    let Some(executable) = &result.target.executable else {
-        return Err(CliError::Internal(anyhow::anyhow!(
-            "a target that is not an executable reached run"
-        )));
-    };
+    let executable = &executable_of(result, layout)?;
     let program = layout.resolve(executable);
-    let shown_of = |artifact| {
-        crate::build_command::shown_path(
+    // A derived file is shown by its link, a source file by its real path.
+    let shown_of = |artifact: &fjfj_graph::Artifact| {
+        let shown = crate::build_command::shown_path(
             &built.options.symlink_prefix,
             &built.options.configuration,
             artifact,
-        )
+        );
+        if shown == artifact.exec_path() {
+            layout.resolve(artifact).display().to_string()
+        } else {
+            shown
+        }
     };
     let shown = shown_of(executable);
     // The runfiles tree is beside the executable.
@@ -72,11 +74,7 @@ pub(crate) async fn run(args: TargetArgs) -> Result<(), CliError> {
         Some(RunUnder::Target { options, .. }) => {
             // Built after the target unless it is the target.
             let under = results.get(1).unwrap_or(result);
-            let Some(under_exe) = &under.target.executable else {
-                return Err(CliError::Internal(anyhow::anyhow!(
-                    "a target that is not an executable reached run"
-                )));
-            };
+            let under_exe = &executable_of(under, layout)?;
             let mut words = vec![layout.resolve(under_exe).display().to_string()];
             words.extend(options.iter().cloned());
             words.push(program_text);
@@ -163,6 +161,36 @@ pub(crate) async fn run(args: TargetArgs) -> Result<(), CliError> {
         (Some(code), _) => Err(CliError::Program(u8::try_from(code).unwrap_or(1))),
         (None, Some(signal)) => Err(CliError::Program(u8::try_from(128 + signal).unwrap_or(255))),
         _ => Err(CliError::Program(1)),
+    }
+}
+
+/// What a target runs: its executable, or the file it is if that is a source
+/// file with the executable bit. Anything else was stopped before the build,
+/// except a source file that cannot be run.
+fn executable_of(
+    result: &crate::build_command::TargetResult,
+    layout: &fjfj_exec::execroot::Layout,
+) -> Result<fjfj_graph::Artifact, CliError> {
+    use std::os::unix::fs::PermissionsExt as _;
+    if let Some(executable) = &result.target.executable {
+        return Ok(executable.clone());
+    }
+    let files = result.target.files.to_vec();
+    let [file] = &files[..] else {
+        return Err(CliError::Internal(anyhow::anyhow!(
+            "a target that is not an executable reached run"
+        )));
+    };
+    let path = layout.resolve(file);
+    let runnable =
+        std::fs::metadata(&path).is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0);
+    if runnable {
+        Ok(file.clone())
+    } else {
+        Err(CliError::Build(anyhow::anyhow!(
+            "Non-existent or non-executable {}",
+            path.display()
+        )))
     }
 }
 

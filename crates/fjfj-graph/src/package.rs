@@ -158,6 +158,28 @@ impl Package {
         })
     }
 
+    /// Where a source file target of this package was declared: its
+    /// `exports_files`, else the first rule that names it.
+    pub fn source_file_location(&self, name: &str) -> Option<&str> {
+        if let Some(target) = self.target(name) {
+            return (target.kind == TargetKind::SourceFile).then_some(target.location.as_str());
+        }
+        let mut labels = Vec::new();
+        self.targets.iter().find_map(|target| {
+            let TargetKind::Rule { attrs, .. } = &target.kind else {
+                return None;
+            };
+            labels.clear();
+            for (_, value) in attrs {
+                value.labels(&mut labels);
+            }
+            labels
+                .iter()
+                .any(|l| l.repo == self.repo && l.package == self.name && l.name == name)
+                .then_some(target.location.as_str())
+        })
+    }
+
     /// Targets in declaration order.
     pub fn targets(&self) -> &[Target] {
         &self.targets
@@ -671,6 +693,18 @@ mod tests {
             message(b.add_package_group("g", PackageGroup::default(), "a/BUILD:7:14")),
             "package group 'g' conflicts with existing package group, defined at a/BUILD:6:14"
         );
+    }
+
+    #[test]
+    fn an_exported_file_is_declared_where_exports_files_was_called() {
+        let is_pkg = packages(&[]);
+        let mut b = PackageBuilder::new("", "a", &is_pkg);
+        b.export_file("f", None, "a/BUILD:4:14").unwrap();
+        b.add_rule("r", "filegroup", None, "a/BUILD:5:10").unwrap();
+        let package = b.build();
+        assert_eq!(package.source_file_location("f"), Some("a/BUILD:4:14"));
+        assert_eq!(package.source_file_location("r"), None);
+        assert_eq!(package.source_file_location("nothing"), None);
     }
 
     #[test]

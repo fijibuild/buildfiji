@@ -279,6 +279,10 @@ pub(crate) struct Report {
     pub analysis_errors: Vec<(Label, String)>,
     /// Targets named outright that the platform cannot build, and why.
     pub incompatible_errors: Vec<(Label, String)>,
+    /// What Bazel warns of for each target asked for that is a source file.
+    pub source_file_warnings: Vec<String>,
+    /// Those targets, which `--show_result` has nothing to say of.
+    pub source_files: BTreeSet<Label>,
     /// `run`: the first target asked for that is not an executable.
     pub not_executable: Option<Label>,
     /// The targets asked for whose analysis failed.
@@ -317,6 +321,8 @@ impl Report {
             results: Vec::new(),
             analysis_errors: Vec::new(),
             incompatible_errors: Vec::new(),
+            source_file_warnings: Vec::new(),
+            source_files: BTreeSet::new(),
             not_executable: None,
             failed_roots: Vec::new(),
             skipped: Vec::new(),
@@ -703,9 +709,30 @@ pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> R
         split_incompatible(roots, request.options.incompatible.as_ref());
     let mut aspect_roots = aspect_roots;
     report.analysed = all.clone();
+    // A source file is built by nothing; a source file that is executable
+    // can still be run.
+    let mut source_files: BTreeSet<Label> = BTreeSet::new();
+    for (label, _) in &roots {
+        let Ok(package) =
+            fjfj_loading::PackageSource::package(&**repos, &label.repo, &label.package)
+        else {
+            continue;
+        };
+        if let Some(location) = package.source_file_location(&label.name) {
+            source_files.insert(label.clone());
+            report.source_file_warnings.push(format!(
+                "WARNING: {}: {} is a source file, nothing will be built for it. If you want to build a target that consumes this file, try --compile_one_dependency",
+                absolute(&request.layout, &label.repo, location),
+                label_text(label)
+            ));
+        }
+    }
+    report.source_files = source_files.clone();
     if request.options.run
         && report.analysis_errors.is_empty()
-        && let Some((label, _)) = roots.iter().find(|(_, t)| t.executable.is_none())
+        && let Some((label, _)) = roots
+            .iter()
+            .find(|(label, t)| t.executable.is_none() && !source_files.contains(label))
     {
         report.not_executable = Some(label.clone());
         report.elapsed = started.elapsed();
@@ -1137,6 +1164,9 @@ pub(crate) fn print(
             plural(report.packages, "package loaded", "packages loaded"),
             plural(report.configured, "target configured", "targets configured"),
         );
+        for warning in &report.source_file_warnings {
+            eprintln!("{warning}");
+        }
     }
     if keep_going {
         for (label, message) in &report.incompatible_errors {
@@ -1218,8 +1248,11 @@ pub(crate) fn print(
         }
 
         // `--show_result=1`: say where the result is when there is one target.
-        if analysed <= show_result {
-            for result in &built {
+        if analysed - report.source_files.len().min(analysed) <= show_result {
+            for result in built
+                .iter()
+                .filter(|r| !report.source_files.contains(&r.label))
+            {
                 if result.files.is_empty() {
                     eprintln!(
                         "Target {} up-to-date (nothing to build)",
