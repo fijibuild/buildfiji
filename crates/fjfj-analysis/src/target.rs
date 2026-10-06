@@ -7,7 +7,7 @@ use fjfj_graph::rule::AttrValue;
 use fjfj_graph::{Action, Artifact, Configuration, Label, NestedSet};
 use fjfj_loading::PackageSource;
 use fjfj_starlark::{RuleSource, StoredProvider};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 /// What analysis reads that is not a key.
@@ -124,6 +124,10 @@ pub struct ConfiguredTarget {
     /// For a target of a rule written in Starlark: what an aspect needs to
     /// look at it as its rule's attributes.
     pub rule_info: Option<Arc<RuleInfo>>,
+    /// The repositories of the packages of everything it depends on, and
+    /// its own: what Bazel calls the transitive packages, which decide the
+    /// source repositories of a runfiles tree's repo mapping.
+    pub transitive_repos: Arc<BTreeSet<String>>,
 }
 
 /// What an aspect sees of the rule that made a target.
@@ -184,6 +188,7 @@ impl ConfiguredTarget {
             deps: Vec::new(),
             aspect_deps: Vec::new(),
             rule_info: None,
+            transitive_repos: Arc::new(BTreeSet::from([key.label.repo.clone()])),
         }
     }
 }
@@ -192,6 +197,29 @@ impl Key for ConfiguredTargetKey {
     type Value = ConfiguredTarget;
 
     async fn compute(&self, ctx: &Ctx) -> Result<ConfiguredTarget, Error> {
+        let mut target = self.analyse(ctx).await?;
+        target.transitive_repos = transitive_repos(ctx, &target).await?;
+        Ok(target)
+    }
+}
+
+/// The repositories of `target`'s package and of every package it reads.
+pub(crate) async fn transitive_repos(
+    ctx: &Ctx,
+    target: &ConfiguredTarget,
+) -> Result<Arc<BTreeSet<String>>, Error> {
+    let mut repos: BTreeSet<String> = (*target.transitive_repos).clone();
+    for dep in ctx.get_all(target.deps.clone()).await {
+        repos.extend(dep?.transitive_repos.iter().cloned());
+    }
+    if repos.len() == target.transitive_repos.len() {
+        return Ok(target.transitive_repos.clone());
+    }
+    Ok(Arc::new(repos))
+}
+
+impl ConfiguredTargetKey {
+    async fn analyse(&self, ctx: &Ctx) -> Result<ConfiguredTarget, Error> {
         let label = &self.label;
         let package = ctx
             .get(PackageKey {

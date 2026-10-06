@@ -349,6 +349,7 @@ pub(crate) async fn analyze(
     target.aspect_deps = aspect_keys;
     target.rule_info = rule_info;
     target.deps.extend(toolchain_keys);
+    target.transitive_repos = crate::target::transitive_repos(ctx, &target).await?;
     let mappings = rules.mappings();
     crate::runfiles_tree::register(&mut target, &env.main_repo_name, &mappings, &|r| {
         r.to_owned()

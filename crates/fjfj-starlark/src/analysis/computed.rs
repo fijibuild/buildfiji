@@ -68,7 +68,7 @@ pub fn late_bound_default(
         }
     }
     let (package, target) = match (fragment, name) {
-        ("apple", "xcode_config_label") => ("tools/objc", "host_xcodes"),
+        ("apple", "xcode_config_label") => ("tools/cpp", "host_xcodes"),
         ("proto", "proto_compiler") => ("tools/proto", "protoc"),
         ("proto", "proto_toolchain_for_cc") => ("tools/proto", "cc_toolchain"),
         ("proto", "proto_toolchain_for_java") => ("tools/proto", "java_toolchain"),

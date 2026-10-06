@@ -92,7 +92,7 @@ pub(crate) fn register(
         .chain(std::iter::once(String::new()))
         .collect();
     let mut lines: Vec<(String, String, String)> = Vec::new();
-    for source in &with_runfiles {
+    for source in &*target.transitive_repos {
         for (apparent, target_repo) in mappings.entries(source) {
             if apparent.is_empty() || !with_runfiles.contains(&target_repo) {
                 continue;

@@ -443,7 +443,7 @@ r = rule(
             "_xcode".to_owned(),
             AttrValue::Label(Label {
                 repo: "bazel_tools".into(),
-                package: "tools/objc".into(),
+                package: "tools/cpp".into(),
                 name: "host_xcodes".into()
             })
         )]
