@@ -2619,4 +2619,73 @@ mr = rule(
             "ERROR: Evaluation of query \"deps(//:a)\" failed: errors were encountered while computing transitive closure"
         );
     }
+
+    /// What `bazel query --universe_scope=//p:b` printed over //p:a, //p:b
+    /// (b depends on a, a on leaf) and //p:c (on leaf), and over a package
+    /// o outside the scope.
+    #[test]
+    fn a_universe_limits_what_allrdeps_deps_and_patterns_see() {
+        let (_dir, repos) = workspace_of(&[
+            ("MODULE.bazel", ""),
+            (
+                "p/BUILD",
+                "filegroup(name='leaf')\nfilegroup(name='a', srcs=[':leaf'])\nfilegroup(name='b', srcs=[':a'])\nfilegroup(name='c', srcs=[':leaf'])\n",
+            ),
+            ("o/BUILD", "filegroup(name='z')\n"),
+        ]);
+        let graph = QueryGraph::new(repos);
+        let run = |scope: &str, text: &str| -> Result<(Vec<String>, Vec<String>), String> {
+            let ev =
+                Evaluator::new(&graph, Options::default()).with_universe(&[scope.to_owned()])?;
+            let expr = fjfj_query::parse_in(text, fjfj_query::Dialect::Sky)?;
+            let set = ev.eval(&expr)?;
+            Ok((set.iter().map(|l| l.to_string()).collect(), ev.warnings()))
+        };
+        let names = |l: &[&str]| l.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        // The universe is what reaches back: c is outside the closure of b.
+        assert_eq!(
+            run("//p:b", "allrdeps(//p:leaf)").unwrap().0,
+            names(&["//p:a", "//p:b", "//p:leaf"])
+        );
+        assert_eq!(
+            run("//p:b", "allrdeps(//p:leaf, 1)").unwrap().0,
+            names(&["//p:a", "//p:leaf"])
+        );
+        // A target outside it is kept and has nothing around it.
+        assert_eq!(
+            run("//p:a", "allrdeps(//p:c)").unwrap().0,
+            names(&["//p:c"])
+        );
+        let (deps, warnings) = run("//p:a", "deps(//p:c)").unwrap();
+        assert_eq!(deps, names(&["//p:c"]));
+        assert_eq!(
+            warnings,
+            ["WARNING: Targets were missing from graph: [//p:c]"]
+        );
+        assert_eq!(
+            run("//p:a", "rdeps(//p:c, //p:leaf)").unwrap().0,
+            names(&[])
+        );
+        // A package outside it does not load, and neither does a tree of
+        // one the scope does not name as a tree.
+        assert_eq!(
+            run("//p:a", "deps(//o:z)").unwrap_err(),
+            "Evaluation of subquery \"//o:z\" failed (did you want to use --keep_going?): no such package 'o': BUILD file not found on package path"
+        );
+        assert_eq!(
+            run("//p:a", "//o:z").unwrap_err(),
+            "Evaluation of query \"//o:z\" failed: no such package 'o': BUILD file not found on package path"
+        );
+        assert_eq!(
+            run("//p:a", "deps(//p/...)").unwrap_err(),
+            "Evaluation of subquery \"//p/...\" failed (did you want to use --keep_going?): no targets found beneath 'p'"
+        );
+        assert_eq!(run("//p/...", "deps(//p/...)").unwrap().0.len(), 4);
+        // Without a universe the two functions do not exist.
+        assert!(
+            fjfj_query::parse("allrdeps(//p:leaf)")
+                .unwrap_err()
+                .starts_with("unknown function 'allrdeps'")
+        );
+    }
 }

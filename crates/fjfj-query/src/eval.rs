@@ -43,6 +43,19 @@ pub struct Evaluator<'g> {
     listing: Vec<Label>,
     /// The patterns `--keep_going` skipped, as `ERROR: Skipping ...` lines.
     skipped: Mutex<Vec<String>>,
+    /// The transitive closure of `--universe_scope`: what a universe query
+    /// can see. `None` for a query that has no universe.
+    universe: Option<Set>,
+    /// The packages of the universe: a pattern outside them names nothing.
+    universe_packages: BTreeSet<(String, String)>,
+    /// The `--universe_scope` patterns that did not load, as `ERROR:` lines,
+    /// when they do not just fail the query.
+    scope_errors: Vec<String>,
+    /// The directories the scope patterns that end in `...` cover: only a
+    /// `...` pattern beneath one of them can be read in a universe.
+    scope_trees: Vec<String>,
+    /// What the query warns of, as `WARNING: ...` lines.
+    warnings: Mutex<Vec<String>>,
 }
 
 impl<'g> Evaluator<'g> {
@@ -53,7 +66,114 @@ impl<'g> Evaluator<'g> {
             nodes: Mutex::new(HashMap::new()),
             listing: Vec::new(),
             skipped: Mutex::new(Vec::new()),
+            universe: None,
+            universe_packages: BTreeSet::new(),
+            scope_errors: Vec::new(),
+            scope_trees: Vec::new(),
+            warnings: Mutex::new(Vec::new()),
         }
+    }
+
+    /// Run over the closure of `patterns` rather than over everything: a
+    /// target outside it has no dependencies and no reverse dependencies. A
+    /// pattern that does not load is the error, or under `--keep_going` is
+    /// skipped.
+    pub fn with_universe(mut self, patterns: &[String]) -> Result<Evaluator<'g>, String> {
+        let mut roots = Set::new();
+        for pattern in patterns {
+            match self.graph.pattern(pattern) {
+                Ok(labels) => roots.extend(labels),
+                Err(e) => {
+                    let line = format!("ERROR: Skipping '{pattern}': {e}");
+                    match self.options.keep_going {
+                        true => self.skipped.lock().unwrap().push(line),
+                        false => self.scope_errors.push(line),
+                    }
+                }
+            }
+        }
+        self.scope_trees = patterns.iter().filter_map(|p| Self::tree_of(p)).collect();
+        let universe = self.deps(&roots, None)?;
+        self.universe_packages = universe
+            .iter()
+            .map(|l| (l.repo.clone(), l.package.clone()))
+            .collect();
+        self.universe = Some(universe);
+        Ok(self)
+    }
+
+    /// The `--universe_scope` patterns that failed to load, which fail the
+    /// query once it has run.
+    pub fn scope_errors(&self) -> &[String] {
+        &self.scope_errors
+    }
+
+    /// The directory a main repository pattern that ends in `...` is below,
+    /// empty for the root.
+    fn tree_of(pattern: &str) -> Option<String> {
+        let dir = pattern.strip_prefix("//")?.strip_suffix("...")?;
+        Some(dir.trim_end_matches('/').to_owned())
+    }
+
+    /// The targets `word` names, in a universe only those of its packages.
+    fn pattern(&self, word: &str) -> Result<Set, String> {
+        if self.universe.is_some()
+            && let Some(dir) = Self::tree_of(word)
+            && !self
+                .scope_trees
+                .iter()
+                .any(|t| t.is_empty() || dir == *t || dir.starts_with(&format!("{t}/")))
+        {
+            return Err(format!("no targets found beneath '{dir}'"));
+        }
+        let labels = self.graph.pattern(word)?;
+        if self.universe.is_none() || labels.is_empty() {
+            return Ok(labels.into_iter().collect());
+        }
+        let inside: Set = labels
+            .iter()
+            .filter(|l| {
+                self.universe_packages
+                    .contains(&(l.repo.clone(), l.package.clone()))
+            })
+            .cloned()
+            .collect();
+        if !inside.is_empty() {
+            return Ok(inside);
+        }
+        match word.strip_suffix("/...") {
+            Some(dir) => Err(format!(
+                "no targets found beneath '{}'",
+                dir.trim_start_matches('/').trim_start_matches('@')
+            )),
+            None => Err(format!(
+                "no such package '{}': BUILD file not found on package path",
+                labels[0].package
+            )),
+        }
+    }
+
+    /// The lines of warning the query printed.
+    pub fn warnings(&self) -> Vec<String> {
+        self.warnings.lock().unwrap().clone()
+    }
+
+    /// Split `targets` into those in the universe and those not; all are in
+    /// the first without a universe. A target the graph lacks is warned of.
+    fn within_universe(&self, targets: &Set, warn: bool) -> (Set, Set) {
+        let Some(universe) = &self.universe else {
+            return (targets.clone(), Set::new());
+        };
+        let (inside, outside): (Set, Set) =
+            targets.iter().cloned().partition(|l| universe.contains(l));
+        if warn && !outside.is_empty() {
+            let names: Vec<String> = outside.iter().map(|l| self.graph.display(l)).collect();
+            self.warnings.lock().unwrap().push(format!(
+                "WARNING: Targets were missing from graph: [{}]",
+                names.join(", ")
+            ));
+        }
+        (inside, outside)
     }
 
     /// The error lines of the patterns skipped under `--keep_going`; empty
@@ -199,20 +319,38 @@ impl<'g> Evaluator<'g> {
     }
 
     pub fn eval(&self, expr: &Expr) -> Result<Set, String> {
-        self.eval_in(expr, &mut Vec::new())
+        let out = self.eval_in(expr, &mut Vec::new());
+        // A universe query that is one pattern fails on the query, not on a
+        // subquery of it.
+        match (expr, out) {
+            (Expr::Word(word), Err(e)) if self.universe.is_some() => {
+                let subquery = format!(
+                    "Evaluation of subquery \"{word}\" failed (did you want to use --keep_going?): "
+                );
+                Err(match e.strip_prefix(&subquery) {
+                    Some(rest) => format!("Evaluation of query \"{word}\" failed: {rest}"),
+                    None => e,
+                })
+            }
+            (_, out) => out,
+        }
     }
 
     fn eval_in(&self, expr: &Expr, env: &mut Vec<(String, Set)>) -> Result<Set, String> {
         match expr {
-            Expr::Word(word) => match self.graph.pattern(word) {
-                Ok(labels) => Ok(labels.into_iter().collect()),
+            Expr::Word(word) => match self.pattern(word) {
+                Ok(labels) => Ok(labels),
                 Err(e) if self.options.keep_going => {
-                    self.skipped
-                        .lock()
-                        .unwrap()
-                        .push(format!("ERROR: Skipping '{word}': {e}"));
+                    let line = match self.universe {
+                        Some(_) => format!("ERROR: Evaluation of query \"{word}\" failed: {e}"),
+                        None => format!("ERROR: Skipping '{word}': {e}"),
+                    };
+                    self.skipped.lock().unwrap().push(line);
                     Ok(Set::new())
                 }
+                Err(e) if self.universe.is_some() => Err(format!(
+                    "Evaluation of subquery \"{word}\" failed (did you want to use --keep_going?): {e}"
+                )),
                 Err(e) => Err(e),
             },
             Expr::Variable(name) => env
@@ -228,7 +366,12 @@ impl<'g> Evaluator<'g> {
             Expr::Set(words) => {
                 let mut out = Set::new();
                 for word in words {
-                    out.extend(self.graph.pattern(word)?);
+                    out.extend(self.pattern(word).map_err(|e| match self.universe {
+                        Some(_) => format!(
+                            "Evaluation of subquery \"{word}\" failed (did you want to use --keep_going?): {e}"
+                        ),
+                        None => e,
+                    })?);
                 }
                 Ok(out)
             }
@@ -298,21 +441,41 @@ impl<'g> Evaluator<'g> {
             Function::Deps => {
                 let roots = self.expr_arg(call, 0, env)?;
                 let text = crate::ast::Expr::Call(call.clone()).to_string();
-                self.deps_in(&roots, Self::depth_arg(call, 1), Some(&text))
+                let (inside, outside) = self.within_universe(&roots, true);
+                let mut out = self.deps_in(&inside, Self::depth_arg(call, 1), Some(&text))?;
+                out.extend(outside);
+                Ok(out)
             }
             Function::RDeps => {
                 let universe = self.expr_arg(call, 0, env)?;
                 let targets = self.expr_arg(call, 1, env)?;
+                let (universe, _) = self.within_universe(&universe, false);
                 self.rdeps(&universe, &targets, Self::depth_arg(call, 2))
+            }
+            Function::AllRDeps => {
+                let targets = self.expr_arg(call, 0, env)?;
+                let (inside, outside) = self.within_universe(&targets, false);
+                let universe = self.universe.clone().unwrap_or_default();
+                let mut out = self.reverse_closure(&universe, &inside, Self::depth_arg(call, 1))?;
+                out.extend(outside);
+                Ok(out)
+            }
+            Function::RBuildFiles => {
+                let paths: Vec<&str> = (0..call.args.len())
+                    .map(|i| Self::word_arg(call, i))
+                    .collect();
+                self.rbuildfiles(&paths)
             }
             Function::SomePath => {
                 let from = self.expr_arg(call, 0, env)?;
                 let to = self.expr_arg(call, 1, env)?;
+                let (from, to) = self.both_within_universe(&from, &to);
                 self.some_path(&from, &to)
             }
             Function::AllPaths => {
                 let from = self.expr_arg(call, 0, env)?;
                 let to = self.expr_arg(call, 1, env)?;
+                let (from, to) = self.both_within_universe(&from, &to);
                 let reach = self.deps(&from, None)?;
                 let back = self.rdeps(&reach, &to, None)?;
                 Ok(reach.intersection(&back).cloned().collect())
@@ -574,14 +737,70 @@ impl<'g> Evaluator<'g> {
         depth: Option<usize>,
     ) -> Result<Set, String> {
         let closure = self.deps(universe, None)?;
+        self.reverse_closure(&closure, targets, depth)
+    }
+
+    /// Both ends of a path, those in the universe, once the rest is warned
+    /// of.
+    fn both_within_universe(&self, from: &Set, to: &Set) -> (Set, Set) {
+        let both: Set = from.union(to).cloned().collect();
+        self.within_universe(&both, true);
+        let universe = self.universe.as_ref();
+        let keep = |set: &Set| -> Set {
+            set.iter()
+                .filter(|l| universe.is_none_or(|u| u.contains(*l)))
+                .cloned()
+                .collect()
+        };
+        (keep(from), keep(to))
+    }
+
+    /// The BUILD files of the universe that read one of `paths`, as the BUILD
+    /// file itself or through the `.bzl` files it loads.
+    fn rbuildfiles(&self, paths: &[&str]) -> Result<Set, String> {
+        let universe = self.universe.clone().unwrap_or_default();
+        let mut packages: BTreeMap<(String, String), Label> = BTreeMap::new();
+        for label in &universe {
+            packages
+                .entry((label.repo.clone(), label.package.clone()))
+                .or_insert_with(|| label.clone());
+        }
+        let path_of = |l: &Label| match l.package.is_empty() {
+            true => l.name.clone(),
+            false => format!("{}/{}", l.package, l.name),
+        };
+        let mut out = Set::new();
+        for ((repo, package), label) in &packages {
+            let files = self.graph.build_files(label)?;
+            if !files.iter().any(|f| paths.contains(&path_of(f).as_str())) {
+                continue;
+            }
+            out.extend(
+                files
+                    .into_iter()
+                    .filter(|f| f.repo == *repo && f.package == *package)
+                    .filter(|f| f.name.starts_with("BUILD")),
+            );
+        }
+        Ok(out)
+    }
+
+    /// The targets of `closure` that depend on `targets`, within `depth`
+    /// edges if given.
+    fn reverse_closure(
+        &self,
+        closure: &Set,
+        targets: &Set,
+        depth: Option<usize>,
+    ) -> Result<Set, String> {
         let mut reverse: BTreeMap<Label, Vec<Label>> = BTreeMap::new();
-        for label in &closure {
+        for label in closure {
             let node = self.node(label)?;
             for edge in self.edges(&node) {
                 reverse.entry(edge.to).or_default().push(label.clone());
             }
         }
-        let mut seen: Set = targets.intersection(&closure).cloned().collect();
+        let mut seen: Set = targets.intersection(closure).cloned().collect();
         let mut frontier: Vec<Label> = seen.iter().cloned().collect();
         let mut level = 0;
         while !frontier.is_empty() && depth.is_none_or(|d| level < d) {

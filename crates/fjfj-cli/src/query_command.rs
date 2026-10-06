@@ -18,6 +18,9 @@ pub(crate) const IMPLEMENTED: &[&str] = &[
     "nodep_deps",
     "keep_going",
     "line_terminator_null",
+    "host_deps",
+    "universe_scope",
+    "infer_universe_scope",
 ];
 
 #[derive(Debug, Clone)]
@@ -31,6 +34,10 @@ pub(crate) struct Flags {
     pub relative_locations: bool,
     pub consistent_labels: bool,
     pub double_slash: bool,
+    /// `--universe_scope`, the patterns of the last flag.
+    pub universe: Vec<String>,
+    /// `--infer_universe_scope`: the universe is what the expression names.
+    pub infer_universe: bool,
 }
 
 /// `--output=bogus` is refused with Bazel's list of the valid ones.
@@ -52,6 +59,8 @@ pub(crate) fn extract(args: &[String]) -> Result<(Flags, Vec<String>), CliError>
         relative_locations: false,
         consistent_labels: false,
         double_slash: true,
+        universe: Vec::new(),
+        infer_universe: false,
     };
     let mut rest = Vec::new();
     let mut iter = args.iter();
@@ -81,6 +90,22 @@ pub(crate) fn extract(args: &[String]) -> Result<(Flags, Vec<String>), CliError>
                         "While parsing option --order_output={value}: Invalid value '{value}'; must be one of no, deps, auto, full"
                     ))
                 })?;
+            }
+            "universe_scope" => {
+                let value = take(value).ok_or_else(|| bad("--universe_scope needs a value"))?;
+                // The last flag wins.
+                flags.universe = value
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|p| !p.is_empty())
+                    .map(str::to_owned)
+                    .collect();
+            }
+            "infer_universe_scope" => flags.infer_universe = true,
+            "noinfer_universe_scope" => flags.infer_universe = false,
+            "host_deps" | "nohost_deps" => {
+                eprintln!("WARNING: Option 'host_deps' is deprecated: Use --tool_deps instead");
+                flags.options.tool_deps = name == "host_deps";
             }
             "implicit_deps" => flags.options.implicit_deps = true,
             "noimplicit_deps" => flags.options.implicit_deps = false,
@@ -222,8 +247,27 @@ pub(crate) async fn run(args: QueryArgs) -> Result<(), CliError> {
     )
     .map_err(|e| CliError::CommandLine(anyhow::Error::from(e)))?;
     let query = crate::query_io::expression(&io, &rest)?;
-    let expr = fjfj_query::parse(&query)
+    // A universe is what turns `query` into a query over a graph, which has
+    // `allrdeps` and `rbuildfiles` and limits what it sees.
+    let universe = !flags.universe.is_empty() || flags.infer_universe;
+    let dialect = match universe {
+        true => fjfj_query::Dialect::Sky,
+        false => fjfj_query::Dialect::Query,
+    };
+    let expr = fjfj_query::parse_in(&query, dialect)
         .map_err(|e| bad(format!("Error while parsing '{query}': {e}")))?;
+    let scope = match flags.universe.is_empty() {
+        true => {
+            let mut seen = Vec::new();
+            for p in expr.patterns() {
+                if !seen.iter().any(|s: &String| s == p) {
+                    seen.push(p.to_owned());
+                }
+            }
+            seen
+        }
+        false => flags.universe.clone(),
+    };
     let workspace_root = locate_workspace_root("query")?;
     let module_bazel_text =
         std::fs::read_to_string(workspace_root.join("MODULE.bazel")).map_err(|e| {
@@ -243,7 +287,28 @@ pub(crate) async fn run(args: QueryArgs) -> Result<(), CliError> {
                 .with_consistent_labels(flags.consistent_labels)
                 .with_double_slash(flags.double_slash);
             let evaluator = Evaluator::new(&graph, flags.options);
+            let evaluator = match universe {
+                false => evaluator,
+                true => match evaluator.with_universe(&scope) {
+                    Ok(evaluator) => evaluator,
+                    Err(message) => {
+                        fetch_command::print_warnings(&repos);
+                        return Err(CliError::Query(anyhow::anyhow!(message)));
+                    }
+                },
+            };
+            // The scope patterns that did not load are said before anything
+            // else, and fail the query when it has otherwise run.
+            for line in evaluator.scope_errors() {
+                eprintln!("{line}");
+            }
+            let scope_failed = !evaluator.scope_errors().is_empty();
             let evaluated = evaluator.eval(&expr).and_then(|set| {
+                if scope_failed {
+                    return Err(format!(
+                        "Evaluation of query \"{query}\" failed due to BUILD file errors"
+                    ));
+                }
                 fjfj_query::output::render_bytes(
                     &evaluator,
                     &set,
@@ -268,6 +333,9 @@ pub(crate) async fn run(args: QueryArgs) -> Result<(), CliError> {
                     ))));
                 }
             };
+            for line in evaluator.warnings() {
+                eprintln!("{line}");
+            }
             let skipped = evaluator.skipped();
             drop(evaluator);
             fetch_command::finish(resolved, &repos)?;
@@ -286,6 +354,34 @@ pub(crate) async fn run(args: QueryArgs) -> Result<(), CliError> {
     }
     eprintln!("WARNING: --keep_going specified, ignoring errors. Results may be inaccurate");
     Err(CliError::QueryIncomplete)
+}
+
+#[cfg(test)]
+mod universe_flag_tests {
+    use super::extract;
+
+    fn args(a: &[&str]) -> Vec<String> {
+        a.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn the_last_universe_scope_wins_and_host_deps_is_tool_deps() {
+        let (flags, rest) = extract(&args(&[
+            "--universe_scope=//a,//b",
+            "--universe_scope",
+            "//c",
+            "--nohost_deps",
+            "--infer_universe_scope",
+            "deps(//c)",
+        ]))
+        .unwrap();
+        assert_eq!(flags.universe, ["//c"]);
+        assert!(flags.infer_universe);
+        assert!(!flags.options.tool_deps);
+        assert_eq!(rest, ["deps(//c)"]);
+        let (flags, _) = extract(&args(&["--host_deps"])).unwrap();
+        assert!(flags.options.tool_deps);
+    }
 }
 
 #[cfg(test)]

@@ -88,6 +88,9 @@ pub enum Arg {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Function {
     AllPaths,
+    /// Universe queries only (`--universe_scope`): everything in the
+    /// universe that depends on the targets.
+    AllRDeps,
     Attr,
     BuildFiles,
     /// `cquery` only: the configured targets in a configuration.
@@ -104,6 +107,9 @@ pub enum Function {
     Mnemonic,
     /// `aquery` only: the actions whose outputs match.
     Outputs,
+    /// Universe queries only: the BUILD files of the universe that read a
+    /// file.
+    RBuildFiles,
     RDeps,
     SamePkgDirectRDeps,
     Siblings,
@@ -119,6 +125,9 @@ pub enum Function {
 pub enum Dialect {
     #[default]
     Query,
+    /// `query` over a universe: `--universe_scope` or
+    /// `--infer_universe_scope`.
+    Sky,
     Cquery,
     Aquery,
 }
@@ -133,8 +142,9 @@ pub enum ArgKind {
 
 impl Function {
     /// Every function, in the alphabetical order Bazel lists them.
-    pub const ALL: [Function; 20] = [
+    pub const ALL: [Function; 22] = [
         Function::AllPaths,
+        Function::AllRDeps,
         Function::Attr,
         Function::BuildFiles,
         Function::Config,
@@ -147,6 +157,7 @@ impl Function {
         Function::LoadFiles,
         Function::Mnemonic,
         Function::Outputs,
+        Function::RBuildFiles,
         Function::RDeps,
         Function::SamePkgDirectRDeps,
         Function::Siblings,
@@ -159,6 +170,7 @@ impl Function {
     pub fn name(self) -> &'static str {
         match self {
             Function::AllPaths => "allpaths",
+            Function::AllRDeps => "allrdeps",
             Function::Attr => "attr",
             Function::BuildFiles => "buildfiles",
             Function::Config => "config",
@@ -171,6 +183,7 @@ impl Function {
             Function::LoadFiles => "loadfiles",
             Function::Mnemonic => "mnemonic",
             Function::Outputs => "outputs",
+            Function::RBuildFiles => "rbuildfiles",
             Function::RDeps => "rdeps",
             Function::SamePkgDirectRDeps => "same_pkg_direct_rdeps",
             Function::Siblings => "siblings",
@@ -190,6 +203,7 @@ impl Function {
         Function::ALL.into_iter().filter(move |f| match f {
             Function::Inputs | Function::Mnemonic | Function::Outputs => dialect == Dialect::Aquery,
             Function::Config => dialect == Dialect::Cquery,
+            Function::AllRDeps | Function::RBuildFiles => dialect == Dialect::Sky,
             _ => true,
         })
     }
@@ -216,7 +230,9 @@ impl Function {
             | Function::Siblings
             | Function::Some
             | Function::Tests => (&[Expr], &[]),
-            Function::Deps => (&[Expr], &[Int]),
+            Function::Deps | Function::AllRDeps => (&[Expr], &[Int]),
+            // Any number of paths.
+            Function::RBuildFiles => (&[Word], &[Word; 31]),
             Function::Filter | Function::Kind | Function::Labels => (&[Word, Expr], &[]),
             Function::Config => (&[Expr, Word], &[]),
             // Bazel parses these with one argument and complains when it
