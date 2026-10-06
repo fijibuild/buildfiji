@@ -424,6 +424,7 @@ fn build_options(
         extra_execution_platforms: flags.extra_execution_platforms.clone(),
         host_platform: flags.host_platform.clone(),
         starlark_flags: flags.starlark_flags.clone(),
+        toolchain_resolution_debug: flags.toolchain_resolution_debug.clone(),
         aspects: flags.aspects.clone(),
         output_groups: Vec::new(),
         keep_going: true,

@@ -25,6 +25,8 @@ pub(crate) struct Options {
     pub extra_execution_platforms: Vec<String>,
     /// `--host_platform`: the platform fjfj runs on, a label as written.
     pub host_platform: Option<String>,
+    /// `--toolchain_resolution_debug`: the regular expressions as written.
+    pub toolchain_resolution_debug: Option<String>,
     /// The Starlark flags, `--//pkg:name=value`: the label as written, and the
     /// value.
     pub starlark_flags: Vec<(String, String)>,
@@ -253,6 +255,22 @@ fn place_errors(report: &mut Report, repos: &Repos, configuration: &Configuratio
             );
         }
     }
+}
+
+/// `--toolchain_resolution_debug`'s value as a test of a label: the
+/// comma-separated regular expressions it finds, less those a `-` marks.
+pub(crate) fn resolution_filter(text: &str) -> Result<fjfj_analysis::LabelFilter, String> {
+    let (mut include, mut exclude) = (Vec::new(), Vec::new());
+    for item in text.split(',') {
+        match item.strip_prefix('-') {
+            Some(rest) => exclude.push(regex::Regex::new(rest).map_err(|e| e.to_string())?),
+            None => include.push(regex::Regex::new(item).map_err(|e| e.to_string())?),
+        }
+    }
+    Ok(Arc::new(move |label| {
+        (include.is_empty() || include.iter().any(|r| r.is_match(label)))
+            && !exclude.iter().any(|r| r.is_match(label))
+    }))
 }
 
 /// A Starlark flag that does not name a build setting, as Bazel says it.
@@ -674,6 +692,25 @@ fn incompatible_message(label: &Label, why: &fjfj_analysis::Incompatible) -> Str
 pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> Report {
     let started = Instant::now();
     let mut report = Report::new(request.layout.clone());
+    let resolution_debug = match request.options.toolchain_resolution_debug.as_deref() {
+        None => None,
+        Some(text) => match resolution_filter(text) {
+            Ok(filter) => Some(fjfj_analysis::ResolutionDebug {
+                matches: filter,
+                emit: Arc::new(|message| eprintln!("{message}")),
+            }),
+            Err(why) => {
+                report.flag_error = Some(FlagError {
+                    before: Vec::new(),
+                    message: format!(
+                        "While parsing option --toolchain_resolution_debug={text}: Failed to build valid regular expression: {why}"
+                    ),
+                });
+                report.elapsed = started.elapsed();
+                return report;
+            }
+        },
+    };
     let env = |host_constraints| Env {
         source: repos.clone(),
         rules: repos.clone(),
@@ -684,6 +721,7 @@ pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> R
         extra_execution_platforms: request.options.extra_execution_platforms.clone(),
         host_constraints,
         record_execution_platforms: request.options.record_execution_platforms,
+        toolchain_resolution_debug: resolution_debug.clone(),
     };
     let handle = tokio::runtime::Handle::current();
     // `--host_platform` says what the host is, in place of the machine's own.

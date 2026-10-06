@@ -13,6 +13,7 @@ pub const IMPLEMENTED: &[&str] = &[
     "extra_toolchains",
     "extra_execution_platforms",
     "host_platform",
+    "toolchain_resolution_debug",
     "action_env",
     "aspects",
     "output_groups",
@@ -94,6 +95,9 @@ pub struct BuildFlags {
     pub extra_execution_platforms: Vec<String>,
     /// `--host_platform`: the platform the host is.
     pub host_platform: Option<String>,
+    /// `--toolchain_resolution_debug`: comma-separated regular expressions, a
+    /// `-` in front of one excluding what it finds.
+    pub toolchain_resolution_debug: Option<String>,
     /// `--action_env`: `NAME=VALUE` or `NAME`, in order.
     pub action_env: Vec<String>,
     /// `--aspects`: `<bzl label>%<aspect name>` for each, in order.
@@ -193,6 +197,7 @@ pub fn extract(args: &[String], command: &str) -> (BuildFlags, Vec<String>) {
                     .map(str::to_owned),
             ),
             "host_platform" => flags.host_platform = Some(value),
+            "toolchain_resolution_debug" => flags.toolchain_resolution_debug = Some(value),
             "action_env" => flags.action_env.push(value),
             "extra_toolchains" => flags.extra_toolchains.extend(
                 value

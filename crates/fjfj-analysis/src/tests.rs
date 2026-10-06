@@ -82,6 +82,25 @@ async fn analyse_on(
     registered_toolchains: Vec<(String, String)>,
     registered_execution_platforms: Vec<(String, String)>,
 ) -> Result<Arc<ConfiguredTarget>, String> {
+    analyse_traced(
+        repos,
+        label,
+        configuration,
+        registered_toolchains,
+        registered_execution_platforms,
+        None,
+    )
+    .await
+}
+
+async fn analyse_traced(
+    repos: &Arc<Repos>,
+    label: &str,
+    configuration: Configuration,
+    registered_toolchains: Vec<(String, String)>,
+    registered_execution_platforms: Vec<(String, String)>,
+    toolchain_resolution_debug: Option<crate::ResolutionDebug>,
+) -> Result<Arc<ConfiguredTarget>, String> {
     let engine = engine(Env {
         source: repos.clone(),
         rules: repos.clone(),
@@ -92,6 +111,7 @@ async fn analyse_on(
         extra_execution_platforms: Vec::new(),
         host_constraints: None,
         record_execution_platforms: false,
+        toolchain_resolution_debug,
     });
     let (package, name) = label.trim_start_matches("//").split_once(':').unwrap();
     engine
@@ -708,6 +728,77 @@ r(name = "action", bad = "action")
             .unwrap_err();
         assert!(error.contains(wanted), "{error}");
     }
+}
+
+/// Probed with `bazel build --toolchain_resolution_debug` of the same files.
+#[tokio::test(flavor = "multi_thread")]
+async fn toolchain_resolution_debug_says_how_each_type_resolved() {
+    let (_dir, repos) = workspace(&[
+        ("MODULE.bazel", ""),
+        (
+            "defs.bzl",
+            r#"
+def _tc_impl(ctx):
+    return [platform_common.ToolchainInfo()]
+my_toolchain = rule(implementation = _tc_impl)
+def _impl(ctx):
+    return []
+r = rule(implementation = _impl, toolchains = ["//:tt"])
+"#,
+        ),
+        (
+            "BUILD.bazel",
+            r#"
+load(":defs.bzl", "my_toolchain", "r")
+constraint_setting(name = "cs")
+constraint_value(name = "c1", constraint_setting = ":cs")
+constraint_value(name = "c2", constraint_setting = ":cs")
+constraint_setting(name = "os")
+constraint_value(name = "osx", constraint_setting = ":os")
+config_setting(name = "never", values = {"compilation_mode": "dbg"})
+platform(name = "ex1", constraint_values = [":c1"])
+platform(name = "ex2", constraint_values = [":c2"])
+toolchain_type(name = "tt")
+my_toolchain(name = "a")
+my_toolchain(name = "b")
+my_toolchain(name = "c")
+toolchain(name = "t1", toolchain_type = ":tt", toolchain = ":a", target_compatible_with = [":osx"])
+toolchain(name = "t2", toolchain_type = ":tt", toolchain = ":b", exec_compatible_with = [":c2"])
+toolchain(name = "t3", toolchain_type = ":tt", toolchain = ":c", target_settings = [":never"])
+r(name = "x")
+"#,
+        ),
+    ]);
+    let said = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+    let sink = said.clone();
+    let debug = crate::ResolutionDebug {
+        matches: Arc::new(|label| label == "//:tt"),
+        emit: Arc::new(move |message| sink.lock().unwrap().push(message.to_owned())),
+    };
+    let toolchains: Vec<(String, String)> = ["t1", "t2", "t3"]
+        .iter()
+        .map(|t| (String::new(), format!("//:{t}")))
+        .collect();
+    let platforms = vec![
+        (String::new(), "//:ex1".to_owned()),
+        (String::new(), "//:ex2".to_owned()),
+    ];
+    analyse_traced(&repos, "//:x", config(), toolchains, platforms, Some(debug))
+        .await
+        .unwrap();
+    let said = said.lock().unwrap().join("\n");
+    assert_eq!(
+        said,
+        "INFO: ToolchainResolution: Performing resolution of //:tt for target platform @@platforms//host:host
+      ToolchainResolution:   Rejected toolchain //:t3; mismatching target_settings: never
+      ToolchainResolution:   Rejected toolchain //:t1 (resolves to //:a) ; mismatching values: osx
+      ToolchainResolution:   Toolchain //:t2 (resolves to //:b) is compatible with target platform, searching for execution platforms:
+      ToolchainResolution:     Incompatible execution platform //:ex1; mismatching values: c2
+      ToolchainResolution:     Compatible execution platform //:ex2
+      ToolchainResolution: Recap of selected //:tt toolchains for target platform @@platforms//host:host:
+      ToolchainResolution:   Selected //:b to run on execution platform //:ex2
+INFO: ToolchainResolution: Target platform @@platforms//host:host: Selected execution platform //:ex2, type //:tt -> toolchain //:b"
+    );
 }
 
 /// Probed with `bazel build` of the same files: a type with no toolchain for
@@ -1504,6 +1595,7 @@ async fn recording_execution_platforms_does_not_cycle_through_an_extra_platform(
         extra_execution_platforms: vec!["//:px".to_owned()],
         host_constraints: None,
         record_execution_platforms: true,
+        toolchain_resolution_debug: None,
     });
     let g = engine
         .get(ConfiguredTargetKey {

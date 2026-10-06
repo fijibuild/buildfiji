@@ -35,6 +35,9 @@ pub struct Env {
     /// Work out which execution platform each rule's target runs on, for
     /// `aquery` to show; builds do not need it for a rule without toolchains.
     pub record_execution_platforms: bool,
+    /// `--toolchain_resolution_debug`: say how the toolchains of the targets
+    /// and types it finds were resolved.
+    pub toolchain_resolution_debug: Option<crate::ResolutionDebug>,
 }
 
 /// An engine that analyses against `env`.

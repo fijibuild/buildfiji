@@ -9,6 +9,7 @@
 
 mod aspect;
 mod constraints;
+mod debug;
 mod native;
 mod runfiles_tree;
 mod select;
@@ -19,6 +20,7 @@ mod toolchain;
 mod transition;
 
 pub use aspect::AspectKey;
+pub use debug::{LabelFilter, ResolutionDebug};
 pub use select::ConfigMatching;
 pub use starlark_rule::dep_info;
 pub use target::{ConfiguredTarget, ConfiguredTargetKey, Env, PackageKey, engine};

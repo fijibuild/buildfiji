@@ -428,6 +428,14 @@ pub(crate) async fn resolve_toolchains(
     Error,
 > {
     if types.is_empty() {
+        if ctx.data::<Env>()?.toolchain_resolution_debug.is_some() {
+            let platform = crate::toolchain::default_execution_platform(ctx, key, exec).await?;
+            let outcome = crate::debug::Outcome {
+                platform,
+                toolchains: Vec::new(),
+            };
+            crate::debug::trace(ctx, key, &[], &[], &[], Some(&outcome)).await?;
+        }
         return Ok((Vec::new(), Vec::new(), None));
     }
     let extra = match key
@@ -450,14 +458,25 @@ pub(crate) async fn resolve_toolchains(
     }
     // The platforms the target may run on, and the types some of them serve.
     let mut candidates: Vec<(Option<Label>, std::collections::BTreeSet<Label>)> = Vec::new();
+    let mut removed: Vec<String> = Vec::new();
     for (platform_label, platform) in platforms {
         let held = crate::constraints::with_defaults_for(ctx, &platform, exec).await?;
-        if exec.iter().all(|c| held.contains(c)) {
-            candidates.push((platform_label, platform));
+        match exec.iter().find(|c| !held.contains(*c)) {
+            None => candidates.push((platform_label, platform)),
+            Some(missing) => {
+                if let Some(label) = &platform_label {
+                    removed.push(format!(
+                        "Removed execution platform {} from available execution platforms, it is missing constraint {}",
+                        crate::expand_label_text(label),
+                        crate::expand_label_text(missing)
+                    ));
+                }
+            }
         }
     }
     let tried: Vec<Label> = candidates.iter().filter_map(|(l, _)| l.clone()).collect();
     let mut served: std::collections::BTreeSet<Label> = std::collections::BTreeSet::new();
+    let candidates_for_trace = candidates.clone();
     for (platform_label, platform) in candidates {
         let mut toolchains: Vec<(Label, Option<DepInfo>)> = Vec::new();
         let mut unmet: Vec<Label> = Vec::new();
@@ -486,6 +505,22 @@ pub(crate) async fn resolve_toolchains(
             }
         }
         if unmet.is_empty() {
+            let outcome = crate::debug::Outcome {
+                platform: platform_label.clone(),
+                toolchains: toolchains
+                    .iter()
+                    .filter_map(|(t, d)| Some((t.clone(), d.as_ref()?.label.clone())))
+                    .collect(),
+            };
+            crate::debug::trace(
+                ctx,
+                key,
+                types,
+                &candidates_for_trace,
+                &removed,
+                Some(&outcome),
+            )
+            .await?;
             return Ok((toolchains, toolchain_keys, platform_label));
         }
     }
@@ -496,6 +531,7 @@ pub(crate) async fn resolve_toolchains(
         .filter(|(t, mandatory)| *mandatory && !served.contains(t))
         .map(|(t, _)| t.clone())
         .collect();
+    crate::debug::trace(ctx, key, types, &candidates_for_trace, &removed, None).await?;
     if without.is_empty() {
         let all: Vec<Label> = types.iter().map(|(t, _)| t.clone()).collect();
         return Err(Error::msg(crate::toolchain::no_execution_platform(
