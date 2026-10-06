@@ -1118,6 +1118,9 @@ fn get_attr_no_attr_error<'v>(x: Value<'v>, attribute: &Symbol) -> crate::Error 
 #[cold]
 #[inline(never)]
 pub(crate) fn no_attr_error<'v>(x: Value<'v>, attribute: &str) -> crate::Error {
+    if let Some(text) = x.get_ref().no_attr_message(attribute) {
+        return crate::Error::new_kind(crate::ErrorKind::Value(anyhow::anyhow!(text)));
+    }
     let typ = x.get_type();
     let mut text = format!("'{typ}' value has no field or method '{attribute}'");
     // A struct lists what it has.

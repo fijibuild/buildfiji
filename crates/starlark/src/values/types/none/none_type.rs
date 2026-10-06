@@ -84,9 +84,8 @@ impl<'v> StarlarkValue<'v> for NoneType {
         Some(Ty::none())
     }
 
-    fn eval_type(&self) -> Option<Ty> {
-        Some(Ty::none())
-    }
+    // No `eval_type`: Bazel has no `None | T`, and the starlark_value macro
+    // gives a type its `|` (fjfj).
 }
 
 impl<'v> AllocValue<'v> for NoneType {

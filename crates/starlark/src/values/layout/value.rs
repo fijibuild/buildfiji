@@ -999,6 +999,11 @@ impl<'v> Value<'v> {
         aref.has_attr(attribute, heap)
     }
 
+    /// The dict this value is a read-only view of, if it is one (fjfj).
+    pub fn as_mapping(self, heap: Heap<'v>) -> Option<Value<'v>> {
+        self.get_ref().as_mapping(heap)
+    }
+
     /// Get a list of all the attributes this function supports, used to implement the
     /// `dir()` function.
     pub fn dir_attr(self) -> Vec<String> {

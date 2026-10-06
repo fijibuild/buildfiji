@@ -49,6 +49,7 @@ pub fn register_namespace(builder: &mut GlobalsBuilder) {
                     )
                 })
                 .collect(),
+            None,
         ))
     }
 }

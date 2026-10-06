@@ -94,6 +94,8 @@ pub(crate) fn register_dict(globals: &mut GlobalsBuilder) {
         match pos {
             None => Ok(kwargs),
             Some(pos) => {
+                // A read-only view of a dict is copied as the dict is.
+                let pos = pos.as_mapping(heap).unwrap_or(pos);
                 let mut result: Dict = match DictRef::from_value(pos) {
                     Some(pos) => {
                         let mut result = (*pos).clone();

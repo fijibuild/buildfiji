@@ -48,7 +48,7 @@ const RUNTIME_WORDING: &[&str] = &[
 ];
 
 /// Messages the runtime words the same way for every type.
-const GENERIC: &[&str] = &["cannot encode Provider"];
+const GENERIC: &[&str] = &[];
 
 fn check(rows: &[(&str, Result<&str, &str>)]) {
     let wrong = replay(rows, RUNTIME_WORDING, GENERIC);

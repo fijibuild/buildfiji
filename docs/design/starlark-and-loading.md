@@ -1099,6 +1099,11 @@ name of the native function, which only the call knows, so `named_native_error`
 Where an error is reported is the crate's compiler too: the span of an operator, index,
 attribute or call expression begins at its operator, `[`, `.` or `(`, as Bazel's column does,
 and a call that does not fit a `def` is reported at the `def`, in the callee.
+A value says its own words for a missing field through `StarlarkValue::no_attr_message` (an
+instance of a provider is named by the provider, `native` says `no native function or rule`),
+and `as_mapping` lets `dict(view)` copy a read-only `Map` such as `existing_rule()`'s
+(buildfiji-9mb5). A parse reports every syntax error (buildfiji-b5d9): the parser goes on at the next
+statement, and `AstModule::parse_all` returns them with the module as far as it parsed.
 
 ## Native rules: Starlark where it takes no hooks (decided 2026-10-01, buildfiji-4qs)
 

@@ -24,7 +24,6 @@ use allocative::Allocative;
 use starlark::collections::StarlarkHasher;
 use starlark::eval::{Arguments, Evaluator};
 use starlark::starlark_complex_value;
-use starlark::starlark_module;
 use starlark::values::{
     Coerce, Freeze, FreezeResult, Freezer, FrozenValue, Heap, NoSerialize, ProvidesStaticType,
     StarlarkPagablePanic, StarlarkValue, Trace, Value, ValueLike,
@@ -169,6 +168,19 @@ where
         self.names.clone()
     }
 
+    /// An instance of a provider is named by it in an error, and lists
+    /// what it has.
+    fn no_attr_message(&self, attribute: &str) -> Option<String> {
+        let provider = self.provider.first()?.to_value();
+        let mut names = self.names.clone();
+        names.sort();
+        Some(format!(
+            "'{}' value has no field or method '{attribute}'\nAvailable attributes: {}",
+            crate::provider::instance_type_in_errors(provider),
+            names.join(", ")
+        ))
+    }
+
     /// `"group" in output_groups` and `output_groups["group"]`: an
     /// `OutputGroupInfo` is also a mapping of its groups.
     fn is_in(&self, other: Value<'v>) -> starlark::Result<bool> {
@@ -259,10 +271,24 @@ where
     }
 }
 
-#[starlark_module]
-pub(crate) fn struct_globals(builder: &mut starlark::environment::GlobalsBuilder) {
+/// `struct`: Bazel's is a `Provider` that prints as `<function struct>`.
+#[derive(Debug, ProvidesStaticType, NoSerialize, Allocative)]
+pub(crate) struct StructConstructor;
+
+impl fmt::Display for StructConstructor {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("<function struct>")
+    }
+}
+
+starlark::starlark_simple_value!(StructConstructor);
+
+#[starlark_value(type = "Provider")]
+impl<'v> StarlarkValue<'v> for StructConstructor {
     /// `struct(**fields)`.
-    fn r#struct<'v>(
+    fn invoke(
+        &self,
+        _me: Value<'v>,
         args: &Arguments<'v, '_>,
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> starlark::Result<Value<'v>> {
@@ -276,4 +302,8 @@ pub(crate) fn struct_globals(builder: &mut starlark::environment::GlobalsBuilder
             .collect();
         Ok(new_struct(eval.heap(), fields))
     }
+}
+
+pub(crate) fn struct_globals(builder: &mut starlark::environment::GlobalsBuilder) {
+    builder.set("struct", StructConstructor);
 }

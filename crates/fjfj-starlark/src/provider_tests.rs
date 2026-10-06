@@ -7,7 +7,7 @@ use crate::test_support::{replay, run_files};
 
 /// Probes whose answer is the Starlark runtime's generic wording, which
 /// belongs to buildfiji-v32.
-const GENERIC: &[&str] = &["'P' value has no field or method"];
+const GENERIC: &[&str] = &[];
 
 /// Probes that need something no bead has built yet, or differ in the
 /// crate.

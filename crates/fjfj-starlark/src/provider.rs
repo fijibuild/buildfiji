@@ -201,6 +201,14 @@ pub(crate) fn instance_of(provider: Option<Value<'_>>) -> String {
     }
 }
 
+/// What an error calls an instance of `provider`: the name it was exported
+/// under, or `struct` while it has none.
+pub(crate) fn instance_type_in_errors(provider: Value<'_>) -> String {
+    view(provider)
+        .and_then(|v| v.name.get().cloned())
+        .unwrap_or_else(|| "struct".to_owned())
+}
+
 /// Whether two instances are of one provider (or both of `struct`).
 pub(crate) fn same_provider(a: Option<Value<'_>>, b: Option<Value<'_>>) -> bool {
     match (a, b) {

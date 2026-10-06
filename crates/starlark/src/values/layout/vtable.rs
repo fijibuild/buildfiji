@@ -503,6 +503,16 @@ impl<'v> AValueDyn<'v> {
     }
 
     #[inline]
+    pub(crate) fn as_mapping(self, heap: Heap<'v>) -> Option<Value<'v>> {
+        (self.vtable.starlark_value.as_mapping)(self.value, heap)
+    }
+
+    #[inline]
+    pub(crate) fn no_attr_message(self, attribute: &str) -> Option<String> {
+        (self.vtable.starlark_value.no_attr_message)(self.value, attribute)
+    }
+
+    #[inline]
     pub(crate) fn bit_and(self, other: Value<'v>, heap: Heap<'v>) -> crate::Result<Value<'v>> {
         (self.vtable.starlark_value.bit_and)(self.value, other, heap)
     }

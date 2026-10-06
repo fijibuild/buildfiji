@@ -206,7 +206,7 @@ pub(crate) fn format_globals() -> Globals {
 /// `native`.
 pub fn bzl_globals() -> Globals {
     let mut builder = GlobalsBuilder::extended_by(&[LibraryExtension::Print]);
-    builder.namespace("native", |native| {
+    builder.namespace_with_missing("native", "no native function or rule '{}'", |native| {
         native_functions(native);
         generated_native_rules(native);
         // What Bazel says it is; a module extension and a repository rule
@@ -1100,7 +1100,12 @@ fn native_functions(builder: &mut GlobalsBuilder) {
             .filter(|target| visible_in_finalizer(ctx, &target.name))
             .map(|target| (target.name.clone(), rule_view(ctx, target, eval.heap())))
             .collect();
-        Ok(eval.heap().alloc(AllocDict(entries)))
+        let heap = eval.heap();
+        Ok(crate::map_view::map_view(
+            heap,
+            heap.alloc(AllocDict(entries)),
+            "<native.ExistingRulesView object>".to_owned(),
+        ))
     }
 
     fn package_name<'v>(

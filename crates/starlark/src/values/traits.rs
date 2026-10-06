@@ -646,6 +646,19 @@ pub trait StarlarkValue<'v>:
         Vec::new()
     }
 
+    /// The dict this value is a read-only view of, which `dict(view)` copies
+    /// (fjfj).
+    fn as_mapping(&self, _heap: Heap<'v>) -> Option<Value<'v>> {
+        None
+    }
+
+    /// What an error says when this value has no field or method `attribute`,
+    /// if not the usual (fjfj): Bazel names an instance of a provider by the
+    /// provider, and `native` says what it is.
+    fn no_attr_message(&self, _attribute: &str) -> Option<String> {
+        None
+    }
+
     /// Tell whether `other` is in the current value, if it is a container.
     ///
     /// # Examples

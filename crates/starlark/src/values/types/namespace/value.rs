@@ -63,11 +63,16 @@ pub(crate) struct MaybeDocHiddenValue<'v, V: ValueLike<'v>> {
 #[repr(C)]
 pub struct NamespaceGen<'v, V: ValueLike<'v>> {
     fields: SmallMap<V::String, MaybeDocHiddenValue<'v, V>>,
+    /// What a missing field is told as, with `{}` for its name (fjfj).
+    missing: Option<String>,
 }
 
 impl<'v, V: ValueLike<'v>> NamespaceGen<'v, V> {
-    pub(crate) fn new(fields: SmallMap<V::String, MaybeDocHiddenValue<'v, V>>) -> Self {
-        Self { fields }
+    pub(crate) fn new(
+        fields: SmallMap<V::String, MaybeDocHiddenValue<'v, V>>,
+        missing: Option<String>,
+    ) -> Self {
+        Self { fields, missing }
     }
 
     pub fn get(&self, key: &str) -> Option<V> {
@@ -112,6 +117,12 @@ where
 
     fn dir_attr(&self) -> Vec<String> {
         self.fields.keys().map(|x| x.as_str().to_owned()).collect()
+    }
+
+    fn no_attr_message(&self, attribute: &str) -> Option<String> {
+        self.missing
+            .as_ref()
+            .map(|text| text.replace("{}", attribute))
     }
 
     fn documentation(&self) -> DocItem {

@@ -296,18 +296,30 @@ impl GlobalsBuilder {
     /// Add a nested namespace to the builder. If `f` adds the definition `foo`,
     /// it will end up on a namespace `name`, accessible as `name.foo`.
     pub fn namespace(&mut self, name: &str, f: impl FnOnce(&mut GlobalsBuilder)) {
-        self.namespace_inner(name, false, f)
+        self.namespace_inner(name, false, None, f)
+    }
+
+    /// [`namespace`](GlobalsBuilder::namespace), where a field that is not there is
+    /// told as `missing` with its name in place of `{}` (fjfj).
+    pub fn namespace_with_missing(
+        &mut self,
+        name: &str,
+        missing: &str,
+        f: impl FnOnce(&mut GlobalsBuilder),
+    ) {
+        self.namespace_inner(name, false, Some(missing.to_owned()), f)
     }
 
     /// Same as `namespace`, but this value will not show up in generated documentation.
     pub fn namespace_no_docs(&mut self, name: &str, f: impl FnOnce(&mut GlobalsBuilder)) {
-        self.namespace_inner(name, true, f)
+        self.namespace_inner(name, true, None, f)
     }
 
     fn namespace_inner(
         &mut self,
         name: &str,
         doc_hidden: bool,
+        missing: Option<String>,
         f: impl FnOnce(&mut GlobalsBuilder),
     ) {
         self.namespace_fields.push(SmallMap::new());
@@ -315,7 +327,7 @@ impl GlobalsBuilder {
         let fields = self.namespace_fields.pop().unwrap();
         self.set_inner(
             name,
-            self.heap.alloc(FrozenNamespace::new(fields)),
+            self.heap.alloc(FrozenNamespace::new(fields, missing)),
             doc_hidden,
         );
     }

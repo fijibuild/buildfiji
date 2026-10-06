@@ -1200,7 +1200,11 @@ pub(crate) fn rule_view<'v>(
         };
         entries.push((&attr.name, attr_to_value(ctx, value, heap)));
     }
-    heap.alloc(AllocDict(entries))
+    crate::map_view::map_view(
+        heap,
+        heap.alloc(AllocDict(entries)),
+        format!("<native.ExistingRuleView for target '{}'>", target.name),
+    )
 }
 
 pub(crate) fn attr_to_value<'v>(
