@@ -141,7 +141,10 @@ fn run(row: &ExtRow) -> Outcome {
                 Ok(())
             });
             if let Err(e) = result {
-                error = Some(e.message);
+                // What Bazel reports before the error is part of what it says.
+                let mut said = made.take_events();
+                said.push(e.message);
+                error = Some(said.join("\n"));
             } else {
                 for (local, canonical) in made.imports() {
                     mapping.insert(local.clone(), canonical.clone());

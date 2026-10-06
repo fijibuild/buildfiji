@@ -67,6 +67,14 @@ pub enum BuildFileError {
     /// The file did not parse, or a fatal error stopped it.
     #[error("{0:#}")]
     Eval(anyhow::Error),
+    /// The package has no BUILD file to evaluate, or it cannot be read: the
+    /// whole error.
+    #[error("{0}")]
+    Absent(String),
+    /// A `load()` failed: the reason, which Bazel puts in the error of the
+    /// package, with nothing reported for the file itself.
+    #[error("{0}")]
+    Load(String),
     /// The file ran to the end but reported errors.
     #[error("package contains errors:\n{}", .events.join("\n"))]
     Package {
@@ -261,6 +269,14 @@ fn internal_ctx_globals(builder: &mut GlobalsBuilder) {
     }
 }
 
+/// What a Starlark error stopped a BUILD file with.
+fn failure(error: starlark::Error) -> BuildFileError {
+    match crate::LoadFailed::of(&error) {
+        Some(load) => BuildFileError::Load(load.0.clone()),
+        None => BuildFileError::Eval(anyhow::anyhow!("{}", crate::traceback(&error))),
+    }
+}
+
 /// Evaluate a BUILD file into the package it declares.
 pub fn evaluate_build_file(input: &BuildFile<'_>) -> Result<BuildFileOutput, BuildFileError> {
     let _span = tracing::debug_span!("evaluate_build_file", package = input.package).entered();
@@ -291,10 +307,9 @@ pub fn evaluate_build_file(input: &BuildFile<'_>) -> Result<BuildFileOutput, Bui
         eval.extra = Some(&ctx);
         eval.set_loader(input.loader);
         eval.set_print_handler(&ctx);
-        eval.eval_module(ast, &globals)
-            .map_err(|e| BuildFileError::Eval(e.into_anyhow()))?;
+        eval.eval_module(ast, &globals).map_err(failure)?;
         // Finalizers run when everything else has.
-        run_finalizers(&ctx, &mut eval).map_err(|e| BuildFileError::Eval(e.into_anyhow()))
+        run_finalizers(&ctx, &mut eval).map_err(failure)
     })?;
     let BuildContext { state, printed, .. } = ctx;
     let mut state = state.into_inner();
@@ -1257,6 +1272,7 @@ mod tests {
         match load(build) {
             Ok(_) => panic!("accepted:\n{build}"),
             Err(BuildFileError::Eval(e)) => format!("{e:#}"),
+            Err(BuildFileError::Load(reason) | BuildFileError::Absent(reason)) => reason,
             Err(BuildFileError::Package { events, .. }) => events.join("\n"),
         }
     }
@@ -1265,6 +1281,9 @@ mod tests {
         match load(build) {
             Err(BuildFileError::Package { events, .. }) => events,
             Err(BuildFileError::Eval(e)) => panic!("fatal: {e:#}"),
+            Err(BuildFileError::Load(reason) | BuildFileError::Absent(reason)) => {
+                panic!("load failed: {reason}")
+            }
             Ok(_) => panic!("accepted:\n{build}"),
         }
     }

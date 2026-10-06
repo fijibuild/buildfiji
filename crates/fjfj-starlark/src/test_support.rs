@@ -242,6 +242,10 @@ pub(crate) fn run_build(bzl: &str, build: &str) -> BuildOutcome {
             fatal: Some(format!("{e:#}")),
             ..Default::default()
         },
+        Err(BuildFileError::Load(reason) | BuildFileError::Absent(reason)) => BuildOutcome {
+            fatal: Some(reason),
+            ..Default::default()
+        },
         Err(BuildFileError::Package { events, printed }) => BuildOutcome {
             printed: printed.without_sites(),
             events,

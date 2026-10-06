@@ -267,6 +267,19 @@ impl Resolver<'_> {
     }
 }
 
+/// What Bazel says of a pattern whose package did not load: one whose BUILD
+/// file has errors was evaluated for it, one that could not be read was
+/// being parsed.
+fn in_pattern(pattern: &str, message: String) -> String {
+    if !message.starts_with("error loading package '") {
+        message
+    } else if message.ends_with("' contains errors") {
+        format!("Error evaluating '{pattern}': {message}")
+    } else {
+        format!("while parsing '{pattern}': {message}")
+    }
+}
+
 /// The targets `patterns` select.
 pub fn resolve(patterns: &[TargetPattern], source: &dyn PackageSource) -> Resolved {
     resolve_with(patterns, source, false)
@@ -299,7 +312,7 @@ pub fn resolve_with(
             }
             Err(message) => failures.push(Failure {
                 pattern: pattern.text.clone(),
-                message,
+                message: in_pattern(&pattern.text, message),
             }),
         }
     }

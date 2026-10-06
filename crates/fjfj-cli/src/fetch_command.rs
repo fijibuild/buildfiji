@@ -406,6 +406,9 @@ pub(crate) fn begin(
 }
 
 fn print_warnings(repos: &Repos) {
+    for event in repos.take_events() {
+        eprintln!("ERROR: {event}");
+    }
     repos.flush_prints(&Printer::of(repos));
     for warning in repos.warnings() {
         eprintln!("WARNING: {warning}");

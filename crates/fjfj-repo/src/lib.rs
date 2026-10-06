@@ -42,6 +42,8 @@ mod multi_matrix;
 #[cfg(test)]
 mod multi_tests;
 #[cfg(test)]
+mod package_error_tests;
+#[cfg(test)]
 mod replay_matrix;
 #[cfg(test)]
 mod replay_tests;
@@ -172,6 +174,30 @@ struct Inner {
     /// What extensions and rules print, in order, until the call that made
     /// them hands it on.
     prints: Prints,
+    /// What went wrong in the packages loaded, until [`Repos::take_events`].
+    events: Mutex<Events>,
+}
+
+/// The errors of packages, each said once: a BUILD file is read again for each
+/// phase that wants it.
+#[derive(Default)]
+struct Events {
+    queue: Vec<String>,
+    seen: std::collections::HashSet<String>,
+}
+
+impl Events {
+    fn push(&mut self, event: String) {
+        if self.seen.insert(event.clone()) {
+            self.queue.push(event);
+        }
+    }
+
+    fn extend(&mut self, events: impl IntoIterator<Item = String>) {
+        for event in events {
+            self.push(event);
+        }
+    }
 }
 
 /// What was printed, kept for whoever asked for the work: an extension may
@@ -347,6 +373,7 @@ impl Repos {
             state: Mutex::new(state),
             progress: std::sync::Condvar::new(),
             prints: Prints::default(),
+            events: Mutex::new(Events::default()),
         });
         let loader = BzlLoader::with_provider(Box::new(Provider(Arc::downgrade(&inner))), true);
         let _ = inner.loader.set(loader);
@@ -562,7 +589,68 @@ impl fjfj_loading::PackageSource for Repos {
                 }
                 Arc::new(loaded.package)
             })
-            .map_err(|e| e.to_string())
+            .map_err(|e| self.package_error(repo, package, e))
+    }
+}
+
+impl Repos {
+    /// What Bazel says of a package whose BUILD file failed: the events go to
+    /// the console (see [`Repos::take_events`]), and the message is the
+    /// error of the package.
+    fn package_error(
+        &self,
+        repo: &str,
+        package: &str,
+        error: fjfj_starlark::BuildFileError,
+    ) -> String {
+        use fjfj_starlark::BuildFileError;
+        let name = if repo.is_empty() {
+            package.to_owned()
+        } else {
+            format!("@@{repo}//{package}")
+        };
+        let mut events = self.inner.events.lock().unwrap();
+        events.extend(self.loader().take_events());
+        let contains_errors = |events: &mut Events, first: &str| {
+            // The first event again, without the place it was at.
+            let message = first
+                .split_once(": ")
+                .filter(|(place, _)| {
+                    place
+                        .rsplit(':')
+                        .next()
+                        .is_some_and(|c| c.parse::<u32>().is_ok())
+                })
+                .map_or(first, |(_, message)| message);
+            events.push(format!("package contains errors: {name}: {message}"));
+            format!("error loading package '{name}': Package '{package}' contains errors")
+        };
+        match error {
+            BuildFileError::Absent(message) => message,
+            BuildFileError::Load(reason) => {
+                format!("error loading package '{name}': {reason}")
+            }
+            BuildFileError::Eval(text) => {
+                let text = format!("{text:#}");
+                events.push(text.clone());
+                contains_errors(&mut events, &text)
+            }
+            BuildFileError::Package {
+                events: reported, ..
+            } => {
+                let first = reported.first().cloned().unwrap_or_default();
+                events.extend(reported);
+                contains_errors(&mut events, &first)
+            }
+        }
+    }
+
+    /// The errors packages loaded so far had, each to be shown as an
+    /// `ERROR:` line, in the order they happened.
+    pub fn take_events(&self) -> Vec<String> {
+        let mut events = self.inner.events.lock().unwrap();
+        events.extend(self.loader().take_events());
+        std::mem::take(&mut events.queue)
     }
 }
 

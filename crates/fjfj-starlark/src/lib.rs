@@ -129,6 +129,7 @@ mod set;
 mod structs;
 #[cfg(test)]
 mod test_support;
+mod traceback;
 
 pub use analysis::{
     AspectRef, AspectRequest, AspectSpec, DepEdge, DepInfo, Edge, Field, FormatTarget, RuleRequest,
@@ -158,6 +159,7 @@ pub use repo_ctx::{
 };
 pub use repo_download::{Downloader, HttpRequest};
 pub use structs::{FrozenStruct, Struct, StructGen};
+pub use traceback::{LoadFailed, absolute_files, traceback};
 
 pub use starlark::environment::FrozenModule;
 use starlark::environment::{Globals, Module};

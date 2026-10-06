@@ -107,6 +107,9 @@ pub struct BzlLoader {
     build_digests: Mutex<HashMap<(String, String, String), [u8; 32]>>,
     /// What the files evaluated so far printed, until [`Self::take_prints`].
     prints: Mutex<Vec<String>>,
+    /// What went wrong in the files evaluated so far, as Bazel reports it
+    /// before it says the load failed, until [`Self::take_events`].
+    events: Mutex<Vec<String>>,
 }
 
 /// Collects what a `.bzl` file prints at its top level.
@@ -151,7 +154,7 @@ impl FileLoader for Importing<'_> {
         let file = self
             .loader
             .parse(&self.importer, path)
-            .map_err(|message| starlark::Error::new_other(anyhow::anyhow!("{message}")))?;
+            .map_err(|message| starlark::Error::new_other(crate::LoadFailed(message)))?;
         self.loader
             .repos
             .mappings()
@@ -164,7 +167,7 @@ impl FileLoader for Importing<'_> {
         }
         self.loader
             .load(&self.importer, path)
-            .map_err(|message| starlark::Error::new_other(anyhow::anyhow!("{message}")))
+            .map_err(|message| starlark::Error::new_other(crate::LoadFailed(message)))
     }
 }
 
@@ -196,6 +199,7 @@ impl BzlLoader {
             digests: Mutex::new(HashMap::new()),
             build_digests: Mutex::new(HashMap::new()),
             prints: Mutex::new(Vec::new()),
+            events: Mutex::new(Vec::new()),
         }
     }
 
@@ -238,6 +242,35 @@ impl BzlLoader {
         std::mem::take(&mut *self.prints.lock().unwrap())
     }
 
+    /// The errors of the files evaluated since the last call, each as Bazel
+    /// reports an event: a traceback with the files as paths.
+    pub fn take_events(&self) -> Vec<String> {
+        std::mem::take(&mut *self.events.lock().unwrap())
+    }
+
+    /// Where the file `name` is: a canonical `@@repo//package:file`, or a
+    /// path in the package `package` of `repo`, as the parser was told it.
+    pub fn path_of(&self, repo: &str, name: &str) -> String {
+        let Some((from, rest)) = name.strip_prefix("@@").map_or(Some((repo, name)), |label| {
+            let (repo, rest) = label.split_once("//")?;
+            Some((repo, rest))
+        }) else {
+            return name.to_owned();
+        };
+        let (package, file) = match name.starts_with("@@") {
+            true => rest.split_once(':').unwrap_or(("", rest)),
+            false => rest.rsplit_once('/').unwrap_or(("", rest)),
+        };
+        match self.repos.lookup(from) {
+            Ok(Some(lookup)) => lookup
+                .package_dir(package)
+                .join(file)
+                .to_string_lossy()
+                .into_owned(),
+            _ => name.to_owned(),
+        }
+    }
+
     /// Evaluate the BUILD file of `package` in `repo`: what `fjfj build`
     /// does for each package, from any number of threads.
     pub fn load_package(
@@ -248,20 +281,20 @@ impl BzlLoader {
         let lookup = match self.repos.lookup(repo) {
             Ok(Some(lookup)) => lookup,
             Ok(None) => {
-                return Err(BuildFileError::Eval(anyhow::anyhow!(
+                return Err(BuildFileError::Absent(format!(
                     "no such repository '@@{repo}'"
                 )));
             }
-            Err(message) => return Err(BuildFileError::Eval(anyhow::anyhow!("{message}"))),
+            Err(message) => return Err(BuildFileError::Absent(message)),
         };
         let mappings = self.repos.mappings();
         let build = lookup
             .build_file(package)
-            .map_err(|e| BuildFileError::Eval(anyhow::anyhow!("{e}")))?;
+            .map_err(|e| BuildFileError::Absent(e.to_string()))?;
         let source = {
             let _span = tracing::debug_span!("read", file = %build.display()).entered();
             std::fs::read_to_string(&build)
-                .map_err(|e| BuildFileError::Eval(anyhow::anyhow!("{}: {e}", build.display())))?
+                .map_err(|e| BuildFileError::Absent(format!("{}: {e}", build.display())))?
         };
         let importer = Label {
             repo: repo.to_owned(),
@@ -286,6 +319,28 @@ impl BzlLoader {
             path: &path,
             source: &source,
             loader: &loader,
+        })
+        .map_err(|e| match e {
+            // The traceback names its files as the parser was told.
+            BuildFileError::Eval(text) => BuildFileError::Eval(anyhow::anyhow!(
+                "{}",
+                crate::absolute_files(&format!("{text:#}"), &|name| self.path_of(repo, name))
+            )),
+            BuildFileError::Package { events, printed } => {
+                let here = format!("{path}:");
+                let absolute = build.to_string_lossy();
+                BuildFileError::Package {
+                    events: events
+                        .into_iter()
+                        .map(|event| match event.strip_prefix(&here) {
+                            Some(rest) => format!("{absolute}:{rest}"),
+                            None => event,
+                        })
+                        .collect(),
+                    printed,
+                }
+            }
+            load => load,
         })?;
         output.package.loads = loader.loads.borrow().clone();
         Ok(output)
@@ -524,7 +579,24 @@ impl BzlLoader {
         }
         // The source is dropped here, and the syntax tree was gone when the
         // module was evaluated: what stays is the frozen module.
-        module.map_err(|e| format!("{:#}", e.into_anyhow()))
+        module.map_err(|e| match crate::LoadFailed::of(&e) {
+            // A file this one loads failed, and said so.
+            Some(load) => load.0.clone(),
+            None => {
+                let text = crate::absolute_files(&crate::traceback(&e), &|name| {
+                    self.path_of(&file.repo, name)
+                });
+                self.events.lock().unwrap().push(text);
+                format!(
+                    "initialization of module '{}' failed",
+                    if file.package.is_empty() {
+                        file.name.clone()
+                    } else {
+                        format!("{}/{}", file.package, file.name)
+                    }
+                )
+            }
+        })
     }
 }
 
