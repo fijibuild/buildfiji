@@ -233,8 +233,11 @@ impl<'g> Evaluator<'g> {
                 Ok(out)
             }
             Expr::Binary(op, l, r) => {
-                let left = self.eval_in(l, env)?;
+                // Both sides are evaluated, and when both fail it is the right
+                // one that Bazel reports.
+                let left = self.eval_in(l, env);
                 let right = self.eval_in(r, env)?;
+                let left = left?;
                 Ok(match op {
                     Op::Union => left.union(&right).cloned().collect(),
                     Op::Intersect => left.intersection(&right).cloned().collect(),

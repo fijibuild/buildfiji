@@ -189,8 +189,25 @@ impl Resolver<'_> {
     }
 
     fn target(&self, label: &Label) -> Result<Label, String> {
-        let loaded = self.package(&label.repo, &label.package)?;
         let lookup = self.source.lookup(&label.repo)?;
+        let loaded = match self.package(&label.repo, &label.package) {
+            Ok(loaded) => loaded,
+            // A package with errors declares no target that can be found, and
+            // the errors were said already.
+            Err(message) if message.ends_with("' contains errors") => {
+                let build = lookup
+                    .build_file(&label.package)
+                    .map_err(|e| e.to_string())?;
+                return Err(format!(
+                    "no such target '{}': target '{}' not declared in package '{}' defined by {}",
+                    label_text(label),
+                    label.name,
+                    label.package,
+                    build.display()
+                ));
+            }
+            Err(message) => return Err(message),
+        };
         declared_target(&loaded, &lookup, label)?;
         Ok(label.clone())
     }

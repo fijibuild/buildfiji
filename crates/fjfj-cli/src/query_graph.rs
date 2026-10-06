@@ -2305,6 +2305,24 @@ allk(
     }
 
     #[test]
+    fn a_package_with_errors_has_no_target_to_find_and_the_right_operand_is_the_error_reported() {
+        let (_dir, repos) = workspace_of(&[
+            ("MODULE.bazel", ""),
+            ("BUILD", "package_group(name = 'x', bogus = 1)\n"),
+        ]);
+        let graph = QueryGraph::new(repos);
+        let one = |q: &str| query(&graph, q, Format::Label, Order::Auto, Options::default());
+        assert!(one("//:x").starts_with(
+            "ERROR: no such target '//:x': target 'x' not declared in package '' defined by "
+        ));
+        assert!(
+            one("//:all").starts_with("ERROR: Error evaluating '//:all': error loading package ''")
+        );
+        assert!(one("//:all + //:x").starts_with("ERROR: no such target '//:x'"));
+        assert!(one("//:x + //:all").starts_with("ERROR: Error evaluating '//:all'"));
+    }
+
+    #[test]
     fn nonodep_deps_drops_the_visibility_groups_and_double_slash_the_leading_slashes() {
         let (_dir, repos) = workspace_of(&[
             ("MODULE.bazel", ""),

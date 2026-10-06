@@ -407,7 +407,7 @@ pub(crate) fn begin(
     Ok((resolved, repos))
 }
 
-fn print_warnings(repos: &Repos) {
+pub(crate) fn print_warnings(repos: &Repos) {
     // What earlier packages printed happened before the failure.
     repos.flush_prints(&Printer::of(repos));
     for event in repos.take_events() {

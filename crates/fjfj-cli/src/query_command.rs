@@ -137,6 +137,20 @@ pub(crate) fn extract(args: &[String]) -> Result<(Flags, Vec<String>), CliError>
     Ok((flags, rest))
 }
 
+/// What Bazel says last of a query that stopped on a package with errors,
+/// which it has reported already: that the query failed. A pattern that
+/// selects whole trees says which one it was.
+fn failed_query(query: &str, message: String) -> String {
+    let wildcard_of_package = message
+        .strip_prefix("Error evaluating '")
+        .and_then(|rest| rest.split_once("': "))
+        .filter(|(pattern, rest)| !pattern.ends_with("...") && rest.ends_with("' contains errors"));
+    match wildcard_of_package {
+        Some(_) => format!("Evaluation of query \"{query}\" failed"),
+        None => message,
+    }
+}
+
 pub(crate) async fn run(args: QueryArgs) -> Result<(), CliError> {
     // What the rc files give `query`, which the command line overrides.
     let with_rc: Vec<String> = crate::rc_flags("query")?
@@ -183,20 +197,28 @@ pub(crate) async fn run(args: QueryArgs) -> Result<(), CliError> {
                 .with_consistent_labels(flags.consistent_labels)
                 .with_double_slash(flags.double_slash);
             let evaluator = Evaluator::new(&graph, flags.options);
-            let text = evaluator
-                .eval(&expr)
-                .and_then(|set| {
-                    fjfj_query::output::render_bytes(
-                        &evaluator,
-                        &set,
-                        flags.format,
-                        flags.order,
-                        flags.terminator,
-                        &flags.proto,
-                        &flags.graph,
-                    )
-                })
-                .map_err(|e| CliError::Query(anyhow::anyhow!(e)))?;
+            let evaluated = evaluator.eval(&expr).and_then(|set| {
+                fjfj_query::output::render_bytes(
+                    &evaluator,
+                    &set,
+                    flags.format,
+                    flags.order,
+                    flags.terminator,
+                    &flags.proto,
+                    &flags.graph,
+                )
+            });
+            let text = match evaluated {
+                Ok(text) => text,
+                Err(message) => {
+                    // The errors of the packages come first, as Bazel says
+                    // them, and a package that has them is a failed query.
+                    fetch_command::print_warnings(&repos);
+                    return Err(CliError::Query(anyhow::anyhow!(failed_query(
+                        &query, message
+                    ))));
+                }
+            };
             let skipped = evaluator.skipped();
             drop(evaluator);
             fetch_command::finish(resolved, &repos)?;
@@ -215,4 +237,23 @@ pub(crate) async fn run(args: QueryArgs) -> Result<(), CliError> {
     }
     eprintln!("WARNING: --keep_going specified, ignoring errors. Results may be inaccurate");
     Err(CliError::QueryIncomplete)
+}
+
+#[cfg(test)]
+mod failed_query_tests {
+    use super::failed_query;
+
+    #[test]
+    fn a_wildcard_of_a_package_with_errors_is_a_failed_query() {
+        let message =
+            "Error evaluating '//:all': error loading package '': Package '' contains errors";
+        assert_eq!(
+            failed_query("deps(//:all)", message.to_owned()),
+            "Evaluation of query \"deps(//:all)\" failed"
+        );
+        let tree = "Error evaluating '//...': error loading package '': Package '' contains errors";
+        assert_eq!(failed_query("//...", tree.to_owned()), tree);
+        let other = "no such target '//:g'";
+        assert_eq!(failed_query("//:g", other.to_owned()), other);
+    }
 }
