@@ -537,11 +537,14 @@ impl Scheduler {
                 Ok(())
             }
             Err(failure) => {
-                // A test that fails is a result, not a reason to stop.
-                if action.mnemonic != "TestRunner" {
-                    self.stopped.store(true, Ordering::Release);
+                // A test that fails is a result, not a reason to stop. Without
+                // `--keep_going` the first failure is the one reported: what
+                // was running when it came is cancelled, not reported.
+                let is_test = action.mnemonic == "TestRunner";
+                let first = is_test || !self.stopped.swap(true, Ordering::AcqRel);
+                if first || self.keep_going {
+                    self.failures.lock().unwrap().push((*failure).clone());
                 }
-                self.failures.lock().unwrap().push((*failure).clone());
                 Err(Arc::new(*failure))
             }
         }
