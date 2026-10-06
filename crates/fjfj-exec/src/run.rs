@@ -12,6 +12,7 @@
 use crate::cache::ActionCache;
 use crate::execroot::Layout;
 use crate::sandbox::Sandbox;
+use crate::slots::Slots;
 use fjfj_graph::{Action, ActionKind, Artifact};
 use futures::future::{BoxFuture, FutureExt, Shared, join_all};
 use std::collections::HashMap;
@@ -19,7 +20,6 @@ use std::path::Path;
 use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
-use tokio::sync::Semaphore;
 use tracing::Instrument;
 
 #[derive(Debug, Clone)]
@@ -140,7 +140,9 @@ struct Scheduler {
     actions: Vec<Arc<Action>>,
     by_output: HashMap<Artifact, usize>,
     memo: Mutex<HashMap<usize, Done>>,
-    slots: Semaphore,
+    slots: Arc<Slots>,
+    /// By action: the time the longest chain starting at it is expected to take.
+    ranks: Vec<u64>,
     keep_going: bool,
     strategy: Strategy,
     sandboxes: AtomicUsize,
@@ -169,12 +171,15 @@ pub async fn execute(
             by_output.insert(out.clone(), i);
         }
     }
+    let cache = ActionCache::load(layout.output_base.join("fjfj-action-cache.json"));
+    let ranks = ranks(&actions, &by_output, &cache);
     let scheduler = Arc::new(Scheduler {
         layout: layout.clone(),
         actions: actions.into_iter().map(Arc::new).collect(),
         by_output,
         memo: Mutex::new(HashMap::new()),
-        slots: Semaphore::new(options.jobs.max(1)),
+        slots: Slots::new(options.jobs.max(1)),
+        ranks,
         keep_going: options.keep_going,
         strategy: options.strategy,
         sandboxes: AtomicUsize::new(0),
@@ -182,7 +187,7 @@ pub async fn execute(
         spawned: AtomicUsize::new(0),
         ran: AtomicUsize::new(0),
         cached: AtomicUsize::new(0),
-        cache: ActionCache::load(layout.output_base.join("fjfj-action-cache.json")),
+        cache,
         failures: Mutex::new(Vec::new()),
         durations: Mutex::new(Vec::new()),
         cached_outputs: Mutex::new(Vec::new()),
@@ -207,6 +212,64 @@ pub async fn execute(
         durations: std::mem::take(&mut *scheduler.durations.lock().unwrap()),
         cached_outputs: std::mem::take(&mut *scheduler.cached_outputs.lock().unwrap()),
     }
+}
+
+/// What an action not run before is expected to take, in microseconds.
+const GUESS_US: u64 = 1_000_000;
+
+/// For each action, how long the longest chain of actions that starts at it
+/// is expected to take: its own time, as the last build had it or a guess,
+/// plus the greatest of the chains of the actions that read its outputs.
+/// An action that many others wait for has a greater rank than one nothing
+/// waits for, and gets a slot first.
+fn ranks(
+    actions: &[Action],
+    by_output: &HashMap<Artifact, usize>,
+    cache: &ActionCache,
+) -> Vec<u64> {
+    let own: Vec<u64> = actions
+        .iter()
+        .map(|a| {
+            cache
+                .duration(a)
+                .map_or(GUESS_US, |d| d.as_micros().max(1) as u64)
+        })
+        .collect();
+    let mut readers: Vec<Vec<usize>> = vec![Vec::new(); actions.len()];
+    let mut waiting_on = vec![0usize; actions.len()];
+    for (id, action) in actions.iter().enumerate() {
+        let mut makers: Vec<usize> = action
+            .inputs
+            .iter()
+            .filter_map(|input| by_output.get(input).copied())
+            .filter(|&maker| maker != id)
+            .collect();
+        makers.sort_unstable();
+        makers.dedup();
+        for maker in makers {
+            readers[maker].push(id);
+            waiting_on[id] += 1;
+        }
+    }
+    // Topological order, makers first; the ranks then fill in from the end.
+    let mut order: Vec<usize> = (0..actions.len()).filter(|&i| waiting_on[i] == 0).collect();
+    let mut next = 0;
+    while next < order.len() {
+        let id = order[next];
+        next += 1;
+        for &reader in &readers[id] {
+            waiting_on[reader] -= 1;
+            if waiting_on[reader] == 0 {
+                order.push(reader);
+            }
+        }
+    }
+    let mut ranks = own.clone();
+    for &id in order.iter().rev() {
+        let behind = readers[id].iter().map(|&r| ranks[r]).max().unwrap_or(0);
+        ranks[id] = own[id].saturating_add(behind);
+    }
+    ranks
 }
 
 impl Scheduler {
@@ -295,10 +358,9 @@ impl Scheduler {
         let _slot = if matches!(action.kind, ActionKind::Spawn { .. }) {
             let slot = self
                 .slots
-                .acquire()
+                .acquire(self.ranks[id])
                 .instrument(tracing::info_span!("step", step = "slot"))
-                .await
-                .expect("the semaphore stays open");
+                .await;
             self.skip_if_stopped(&action)?;
             Some(slot)
         } else {

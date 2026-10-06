@@ -6,4 +6,5 @@ pub mod console;
 pub mod execroot;
 pub mod run;
 mod sandbox;
+mod slots;
 pub mod workspace_status;

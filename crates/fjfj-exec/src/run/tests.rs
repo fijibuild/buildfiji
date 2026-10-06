@@ -590,3 +590,27 @@ async fn each_action_that_runs_has_a_span_with_a_span_for_each_step() {
     assert_eq!(first["args"]["cached"], false);
     assert_eq!(second["args"]["blocker"], a.exec_path());
 }
+
+#[test]
+fn an_action_that_others_wait_for_ranks_above_one_nothing_waits_for() {
+    let (a, b, c, lone) = (out("a"), out("b"), out("c"), out("lone"));
+    let actions = vec![
+        shell("true", vec![], vec![a.clone()]),
+        shell("true", vec![a.clone()], vec![b.clone()]),
+        shell("true", vec![b.clone()], vec![c]),
+        shell("true", vec![], vec![lone]),
+    ];
+    let mut by_output = HashMap::new();
+    for (i, action) in actions.iter().enumerate() {
+        for output in &action.outputs {
+            by_output.insert(output.clone(), i);
+        }
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let cache = ActionCache::load(dir.path().join("cache.json"));
+    let ranks = ranks(&actions, &by_output, &cache);
+    assert_eq!(ranks[0], 3 * GUESS_US);
+    assert_eq!(ranks[1], 2 * GUESS_US);
+    assert_eq!(ranks[2], GUESS_US);
+    assert_eq!(ranks[3], GUESS_US);
+}
