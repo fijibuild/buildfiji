@@ -31,6 +31,30 @@ pub trait PackageSource: Send + Sync {
     /// `package` of `repo` with its BUILD file evaluated, or Bazel's
     /// message for what went wrong.
     fn package(&self, repo: &str, package: &str) -> Result<Arc<Package>, String>;
+
+    /// [`PackageSource::package`] for `purpose`, which decides what a
+    /// failure says besides the error of the package.
+    fn package_for(
+        &self,
+        repo: &str,
+        package: &str,
+        _purpose: Purpose,
+    ) -> Result<Arc<Package>, String> {
+        self.package(repo, package)
+    }
+}
+
+/// Why a package is being loaded, as Bazel's events for a failure differ.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Purpose {
+    /// Its targets by `:all`, a dependency or any other way.
+    Package,
+    /// One target of it, by name: no `package contains errors` event, the
+    /// package was not evaluated as a whole.
+    Target,
+    /// A directory tree it is under, `//...`: an extra event for the package
+    /// with no name comes first.
+    Tree,
 }
 
 /// A pattern that selected nothing, and why.
@@ -148,19 +172,25 @@ struct Resolver<'a> {
 }
 
 impl Resolver<'_> {
-    fn package(&self, repo: &str, package: &str) -> Loaded {
+    fn load(&self, repo: &str, package: &str, purpose: Purpose) -> Loaded {
         let key = (repo.to_owned(), package.to_owned());
         if let Some(done) = self.packages.borrow().get(&key) {
             return done.clone();
         }
-        let loaded = self.source.package(repo, package);
+        let loaded = self.source.package_for(repo, package, purpose);
         self.packages.borrow_mut().insert(key, loaded.clone());
         loaded
     }
 
     /// The targets of one package a wildcard selects.
-    fn wildcard(&self, repo: &str, package: &str, rules_only: bool) -> Result<Vec<Label>, String> {
-        let loaded = self.package(repo, package)?;
+    fn wildcard(
+        &self,
+        repo: &str,
+        package: &str,
+        rules_only: bool,
+        purpose: Purpose,
+    ) -> Result<Vec<Label>, String> {
+        let loaded = self.load(repo, package, purpose)?;
         let mut out = Vec::new();
         let label = |name: &str| Label {
             repo: repo.to_owned(),
@@ -190,7 +220,7 @@ impl Resolver<'_> {
 
     fn target(&self, label: &Label) -> Result<Label, String> {
         let lookup = self.source.lookup(&label.repo)?;
-        let loaded = match self.package(&label.repo, &label.package) {
+        let loaded = match self.load(&label.repo, &label.package, Purpose::Target) {
             Ok(loaded) => loaded,
             // A package with errors declares no target that can be found, and
             // the errors were said already.
@@ -261,7 +291,7 @@ impl Resolver<'_> {
                 repo,
                 package,
                 rules_only,
-            } => self.wildcard(repo, package, *rules_only),
+            } => self.wildcard(repo, package, *rules_only, Purpose::Package),
             Pattern::Below {
                 repo,
                 directory,
@@ -276,7 +306,7 @@ impl Resolver<'_> {
                 }
                 let mut out = Vec::new();
                 for package in packages {
-                    out.extend(self.wildcard(repo, &package, *rules_only)?);
+                    out.extend(self.wildcard(repo, &package, *rules_only, Purpose::Tree)?);
                 }
                 Ok(out)
             }

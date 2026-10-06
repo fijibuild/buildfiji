@@ -197,6 +197,57 @@ const ROWS: &[Row] = &[
     },
 ];
 
+/// The events of `text` against a package whose BUILD file fails, after the
+/// traceback (buildfiji-wtzd).
+fn events_of(text: &str) -> Vec<String> {
+    let dir = tempfile::tempdir().unwrap();
+    let ws = dir.path().join("ws");
+    std::fs::create_dir_all(&ws).unwrap();
+    std::fs::write(ws.join("BUILD"), "x = [1][3]\nfilegroup(name='g')\n").unwrap();
+    let module = eval_module_file("MODULE.bazel", "module(name = 'm')\n", &EvalOptions::root())
+        .unwrap()
+        .module;
+    let repos = Repos::new(
+        Options {
+            workspace_root: ws,
+            output_base: dir.path().join("ob"),
+            environ: BTreeMap::new(),
+            downloader: None,
+            repository_cache: None,
+            distdirs: Vec::new(),
+            registries: Vec::new(),
+            facts: Vec::new(),
+            repo_overrides: Vec::new(),
+        },
+        module,
+    )
+    .unwrap();
+    let ctx = PatternContext {
+        repo: "",
+        offset: "",
+    };
+    let pattern = TargetPattern::parse(text, ctx, &mut |r| r.to_owned()).unwrap();
+    resolve(&[pattern], &repos);
+    repos
+        .take_events()
+        .into_iter()
+        .map(|e| e.lines().next().unwrap().to_owned())
+        .collect()
+}
+
+#[test]
+fn one_target_of_a_package_with_errors_gets_no_package_contains_errors_event_and_a_tree_gets_an_empty_one_first()
+ {
+    assert_eq!(events_of("//:g").len(), 1);
+    let all = events_of("//:all");
+    assert_eq!(all.len(), 2);
+    assert!(all[1].starts_with("package contains errors: : "));
+    let tree = events_of("//...");
+    assert_eq!(tree.len(), 3);
+    assert_eq!(tree[1], "package contains errors: ");
+    assert!(tree[2].starts_with("package contains errors: : "));
+}
+
 #[test]
 fn a_package_that_does_not_load_says_what_bazel_says() {
     for row in ROWS {

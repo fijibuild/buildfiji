@@ -591,6 +591,8 @@ impl Repos {
     }
 }
 
+use fjfj_loading::Purpose;
+
 impl fjfj_loading::PackageSource for Repos {
     fn lookup(&self, repo: &str) -> Result<Arc<PackageLookup>, String> {
         match self.inner.lookup(repo) {
@@ -604,6 +606,28 @@ impl fjfj_loading::PackageSource for Repos {
         &self,
         repo: &str,
         package: &str,
+    ) -> Result<Arc<fjfj_graph::package::Package>, String> {
+        self.load(repo, package, Purpose::Package)
+    }
+
+    fn package_for(
+        &self,
+        repo: &str,
+        package: &str,
+        purpose: Purpose,
+    ) -> Result<Arc<fjfj_graph::package::Package>, String> {
+        self.load(repo, package, purpose)
+    }
+}
+
+impl Repos {
+    /// `package` loaded for `purpose`, which decides the events a failure
+    /// is followed by.
+    fn load(
+        &self,
+        repo: &str,
+        package: &str,
+        purpose: Purpose,
     ) -> Result<Arc<fjfj_graph::package::Package>, String> {
         self.loader()
             .load_package(repo, package)
@@ -622,11 +646,9 @@ impl fjfj_loading::PackageSource for Repos {
                 }
                 Arc::new(loaded.package)
             })
-            .map_err(|e| self.package_error(repo, package, e))
+            .map_err(|e| self.package_error(repo, package, e, purpose))
     }
-}
 
-impl Repos {
     /// What Bazel says of a package whose BUILD file failed: the events go to
     /// the console (see [`Repos::take_events`]), and the message is the
     /// error of the package.
@@ -635,6 +657,7 @@ impl Repos {
         repo: &str,
         package: &str,
         error: fjfj_starlark::BuildFileError,
+        purpose: Purpose,
     ) -> String {
         use fjfj_starlark::BuildFileError;
         let name = if repo.is_empty() {
@@ -682,7 +705,12 @@ impl Repos {
                         .is_some_and(|c| c.parse::<u32>().is_ok())
                 })
                 .map_or(first, |(_, message)| message);
-            events.push(format!("package contains errors: {name}: {message}"));
+            if purpose == Purpose::Tree {
+                events.push("package contains errors: ".to_owned());
+            }
+            if purpose != Purpose::Target {
+                events.push(format!("package contains errors: {name}: {message}"));
+            }
             format!("error loading package '{name}': Package '{package}' contains errors")
         };
         match error {
