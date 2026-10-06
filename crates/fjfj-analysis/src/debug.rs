@@ -67,6 +67,26 @@ fn names(labels: &[&Label]) -> String {
         .join(", ")
 }
 
+/// What is said of a target that asked for no toolchain: where it runs.
+pub fn say_no_toolchains(
+    debug: &ResolutionDebug,
+    target: &crate::ConfiguredTarget,
+    target_platform: &str,
+) {
+    if !(debug.matches)(&expand_label_text(&target.label)) {
+        return;
+    }
+    let chosen = target
+        .execution_platform
+        .as_ref()
+        .map(expand_label_text)
+        .unwrap_or_else(|| target_platform.to_owned());
+    (debug.emit)(&message(&[(
+        0,
+        format!("Target platform {target_platform}: Selected execution platform {chosen}, "),
+    )]));
+}
+
 /// Say how `types` resolved for the target of `key`, if the flag asks.
 pub(crate) async fn trace(
     ctx: &Ctx,

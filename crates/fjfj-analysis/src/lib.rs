@@ -20,7 +20,7 @@ mod toolchain;
 mod transition;
 
 pub use aspect::AspectKey;
-pub use debug::{LabelFilter, ResolutionDebug};
+pub use debug::{LabelFilter, ResolutionDebug, say_no_toolchains};
 pub use select::ConfigMatching;
 pub use starlark_rule::dep_info;
 pub use target::{ConfiguredTarget, ConfiguredTargetKey, Env, PackageKey, engine};

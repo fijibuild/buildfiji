@@ -265,8 +265,16 @@ pub(crate) async fn analyze(
             _ => None,
         })
         .unwrap_or_default();
-    let (toolchains, mut toolchain_keys, chosen_platform) =
+    let (toolchains, mut toolchain_keys, mut chosen_platform) =
         resolve_toolchains(ctx, key, &schema.toolchains, &exec_compatible).await?;
+    // The debug output says where a rule with no toolchain runs, once the
+    // targets that resolved it have said where it does.
+    let debug_no_toolchains =
+        schema.toolchains.is_empty() && ctx.data::<Env>()?.toolchain_resolution_debug.is_some();
+    if debug_no_toolchains {
+        chosen_platform =
+            crate::toolchain::default_execution_platform(ctx, key, &exec_compatible).await?;
+    }
     let mut toolchain_platforms: Vec<(Label, Label)> = Vec::new();
     if let Some(platform) = &chosen_platform {
         toolchain_platforms.extend(
@@ -313,6 +321,7 @@ pub(crate) async fn analyze(
     }
     target.exec_group_platforms = group_platforms;
     target.toolchain_platforms = toolchain_platforms;
+    target.debug_no_toolchains = debug_no_toolchains;
     let mut toolchain_platforms: Vec<(Label, Label)> = Vec::new();
     if let Some(platform) = &chosen_platform {
         toolchain_platforms.extend(
@@ -474,14 +483,6 @@ pub(crate) async fn resolve_toolchains(
     Error,
 > {
     if types.is_empty() {
-        if ctx.data::<Env>()?.toolchain_resolution_debug.is_some() {
-            let platform = crate::toolchain::default_execution_platform(ctx, key, exec).await?;
-            let outcome = crate::debug::Outcome {
-                platform,
-                toolchains: Vec::new(),
-            };
-            crate::debug::trace(ctx, key, &[], &[], &[], Some(&outcome)).await?;
-        }
         return Ok((Vec::new(), Vec::new(), None));
     }
     let extra = match key

@@ -872,6 +872,18 @@ pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> R
         split_incompatible(roots, request.options.incompatible.as_ref());
     let mut aspect_roots = aspect_roots;
     report.analysed = place_toolchains(&all);
+    if let Some(debug) = &resolution_debug {
+        let platform = match configuration
+            .settings
+            .get("//command_line_option:platforms")
+        {
+            Some(fjfj_graph::SettingValue::List(items)) if !items.is_empty() => items[0].clone(),
+            _ => "@@platforms//host:host".to_owned(),
+        };
+        for target in report.analysed.iter().filter(|t| t.debug_no_toolchains) {
+            fjfj_analysis::say_no_toolchains(debug, target, &platform);
+        }
+    }
     // A source file is built by nothing; a source file that is executable
     // can still be run.
     let mut source_files: BTreeSet<Label> = BTreeSet::new();
