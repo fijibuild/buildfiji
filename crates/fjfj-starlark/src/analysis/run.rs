@@ -298,8 +298,9 @@ pub(super) fn execute<'a>(
                 args.push(alloc_target(heap, Arc::new(info.clone())));
             }
             args.push(ctx);
+            // Bazel puts the traceback on a line of its own.
             eval.eval_function(implementation, &args, &[])
-                .map_err(|e| format!("{e}"))?
+                .map_err(|e| format!("\n{}", crate::traceback(&e)))?
         };
         let mut default_files: Option<Vec<Artifact>> = None;
         let mut executable = None;

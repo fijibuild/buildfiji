@@ -7,7 +7,7 @@ use fjfj_exec::execroot::{Layout, MAIN_REPO_DIR};
 use fjfj_exec::run::{Failure, Progress, execute};
 use fjfj_graph::{Action, Artifact, Configuration, Label};
 use fjfj_repo::Repos;
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -195,6 +195,55 @@ pub(crate) struct TestResult {
     pub size: String,
 }
 
+/// The target an analysis error is about, which need not be the one asked for:
+/// where its BUILD file declared it, and the configuration it was analysed in.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Site {
+    pub failing: Label,
+    /// `pkg/BUILD:line:column`, in the repository of `failing`.
+    pub location: String,
+    /// The first digits of the configuration's checksum.
+    pub config: String,
+}
+
+/// The target a message of analysis says it is about: the rule label in
+/// `in <what> rule <label>: <why>`, which is how Bazel starts the error of a
+/// rule, whichever target of the build that rule is the target of.
+fn failing_target(message: &str) -> Option<Label> {
+    let after = message.strip_prefix("in ")?.split_once(" rule ")?.1;
+    let text = after.split_once(": ")?.0;
+    Label::parse(
+        text,
+        fjfj_graph::LabelContext {
+            repo: "",
+            package: "",
+        },
+    )
+    .ok()
+}
+
+/// Where each analysis error of `report` happened.
+fn place_errors(report: &mut Report, repos: &Repos, configuration: &Configuration) {
+    let config = configuration.checksum()[..7].to_owned();
+    for (label, message) in &report.analysis_errors {
+        let failing = failing_target(message).unwrap_or_else(|| label.clone());
+        let location = fjfj_loading::PackageSource::package(repos, &failing.repo, &failing.package)
+            .ok()
+            .and_then(|package| package.target(&failing.name).map(|t| t.location.clone()))
+            .filter(|location| !location.is_empty());
+        if let Some(location) = location {
+            report.analysis_sites.insert(
+                label.clone(),
+                Site {
+                    failing,
+                    location,
+                    config: config.clone(),
+                },
+            );
+        }
+    }
+}
+
 #[derive(Debug)]
 pub(crate) struct Report {
     pub layout: Layout,
@@ -206,6 +255,8 @@ pub(crate) struct Report {
     pub results: Vec<TargetResult>,
     /// Analysis errors, one message each, with the target they stopped.
     pub analysis_errors: Vec<(Label, String)>,
+    /// Where each of those stopped, for the targets that could be placed.
+    pub analysis_sites: BTreeMap<Label, Site>,
     pub failures: Vec<Failure>,
     /// Every configured target analysis made, the roots and what they read.
     pub analysed: Vec<Arc<ConfiguredTarget>>,
@@ -234,6 +285,7 @@ impl Report {
             printed: Vec::new(),
             results: Vec::new(),
             analysis_errors: Vec::new(),
+            analysis_sites: BTreeMap::new(),
             failures: Vec::new(),
             analysed: Vec::new(),
             configured: 0,
@@ -533,6 +585,7 @@ pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> R
         &mut report,
     ));
     report.analysed = all.clone();
+    place_errors(&mut report, repos, &configuration);
     report.printed = all.iter().flat_map(|t| t.printed.clone()).collect();
     report.configured = all.iter().filter(|t| t.rule_class.is_some()).count();
     report.packages = all
@@ -789,6 +842,53 @@ fn plural(n: usize, one: &str, many: &str) -> String {
     format!("{n} {}", if n == 1 { one } else { many })
 }
 
+/// What Bazel says of the targets that did not analyse: for each failing
+/// target, once, the error and `Analysis of target ... failed` at the place
+/// its BUILD file declared it, then, for each target asked for and not built,
+/// that the build was aborted.
+fn analysis_error_lines(report: &Report, layout: &Layout, keep_going: bool) -> Vec<String> {
+    let files =
+        |name: &str| crate::fetch_command::file_path(name, &layout.workspace, &layout.external());
+    let mut lines = Vec::new();
+    let mut reported = HashSet::new();
+    for (label, message) in &report.analysis_errors {
+        let message = fjfj_starlark::absolute_files(message, &files);
+        match report.analysis_sites.get(label) {
+            Some(site) => {
+                let at = absolute(layout, &site.failing.repo, &site.location);
+                if reported.insert(site.failing.clone()) {
+                    lines.push(format!("ERROR: {at}: {message}"));
+                    lines.push(format!(
+                        "ERROR: {at}: Analysis of target '{}' (config: {}) failed",
+                        label_text(&site.failing),
+                        site.config
+                    ));
+                }
+                if !keep_going {
+                    lines.push(format!(
+                        "ERROR: Analysis of target '{}' failed; build aborted{}",
+                        label_text(label),
+                        if site.failing == *label {
+                            ""
+                        } else {
+                            ": Analysis failed"
+                        }
+                    ));
+                }
+            }
+            None => {
+                lines.push(format!("ERROR: {message}"));
+                lines.push(format!(
+                    "ERROR: Analysis of target '{}' failed{}",
+                    label_text(label),
+                    if keep_going { "" } else { "; build aborted" }
+                ));
+            }
+        }
+    }
+    lines
+}
+
 /// Say what happened as `bazel build` does, on standard error. `Ok` if the
 /// build succeeded.
 pub(crate) fn print(
@@ -806,13 +906,8 @@ pub(crate) fn print(
             crate::fetch_command::debug_line(text, &layout.workspace, &layout.external())
         );
     }
-    for (label, message) in &report.analysis_errors {
-        eprintln!("ERROR: {message}");
-        eprintln!(
-            "ERROR: Analysis of target '{}' failed{}",
-            label_text(label),
-            if keep_going { "" } else { "; build aborted" }
-        );
+    for line in analysis_error_lines(report, layout, keep_going) {
+        eprintln!("{line}");
     }
     if report.analysis_errors.is_empty() || keep_going {
         let analysed = report.results.len();
@@ -1096,4 +1191,100 @@ fn absolute(layout: &Layout, repo: &str, location: &str) -> String {
         layout.external().join(repo)
     };
     root.join(location).display().to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn label(package: &str, name: &str) -> Label {
+        Label {
+            repo: String::new(),
+            package: package.to_owned(),
+            name: name.to_owned(),
+        }
+    }
+
+    fn report(errors: &[(&str, &str)], sites: &[(&str, &str)]) -> Report {
+        let mut report = Report::new(Layout {
+            workspace: "ws".into(),
+            output_base: "ob".into(),
+        });
+        for (name, message) in errors {
+            report
+                .analysis_errors
+                .push((label("k", name), (*message).to_owned()));
+        }
+        for (name, failing) in sites {
+            report.analysis_sites.insert(
+                label("k", name),
+                Site {
+                    failing: label("k", failing),
+                    location: "k/BUILD:1:8".to_owned(),
+                    config: "a7a71fd".to_owned(),
+                },
+            );
+        }
+        report
+    }
+
+    #[test]
+    fn the_target_of_a_rules_error_is_the_label_after_rule() {
+        assert_eq!(
+            failing_target("in cmd attribute of genrule rule //k:bad: $(nope) not defined"),
+            Some(label("k", "bad"))
+        );
+        assert_eq!(
+            failing_target("in r rule //i:t: \nTraceback (most recent call last):"),
+            Some(label("i", "t"))
+        );
+        assert_eq!(failing_target("no such package 'p'"), None);
+    }
+
+    #[test]
+    fn a_failing_target_is_reported_at_its_place_and_once() {
+        let message = "in cmd attribute of genrule rule //k:bad: $(nope) not defined";
+        let report = report(
+            &[("bad", message), ("top", message)],
+            &[("bad", "bad"), ("top", "bad")],
+        );
+        let lines = analysis_error_lines(&report, &report.layout, false);
+        assert_eq!(
+            lines,
+            [
+                "ERROR: ws/k/BUILD:1:8: in cmd attribute of genrule rule //k:bad: $(nope) not defined",
+                "ERROR: ws/k/BUILD:1:8: Analysis of target '//k:bad' (config: a7a71fd) failed",
+                "ERROR: Analysis of target '//k:bad' failed; build aborted",
+                "ERROR: Analysis of target '//k:top' failed; build aborted: Analysis failed",
+            ]
+        );
+    }
+
+    #[test]
+    fn an_error_with_no_place_is_shown_as_it_is() {
+        let report = report(&[("x", "no platform")], &[]);
+        assert_eq!(
+            analysis_error_lines(&report, &report.layout, true),
+            [
+                "ERROR: no platform",
+                "ERROR: Analysis of target '//k:x' failed"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_traceback_in_an_error_names_files_by_path() {
+        let report = report(
+            &[(
+                "t",
+                "in r rule //k:t: \nTraceback (most recent call last):\n\tFile \"@@//k:l.bzl\", line 2, column 9, in _impl",
+            )],
+            &[("t", "t")],
+        );
+        let lines = analysis_error_lines(&report, &report.layout, false);
+        assert!(
+            lines[0].contains("File \"ws/k/l.bzl\", line 2"),
+            "{lines:?}"
+        );
+    }
 }

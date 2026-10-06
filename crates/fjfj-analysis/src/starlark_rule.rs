@@ -320,8 +320,7 @@ pub(crate) async fn analyze(
         .map_err(|e| Error::msg(format!("running a rule panicked: {e}")))?
         .map_err(|message| {
             Error::msg(format!(
-                "{}: in {rule_class} rule {}: {message}",
-                label_text(label),
+                "in {rule_class} rule {}: {message}",
                 label_text(label)
             ))
         })?;

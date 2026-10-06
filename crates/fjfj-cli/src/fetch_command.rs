@@ -207,6 +207,22 @@ impl starlark::PrintHandler for Printer {
     }
 }
 
+/// Where the file `name` is: a canonical `@@<repo>//<package>:<file>` is in
+/// the workspace or under `external`, and anything else is as it was.
+pub(crate) fn file_path(name: &str, workspace_root: &Path, external: &Path) -> String {
+    let located = name.strip_prefix("@@").and_then(|rest| {
+        let (repo, rest) = rest.split_once("//")?;
+        let (package, file) = rest.split_once(':')?;
+        let root = if repo.is_empty() {
+            workspace_root.to_owned()
+        } else {
+            external.join(repo)
+        };
+        Some(root.join(package).join(file).display().to_string())
+    });
+    located.unwrap_or_else(|| name.to_owned())
+}
+
 /// `DEBUG: <path>:<line>:<column>: <text>`, from what `print_line` made:
 /// `@@<repo>//<package>:<file>:<line>:<column>: <text>` names the file by
 /// its label, and a path is where that file is.
