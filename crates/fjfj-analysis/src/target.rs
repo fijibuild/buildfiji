@@ -117,6 +117,9 @@ pub struct ConfiguredTarget {
     /// The platform its actions run on, when [`Env::record_execution_platforms`]
     /// or its toolchains decided it.
     pub execution_platform: Option<Label>,
+    /// The configuration its tools (`cfg = "exec"` attributes) are built in,
+    /// when it has any: that of the platform it runs on.
+    pub exec_configuration: Option<fjfj_graph::Configuration>,
     /// The platform each exec group the rule declared runs its actions on.
     pub exec_group_platforms: Vec<(String, Option<Label>)>,
     /// The toolchain implementations it resolved, each with the platform they
@@ -210,6 +213,7 @@ impl ConfiguredTarget {
             platform: None,
             config_matching: None,
             execution_platform: None,
+            exec_configuration: None,
             exec_group_platforms: Vec::new(),
             toolchain_platforms: Vec::new(),
             debug_no_toolchains: false,

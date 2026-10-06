@@ -222,11 +222,25 @@ async fn genrule(
 
     let srcs = targets(ctx, key, labels(label, attrs, "srcs")?).await?;
     let tools = {
-        let keys = labels(label, attrs, "tools")?
+        let tool_labels = labels(label, attrs, "tools")?;
+        let exec = if tool_labels.is_empty() {
+            config.to_exec()
+        } else {
+            let exec = crate::toolchain::exec_configuration(
+                ctx,
+                key,
+                target.execution_platform.as_ref(),
+                &[],
+            )
+            .await?;
+            target.exec_configuration = Some(exec.clone());
+            exec
+        };
+        let keys = tool_labels
             .into_iter()
             .map(|l| ConfiguredTargetKey {
                 label: l,
-                configuration: config.to_exec(),
+                configuration: exec.clone(),
             })
             .collect::<Vec<_>>();
         let results = ctx.get_all(keys.clone()).await;

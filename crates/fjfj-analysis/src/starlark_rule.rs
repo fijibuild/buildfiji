@@ -9,8 +9,8 @@ use fjfj_graph::rule::AttrValue;
 use fjfj_graph::rule::Cfg;
 use fjfj_graph::{Label, NestedSet};
 use fjfj_starlark::{
-    DepInfo, Edge, RuleRequest, attr_aspects, computed_defaults, labels_of_attrs, resolved_attrs,
-    rule_schema, run_rule,
+    DepInfo, Edge, RuleRequest, SplitBranches, attr_aspects, computed_defaults, labels_of_attrs,
+    resolved_attrs, rule_schema, run_rule,
 };
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -125,11 +125,11 @@ pub(crate) async fn analyze(
         .map_err(|e| Error::msg(format!("{}: {e}", label_text(label))))?;
         if made.len() != 1 {
             return Err(Error::msg(format!(
-                "{}: a split transition is not supported yet (buildfiji-7w6)",
+                "{}: Rule transition only allowed to return a single transitioned configuration.",
                 label_text(label)
             )));
         }
-        let configuration = made.remove(0);
+        let (_, configuration) = made.remove(0);
         if configuration != key.configuration {
             let done = ctx
                 .get(crate::transition::key(label.clone(), configuration))
@@ -171,88 +171,6 @@ pub(crate) async fn analyze(
         for (name, value) in computed {
             if !set.iter().any(|(n, _)| *n == name) {
                 set.push((name, value));
-            }
-        }
-    }
-
-    // The targets its attributes name, each in the configuration its edge asks.
-    let edges = labels_of_attrs(&schema, &set);
-    let resolved = resolved_attrs(&schema, &set);
-    let mut dep_keys: Vec<ConfiguredTargetKey> = Vec::new();
-    for edge in &edges {
-        let configuration = match edge.cfg {
-            Cfg::Target => key.configuration.clone(),
-            Cfg::Exec | Cfg::Host => key.configuration.to_exec(),
-            Cfg::Transition => {
-                let mut made = crate::transition::apply(
-                    ctx,
-                    &key.configuration,
-                    bzl,
-                    rule_class,
-                    Edge::Attr(&edge.attr),
-                    &resolved,
-                )
-                .await
-                .map_err(|e| {
-                    Error::msg(format!(
-                        "{}: on dependency edge {} -|{}|-> {}: {e}",
-                        label_text(label),
-                        label_text(label),
-                        edge.attr,
-                        label_text(&edge.label)
-                    ))
-                })?;
-                if made.len() != 1 {
-                    return Err(Error::msg(format!(
-                        "{}: a split transition on attribute '{}' is not supported yet (buildfiji-7w6)",
-                        label_text(label),
-                        edge.attr
-                    )));
-                }
-                made.remove(0)
-            }
-        };
-        dep_keys.push(ConfiguredTargetKey {
-            label: edge.label.clone(),
-            configuration,
-        });
-    }
-    let mut deps = BTreeMap::new();
-    let gathered = ctx.get_all(dep_keys.clone()).await;
-    let started = std::time::Instant::now();
-    for (dep_key, result) in dep_keys.iter().zip(gathered) {
-        let done = result?;
-        let generated = package.target(&dep_key.label.name).is_some_and(|t| {
-            dep_key.label.repo == label.repo
-                && dep_key.label.package == label.package
-                && matches!(
-                    t.kind,
-                    fjfj_graph::package::TargetKind::GeneratedFile { .. }
-                )
-        });
-        deps.insert(dep_key.label.clone(), dep_info(&done, generated));
-    }
-    let dep_info_time = started.elapsed();
-
-    // The aspects its attributes ask for, on the targets they name: what they
-    // provide is added to what the rule sees of those targets.
-    let mut aspect_keys: Vec<AspectKey> = Vec::new();
-    if native.is_none() {
-        for (edge, dep_key) in edges.iter().zip(&dep_keys) {
-            for aspect in attr_aspects(&module, rule_class, &edge.attr) {
-                aspect_keys.push(AspectKey {
-                    target: dep_key.clone(),
-                    aspect,
-                });
-            }
-        }
-        for (aspect_key, result) in aspect_keys
-            .iter()
-            .zip(ctx.get_all(aspect_keys.clone()).await)
-        {
-            let result = result?;
-            if let Some(dep) = deps.get_mut(&aspect_key.target.label) {
-                dep.providers.extend(result.providers.iter().cloned());
             }
         }
     }
@@ -322,16 +240,121 @@ pub(crate) async fn analyze(
     target.exec_group_platforms = group_platforms;
     target.toolchain_platforms = toolchain_platforms;
     target.debug_no_toolchains = debug_no_toolchains;
-    let mut toolchain_platforms: Vec<(Label, Label)> = Vec::new();
-    if let Some(platform) = &chosen_platform {
-        toolchain_platforms.extend(
-            toolchains
-                .iter()
-                .filter_map(|(_, d)| Some((d.as_ref()?.label.clone(), platform.clone()))),
-        );
-    }
     if chosen_platform.is_some() {
         target.execution_platform = chosen_platform;
+    }
+
+    // The targets its attributes name, each in the configuration its edge asks.
+    let edges = labels_of_attrs(&schema, &set);
+    let resolved = resolved_attrs(&schema, &set);
+    // Tools are built for the platform the target runs on.
+    let exec_configuration = if edges.iter().any(|e| matches!(e.cfg, Cfg::Exec | Cfg::Host)) {
+        let exec = crate::toolchain::exec_configuration(
+            ctx,
+            key,
+            target.execution_platform.as_ref(),
+            &exec_compatible,
+        )
+        .await?;
+        target.exec_configuration = Some(exec.clone());
+        exec
+    } else {
+        key.configuration.to_exec()
+    };
+
+    // Each dependency, with the edge it is of and, for a split, the key of its branch.
+    let mut dep_keys: Vec<ConfiguredTargetKey> = Vec::new();
+    let mut dep_edges: Vec<(usize, Option<String>)> = Vec::new();
+    for (index, edge) in edges.iter().enumerate() {
+        let branches = match edge.cfg {
+            Cfg::Target => vec![(None, key.configuration.clone())],
+            Cfg::Exec | Cfg::Host => vec![(None, exec_configuration.clone())],
+            Cfg::Transition => {
+                let mut made = crate::transition::apply(
+                    ctx,
+                    &key.configuration,
+                    bzl,
+                    rule_class,
+                    Edge::Attr(&edge.attr),
+                    &resolved,
+                )
+                .await
+                .map_err(|e| {
+                    Error::msg(format!(
+                        "{}: on dependency edge {} -|{}|-> {}: {e}",
+                        label_text(label),
+                        label_text(label),
+                        edge.attr,
+                        label_text(&edge.label)
+                    ))
+                })?;
+                // The branches of a split are in the order of their configurations.
+                made.sort_by_key(|(_, c)| c.bin_dir());
+                made.into_iter()
+                    .map(|(split, c)| ((!split.is_empty()).then_some(split), c))
+                    .collect()
+            }
+        };
+        for (split, configuration) in branches {
+            dep_keys.push(ConfiguredTargetKey {
+                label: edge.label.clone(),
+                configuration,
+            });
+            dep_edges.push((index, split));
+        }
+    }
+    let mut deps = BTreeMap::new();
+    let mut splits: BTreeMap<String, SplitBranches> = BTreeMap::new();
+    let gathered = ctx.get_all(dep_keys.clone()).await;
+    let started = std::time::Instant::now();
+    let mut dep_infos: Vec<DepInfo> = Vec::new();
+    for (dep_key, result) in dep_keys.iter().zip(gathered) {
+        let done = result?;
+        let generated = package.target(&dep_key.label.name).is_some_and(|t| {
+            dep_key.label.repo == label.repo
+                && dep_key.label.package == label.package
+                && matches!(
+                    t.kind,
+                    fjfj_graph::package::TargetKind::GeneratedFile { .. }
+                )
+        });
+        dep_infos.push(dep_info(&done, generated));
+    }
+    let dep_info_time = started.elapsed();
+
+    // The aspects its attributes ask for, on the targets they name: what they
+    // provide is added to what the rule sees of those targets.
+    let mut aspect_keys: Vec<AspectKey> = Vec::new();
+    if native.is_none() {
+        for ((index, _), dep_key) in dep_edges.iter().zip(&dep_keys) {
+            for aspect in attr_aspects(&module, rule_class, &edges[*index].attr) {
+                aspect_keys.push(AspectKey {
+                    target: dep_key.clone(),
+                    aspect,
+                });
+            }
+        }
+        for (aspect_key, result) in aspect_keys
+            .iter()
+            .zip(ctx.get_all(aspect_keys.clone()).await)
+        {
+            let result = result?;
+            for (dep_key, info) in dep_keys.iter().zip(&mut dep_infos) {
+                if *dep_key == aspect_key.target {
+                    info.providers.extend(result.providers.iter().cloned());
+                }
+            }
+        }
+    }
+    for ((index, split), (dep_key, info)) in dep_edges.iter().zip(dep_keys.iter().zip(dep_infos)) {
+        deps.insert(dep_key.label.clone(), info.clone());
+        if let Some(split) = split {
+            let branches = splits.entry(edges[*index].attr.clone()).or_default();
+            match branches.iter_mut().find(|(k, _)| k == split) {
+                Some((_, targets)) => targets.push((dep_key.label.clone(), info)),
+                None => branches.push((split.clone(), vec![(dep_key.label.clone(), info)])),
+            }
+        }
     }
 
     // The outputs the class declares: `outputs = {...}` templates, and the
@@ -373,10 +396,10 @@ pub(crate) async fn analyze(
             rule_class: rule_class.to_owned(),
             schema: schema.clone(),
             attrs: set.clone(),
-            edges: edges
+            edges: dep_edges
                 .iter()
                 .zip(&dep_keys)
-                .map(|(e, k)| (e.attr.clone(), k.clone()))
+                .map(|((i, _), k)| (edges[*i].attr.clone(), k.clone()))
                 .collect(),
             location: location.clone(),
             build_file: build_file.clone(),
@@ -392,6 +415,7 @@ pub(crate) async fn analyze(
         main_repo_name: env.main_repo_name.clone(),
         attrs: set.clone(),
         deps,
+        splits,
         outputs,
         mappings: rules.mappings(),
         toolchains,

@@ -244,7 +244,10 @@ impl ConfiguredGraph<'_> {
                 let transition = loaded.is_some_and(|e| e.transition);
                 // The configured target the edge goes to.
                 let wanted = if tool {
-                    target.configuration.to_exec()
+                    target
+                        .exec_configuration
+                        .clone()
+                        .unwrap_or_else(|| target.configuration.to_exec())
                 } else {
                     target.configuration.clone()
                 };

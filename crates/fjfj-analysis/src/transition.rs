@@ -285,11 +285,11 @@ pub(crate) async fn apply(
     rule_class: &str,
     edge: Edge<'_>,
     attrs: &[(String, AttrValue)],
-) -> Result<Vec<Configuration>, Error> {
+) -> Result<Vec<(String, Configuration)>, Error> {
     let env = ctx.data::<Env>()?;
     let module = module_of(&env, bzl).await?;
     let Some(spec) = transition_spec(&module, rule_class, edge) else {
-        return Ok(vec![from.clone()]);
+        return Ok(vec![(String::new(), from.clone())]);
     };
     let mut settings = BTreeMap::new();
     for input in &spec.inputs {
@@ -315,12 +315,12 @@ pub(crate) async fn apply(
         .map_err(Error::msg)?
     };
     let mut out = Vec::new();
-    for (_, changes) in outcomes {
+    for (split, changes) in outcomes {
         let mut config = from.clone();
         for (name, value) in changes {
             write(ctx, &mut config, &name, value, &bzl.repo).await?;
         }
-        out.push(config);
+        out.push((split, config));
     }
     Ok(out)
 }

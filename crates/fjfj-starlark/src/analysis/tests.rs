@@ -45,6 +45,7 @@ fn request_in(
         main_repo_name: "_main".into(),
         attrs,
         deps: deps.into_iter().map(|d| (d.label.clone(), d)).collect(),
+        splits: BTreeMap::new(),
         outputs: Vec::new(),
         mappings: Arc::new(crate::test_support::probe_mappings()),
         toolchains: Vec::new(),

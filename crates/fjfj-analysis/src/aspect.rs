@@ -119,7 +119,10 @@ impl Key for AspectKey {
         for edge in labels_of_attrs(&spec.schema, &[]) {
             let configuration = match edge.cfg {
                 Cfg::Target => self.target.configuration.clone(),
-                Cfg::Exec | Cfg::Host => self.target.configuration.to_exec(),
+                Cfg::Exec | Cfg::Host => base
+                    .exec_configuration
+                    .clone()
+                    .unwrap_or_else(|| self.target.configuration.to_exec()),
                 Cfg::Transition => {
                     return Err(Error::msg(format!(
                         "{}: a transition on attribute '{}' of an aspect is not supported yet (buildfiji-136.8)",

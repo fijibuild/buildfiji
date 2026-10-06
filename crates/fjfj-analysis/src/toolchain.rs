@@ -118,6 +118,45 @@ pub(crate) async fn default_execution_platform(
     Ok(None)
 }
 
+/// The configuration the tools of the target `key` are built in, when it runs
+/// on `platform` (the first execution platform that has the `exec`
+/// constraints, if none is chosen): that platform is the target platform of the
+/// tools.
+pub(crate) async fn exec_configuration(
+    ctx: &Ctx,
+    key: &ConfiguredTargetKey,
+    platform: Option<&Label>,
+    exec: &[Label],
+) -> Result<fjfj_graph::Configuration, Error> {
+    let extra = match key
+        .configuration
+        .settings
+        .get("//command_line_option:extra_execution_platforms")
+    {
+        Some(fjfj_graph::SettingValue::List(items)) => Some(items.clone()),
+        _ => None,
+    };
+    let platforms = ctx.get(ExecutionPlatforms { extra }).await?;
+    let mut chosen = None;
+    for p in platforms.iter() {
+        let wanted = match platform {
+            Some(label) => p.label == *label,
+            None => {
+                let held = crate::constraints::with_defaults_for(ctx, &p.constraints, exec).await?;
+                exec.iter().all(|c| held.contains(c))
+            }
+        };
+        if wanted {
+            chosen = Some(p);
+            break;
+        }
+    }
+    Ok(match chosen {
+        Some(p) => key.configuration.to_exec_on(&p.label, &p.constraints),
+        None => key.configuration.to_exec(),
+    })
+}
+
 /// The `rule_class` targets `patterns` name, in order.
 async fn expand_all(
     ctx: &Ctx,

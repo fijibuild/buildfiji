@@ -1120,6 +1120,89 @@ use = rule(implementation = _use, attrs = {"t": attr.label(cfg = "exec", executa
     );
 }
 
+/// Probed with `bazel build` on the same files: a tool is built for the
+/// platform the target that wants it runs on, which is its target platform and
+/// names its output directory.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_tool_is_built_for_the_execution_platform_of_the_target_that_wants_it() {
+    let (_dir, repos) = workspace(&[
+        ("MODULE.bazel", ""),
+        (
+            "defs.bzl",
+            r#"
+def _tool(ctx):
+    out = ctx.actions.declare_file(ctx.label.name + ".txt")
+    ctx.actions.write(out, "x")
+    print("c1:", ctx.target_platform_has_constraint(ctx.attr._c1[platform_common.ConstraintValueInfo]), "c2:", ctx.target_platform_has_constraint(ctx.attr._c2[platform_common.ConstraintValueInfo]))
+    return [DefaultInfo(files = depset([out]))]
+tool = rule(implementation = _tool, attrs = {"_c1": attr.label(default = "//:c1"), "_c2": attr.label(default = "//:c2")})
+def _use(ctx):
+    return [DefaultInfo(files = depset(ctx.files.tool))]
+use = rule(implementation = _use, attrs = {"tool": attr.label(cfg = "exec")})
+def _tc(ctx):
+    return [platform_common.ToolchainInfo()]
+tc = rule(implementation = _tc)
+with_toolchain = rule(implementation = _use, attrs = {"tool": attr.label(cfg = "exec")}, toolchains = ["//:tt"])
+"#,
+        ),
+        (
+            "BUILD.bazel",
+            r#"
+load(":defs.bzl", "tc", "tool", "use", "with_toolchain")
+constraint_setting(name = "cs")
+constraint_value(name = "c1", constraint_setting = ":cs")
+constraint_value(name = "c2", constraint_setting = ":cs")
+platform(name = "ex1", constraint_values = [":c1"])
+platform(name = "ex2", constraint_values = [":c2"])
+toolchain_type(name = "tt")
+tc(name = "tci")
+toolchain(name = "tcd", toolchain_type = ":tt", toolchain = ":tci", exec_compatible_with = [":c2"])
+tool(name = "t")
+use(name = "first", tool = ":t")
+use(name = "wants_c2", tool = ":t", exec_compatible_with = [":c2"])
+with_toolchain(name = "by_toolchain", tool = ":t")
+"#,
+        ),
+    ]);
+    let platforms = vec![
+        (String::new(), "//:ex1".to_owned()),
+        (String::new(), "//:ex2".to_owned()),
+    ];
+    let toolchains = vec![(String::new(), "//:tcd".to_owned())];
+    let on = |label: &'static str| {
+        analyse_on(
+            &repos,
+            label,
+            config(),
+            toolchains.clone(),
+            platforms.clone(),
+        )
+    };
+    // The first platform, unless the target's constraints or toolchains say otherwise.
+    for (label, dir, printed) in [
+        ("//:first", "ex1", "c1: True c2: False"),
+        ("//:wants_c2", "ex2", "c1: False c2: True"),
+        ("//:by_toolchain", "ex2", "c1: False c2: True"),
+    ] {
+        let target = on(label).await.unwrap();
+        assert_eq!(
+            paths(&target.files),
+            [format!("bazel-out/{dir}-opt-exec/bin/t.txt")],
+            "{label}"
+        );
+        let tool = analyse_on(
+            &repos,
+            "//:t",
+            target.exec_configuration.clone().unwrap(),
+            toolchains.clone(),
+            platforms.clone(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(tool.printed.without_sites(), [printed], "{label}");
+    }
+}
+
 /// Probed with `bazel build` on the same files: the output directories, and
 /// that a transition setting a flag to its default changes nothing.
 #[tokio::test(flavor = "multi_thread")]
@@ -1165,6 +1248,69 @@ keep = rule(implementation = _top, attrs = {"deps": attr.label_list(cfg = same)}
     );
     let k = analyse(&repos, "//:k").await.unwrap();
     assert_eq!(paths(&k.files), [format!("{BIN}/leaf")]);
+}
+
+/// Probed with `bazel build` on the same files: a split gives `ctx.split_attr`
+/// a branch for each key, in the order of the configurations, and `ctx.attr`
+/// the targets of every branch; a split on `rule(cfg =)` is refused.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_split_transition_gives_one_dependency_for_each_key() {
+    let (_dir, repos) = workspace(&[
+        ("MODULE.bazel", ""),
+        (
+            "defs.bzl",
+            r#"
+def _leaf(ctx):
+    out = ctx.actions.declare_file(ctx.label.name)
+    ctx.actions.write(out, "x")
+    return [DefaultInfo(files = depset([out]))]
+leaf = rule(implementation = _leaf)
+
+def _split(settings, attr):
+    return {
+        "c": {"//command_line_option:compilation_mode": "opt"},
+        "a": {"//command_line_option:compilation_mode": "dbg"},
+    }
+split = transition(implementation = _split, inputs = [], outputs = ["//command_line_option:compilation_mode"])
+def _list(settings, attr):
+    return [{"//command_line_option:compilation_mode": "opt"}, {"//command_line_option:compilation_mode": "dbg"}]
+lists = transition(implementation = _list, inputs = [], outputs = ["//command_line_option:compilation_mode"])
+
+def _top(ctx):
+    print("keys:", ctx.split_attr.dep.keys(), "attr:", len(ctx.attr.dep))
+    print("by key:", {k: [f.path for f in v[DefaultInfo].files.to_list()] for k, v in ctx.split_attr.dep.items()})
+    return [DefaultInfo(files = depset(ctx.files.dep))]
+top = rule(implementation = _top, attrs = {"dep": attr.label(cfg = split)})
+by_index = rule(implementation = _top, attrs = {"dep": attr.label(cfg = lists)})
+rule_split = rule(implementation = _leaf, cfg = split)
+"#,
+        ),
+        (
+            "BUILD.bazel",
+            "load(':defs.bzl', 'leaf', 'top', 'by_index', 'rule_split')\nleaf(name = 'leaf')\ntop(name = 't', dep = ':leaf')\nby_index(name = 'i', dep = ':leaf')\nrule_split(name = 'r')\n",
+        ),
+    ]);
+    let t = analyse(&repos, "//:t").await.unwrap();
+    assert_eq!(
+        t.printed.without_sites(),
+        [
+            r#"keys: ["a", "c"] attr: 2"#,
+            r#"by key: {"a": ["bazel-out/k8-dbg/bin/leaf"], "c": ["bazel-out/k8-opt/bin/leaf"]}"#
+        ]
+    );
+    assert_eq!(
+        paths(&t.files),
+        ["bazel-out/k8-dbg/bin/leaf", "bazel-out/k8-opt/bin/leaf"]
+    );
+    let i = analyse(&repos, "//:i").await.unwrap();
+    assert_eq!(i.printed.without_sites()[0], r#"keys: ["1", "0"] attr: 2"#);
+    let err = analyse(&repos, "//:r").await.unwrap_err();
+    assert!(
+        err.to_string().contains(
+            "Rule transition only allowed to return a single transitioned configuration."
+        ),
+        "{err}"
+    );
 }
 
 /// A `toolchain` may name a `toolchain_type` through an alias (rules_rust does),

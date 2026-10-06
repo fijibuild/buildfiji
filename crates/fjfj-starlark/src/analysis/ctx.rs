@@ -23,10 +23,13 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::sync::{Arc, Mutex};
 
-/// Everything one run of an `implementation` knows and builds.
 /// A toolchain type and the toolchain resolved for it.
 pub(crate) type ResolvedType = (Label, Option<Arc<DepInfo>>);
 
+/// One branch of a split: its key and the targets in it.
+pub(crate) type SplitBranch = (String, Vec<(Label, Arc<DepInfo>)>);
+
+/// Everything one run of an `implementation` knows and builds.
 pub(crate) struct CtxState {
     pub(crate) label: Label,
     pub(crate) rule_kind: String,
@@ -43,6 +46,9 @@ pub(crate) struct CtxState {
     /// Every attribute, set or defaulted.
     pub(crate) attrs: Vec<(String, AttrValue)>,
     pub(crate) deps: BTreeMap<Label, Arc<DepInfo>>,
+    /// An attribute with a split transition: for each branch of the split, by
+    /// its key, the targets the attribute names in the configuration it made.
+    pub(crate) splits: BTreeMap<String, Vec<SplitBranch>>,
     /// Predeclared outputs by the name `ctx.outputs` gives them.
     pub(crate) outputs: Vec<(String, Artifact)>,
     /// `ctx.toolchains`: each type and the implementation resolved for it.
@@ -207,6 +213,20 @@ impl CtxState {
             }))),
             // Resolved before the rule runs.
             AttrValue::Select(_) => Value::new_none(),
+        }
+    }
+
+    /// `attr_value`, except that an attribute with a split transition is the
+    /// list of the targets of every branch of the split.
+    fn attr_or_split<'v>(&self, heap: Heap<'v>, name: &str, value: &AttrValue) -> Value<'v> {
+        match self.splits.get(name) {
+            Some(branches) => heap.alloc(AllocList(
+                branches
+                    .iter()
+                    .flat_map(|(_, deps)| deps)
+                    .map(|(_, d)| alloc_target(heap, d.clone())),
+            )),
+            None => self.attr_value(heap, value),
         }
     }
 
@@ -495,7 +515,7 @@ fn ctx_members(builder: &mut MethodsBuilder) {
             .attrs
             .iter()
             .filter(|(name, _)| !s.schema_hidden(name))
-            .map(|(name, value)| (name.clone(), s.attr_value(heap, value)))
+            .map(|(name, value)| (name.clone(), s.attr_or_split(heap, name, value)))
             .collect();
         // A label attribute that has no value is `None`.
         for attr in &s.schema.attrs {
@@ -505,6 +525,34 @@ fn ctx_members(builder: &mut MethodsBuilder) {
             {
                 fields.push((attr.name.clone(), Value::new_none()));
             }
+        }
+        Ok(new_struct(heap, fields))
+    }
+
+    /// An attribute with a split transition, by the key of each branch: a
+    /// target (a label) or a list of them (a list of labels).
+    #[starlark(attribute)]
+    fn split_attr<'v>(this: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
+        let s = state(this);
+        let mut fields = Vec::new();
+        for (name, branches) in &s.splits {
+            let one = matches!(
+                s.attrs.iter().find(|(n, _)| n == name),
+                Some((_, AttrValue::Label(_)))
+            );
+            let entries: Vec<(Value<'v>, Value<'v>)> = branches
+                .iter()
+                .map(|(key, deps)| {
+                    let mut targets = deps.iter().map(|(_, d)| alloc_target(heap, d.clone()));
+                    let value = if one {
+                        targets.next_back().unwrap_or_else(Value::new_none)
+                    } else {
+                        heap.alloc(AllocList(targets))
+                    };
+                    (heap.alloc(key.as_str()), value)
+                })
+                .collect();
+            fields.push((name.clone(), heap.alloc(AllocDict(entries))));
         }
         Ok(new_struct(heap, fields))
     }
@@ -521,6 +569,14 @@ fn ctx_members(builder: &mut MethodsBuilder) {
                     .iter()
                     .find(|(n, _)| n == name)
                     .map_or_else(Vec::new, |(_, value)| s.files_of(value));
+                let files = match s.splits.get(name) {
+                    Some(branches) => branches
+                        .iter()
+                        .flat_map(|(_, deps)| deps)
+                        .flat_map(|(_, d)| d.files.iter().cloned())
+                        .collect(),
+                    None => files,
+                };
                 fields.push((
                     name.clone(),
                     heap.alloc(AllocList(files.into_iter().map(|a| s.file(heap, a)))),

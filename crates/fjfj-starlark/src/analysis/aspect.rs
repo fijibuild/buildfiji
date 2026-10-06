@@ -175,6 +175,7 @@ pub fn run_aspect(req: &AspectRequest) -> Result<RuleResult, String> {
                 .iter()
                 .map(|(l, d)| (l.clone(), Arc::new(d.clone())))
                 .collect(),
+            splits: BTreeMap::new(),
             outputs: Vec::new(),
             toolchains: req
                 .toolchains

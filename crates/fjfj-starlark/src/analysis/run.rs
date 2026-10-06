@@ -19,6 +19,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
 
 /// Toolchain types, each with the target that implements the toolchain resolved for it.
+/// The branches of a split, each by its key with the targets in it.
+pub type SplitBranches = Vec<(String, Vec<(Label, DepInfo)>)>;
+
 pub type ResolvedToolchains = Vec<(Label, Option<DepInfo>)>;
 
 /// What the engine hands a rule to analyse it.
@@ -39,6 +42,10 @@ pub struct RuleRequest {
     pub attrs: Vec<(String, AttrValue)>,
     /// Every target an attribute names, set or defaulted.
     pub deps: BTreeMap<Label, DepInfo>,
+    /// For an attribute with a split transition, each branch of the split by
+    /// its key (in the order of the configurations) with the targets the
+    /// attribute names in it.
+    pub splits: BTreeMap<String, SplitBranches>,
     /// Outputs the BUILD file did not name and the rule declares, by the key
     /// `ctx.outputs` has them under, with the file's name in the package.
     pub outputs: Vec<(String, String)>,
@@ -278,6 +285,23 @@ pub fn run_rule(req: &RuleRequest) -> Result<RuleResult, String> {
             .deps
             .iter()
             .map(|(l, d)| (l.clone(), Arc::new(d.clone())))
+            .collect(),
+        splits: req
+            .splits
+            .iter()
+            .map(|(attr, branches)| {
+                let branches = branches
+                    .iter()
+                    .map(|(key, deps)| {
+                        let deps = deps
+                            .iter()
+                            .map(|(l, d)| (l.clone(), Arc::new(d.clone())))
+                            .collect();
+                        (key.clone(), deps)
+                    })
+                    .collect();
+                (attr.clone(), branches)
+            })
             .collect(),
         outputs: outputs.clone(),
         toolchains: req

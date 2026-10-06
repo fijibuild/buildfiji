@@ -6,6 +6,7 @@
 //! outputs are under `bazel-out/k8-fastbuild/bin`. `bazel-genfiles` is the
 //! same directory as `bazel-bin`.
 
+use crate::Label;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -195,6 +196,22 @@ impl Configuration {
             exec: true,
             ..Configuration::default()
         }
+    }
+
+    /// The configuration a tool is built in when the target that wants it runs
+    /// on `platform`, which has `constraints`: the platform is the target
+    /// platform of the tool, and names its output directory
+    /// (`<platform name>-opt-exec`) unless it is the host, which is `k8-opt-exec`.
+    pub fn to_exec_on(&self, platform: &Label, constraints: &BTreeSet<Label>) -> Configuration {
+        let host = platform.repo == "platforms" && platform.package == "host";
+        let mut exec = self.to_exec();
+        exec.cpu = if host {
+            host_cpu().to_owned()
+        } else {
+            platform.name.clone()
+        };
+        exec.constraints = constraints.clone();
+        exec
     }
 
     /// The options of the configuration as `build_options(target)` of
