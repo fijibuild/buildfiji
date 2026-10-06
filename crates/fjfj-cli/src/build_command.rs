@@ -279,6 +279,8 @@ pub(crate) struct Report {
     pub analysis_errors: Vec<(Label, String)>,
     /// Targets named outright that the platform cannot build, and why.
     pub incompatible_errors: Vec<(Label, String)>,
+    /// The checksum of the configuration the targets were built in.
+    pub configuration_checksum: String,
     /// What Bazel warns of for each target asked for that is a source file.
     pub source_file_warnings: Vec<String>,
     /// Those targets, which `--show_result` has nothing to say of.
@@ -321,6 +323,7 @@ impl Report {
             results: Vec::new(),
             analysis_errors: Vec::new(),
             incompatible_errors: Vec::new(),
+            configuration_checksum: String::new(),
             source_file_warnings: Vec::new(),
             source_files: BTreeSet::new(),
             not_executable: None,
@@ -749,6 +752,7 @@ pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> R
         }
         *message = rest;
     }
+    report.configuration_checksum = configuration.checksum();
     place_errors(&mut report, repos, &configuration);
     report.printed = failed_prints
         .into_iter()
@@ -1191,10 +1195,24 @@ pub(crate) fn print(
         for detail in &failure.details {
             eprintln!("ERROR: {at}: {detail}");
         }
-        eprintln!(
-            "ERROR: {at}: {} failed: {}",
-            failure.progress, failure.message
-        );
+        match (&failure.command_block, verbose_failures) {
+            (block, true) if !block.is_empty() => {
+                // The command moves from the message to its own block.
+                let message = failure
+                    .message
+                    .strip_suffix(&failure.command_text)
+                    .unwrap_or(&failure.message);
+                eprintln!(
+                    "ERROR: {at}: {} failed: {message}{block}# Configuration: {}",
+                    failure.progress, report.configuration_checksum
+                );
+                eprintln!("# Execution platform: @@platforms//host:host\n");
+            }
+            _ => eprintln!(
+                "ERROR: {at}: {} failed: {}",
+                failure.progress, failure.message
+            ),
+        }
         if report.strategy == "linux-sandbox"
             && failure.exit_code.is_some_and(|code| code != 0)
             && !failure.timed_out

@@ -107,6 +107,11 @@ pub struct Failure {
     pub timed_out: bool,
     /// What the command printed.
     pub output: String,
+    /// What `--verbose_failures` shows of the command, in Bazel's form: where
+    /// it ran, its environment and its words. Empty if there was no command.
+    pub command_block: String,
+    /// The words of the command, quoted, which the message ends with.
+    pub command_text: String,
 }
 
 /// What happened to a build's actions.
@@ -555,6 +560,8 @@ impl Scheduler {
                 exit_code: None,
                 timed_out: false,
                 output: String::new(),
+                command_block: String::new(),
+                command_text: String::new(),
             }));
         }
         Ok(())
@@ -940,6 +947,26 @@ impl Scheduler {
                     argv.iter().map(|a| quote(a)).collect::<Vec<_>>().join(" "),
                 ),
                 output: text,
+                command_text: argv.iter().map(|a| quote(a)).collect::<Vec<_>>().join(" "),
+                command_block: {
+                    let cwd = sandbox
+                        .as_ref()
+                        .map_or(execroot.clone(), |s| s.exec.clone());
+                    let mut env: Vec<_> = env.iter().collect();
+                    env.sort();
+                    let mut block = format!(
+                        "\n  (cd {} && \\\n  exec env - \\\n",
+                        quote(&cwd.display().to_string())
+                    );
+                    for (name, value) in env {
+                        block.push_str(&format!("    {name}={} \\\n", quote(value)));
+                    }
+                    block.push_str(&format!(
+                        "  {})\n",
+                        argv.iter().map(|a| quote(a)).collect::<Vec<_>>().join(" ")
+                    ));
+                    block
+                },
                 ..*fail(String::new())
             }));
         }
@@ -1053,6 +1080,8 @@ fn failure(action: &Action, message: String) -> Failure {
         exit_code: None,
         timed_out: false,
         output: String::new(),
+        command_block: String::new(),
+        command_text: String::new(),
     }
 }
 
@@ -1069,6 +1098,8 @@ fn stray(message: String) -> Failure {
         exit_code: None,
         timed_out: false,
         output: String::new(),
+        command_block: String::new(),
+        command_text: String::new(),
     }
 }
 
