@@ -52,6 +52,15 @@ pub enum GlobError {
          (the default value of allow_empty can be set with --incompatible_disallow_empty_glob)."
     )]
     AllExcluded,
+    #[error(
+        "subpackages pattern '{pattern}' didn't match anything, but allow_empty is set to False \
+         (the default value)"
+    )]
+    NoSubpackageMatch { pattern: String },
+    #[error(
+        "all subpackages in subpackages() have been excluded, but allow_empty is set to False "
+    )]
+    AllSubpackagesExcluded,
     #[error("Symlink issue while evaluating globs: Infinite symlink expansion: {link}- > {target}")]
     SymlinkCycle { link: PathBuf, target: PathBuf },
     #[error("error globbing [{pattern}] op={op}: {path}: {source}", path = path.display())]
@@ -125,6 +134,94 @@ pub fn glob(
     found.retain(|path| !excludes.iter().any(|e| e.matches(path)));
     if found.is_empty() && !options.allow_empty {
         return Err(GlobError::AllExcluded);
+    }
+    Ok(found.into_iter().collect())
+}
+
+/// The packages below `package` that match `include` and not `exclude`, as
+/// paths relative to it, sorted: `subpackages()`. The walk does not enter a
+/// package, so a package's own subpackages are not listed.
+pub fn subpackages(
+    lookup: &PackageLookup,
+    package: &str,
+    include: &[String],
+    exclude: &[String],
+    allow_empty: bool,
+) -> Result<Vec<String>, GlobError> {
+    let _span = tracing::debug_span!("subpackages", package, patterns = include.len()).entered();
+    let mut compiled = Vec::with_capacity(include.len());
+    for pattern in include {
+        let segments =
+            check_pattern(pattern, true).map_err(|reason| GlobError::InvalidPattern {
+                pattern: pattern.clone(),
+                reason,
+            })?;
+        compiled.push(segments);
+    }
+    let excludes = exclude
+        .iter()
+        .map(|pattern| Exclude::parse(pattern))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let mut all = Vec::new();
+    let mut walked = BTreeSet::new();
+    let qualified = |rel: &str| match (package.is_empty(), rel.is_empty()) {
+        (_, true) => package.to_owned(),
+        (true, false) => rel.to_owned(),
+        (false, false) => format!("{package}/{rel}"),
+    };
+    let mut pending = vec![String::new()];
+    while let Some(rel) = pending.pop() {
+        let dir = lookup.package_dir(&qualified(&rel));
+        let Ok(real) = std::fs::canonicalize(&dir) else {
+            continue;
+        };
+        if !walked.insert(real) {
+            continue;
+        }
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
+                continue;
+            };
+            if !std::fs::metadata(entry.path()).is_ok_and(|m| m.is_dir()) {
+                continue;
+            }
+            let child = join(&rel, &name);
+            let full = qualified(&child);
+            if lookup.is_ignored(&full) {
+                continue;
+            }
+            if lookup.is_package(&full) {
+                all.push(child);
+            } else {
+                pending.push(child);
+            }
+        }
+    }
+    all.sort();
+
+    let mut found = BTreeSet::new();
+    for (pattern, segments) in include.iter().zip(&compiled) {
+        let mut any = false;
+        for path in &all {
+            let parts: Vec<&str> = path.split('/').collect();
+            if segments_match_with(segments, &parts, false) {
+                any = true;
+                found.insert(path.clone());
+            }
+        }
+        if !any && !allow_empty {
+            return Err(GlobError::NoSubpackageMatch {
+                pattern: pattern.clone(),
+            });
+        }
+    }
+    found.retain(|path| !excludes.iter().any(|e| e.matches(path)));
+    if found.is_empty() && !allow_empty {
+        return Err(GlobError::AllSubpackagesExcluded);
     }
     Ok(found.into_iter().collect())
 }
@@ -237,13 +334,18 @@ impl Exclude {
 }
 
 fn segments_match(segments: &[Segment], parts: &[&str]) -> bool {
+    segments_match_with(segments, parts, true)
+}
+
+fn segments_match_with(segments: &[Segment], parts: &[&str], question: bool) -> bool {
     match segments.split_first() {
         None => parts.is_empty(),
         Some((Segment::Recursive, rest)) => {
-            (0..=parts.len()).any(|skip| segments_match(rest, &parts[skip..]))
+            (0..=parts.len()).any(|skip| segments_match_with(rest, &parts[skip..], question))
         }
         Some((Segment::Name(pattern), rest)) => parts.split_first().is_some_and(|(part, tail)| {
-            wildcard_match_with(pattern, part, true) && segments_match(rest, tail)
+            wildcard_match_with(pattern, part, question)
+                && segments_match_with(rest, tail, question)
         }),
     }
 }
@@ -1001,5 +1103,109 @@ mod tests {
             GlobOptions::default(),
         );
         assert!(hidden.is_err());
+    }
+
+    /// The tree probed against Bazel 9.2.0's `subpackages()`: packages at
+    /// `a/b`, `a/c/d`, `e` and `.h/z`, a plain file `a/x/y`, and `ign`
+    /// ignored.
+    fn sub_fixture(a_is_package: bool) -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        let mut files = vec![
+            "BUILD",
+            "a/b/BUILD",
+            "a/c/d/BUILD",
+            "e/BUILD",
+            ".h/z/BUILD",
+            "a/x/y",
+            "ign/p/BUILD",
+        ];
+        if a_is_package {
+            files.push("a/BUILD");
+        }
+        for file in files {
+            let path = dir.path().join(file);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, "").unwrap();
+        }
+        fs::write(dir.path().join(".bazelignore"), "ign\n").unwrap();
+        dir
+    }
+
+    fn subs(
+        dir: &tempfile::TempDir,
+        include: &[&str],
+        exclude: &[&str],
+        allow_empty: bool,
+    ) -> Result<Vec<String>, String> {
+        let lookup = PackageLookup::new(dir.path()).unwrap();
+        let own = |l: &[&str]| l.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        subpackages(&lookup, "", &own(include), &own(exclude), allow_empty)
+            .map_err(|e| e.to_string())
+    }
+
+    #[test]
+    fn subpackages_lists_the_outermost_packages_sorted() {
+        let dir = sub_fixture(false);
+        let want = |l: &[&str]| Ok(l.iter().map(|s| s.to_string()).collect::<Vec<_>>());
+        assert_eq!(
+            subs(&dir, &["**"], &[], false),
+            want(&[".h/z", "a/b", "a/c/d", "e"])
+        );
+        assert_eq!(subs(&dir, &["a/**"], &[], false), want(&["a/b", "a/c/d"]));
+        assert_eq!(subs(&dir, &["a/*"], &[], false), want(&["a/b"]));
+        assert_eq!(subs(&dir, &["*/*"], &[], false), want(&[".h/z", "a/b"]));
+        assert_eq!(subs(&dir, &["*"], &[], false), want(&["e"]));
+        assert_eq!(subs(&dir, &["e", "e"], &[], false), want(&["e"]));
+        assert_eq!(
+            subs(&dir, &["**"], &["a/c/**"], false),
+            want(&[".h/z", "a/b", "e"])
+        );
+        assert_eq!(subs(&dir, &["a/**"], &["a/b"], false), want(&["a/c/d"]));
+        assert_eq!(subs(&dir, &["zz"], &[], true), want(&[]));
+        // A package hides what is below it.
+        let dir = sub_fixture(true);
+        assert_eq!(subs(&dir, &["**"], &[], false), want(&[".h/z", "a", "e"]));
+        assert_eq!(subs(&dir, &["a/**"], &[], false), want(&["a"]));
+        assert!(subs(&dir, &["a/b"], &[], false).is_err());
+    }
+
+    #[test]
+    fn subpackages_errors_are_bazels() {
+        let dir = sub_fixture(false);
+        let err = |i: &[&str], x: &[&str]| subs(&dir, i, x, false).unwrap_err();
+        assert_eq!(
+            err(&["zz"], &[]),
+            "subpackages pattern 'zz' didn't match anything, but allow_empty is set to False \
+             (the default value)"
+        );
+        assert_eq!(
+            err(&["a/x"], &[]),
+            "subpackages pattern 'a/x' didn't match anything, but allow_empty is set to False \
+             (the default value)"
+        );
+        assert_eq!(
+            err(&["e"], &["e"]),
+            "all subpackages in subpackages() have been excluded, but allow_empty is set to False "
+        );
+        assert_eq!(
+            err(&["/a"], &[]),
+            "invalid glob pattern '/a': pattern cannot be absolute"
+        );
+        assert_eq!(
+            err(&["a/.."], &[]),
+            "invalid glob pattern 'a/..': segment '..' not permitted"
+        );
+        assert_eq!(
+            err(&["**x"], &[]),
+            "invalid glob pattern '**x': recursive wildcard must be its own segment"
+        );
+        assert_eq!(
+            err(&[""], &[]),
+            "invalid glob pattern '': pattern cannot be empty"
+        );
+        assert_eq!(
+            err(&["?"], &[]),
+            "invalid glob pattern '?': wildcard ? forbidden"
+        );
     }
 }

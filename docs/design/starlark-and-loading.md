@@ -258,10 +258,18 @@ Every rule below was read off Bazel 9.2.0, and each test names what it copies.
   fjfj returns a snapshot dict (buildfiji-ie2).
 - **Locations.** `file:line:col` where the column is the call's `(`, which is
   what Bazel prints, and conflict messages quote it.
-- **Not here.** The native rules other
-  than `filegroup` and `alias` (buildfiji-136.10), and `subpackages`,
-  `package_default_visibility`, `module_name` and `module_version`
-  (buildfiji-hrx). `package_relative_label` is in `label.rs` (below).
+- **`subpackages` and `package_default_visibility`.** `subpackages(include,
+  exclude, allow_empty)` lists the packages below the one being loaded,
+  sorted, as paths relative to it. The walk stops at a package, so `a` hides
+  `a/b`, and skips `.bazelignore`d directories. Patterns are `glob()`'s
+  (`**`, `*`, `?` forbidden in `include`); `exclude` is matched as in
+  `glob()`. A pattern that matches nothing, or an `exclude` that leaves
+  nothing, is an error unless `allow_empty`. `package_default_visibility()`
+  returns the `package()` labels plus `//pkg:__pkg__`; public alone is just
+  public. Both are errors outside a BUILD file or legacy macro, and
+  `subpackages` is one inside a symbolic macro (buildfiji-hrx).
+- **Not here.** The native rules other than `filegroup` and `alias`
+  (buildfiji-136.10). `package_relative_label` is in `label.rs` (below).
 
 ## `depset` (implemented 2026-09-30, buildfiji-mum.14)
 

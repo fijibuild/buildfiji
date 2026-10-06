@@ -296,6 +296,11 @@ impl<'a> PackageBuilder<'a> {
         }
     }
 
+    /// The `default_visibility` set so far: `package_default_visibility()`.
+    pub fn default_visibility(&self) -> &Visibility {
+        &self.default_visibility
+    }
+
     /// `package(...)`: allowed once, before or after any target.
     pub fn call_package(&mut self, settings: PackageSettings) -> Result<(), PackageError> {
         if self.package_called {

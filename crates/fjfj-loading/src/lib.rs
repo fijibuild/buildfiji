@@ -7,6 +7,6 @@ mod glob;
 mod lookup;
 mod resolve;
 
-pub use glob::{GlobError, GlobOptions, glob};
+pub use glob::{GlobError, GlobOptions, glob, subpackages};
 pub use lookup::{LookupError, PackageLookup};
 pub use resolve::{Failure, PackageSource, Resolved, declared_target, resolve, resolve_with};

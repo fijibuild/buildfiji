@@ -21,7 +21,9 @@ use crate::instantiate::{call_rule, native_schema, rule_view};
 use fjfj_graph::package::{Package, PackageBuilder, PackageSettings};
 use fjfj_graph::rule;
 use fjfj_graph::schema::RuleSchema;
-use fjfj_graph::visibility::{PackageGroup, PackageSpec, Visibility};
+use fjfj_graph::visibility::{
+    PackageGroup, PackageScope, PackageSpec, Visibility, VisibilityEntry,
+};
 use fjfj_graph::{Label, LabelContext};
 use fjfj_loading::{GlobOptions, PackageLookup};
 use starlark::environment::{Globals, GlobalsBuilder, LibraryExtension, Module};
@@ -43,7 +45,7 @@ use crate::decl::decl_globals;
 use crate::depset::depset_globals;
 use crate::ext::ext_globals;
 use crate::json::JsonModule;
-use crate::label::{RepoMappings, label_globals, relative_to_package};
+use crate::label::{RepoMappings, StarlarkLabel, label_globals, relative_to_package};
 use crate::load_visibility::visibility_globals;
 use crate::macros::{MacroState, macro_globals, run_finalizers};
 use crate::native_rule_fns::generated_native_rules;
@@ -708,6 +710,26 @@ fn labels(ctx: &BuildContext<'_>, items: &[Value<'_>], noun: &str) -> starlark::
         .collect()
 }
 
+/// A visibility entry as the label it was written as.
+fn visibility_label(entry: VisibilityEntry) -> Label {
+    let at = |repo: String, package: &str, name: &str| Label {
+        repo,
+        package: package.to_owned(),
+        name: name.to_owned(),
+    };
+    match entry {
+        VisibilityEntry::Group(label) => label,
+        VisibilityEntry::Scope(PackageScope::Public) => at(String::new(), "visibility", "public"),
+        VisibilityEntry::Scope(PackageScope::Repo(repo)) => at(repo, "", "__subpackages__"),
+        VisibilityEntry::Scope(PackageScope::Package { repo, package }) => {
+            at(repo, &package, "__pkg__")
+        }
+        VisibilityEntry::Scope(PackageScope::Subpackages { repo, package }) => {
+            at(repo, &package, "__subpackages__")
+        }
+    }
+}
+
 fn visibility_of(ctx: &BuildContext<'_>, labels: &[Label]) -> Visibility {
     let strings: Vec<String> = labels.iter().map(ToString::to_string).collect();
     Visibility::parse(strings.iter().map(String::as_str), ctx.label_context())
@@ -786,6 +808,91 @@ fn native_functions(builder: &mut GlobalsBuilder) {
         )
         .map_err(|e| fatal(e.to_string()))?;
         Ok(eval.heap().alloc(found))
+    }
+
+    fn subpackages<'v>(
+        args: &Arguments<'v, '_>,
+        eval: &mut Evaluator<'v, '_, '_>,
+    ) -> starlark::Result<Value<'v>> {
+        let ctx = context(eval, "subpackages")?;
+        if ctx.macros.borrow().inside() {
+            return Err(fatal(
+                "subpackages() can only be used while evaluating a BUILD file or a legacy macro",
+            ));
+        }
+        let bound = bind(
+            "subpackages",
+            Wording::Signature,
+            &[
+                param("include", false, true),
+                param("exclude", false, false),
+                param("allow_empty", false, false),
+            ],
+            args,
+            eval,
+        )?;
+        let noun = "'subpackages' argument";
+        let patterns = |slot: usize, name: &str| -> starlark::Result<Vec<String>> {
+            match bound[slot] {
+                Some(v) => strings(
+                    &want_sequence("subpackages", name, v, false)?.unwrap_or_default(),
+                    noun,
+                ),
+                None => Ok(Vec::new()),
+            }
+        };
+        let include = patterns(0, "include")?;
+        let exclude = patterns(1, "exclude")?;
+        let allow_empty = match bound[2] {
+            Some(v) => v.unpack_bool().ok_or_else(|| {
+                fatal(format!(
+                    "in call to subpackages(), parameter 'allow_empty' got value of type '{}', \
+                     want 'bool'",
+                    v.get_type()
+                ))
+            })?,
+            None => false,
+        };
+        let found =
+            fjfj_loading::subpackages(ctx.lookup, ctx.package, &include, &exclude, allow_empty)
+                .map_err(|e| fatal(e.to_string()))?;
+        Ok(eval.heap().alloc(found))
+    }
+
+    fn package_default_visibility<'v>(
+        args: &Arguments<'v, '_>,
+        eval: &mut Evaluator<'v, '_, '_>,
+    ) -> starlark::Result<Value<'v>> {
+        let ctx = context(eval, "package_default_visibility")?;
+        bind(
+            "package_default_visibility",
+            Wording::Signature,
+            &[],
+            args,
+            eval,
+        )?;
+        let own = |scope: PackageScope| VisibilityEntry::Scope(scope);
+        let state = ctx.state.borrow();
+        let declared = state.builder.default_visibility();
+        let me = PackageScope::Package {
+            repo: ctx.repo.to_owned(),
+            package: ctx.package.to_owned(),
+        };
+        let mut entries = declared.entries.clone();
+        let public = entries
+            .iter()
+            .any(|e| matches!(e, VisibilityEntry::Scope(PackageScope::Public)));
+        if public {
+            entries = vec![own(PackageScope::Public)];
+        } else if !entries.contains(&own(me.clone())) {
+            entries.push(own(me));
+        }
+        let heap = eval.heap();
+        let labels: Vec<Value<'v>> = entries
+            .into_iter()
+            .map(|entry| heap.alloc(StarlarkLabel::from(visibility_label(entry))))
+            .collect();
+        Ok(heap.alloc(labels))
     }
 
     fn package<'v>(
@@ -2330,5 +2437,97 @@ print(L == M, h(":a") == f(":a"), repr(h("//q")))"#,
     fn a_syntax_error_names_the_file() {
         let err = load("def f():\n    pass\n").unwrap_err();
         assert!(err.to_string().contains("BUILD.bazel"), "{err}");
+    }
+
+    #[test]
+    fn subpackages_and_default_visibility_read_the_package_being_loaded() {
+        let dir = tempfile::tempdir().unwrap();
+        for file in [
+            "sp/BUILD",
+            "sp/a/b/BUILD",
+            "sp/a/c/d/BUILD",
+            "sp/e/BUILD",
+            "sp/a/x/y",
+        ] {
+            let path = dir.path().join(file);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, "").unwrap();
+        }
+        let printed = |build: &str| {
+            load_in(dir.path(), "sp", &[], build)
+                .map(|out| out.printed.without_sites())
+                .map_err(|e| e.to_string())
+        };
+        for (build, want) in [
+            (
+                "print(subpackages(include = [\"**\"]))",
+                r#"["a/b", "a/c/d", "e"]"#,
+            ),
+            (
+                "print(subpackages(include = [\"a/*\"], exclude = [\"x\"]))",
+                r#"["a/b"]"#,
+            ),
+            (
+                "print(subpackages(include = [\"zz\"], allow_empty = True))",
+                "[]",
+            ),
+            (
+                "print(package_default_visibility())",
+                r#"[Label("//sp:__pkg__")]"#,
+            ),
+            (
+                "package(default_visibility = [\"//a:__pkg__\", \"//sp:__pkg__\"])\nprint(package_default_visibility())",
+                r#"[Label("//a:__pkg__"), Label("//sp:__pkg__")]"#,
+            ),
+            (
+                "package(default_visibility = [\"//visibility:private\", \"//a:__pkg__\"])\nprint(package_default_visibility())",
+                r#"[Label("//a:__pkg__"), Label("//sp:__pkg__")]"#,
+            ),
+            (
+                "package(default_visibility = [\"//visibility:public\", \"//a:__pkg__\"])\nprint(package_default_visibility())",
+                r#"[Label("//visibility:public")]"#,
+            ),
+        ] {
+            assert_eq!(printed(build), Ok(vec![want.to_owned()]), "{build}");
+        }
+        let from_macro = load_in(
+            dir.path(),
+            "sp",
+            &[(
+                ":m.bzl",
+                "def mac():\n    print(native.subpackages(include = [\"e\"]), native.package_default_visibility())\n",
+            )],
+            "load(\":m.bzl\", \"mac\")\nmac()",
+        )
+        .unwrap();
+        assert_eq!(
+            from_macro.printed.without_sites(),
+            [r#"["e"] [Label("//sp:__pkg__")]"#]
+        );
+        for (build, want) in [
+            (
+                "subpackages(include = \"a\")",
+                "in call to subpackages(), parameter 'include' got value of type 'string', want 'sequence'",
+            ),
+            (
+                "subpackages()",
+                "subpackages() missing 1 required named argument: include",
+            ),
+            (
+                "subpackages([\"a\"])",
+                "subpackages() got unexpected positional argument",
+            ),
+            (
+                "subpackages(include = [\"a\"], foo = 1)",
+                "subpackages() got unexpected keyword argument 'foo'",
+            ),
+            (
+                "package_default_visibility(1)",
+                "package_default_visibility() got unexpected positional argument",
+            ),
+        ] {
+            let err = printed(build).unwrap_err();
+            assert!(err.contains(want), "{build}: {err}");
+        }
     }
 }
