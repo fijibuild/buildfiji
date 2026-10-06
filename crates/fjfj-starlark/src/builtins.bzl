@@ -392,7 +392,7 @@ py_internal = struct(
     create_repo_mapping_manifest = lambda *, ctx, runfiles, output: ctx.actions.write(output, fjfj_repo_mapping(ctx, runfiles)),
     declare_shareable_artifact = _unavailable("py_internal.declare_shareable_artifact", "buildfiji-136.16"),
     # RepositoryName.getRunfilesPath: nothing for the main repository, else "../<repo>".
-    get_label_repo_runfiles_path = lambda label: "../" + label.workspace_name if label.workspace_name else "",
+    get_label_repo_runfiles_path = lambda label: ("../" + label.workspace_name + "/" if label.workspace_name else "") + label.package,
     get_legacy_external_runfiles = lambda ctx: False,
     # The few cc helpers rules_python reads. Stamping is not implemented
     # (buildfiji-ivq), so nothing is stamped.
