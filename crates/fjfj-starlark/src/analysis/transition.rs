@@ -91,22 +91,39 @@ pub struct TransitionSpec {
     pub defined_at: String,
 }
 
-/// The settings the transition on `edge` of `rule` reads and writes. `None`
-/// if the edge has no transition defined by a `.bzl`.
+/// The settings each transition on `edge` of `rule` reads and writes, in the
+/// order they run: one, unless the transition is `a.and_then(b)`. `None` if
+/// the edge has no transition defined by a `.bzl`.
+pub fn transition_specs(
+    module: &FrozenModule,
+    rule: &str,
+    edge: Edge<'_>,
+) -> Option<Vec<TransitionSpec>> {
+    let (rule, _) = module.get_any_visibility(rule).ok()?;
+    let value = rule.value().unpack_frozen()?.to_value();
+    let transition = transition_of(value, edge.attr())?;
+    crate::decl::defined_parts(transition)?
+        .into_iter()
+        .map(|part| {
+            let (_, inputs, outputs) = crate::decl::defined_transition(part)?;
+            Some(TransitionSpec {
+                inputs,
+                outputs,
+                defined_at: crate::decl::transition_defined_at(part).unwrap_or_default(),
+            })
+        })
+        .collect()
+}
+
+/// The settings the transition on `edge` of `rule` reads and writes: for a
+/// composed one, those of its first part. `None` if the edge has no
+/// transition defined by a `.bzl`.
 pub fn transition_spec(
     module: &FrozenModule,
     rule: &str,
     edge: Edge<'_>,
 ) -> Option<TransitionSpec> {
-    let (rule, _) = module.get_any_visibility(rule).ok()?;
-    let value = rule.value().unpack_frozen()?.to_value();
-    let transition = transition_of(value, edge.attr())?;
-    let (_, inputs, outputs) = crate::decl::defined_transition(transition)?;
-    Some(TransitionSpec {
-        inputs,
-        outputs,
-        defined_at: crate::decl::transition_defined_at(transition).unwrap_or_default(),
-    })
+    transition_specs(module, rule, edge)?.into_iter().next()
 }
 
 pub(super) fn to_starlark<'v>(heap: Heap<'v>, name: &str, value: &SettingValue) -> Value<'v> {
@@ -196,11 +213,13 @@ fn from_starlark(name: &str, value: Value<'_>) -> Result<SettingValue, String> {
 /// Call the transition on `edge` of `rule` with `settings` (the value of each
 /// of its inputs) and, for an attribute's edge, the non-label `attrs` of the
 /// rule. Each configuration it asks for, by the key of a split (empty for an
-/// ordinary transition), with the settings it sets.
+/// ordinary transition), with the settings it sets. `part` is which of the
+/// transitions of a composed one runs, from 0.
 pub fn apply_transition(
     module: &FrozenModule,
     rule: &str,
     edge: Edge<'_>,
+    part: usize,
     settings: &BTreeMap<String, SettingValue>,
     attrs: &[(String, AttrValue)],
     mappings: &RepoMappings,
@@ -218,7 +237,11 @@ pub fn apply_transition(
             .to_value();
         let transition = transition_of(rule_value, edge.attr())
             .ok_or_else(|| format!("{rule} has no transition there"))?;
-        let (implementation, _inputs, outputs) = crate::decl::defined_transition(transition)
+        let parts = crate::decl::defined_parts(transition)
+            .ok_or_else(|| "only a transition() can be applied".to_owned())?;
+        let (implementation, _inputs, outputs) = parts
+            .get(part)
+            .and_then(|part| crate::decl::defined_transition(*part))
             .ok_or_else(|| "only a transition() can be applied".to_owned())?;
         let heap = module.heap();
         let input = heap.alloc(starlark::values::dict::AllocDict(

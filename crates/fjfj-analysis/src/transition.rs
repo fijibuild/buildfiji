@@ -14,7 +14,7 @@ use fjfj_graph::package::TargetKind;
 use fjfj_graph::rule::AttrValue;
 use fjfj_graph::schema::SettingKind;
 use fjfj_graph::{CompilationMode, Configuration, Label, LabelContext, SettingValue};
-use fjfj_starlark::{Edge, FrozenModule, apply_transition, rule_schema, transition_spec};
+use fjfj_starlark::{Edge, FrozenModule, apply_transition, rule_schema, transition_specs};
 use std::collections::BTreeMap;
 
 /// Command-line options a transition may read and write, with the value they
@@ -288,39 +288,59 @@ pub(crate) async fn apply(
 ) -> Result<Vec<(String, Configuration)>, Error> {
     let env = ctx.data::<Env>()?;
     let module = module_of(&env, bzl).await?;
-    let Some(spec) = transition_spec(&module, rule_class, edge) else {
+    let Some(specs) = transition_specs(&module, rule_class, edge) else {
         return Ok(vec![(String::new(), from.clone())]);
     };
-    let mut settings = BTreeMap::new();
-    for input in &spec.inputs {
-        settings.insert(input.clone(), read(ctx, from, input, &bzl.repo).await?);
-    }
     let mappings = env.rules.mappings();
-    let (rule, attrs) = (rule_class.to_owned(), attrs.to_vec());
-    let outcomes = {
-        let module = module.clone();
-        let owned_edge = match edge {
-            Edge::Incoming => None,
-            Edge::Attr(name) => Some(name.to_owned()),
-        };
-        tokio::task::spawn_blocking(move || {
-            let edge = match &owned_edge {
-                None => Edge::Incoming,
-                Some(name) => Edge::Attr(name),
-            };
-            apply_transition(&module, &rule, edge, &settings, &attrs, &mappings)
-        })
-        .await
-        .map_err(|e| Error::msg(format!("running a transition panicked: {e}")))?
-        .map_err(Error::msg)?
+    let attrs = attrs.to_vec();
+    let owned_edge = match edge {
+        Edge::Incoming => None,
+        Edge::Attr(name) => Some(name.to_owned()),
     };
-    let mut out = Vec::new();
-    for (split, changes) in outcomes {
-        let mut config = from.clone();
-        for (name, value) in changes {
-            write(ctx, &mut config, &name, value, &bzl.repo).await?;
+    // A composed transition runs each part on every configuration the one
+    // before made; a split part gives each of its keys.
+    let mut out = vec![(String::new(), from.clone())];
+    for (part, spec) in specs.iter().enumerate() {
+        let mut next = Vec::new();
+        for (key, config) in out {
+            let mut settings = BTreeMap::new();
+            for input in &spec.inputs {
+                settings.insert(input.clone(), read(ctx, &config, input, &bzl.repo).await?);
+            }
+            let outcomes = {
+                let (module, rule, attrs, mappings) = (
+                    module.clone(),
+                    rule_class.to_owned(),
+                    attrs.clone(),
+                    mappings.clone(),
+                );
+                let owned_edge = owned_edge.clone();
+                tokio::task::spawn_blocking(move || {
+                    let edge = match &owned_edge {
+                        None => Edge::Incoming,
+                        Some(name) => Edge::Attr(name),
+                    };
+                    apply_transition(&module, &rule, edge, part, &settings, &attrs, &mappings)
+                })
+                .await
+                .map_err(|e| Error::msg(format!("running a transition panicked: {e}")))?
+                .map_err(Error::msg)?
+            };
+            for (split, changes) in outcomes {
+                let mut made = config.clone();
+                for (name, value) in changes {
+                    write(ctx, &mut made, &name, value, &bzl.repo).await?;
+                }
+                // Two splits make keys of both, as `a,x`.
+                let joined = match (key.is_empty(), split.is_empty()) {
+                    (_, true) => key.clone(),
+                    (true, false) => split,
+                    (false, false) => format!("{key},{split}"),
+                };
+                next.push((joined, made));
+            }
         }
-        out.push((split, config));
+        out = next;
     }
     Ok(out)
 }

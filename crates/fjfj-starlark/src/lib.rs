@@ -178,7 +178,7 @@ pub use analysis::{
     aspect_spec, attr_aspects, computed_defaults, error_events, feature_flag_value, format_targets,
     labels_of_attrs, native_provider, output_group_files, resolved_attrs, rule_schema, run_aspect,
     run_rule, split_printed, split_transition_error, transition_error, transition_error_for,
-    transition_spec, with_printed,
+    transition_spec, transition_specs, with_printed,
 };
 pub use depset::{
     Depset, DepsetGen, FrozenDepset, Order, depset_to_list, is_depset, nested_of, new_depset,

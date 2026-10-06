@@ -1352,6 +1352,62 @@ top = rule(implementation = _leaf, attrs = {"dep": attr.label(cfg = bad)})
     }
 }
 
+/// `a.and_then(b)` runs `b` on what `a` made, reading what `a` set; a split in
+/// each makes a branch for each pair, keyed `a,x`.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_composed_transition_runs_each_part_on_what_the_one_before_made() {
+    let (_dir, repos) = workspace(&[
+        ("MODULE.bazel", ""),
+        (
+            "defs.bzl",
+            r#"
+MODE = "//command_line_option:compilation_mode"
+COPT = "//command_line_option:copt"
+def _leaf(ctx):
+    out = ctx.actions.declare_file(ctx.label.name)
+    ctx.actions.write(out, "x")
+    return [DefaultInfo(files = depset([out]))]
+leaf = rule(implementation = _leaf)
+
+def _first(settings, attr):
+    return {COPT: ["-a"]}
+def _second(settings, attr):
+    # Reads what the first set, and the mode it did not touch.
+    return {MODE: "opt" if settings[COPT] == ["-a"] else "dbg"}
+first = transition(implementation = _first, inputs = [], outputs = [COPT])
+second = transition(implementation = _second, inputs = [COPT], outputs = [MODE])
+def _by_mode(settings, attr):
+    return {"a": {MODE: "dbg"}, "b": {MODE: "opt"}}
+def _by_copt(settings, attr):
+    return {"x": {COPT: ["-x"]}, "y": {COPT: ["-y"]}}
+by_mode = transition(implementation = _by_mode, inputs = [], outputs = [MODE])
+by_copt = transition(implementation = _by_copt, inputs = [], outputs = [COPT])
+
+def _top(ctx):
+    print({k: [f.path for f in v[DefaultInfo].files.to_list()] for k, v in ctx.split_attr.dep.items()})
+    return []
+def _one(ctx):
+    print([f.path for f in ctx.attr.dep[DefaultInfo].files.to_list()])
+    return []
+one = rule(implementation = _one, attrs = {"dep": attr.label(cfg = first.and_then(second))})
+two = rule(implementation = _top, attrs = {"dep": attr.label(cfg = by_mode.and_then(by_copt))})
+"#,
+        ),
+        (
+            "BUILD.bazel",
+            "load(':defs.bzl', 'leaf', 'one', 'two')\nleaf(name = 'leaf')\none(name = 'o', dep = ':leaf')\ntwo(name = 'w', dep = ':leaf')\n",
+        ),
+    ]);
+    let o = analyse(&repos, "//:o").await.unwrap();
+    let printed = o.printed.without_sites();
+    assert!(printed[0].contains("k8-opt"), "{printed:?}");
+    let w = analyse(&repos, "//:w").await.unwrap();
+    let printed = w.printed.without_sites();
+    for key in ["a,x", "a,y", "b,x", "b,y"] {
+        assert!(printed[0].contains(&format!("\"{key}\"")), "{printed:?}");
+    }
+}
+
 /// A transition that returns an empty dict changes nothing; one that returns
 /// some of its outputs and not all of them says which it left out.
 #[tokio::test(flavor = "multi_thread")]

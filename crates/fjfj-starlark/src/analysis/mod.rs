@@ -115,6 +115,7 @@ pub use target::{DepInfo, StoredProvider};
 pub use transition::{
     Edge, TRANSITION_ERROR, TransitionError, TransitionSpec, apply_transition,
     split_transition_error, transition_error, transition_error_for, transition_spec,
+    transition_specs,
 };
 
 mod computed;

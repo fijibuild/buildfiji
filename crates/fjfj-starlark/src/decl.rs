@@ -1438,6 +1438,24 @@ pub(crate) fn defined_transition<'v>(
         .then(|| (t.values[0], t.inputs, t.outputs))
 }
 
+/// The transitions a transition runs, in order: itself if it is defined, the
+/// parts of `a.and_then(b)` one after the other. `None` if any part is not a
+/// defined transition.
+pub(crate) fn defined_parts<'v>(value: Value<'v>) -> Option<Vec<Value<'v>>> {
+    let t = transition_view(value)?;
+    match t.kind {
+        TransitionKind::Defined => Some(vec![value]),
+        TransitionKind::Composed => {
+            let mut parts = Vec::new();
+            for part in &t.values {
+                parts.extend(defined_parts(*part)?);
+            }
+            Some(parts)
+        }
+        _ => None,
+    }
+}
+
 /// Where a defined transition was written: `@@repo//pkg:file.bzl:line:col`.
 pub(crate) fn transition_defined_at(value: Value<'_>) -> Option<String> {
     transition_view(value).map(|t| t.defined_at)
