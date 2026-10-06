@@ -599,16 +599,16 @@ impl BzlLoader {
             Some(load) => load.0.clone(),
             // A file that does not parse, or uses a name it does not define,
             // is not run: its events are one line each.
-            None if e.span().is_some()
-                && matches!(
-                    e.kind(),
-                    starlark::ErrorKind::Parser(_) | starlark::ErrorKind::Scope(_)
-                ) =>
-            {
+            None if crate::StaticErrors::of(&e).is_some() => {
                 let shown = path.display().to_string();
+                let static_errors = &crate::StaticErrors::of(&e).expect("checked above").0;
                 let mut events = self.events.lock().unwrap();
-                events.push(crate::syntax_event(&shown, &e));
-                events.extend(crate::contains_event(&shown, &source, &e));
+                events.extend(static_errors.iter().map(|e| crate::syntax_event(&shown, e)));
+                events.extend(
+                    static_errors
+                        .iter()
+                        .filter_map(|e| crate::contains_event(&shown, &source, e)),
+                );
                 format!("compilation of module '{}' failed", module_name(file))
             }
             None => {

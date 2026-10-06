@@ -66,6 +66,32 @@ use crate::values::Value;
 // Register CodeMap for use with StarlarkAny
 register_starlark_any!(CodeMap);
 
+/// Every error the names of `ast` have when it is evaluated in `module` under
+/// `globals`: a name used and defined nowhere, a name bound twice, and the like.
+/// [`Evaluator::eval_module`] stops at the first of them; this does not run
+/// the module.
+pub fn scope_errors(
+    ast: AstModule,
+    module: &crate::environment::Module,
+    globals: &Globals,
+) -> Vec<crate::Error> {
+    let (codemap, statement, dialect, _) = ast.into_parts();
+    let codemap = module.frozen_heap().alloc_any_value(codemap.dupe());
+    let globals = module.frozen_heap().alloc_any_value(globals.dupe());
+    let (errors, _) = ModuleScopes::check_module(
+        module.mutable_names(),
+        module.frozen_heap(),
+        &HashMap::new(),
+        statement,
+        ScopeResolverGlobals {
+            globals: Some(globals),
+        },
+        codemap,
+        &dialect,
+    );
+    errors.into_iter().map(|e| e.into_error()).collect()
+}
+
 impl<'v, 'a, 'e> Evaluator<'v, 'a, 'e> {
     /// Evaluate an [`AstModule`] with this [`Evaluator`], modifying the in-scope
     /// [`Module`](crate::environment::Module) as appropriate.

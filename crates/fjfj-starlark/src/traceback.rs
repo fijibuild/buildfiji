@@ -35,6 +35,33 @@ impl LoadFailed {
     }
 }
 
+/// The static errors of a `.bzl` file, which is not run: Bazel reports each
+/// of them, in order, as an event of its own.
+#[derive(Debug)]
+pub struct StaticErrors(pub Vec<starlark::Error>);
+
+impl std::fmt::Display for StaticErrors {
+    /// The first error, which is what a caller that shows one shows.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.0.first() {
+            Some(first) => write!(f, "{}", first.without_diagnostic()),
+            None => write!(f, "static errors"),
+        }
+    }
+}
+
+impl std::error::Error for StaticErrors {}
+
+impl StaticErrors {
+    /// The errors, if `error` is the static errors of a file.
+    pub fn of(error: &starlark::Error) -> Option<&StaticErrors> {
+        match error.kind() {
+            ErrorKind::Other(inner) => inner.downcast_ref::<StaticErrors>(),
+            _ => None,
+        }
+    }
+}
+
 /// `error` as a traceback, ending in `Error in <function>: <message>` when a
 /// function the file called failed and `Error: <message>` otherwise.
 pub fn traceback(error: &starlark::Error) -> String {

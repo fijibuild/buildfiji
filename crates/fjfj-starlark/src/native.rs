@@ -290,6 +290,37 @@ fn failure(error: starlark::Error) -> BuildFileError {
     }
 }
 
+/// The events of the static errors of a BUILD file, which stop it.
+fn static_failure(path: &str, errors: &[starlark::Error]) -> BuildFileError {
+    BuildFileError::Package {
+        events: errors
+            .iter()
+            .map(|e| crate::syntax_event(path, e))
+            .collect(),
+        printed: Vec::new(),
+    }
+}
+
+/// The events of every name the BUILD file uses and does not define.
+fn every_scope_event(
+    input: &BuildFile<'_>,
+    globals: &starlark::environment::Globals,
+) -> Vec<String> {
+    let parsed = crate::dialect::parse_all(input.path, input.source, FileKind::Build);
+    Module::with_temp_heap(|module| {
+        Ok::<_, starlark::Error>(crate::dialect::scope_errors(
+            parsed.ast,
+            parsed.resolution,
+            &module,
+            globals,
+        ))
+    })
+    .unwrap_or_default()
+    .iter()
+    .map(|e| crate::syntax_event(input.path, e))
+    .collect()
+}
+
 /// [`failure`], with what the file printed before it stopped.
 fn failure_after(ctx: &BuildContext<'_>, error: starlark::Error) -> BuildFileError {
     let said = ctx.printed.borrow().clone();
@@ -306,14 +337,29 @@ fn failure_after(ctx: &BuildContext<'_>, error: starlark::Error) -> BuildFileErr
 /// Evaluate a BUILD file into the package it declares.
 pub fn evaluate_build_file(input: &BuildFile<'_>) -> Result<BuildFileOutput, BuildFileError> {
     let _span = tracing::debug_span!("evaluate_build_file", package = input.package).entered();
+    let globals = build_globals();
     let ast = {
         let _span = tracing::debug_span!("parse", file = input.path).entered();
-        crate::dialect::parse_checked(input.path, input.source, FileKind::Build).map_err(|e| {
-            BuildFileError::Package {
-                events: vec![crate::syntax_event(input.path, &e)],
-                printed: Vec::new(),
-            }
-        })?
+        let parsed = crate::dialect::parse_all(input.path, input.source, FileKind::Build);
+        // Bazel stops at the syntax errors of a BUILD file; the other static
+        // errors, with the names that are not defined, come when it has none.
+        let mut errors = parsed.syntax;
+        if errors.is_empty() && !parsed.resolution.is_empty() {
+            errors = Module::with_temp_heap(|module| {
+                Ok::<_, starlark::Error>(crate::dialect::scope_errors(
+                    parsed.ast,
+                    parsed.resolution,
+                    &module,
+                    &globals,
+                ))
+            })
+            .unwrap_or_default();
+            return Err(static_failure(input.path, &errors));
+        }
+        if !errors.is_empty() {
+            return Err(static_failure(input.path, &errors));
+        }
+        parsed.ast
     };
     let is_package = |p: &str| input.lookup.is_package(p);
     let ctx = BuildContext {
@@ -332,13 +378,24 @@ pub fn evaluate_build_file(input: &BuildFile<'_>) -> Result<BuildFileOutput, Bui
         schemas: RefCell::new(HashMap::new()),
         macros: RefCell::new(MacroState::default()),
     };
-    let globals = build_globals();
     Module::with_temp_heap(|module| {
         let mut eval = Evaluator::new(&module);
         eval.extra = Some(&ctx);
         eval.set_loader(input.loader);
         eval.set_print_handler(&ctx);
-        let stopped = |error| failure_after(&ctx, error);
+        let stopped = |error: starlark::Error| {
+            // Every name that is not defined is reported, not only the first.
+            if matches!(error.kind(), starlark::ErrorKind::Scope(_)) && error.span().is_some() {
+                let events = every_scope_event(input, &globals);
+                if !events.is_empty() {
+                    return BuildFileError::Package {
+                        events,
+                        printed: Vec::new(),
+                    };
+                }
+            }
+            failure_after(&ctx, error)
+        };
         eval.eval_module(ast, &globals).map_err(stopped)?;
         // Finalizers run when everything else has.
         run_finalizers(&ctx, &mut eval).map_err(stopped)

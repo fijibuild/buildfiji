@@ -109,6 +109,29 @@ impl AstModule {
         lint_suppressions: LintSuppressions,
         comment_spans: Vec<Span>,
     ) -> crate::Result<AstModule> {
+        let (module, errors) = Self::create_all(
+            codemap,
+            statement,
+            dialect,
+            typecheck,
+            lint_suppressions,
+            comment_spans,
+        );
+        // We need the first error, so we don't use `.pop()`.
+        if let Some(err) = errors.into_iter().next() {
+            return Err(err.into_error());
+        }
+        Ok(module)
+    }
+
+    fn create_all(
+        codemap: CodeMap,
+        statement: AstStmt,
+        dialect: &Dialect,
+        typecheck: bool,
+        lint_suppressions: LintSuppressions,
+        comment_spans: Vec<Span>,
+    ) -> (AstModule, Vec<crate::eval_exception::EvalException>) {
         let mut errors = Vec::new();
         validate_module(
             &statement,
@@ -118,18 +141,17 @@ impl AstModule {
                 errors: &mut errors,
             },
         );
-        // We need the first error, so we don't use `.pop()`.
-        if let Some(err) = errors.into_iter().next() {
-            return Err(err.into_error());
-        }
-        Ok(AstModule {
-            codemap,
-            statement,
-            dialect: dialect.clone(),
-            typecheck,
-            lint_suppressions,
-            comment_spans,
-        })
+        (
+            AstModule {
+                codemap,
+                statement,
+                dialect: dialect.clone(),
+                typecheck,
+                lint_suppressions,
+                comment_spans,
+            },
+            errors,
+        )
     }
 
     /// Parse a file stored on disk. For details see [`parse`](AstModule::parse).
@@ -203,6 +225,61 @@ impl AstModule {
             }
             Err(e) => Err(e.into_error()),
         }
+    }
+
+    /// [`parse`](AstModule::parse), but with every error found rather than
+    /// the first, and the module as far as it parsed. After a syntax error the
+    /// parser goes on at the next statement. The first list is the syntax
+    /// errors, in the order they are met; the second those of a module that
+    /// did parse (a duplicate keyword argument), which Bazel finds when it
+    /// resolves names.
+    pub fn parse_all(
+        filename: &str,
+        content: String,
+        dialect: &Dialect,
+    ) -> (AstModule, Vec<crate::Error>, Vec<crate::Error>) {
+        let typecheck = content.contains("@starlark-rust: typecheck");
+        let codemap = CodeMap::new(filename.to_owned(), content);
+        let lexer = Lexer::new(codemap.source(), dialect, codemap.dupe());
+        let mut lint_suppressions_builder = LintSuppressionsBuilder::new();
+        let mut in_comment_block = false;
+        let mut comment_spans = Vec::new();
+        let mut recoverable = Vec::new();
+        let filtered = lexer.filter(|token| match token {
+            Ok((start, Token::Comment(comment), end)) => {
+                lint_suppressions_builder.parse_comment(&codemap, comment, *start, *end);
+                comment_spans.push(Span::new(Pos::new(*start as u32), Pos::new(*end as u32)));
+                in_comment_block = true;
+                false
+            }
+            _ => {
+                if in_comment_block {
+                    lint_suppressions_builder.end_of_comment_block(&codemap);
+                    in_comment_block = false;
+                }
+                true
+            }
+        });
+        let mut state = ParserState {
+            codemap: &codemap,
+            dialect,
+            errors: &mut recoverable,
+        };
+        let (statement, errors) = parser_rd::parse_module_all(&mut state, filtered);
+        let (module, found) = Self::create_all(
+            codemap,
+            statement,
+            dialect,
+            typecheck,
+            lint_suppressions_builder.build(),
+            comment_spans,
+        );
+        recoverable.extend(found);
+        (
+            module,
+            errors.into_iter().map(|e| e.into_error()).collect(),
+            recoverable.into_iter().map(|e| e.into_error()).collect(),
+        )
     }
 
     /// Return the file names of all the `load` statements in the module.

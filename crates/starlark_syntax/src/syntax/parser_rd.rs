@@ -34,7 +34,9 @@ use crate::codemap::Span;
 use crate::codemap::Spanned;
 use crate::eval_exception::EvalException;
 use crate::lexer;
+use crate::lexer::LexemeError;
 use crate::lexer::Token;
+use crate::lexer::TokenInt;
 use crate::syntax::ast::*;
 use crate::syntax::grammar_util;
 use crate::syntax::state::ParserState;
@@ -61,36 +63,111 @@ pub(crate) struct ParserRd<'a, I: Iterator<Item = Lexeme>> {
     tokens: I,
     /// Current token with span, or None if EOF.
     current: Option<(usize, Token, usize)>,
-    /// Deferred lexer error encountered while advancing the token stream.
-    pending_error: Option<EvalException>,
+    /// The syntax errors of statements that were skipped, in the order met.
+    errors: Vec<EvalException>,
+    /// The lexer's errors, in the order the tokens came. A lexer error does
+    /// not stop the parse: the token it was for is skipped or, for a literal,
+    /// stands in as a number, as Bazel's parser does.
+    lex_errors: Vec<EvalException>,
+    /// A token read ahead of the one a lexer error stood in for.
+    stash: Option<(usize, Token, usize)>,
     /// Byte offset (into the source string) of the end of the last consumed
     /// token, used to construct EOF spans when `current` is None.
     last_end: usize,
+    /// How many indented blocks are open: tokens consumed so far count
+    /// `Indent` up and `Dedent` down.
+    block_depth: i32,
+    /// The token stream has ended.
+    eof: bool,
+    /// A statement ended where an expression was wanted: no more parser
+    /// errors are reported.
+    stopped: bool,
+    /// The error that stopped them has not been reported yet.
+    stopper_pending: bool,
     state: ParserState<'a>,
 }
 
 impl<'a, I: Iterator<Item = Lexeme>> ParserRd<'a, I> {
-    pub(crate) fn new(mut tokens: I, state: ParserState<'a>) -> Self {
-        let (current, pending_error) = match Self::next_from(&mut tokens) {
-            Ok(current) => (current, None),
-            Err(err) => (None, Some(err)),
-        };
-        ParserRd {
+    pub(crate) fn new(tokens: I, state: ParserState<'a>) -> Self {
+        let mut parser = ParserRd {
             tokens,
-            current,
-            pending_error,
+            current: None,
+            lex_errors: Vec::new(),
+            errors: Vec::new(),
+            stash: None,
             last_end: 0,
+            block_depth: 0,
+            eof: false,
+            stopped: false,
+            stopper_pending: false,
             state,
+        };
+        parser.current = parser.pull();
+        parser.eof = parser.current.is_none();
+        parser
+    }
+
+    /// The next token. A lexer error is set aside, and the token it was for
+    /// is skipped, or stands in as a number if it was a literal.
+    #[inline]
+    fn pull(&mut self) -> Option<(usize, Token, usize)> {
+        if let Some(token) = self.stash.take() {
+            return Some(token);
+        }
+        loop {
+            match self.tokens.next() {
+                Some(Ok(t)) => return Some(t),
+                None => return None,
+                Some(Err(err)) => {
+                    let stand_in = Self::bad_literal(&err);
+                    let unfinished = Self::is_unfinished_string(&err);
+                    self.lex_errors.push(err);
+                    if unfinished {
+                        // The rest of the line is the string's.
+                        while let Some(Ok(token)) = self.tokens.next() {
+                            if token.1 == Token::Newline {
+                                self.stash = Some(token);
+                                break;
+                            }
+                        }
+                    }
+                    if let Some((start, end)) = stand_in {
+                        return Some((start, Token::Int(TokenInt::I32(0)), end));
+                    }
+                }
+            }
         }
     }
 
-    #[inline]
-    fn next_from(tokens: &mut I) -> Result<Option<(usize, Token, usize)>, EvalException> {
-        match tokens.next() {
-            Some(Ok(t)) => Ok(Some(t)),
-            Some(Err(err)) => Err(err),
-            None => Ok(None),
+    #[cold]
+    fn is_unfinished_string(err: &EvalException) -> bool {
+        matches!(err.error().kind(), crate::ErrorKind::Parser(inner)
+            if matches!(inner.downcast_ref::<LexemeError>(), Some(LexemeError::UnfinishedStringLiteral)))
+    }
+
+    /// Where a literal that the lexer rejected was, if the error is one.
+    #[cold]
+    fn bad_literal(err: &EvalException) -> Option<(usize, usize)> {
+        let error = err.error();
+        let crate::ErrorKind::Parser(inner) = error.kind() else {
+            return None;
+        };
+        if !matches!(
+            inner.downcast_ref::<LexemeError>()?,
+            LexemeError::StartsZero(_)
+                | LexemeError::IntParse(_)
+                | LexemeError::UnfinishedStringLiteral
+                | LexemeError::InvalidHex
+                | LexemeError::InvalidBinary
+                | LexemeError::InvalidOctal(_)
+                | LexemeError::CannotParse(..)
+                | LexemeError::InvalidEscapeSequence(_)
+                | LexemeError::EmptyEscapeSequence
+        ) {
+            return None;
         }
+        let span = error.span()?.span;
+        Some((span.begin().get() as usize, span.end().get() as usize))
     }
 
     /// Advance past the current token. Hot-path version: caller does not need
@@ -98,16 +175,16 @@ impl<'a, I: Iterator<Item = Lexeme>> ParserRd<'a, I> {
     /// produce for the return value.
     #[inline]
     fn advance(&mut self) {
-        if let Some((_, _, end)) = &self.current {
+        if let Some((_, token, end)) = &self.current {
             self.last_end = *end;
-        }
-        match Self::next_from(&mut self.tokens) {
-            Ok(current) => self.current = current,
-            Err(err) => {
-                self.current = None;
-                self.pending_error = Some(err);
+            match token {
+                Token::Indent => self.block_depth += 1,
+                Token::Dedent => self.block_depth -= 1,
+                _ => {}
             }
         }
+        self.current = self.pull();
+        self.eof = self.current.is_none();
     }
 
     /// Advance and return the consumed token. Use only at sites that need to
@@ -118,13 +195,8 @@ impl<'a, I: Iterator<Item = Lexeme>> ParserRd<'a, I> {
         if let Some((_, _, end)) = &old {
             self.last_end = *end;
         }
-        match Self::next_from(&mut self.tokens) {
-            Ok(current) => self.current = current,
-            Err(err) => {
-                self.current = None;
-                self.pending_error = Some(err);
-            }
-        }
+        self.current = self.pull();
+        self.eof = self.current.is_none();
         old
     }
 
@@ -188,11 +260,13 @@ impl<'a, I: Iterator<Item = Lexeme>> ParserRd<'a, I> {
     }
 
     fn error_expected(&mut self, what: &str) -> EvalException {
-        if let Some(err) = self.pending_error.take() {
-            return err;
-        }
-
         let pos = self.pos();
+        if what == "expression" && matches!(&self.current, None | Some((_, Token::Newline, _))) {
+            if !self.stopped {
+                self.stopped = true;
+                self.stopper_pending = true;
+            }
+        }
         let (span, msg) = match &self.current {
             Some((start, tok, end)) => (
                 Span::new(Pos::new(*start as u32), Pos::new(*end as u32)),
@@ -231,20 +305,72 @@ impl<'a, I: Iterator<Item = Lexeme>> ParserRd<'a, I> {
 
     // ==================== Top-level ====================
 
-    pub(crate) fn parse_module(mut self) -> Result<AstStmt, EvalException> {
-        // Skip leading newlines
-        self.skip_newlines();
+    pub(crate) fn parse_module(self) -> Result<AstStmt, EvalException> {
+        let (stmt, errors) = self.parse_module_all();
+        match errors.into_iter().next() {
+            Some(err) => Err(err),
+            None => Ok(stmt),
+        }
+    }
+
+    /// The module, as far as it parsed, and every syntax error found, in the
+    /// order of the file. After one, parsing goes on at the next statement,
+    /// as Bazel's parser does, unless the statement ended where an expression
+    /// was wanted: Bazel reports nothing more from the parser then, though
+    /// the lexer errors of the rest of the file still are.
+    pub(crate) fn parse_module_all(mut self) -> (AstStmt, Vec<EvalException>) {
         let l = self.pos();
         let mut stmts = Vec::new();
-        while self.peek().is_some() {
-            stmts.push(self.parse_stmt()?);
+        loop {
             self.skip_newlines();
+            if self.peek().is_none() {
+                break;
+            }
+            match self.parse_stmt() {
+                Ok(stmt) => stmts.push(stmt),
+                Err(err) => {
+                    self.report(err);
+                    self.recover(0);
+                }
+            }
         }
         let r = self.last_end;
-        if let Some(err) = self.pending_error {
-            Err(err)
-        } else {
-            Ok(grammar_util::statements(stmts, l, r))
+        let mut errors = std::mem::take(&mut self.errors);
+        errors.append(&mut self.lex_errors);
+        errors.sort_by_key(|e| e.error().span().map_or(0, |at| at.span.begin().get()));
+        (grammar_util::statements(stmts, l, r), errors)
+    }
+
+    /// Keep the error of a statement that failed, unless the parser has
+    /// stopped reporting.
+    fn report(&mut self, err: EvalException) {
+        if self.stopper_pending {
+            self.stopper_pending = false;
+            self.errors.push(err);
+        } else if !self.stopped {
+            self.errors.push(err);
+        }
+    }
+
+    /// Skip to the end of the statement that failed, which is in the block
+    /// that is `depth` deep, or to the end of that block.
+    fn recover(&mut self, depth: i32) {
+        loop {
+            match &self.current {
+                None => return,
+                Some((_, Token::Newline, _)) if self.block_depth <= depth => {
+                    self.advance();
+                    return;
+                }
+                Some((_, Token::Dedent, _)) if self.block_depth <= depth => return,
+                Some((_, Token::Dedent, _)) => {
+                    self.advance();
+                    if self.block_depth <= depth {
+                        return;
+                    }
+                }
+                Some(_) => self.advance(),
+            }
         }
     }
 
@@ -340,8 +466,15 @@ impl<'a, I: Iterator<Item = Lexeme>> ParserRd<'a, I> {
             self.skip_newlines();
             let l = self.pos();
             let mut stmts = Vec::new();
+            let depth = self.block_depth;
             loop {
-                stmts.push(self.parse_stmt()?);
+                match self.parse_stmt() {
+                    Ok(stmt) => stmts.push(stmt),
+                    Err(err) => {
+                        self.report(err);
+                        self.recover(depth);
+                    }
+                }
                 self.skip_newlines();
                 if self.peek() == Some(&Token::Dedent) || self.peek().is_none() {
                     break;
@@ -1539,4 +1672,18 @@ pub(crate) fn parse_module<I: Iterator<Item = Lexeme>>(
         errors: &mut *state.errors,
     };
     ParserRd::new(tokens, temp_state).parse_module()
+}
+
+/// [`parse_module`], with every syntax error rather than the first, and the
+/// module as far as it parsed.
+pub(crate) fn parse_module_all<I: Iterator<Item = Lexeme>>(
+    state: &mut ParserState<'_>,
+    tokens: I,
+) -> (AstStmt, Vec<EvalException>) {
+    let temp_state = ParserState {
+        dialect: state.dialect,
+        codemap: state.codemap,
+        errors: &mut *state.errors,
+    };
+    ParserRd::new(tokens, temp_state).parse_module_all()
 }

@@ -38,9 +38,10 @@
 use crate::FileKind;
 use crate::args::{Wording, bind, fatal, positional_only};
 use crate::dialect::assigned_names;
-use crate::dialect::parse_checked;
+use crate::dialect::parse_all;
 use crate::exports::export_all;
 use crate::native::BuildContext;
+use crate::traceback::StaticErrors;
 use allocative::Allocative;
 use fjfj_graph::label::validate_target_name;
 use fjfj_graph::rule::suggest;
@@ -353,11 +354,55 @@ pub fn evaluate_bzl(input: &BzlFile<'_>) -> starlark::Result<FrozenModule> {
     evaluate_bzl_with(input, true)
 }
 
+/// The builtins a `.bzl` file sees as its own names.
+fn set_builtins(module: &Module, builtins: bool) {
+    if builtins {
+        let provided = builtins_module();
+        for name in provided.names() {
+            if let Ok(owned) = provided.get(&name)
+                && let Some(value) = owned.value().unpack_frozen()
+            {
+                module.frozen_heap().add_reference(owned.owner());
+                module.set(&name, value.to_value());
+            }
+        }
+    }
+}
+
+/// Every name the `.bzl` file uses and does not define, with the errors of
+/// the parse, as Bazel reports them.
+fn bzl_scope_errors(
+    ast: starlark::syntax::AstModule,
+    resolution: Vec<starlark::Error>,
+    input: &BzlFile<'_>,
+    builtins: bool,
+) -> Vec<starlark::Error> {
+    Module::with_temp_heap(|module| {
+        set_builtins(&module, builtins);
+        Ok::<_, starlark::Error>(crate::dialect::scope_errors(
+            ast,
+            resolution,
+            &module,
+            input.globals,
+        ))
+    })
+    .unwrap_or_default()
+}
+
 fn evaluate_bzl_with(input: &BzlFile<'_>, builtins: bool) -> starlark::Result<FrozenModule> {
     let _span = tracing::debug_span!("evaluate_bzl", file = %bzl_name(input.file)).entered();
     let ast = {
         let _span = tracing::debug_span!("parse", file = %bzl_name(input.file)).entered();
-        parse_checked(&bzl_name(input.file), input.source, FileKind::Bzl)?
+        let parsed = parse_all(&bzl_name(input.file), input.source, FileKind::Bzl);
+        let mut errors = parsed.syntax;
+        if errors.is_empty() && !parsed.resolution.is_empty() {
+            errors = bzl_scope_errors(parsed.ast, parsed.resolution, input, builtins);
+            return Err(starlark::Error::new_other(StaticErrors(errors)));
+        }
+        if !errors.is_empty() {
+            return Err(starlark::Error::new_other(StaticErrors(errors)));
+        }
+        parsed.ast
     };
     let env = BzlEval {
         mappings: input.mappings,
@@ -369,17 +414,7 @@ fn evaluate_bzl_with(input: &BzlFile<'_>, builtins: bool) -> starlark::Result<Fr
         rule_ctx: None,
     };
     Module::with_temp_heap(|module| {
-        if builtins {
-            let provided = builtins_module();
-            for name in provided.names() {
-                if let Ok(owned) = provided.get(&name)
-                    && let Some(value) = owned.value().unpack_frozen()
-                {
-                    module.frozen_heap().add_reference(owned.owner());
-                    module.set(&name, value.to_value());
-                }
-            }
-        }
+        set_builtins(&module, builtins);
         {
             let mut eval = Evaluator::new(&module);
             eval.extra = Some(&env);
@@ -387,7 +422,17 @@ fn evaluate_bzl_with(input: &BzlFile<'_>, builtins: bool) -> starlark::Result<Fr
             if let Some(print) = input.print {
                 eval.set_print_handler(print);
             }
-            eval.eval_module(ast, input.globals)?;
+            eval.eval_module(ast, input.globals).map_err(|error| {
+                // Every name that is not defined is reported, not only the first.
+                if matches!(error.kind(), starlark::ErrorKind::Scope(_)) && error.span().is_some() {
+                    let again = parse_all(&bzl_name(input.file), input.source, FileKind::Bzl);
+                    let errors = bzl_scope_errors(again.ast, again.resolution, input, builtins);
+                    if !errors.is_empty() {
+                        return starlark::Error::new_other(StaticErrors(errors));
+                    }
+                }
+                error
+            })?;
         }
         let frozen = module.freeze()?;
         export_all(&frozen, &env.assigned)?;

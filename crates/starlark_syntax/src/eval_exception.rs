@@ -31,6 +31,11 @@ pub struct EvalException(
 );
 
 impl EvalException {
+    /// The error, which has a span.
+    pub fn error(&self) -> &crate::Error {
+        &self.0
+    }
+
     #[cold]
     pub fn into_error(self) -> crate::Error {
         self.0

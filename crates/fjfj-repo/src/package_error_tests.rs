@@ -126,6 +126,63 @@ const ROWS: &[Row] = &[
         ],
         error: "while parsing '//f:all': error loading package 'f': initialization of module 'f/l.bzl' failed",
     },
+    // Every syntax error of a BUILD file is an event, and names are not
+    // looked at once there is one.
+    Row {
+        files: &[("m/BUILD", "x = \"\\q\"\ny = \"\\z\"\nz = w\n")],
+        events: &[
+            "{ws}/m/BUILD:1:7: invalid escape sequence: \\q. Use '\\\\' to insert '\\'.",
+            "{ws}/m/BUILD:2:7: invalid escape sequence: \\z. Use '\\\\' to insert '\\'.",
+            "package contains errors: m: invalid escape sequence: \\q. Use '\\\\' to insert '\\'.",
+        ],
+        error: "Error evaluating '//m:all': error loading package 'm': Package 'm' contains errors",
+    },
+    Row {
+        files: &[("o/BUILD", "x = [1 2]\ny = (3 4)\n")],
+        events: &[
+            "{ws}/o/BUILD:1:8: syntax error at '2': expected ',', 'for' or ']'",
+            "{ws}/o/BUILD:2:8: syntax error at '4': expected )",
+            "package contains errors: o: syntax error at '2': expected ',', 'for' or ']'",
+        ],
+        error: "Error evaluating '//o:all': error loading package 'o': Package 'o' contains errors",
+    },
+    // With none, every name that is not defined is, and a duplicate keyword
+    // argument comes before the name of the function called.
+    Row {
+        files: &[("r/BUILD", "x = a\ny = b\nf(k=1, k=2)\n")],
+        events: &[
+            "{ws}/r/BUILD:1:5: name 'a' is not defined",
+            "{ws}/r/BUILD:2:5: name 'b' is not defined",
+            "{ws}/r/BUILD:3:8: duplicate keyword argument: k",
+            "{ws}/r/BUILD:3:1: name 'f' is not defined",
+            "package contains errors: r: name 'a' is not defined",
+        ],
+        error: "Error evaluating '//r:all': error loading package 'r': Package 'r' contains errors",
+    },
+    // A .bzl says the same, and 'contains syntax errors' after.
+    Row {
+        files: &[
+            ("u/BUILD", "load('//u:l.bzl', 'x')\n"),
+            ("u/l.bzl", "x = [1 2]\ny = 1 2\n"),
+        ],
+        events: &[
+            "{ws}/u/l.bzl:1:8: syntax error at '2': expected ',', 'for' or ']'",
+            "{ws}/u/l.bzl:2:7: syntax error at '2': expected newline",
+            "{ws}/u/l.bzl:1:5: contains syntax errors",
+        ],
+        error: "while parsing '//u:all': error loading package 'u': compilation of module 'u/l.bzl' failed",
+    },
+    Row {
+        files: &[
+            ("v/BUILD", "load('//v:l.bzl', 'x')\n"),
+            ("v/l.bzl", "x = a\ny = b\n"),
+        ],
+        events: &[
+            "{ws}/v/l.bzl:1:5: name 'a' is not defined",
+            "{ws}/v/l.bzl:2:5: name 'b' is not defined",
+        ],
+        error: "while parsing '//v:all': error loading package 'v': compilation of module 'v/l.bzl' failed",
+    },
     // A rule the BUILD file calls wrongly: an event at the call.
     Row {
         files: &[(

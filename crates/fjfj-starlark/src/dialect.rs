@@ -86,60 +86,114 @@ pub fn parse(path: &str, src: &str, kind: FileKind) -> anyhow::Result<AstModule>
 
 /// [`parse`], with the error as the `starlark` error it is, which says where.
 pub fn parse_checked(path: &str, src: &str, kind: FileKind) -> Result<AstModule, starlark::Error> {
-    let ast = AstModule::parse(path, src.to_owned(), &kind.dialect())?;
-    check_string_escapes(&ast)?;
-    if kind == FileKind::Bzl {
-        check_bzl_top_level(&ast)?;
+    let parsed = parse_all(path, src, kind);
+    match parsed.syntax.into_iter().chain(parsed.resolution).next() {
+        Some(first) => Err(first),
+        None => Ok(parsed.ast),
     }
-    Ok(ast)
+}
+
+/// A file as far as it parsed, and every static error found in it.
+pub struct Parsed {
+    pub ast: AstModule,
+    /// What the lexer and parser report, and the string escapes Bazel does
+    /// not accept, in the order of the file. Bazel stops there for a BUILD
+    /// file.
+    pub syntax: Vec<starlark::Error>,
+    /// What Bazel reports when it resolves names: a duplicate keyword
+    /// argument, or a `.bzl` whose loads are not first. Names that are not
+    /// defined are found by [`scope_errors`], which needs the globals.
+    pub resolution: Vec<starlark::Error>,
+}
+
+/// [`parse_checked`], with every error.
+pub fn parse_all(path: &str, src: &str, kind: FileKind) -> Parsed {
+    let (ast, mut syntax, mut resolution) =
+        AstModule::parse_all(path, src.to_owned(), &kind.dialect());
+    syntax.extend(string_escape_errors(&ast));
+    syntax.sort_by_key(offset);
+    if syntax.is_empty() && resolution.is_empty() && kind == FileKind::Bzl {
+        resolution.extend(check_bzl_top_level(&ast).err());
+    }
+    Parsed {
+        ast,
+        syntax,
+        resolution,
+    }
+}
+
+/// Where an error is, as a byte offset.
+fn offset(error: &starlark::Error) -> u32 {
+    error.span().map_or(0, |at| at.span.begin().get())
+}
+
+/// The names `ast` uses and does not define, with the errors the parse found
+/// in the module, in the order Bazel reports them: by line, the errors of the
+/// parse first.
+pub fn scope_errors(
+    ast: AstModule,
+    resolution: Vec<starlark::Error>,
+    module: &starlark::environment::Module,
+    globals: &starlark::environment::Globals,
+) -> Vec<starlark::Error> {
+    let line = |e: &starlark::Error| e.span().map_or(0, |at| at.resolve_span().begin.line);
+    let mut all: Vec<(usize, u8, u32, starlark::Error)> = resolution
+        .into_iter()
+        .map(|e| (line(&e), 0, offset(&e), e))
+        .collect();
+    for e in starlark::eval::scope_errors(ast, module, globals) {
+        all.push((line(&e), 1, offset(&e), e));
+    }
+    all.sort_by_key(|(line, rank, at, _)| (*line, *rank, *at));
+    all.into_iter().map(|(.., e)| e).collect()
 }
 
 /// Bazel's lexer accepts only `\\ \' \" \a \b \f \n \r \t \v`, an octal `\ooo` and
 /// a backslash before a line break in a string that is not raw; the crate's also
 /// takes `\x`, `\u` and `\U` (buildfiji-8q5). This looks at each string literal's text.
-fn check_string_escapes(ast: &AstModule) -> Result<(), starlark::Error> {
-    fn expr(ast: &AstModule, e: &AstExpr, found: &mut Option<starlark::Error>) {
-        if found.is_some() {
-            return;
-        }
+fn string_escape_errors(ast: &AstModule) -> Vec<starlark::Error> {
+    fn expr(ast: &AstModule, e: &AstExpr, found: &mut Vec<starlark::Error>) {
         if let ExprP::Literal(AstLiteral::String(_)) = &e.node {
             let text = ast.file_span(e.span).source_span().to_owned();
-            if let Some((at, len, message)) = invalid_escape(&text) {
+            for (at, len, message) in invalid_escapes(&text) {
                 let begin = e.span.begin().get() + at as u32;
                 let span = Span::new(Pos::new(begin), Pos::new(begin + len as u32));
-                *found = Some(error_at(ast, span, message));
+                found.push(error_at(ast, span, message));
             }
         }
         e.node.visit_expr(|child| expr(ast, child, found));
     }
-    fn walk(ast: &AstModule, v: Visit<'_, AstNoPayload>, found: &mut Option<starlark::Error>) {
+    fn walk(ast: &AstModule, v: Visit<'_, AstNoPayload>, found: &mut Vec<starlark::Error>) {
         match v {
             Visit::Expr(e) => expr(ast, e, found),
             Visit::Stmt(s) => s.node.visit_children(|v| walk(ast, v, found)),
         }
     }
-    let mut found = None;
+    let mut found = Vec::new();
     ast.statement()
         .node
         .visit_children(|v| walk(ast, v, &mut found));
-    found.map_or(Ok(()), Err)
+    found
 }
 
-/// The first escape in the source text of a string literal that Bazel does
-/// not accept: the byte offset it is reported at (the character after the
+/// Each escape in the source text of a string literal that Bazel does not
+/// accept: the byte offset it is reported at (the character after the
 /// backslash, or the last digit of an octal escape), that character's length and
 /// Bazel's message.
-fn invalid_escape(literal: &str) -> Option<(usize, usize, String)> {
+fn invalid_escapes(literal: &str) -> Vec<(usize, usize, String)> {
+    let mut found = Vec::new();
     if literal.starts_with(['r', 'R']) {
-        return None;
+        return found;
     }
     let bytes = literal.as_bytes();
     let mut chars = literal.char_indices();
-    while let Some((at, c)) = chars.next() {
+    while let Some((_, c)) = chars.next() {
         if c != '\\' {
             continue;
         }
-        let (next_at, next) = chars.next()?;
+        let Some((next_at, next)) = chars.next() else {
+            break;
+        };
         match next {
             '\\' | '\'' | '"' | 'a' | 'b' | 'f' | 'n' | 'r' | 't' | 'v' | '\n' | '\r' => {}
             '0'..='7' => {
@@ -157,7 +211,7 @@ fn invalid_escape(literal: &str) -> Option<(usize, usize, String)> {
                     }
                 }
                 if value > 0o377 {
-                    return Some((
+                    found.push((
                         last,
                         1,
                         "octal escape sequence out of range (maximum is \\377)".to_owned(),
@@ -165,16 +219,15 @@ fn invalid_escape(literal: &str) -> Option<(usize, usize, String)> {
                 }
             }
             other => {
-                return Some((
+                found.push((
                     next_at,
                     other.len_utf8(),
                     format!("invalid escape sequence: \\{other}. Use '\\\\' to insert '\\'."),
                 ));
             }
         }
-        let _ = at;
     }
-    None
+    found
 }
 
 /// The names a file assigns at its top level (not `def`s or `load`s), in
