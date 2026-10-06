@@ -38,6 +38,15 @@ fn repo_of(path: &str) -> &str {
     path.split('/').next().unwrap_or_default()
 }
 
+/// Whether two repository names share everything before their last `+`, and
+/// have one.
+fn same_prefix(a: &str, b: &str) -> bool {
+    match (a.rfind('+'), b.rfind('+')) {
+        (Some(x), Some(y)) => x == y && a[..x] == b[..y],
+        _ => false,
+    }
+}
+
 /// Add the runfiles tree actions of `target`, which has an executable.
 pub(crate) fn register(
     target: &mut ConfiguredTarget,
@@ -100,26 +109,40 @@ pub(crate) fn register(
         .map(canonical)
         .chain(std::iter::once(String::new()))
         .collect();
-    let mut lines: Vec<(String, String, String)> = Vec::new();
-    for source in &*target.transitive_repos {
-        for (apparent, target_repo) in mappings.entries(source) {
-            if apparent.is_empty() || !with_runfiles.contains(&target_repo) {
+    // Bazel's compact form: repositories next to each other that share a
+    // prefix up to their last `+` and see the same names (those one module
+    // extension made) are one line, `prefix+*`.
+    let sources: Vec<(&String, Vec<(String, String)>)> = target
+        .transitive_repos
+        .iter()
+        .map(|source| (source, mappings.entries(source)))
+        .collect();
+    let mut repo_mapping_contents = String::new();
+    let mut next = 0;
+    while next < sources.len() {
+        let (name, seen_by) = &sources[next];
+        let mut end = next + 1;
+        while end < sources.len() && sources[end].1 == *seen_by && same_prefix(name, sources[end].0)
+        {
+            end += 1;
+        }
+        let shown_source = match name.rfind('+') {
+            Some(at) if end - next > 1 => format!("{}+*", &name[..at]),
+            _ => (*name).clone(),
+        };
+        for (apparent, target_repo) in seen_by {
+            if apparent.is_empty() || !with_runfiles.contains(target_repo) {
                 continue;
             }
             let shown = if target_repo.is_empty() {
                 main_name.to_owned()
             } else {
-                repo_names(&target_repo)
+                repo_names(target_repo)
             };
-            lines.push((source.clone(), apparent, shown));
+            repo_mapping_contents.push_str(&format!("{shown_source},{apparent},{shown}\n"));
         }
+        next = end;
     }
-    lines.sort();
-    lines.dedup();
-    let repo_mapping_contents: String = lines
-        .iter()
-        .map(|(s, a, t)| format!("{s},{a},{t}\n"))
-        .collect();
 
     let at = |suffix: &str| Artifact {
         root: exe.root.clone(),
