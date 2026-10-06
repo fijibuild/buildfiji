@@ -46,6 +46,9 @@ pub(crate) struct Row<'a> {
     pub aspect: Vec<AspectRef>,
     /// Where it runs, as the main repository names the platform.
     pub platform: String,
+    /// The target as the main repository names it, which the text output
+    /// shows (the proto output and the description keep the canonical name).
+    pub target_name: String,
 }
 
 /// The actions of `target`, then those of the aspects applied to it.
@@ -65,17 +68,21 @@ pub(crate) fn rows_of<'a>(
     // it prints; they are part of the action that reads the file.
     let listed = |action: &&Action| action.mnemonic != "ParameterFileWrite";
     let own_platform = platform.clone();
+    let target_name = names.label(&target.label);
+    let own_name = target_name.clone();
     let own = target.actions.iter().filter(listed).map(move |action| Row {
         target,
         action: std::borrow::Cow::Borrowed(action),
         aspect: Vec::new(),
         platform: own_platform.clone(),
+        target_name: own_name.clone(),
     });
     let made = aspects
         .iter()
         .filter(|_| settings.aspects)
         .flat_map(move |made| {
             let platform = platform.clone();
+            let target_name = target_name.clone();
             let chain = made
                 .aspect
                 .as_ref()
@@ -86,6 +93,7 @@ pub(crate) fn rows_of<'a>(
                 action: std::borrow::Cow::Borrowed(action),
                 aspect: chain.clone(),
                 platform: platform.clone(),
+                target_name: target_name.clone(),
             })
         });
     own.chain(made)
@@ -367,7 +375,7 @@ pub(crate) fn text(rows: &[Row<'_>], settings: Settings, layout: &Layout) -> Str
 fn text_one(out: &mut String, row: &Row<'_>, settings: Settings, layout: &Layout) {
     let action: &Action = &row.action;
     let platform = row.execution_platform();
-    let target = build_command::label_name(&row.target.label);
+    let target = &row.target_name;
     if matches!(action.kind, ActionKind::RunfilesTree) {
         out.push_str(&format!("runfiles for {target}\n"));
     } else {
@@ -551,6 +559,66 @@ mod tests {
             assert_eq!(shell_unquote(&shell_quote(arg)), arg);
         }
         assert_eq!(shell_unquote("raw 'text'"), "raw 'text'");
+    }
+
+    struct Apparent;
+
+    impl Names for Apparent {
+        fn label(&self, label: &Label) -> String {
+            match label.repo.as_str() {
+                "" => format!("//{}:{}", label.package, label.name),
+                "dep+" => format!("@dep//{}:{}", label.package, label.name),
+                other => format!("@@{other}//{}:{}", label.package, label.name),
+            }
+        }
+
+        fn aspects(&self, _: &AspectRef) -> Vec<AspectRef> {
+            Vec::new()
+        }
+    }
+
+    /// `bazel aquery @dep//p:g` printed `Target: @dep//p:g` and described the
+    /// action with `@@dep+//p:g`; the proto names the target `@@dep+//p:g`.
+    #[test]
+    fn the_text_names_an_external_target_as_the_main_repo_does() {
+        let label = Label {
+            repo: "dep+".into(),
+            package: "p".into(),
+            name: "g".into(),
+        };
+        let key = fjfj_analysis::ConfiguredTargetKey {
+            label: label.clone(),
+            configuration: fjfj_graph::Configuration::default(),
+        };
+        let mut target = ConfiguredTarget::new(&key);
+        target.actions.push(Action {
+            owner: label,
+            owner_kind: "genrule".into(),
+            location: String::new(),
+            configuration: "k8-fastbuild".into(),
+            mnemonic: "Genrule".into(),
+            progress_message: None,
+            kind: ActionKind::WriteFile {
+                contents: Vec::new(),
+                executable: false,
+            },
+            inputs: Vec::new(),
+            input_set: None,
+            outputs: Vec::new(),
+        });
+        let rows = rows_of(&target, &[], Settings::default(), &Apparent);
+        let layout = Layout {
+            workspace: "/ws".into(),
+            output_base: "/ob".into(),
+        };
+        let text = text(&rows, Settings::default(), &layout);
+        assert!(text.contains("action 'Genrule @@dep+//p:g'"), "{text}");
+        assert!(text.contains("  Target: @dep//p:g\n"), "{text}");
+        let proto =
+            String::from_utf8_lossy(&proto("text", &pieces(&rows, Settings::default(), &layout)))
+                .into_owned();
+        assert!(proto.contains("@@dep+//p:g"), "{proto}");
+        assert!(!proto.contains("@dep//p:g"), "{proto}");
     }
 
     #[test]

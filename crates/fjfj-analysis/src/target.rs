@@ -164,7 +164,7 @@ impl ConfiguredTarget {
         self.rule_class.is_some() || self.files.to_vec().first().is_some_and(|f| !f.is_source())
     }
 
-    pub(crate) fn new(key: &ConfiguredTargetKey) -> ConfiguredTarget {
+    pub fn new(key: &ConfiguredTargetKey) -> ConfiguredTarget {
         ConfiguredTarget {
             label: key.label.clone(),
             configuration: key.configuration.clone(),
