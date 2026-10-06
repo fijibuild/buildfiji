@@ -179,9 +179,20 @@ pub fn validate(
         .iter()
         .filter(|t| !looks_like_negative_pattern(t) && !looks_like_starlark_flag(t))
         .collect();
-    let matches = cmd
-        .try_get_matches_from(flag_tokens)
-        .map_err(|e| FlagSurfaceError::Rejected(e.render().to_string().trim_end().to_string()))?;
+    let matches = cmd.try_get_matches_from(flag_tokens.clone()).map_err(|e| {
+        // Bazel names the whole token: `--bogus=1 :: Unrecognized option: --bogus=1`.
+        if e.kind() == clap::error::ErrorKind::UnknownArgument
+            && let Some(flag) = e.get(clap::error::ContextKind::InvalidArg)
+        {
+            let flag = flag.to_string();
+            let token = flag_tokens
+                .iter()
+                .find(|t| **t == &flag || t.starts_with(&format!("{flag}=")))
+                .map_or(flag.as_str(), |t| t.as_str());
+            return FlagSurfaceError::Rejected(format!("{token} :: Unrecognized option: {token}"));
+        }
+        FlagSurfaceError::Rejected(e.render().to_string().trim_end().to_string())
+    })?;
 
     for flag in FLAGS.iter().filter(|f| f.commands.contains(&bazel_command)) {
         let explicit = matches.value_source(flag.name) == Some(ValueSource::CommandLine)
@@ -260,7 +271,17 @@ mod tests {
     #[test]
     fn genuinely_unknown_flag_is_rejected() {
         let err = validate(&args(&["--not-a-real-flag"]), "build", BUILD_IMPLEMENTED).unwrap_err();
-        assert!(matches!(err, FlagSurfaceError::Rejected(_)));
+        assert_eq!(
+            err,
+            FlagSurfaceError::Rejected(
+                "--not-a-real-flag :: Unrecognized option: --not-a-real-flag".to_owned()
+            )
+        );
+        let err = validate(&args(&["--bogus=1", "//a"]), "build", BUILD_IMPLEMENTED).unwrap_err();
+        assert_eq!(
+            err,
+            FlagSurfaceError::Rejected("--bogus=1 :: Unrecognized option: --bogus=1".to_owned())
+        );
     }
 
     #[test]
