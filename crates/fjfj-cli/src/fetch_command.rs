@@ -150,8 +150,22 @@ pub(crate) fn default_repository_cache() -> PathBuf {
     output_user_root().join("cache").join("repos").join("v1")
 }
 
-/// `$XDG_CACHE_HOME` or `~/.cache`, then `fjfj/_fjfj_<user>`.
+/// The startup options that say where fjfj works, set once by `run`.
+static STARTUP: std::sync::OnceLock<(Option<PathBuf>, Option<PathBuf>)> =
+    std::sync::OnceLock::new();
+
+/// Records `--output_base` and `--output_user_root`, which come before the
+/// command.
+pub(crate) fn set_startup(output_base: Option<PathBuf>, output_user_root: Option<PathBuf>) {
+    let _ = STARTUP.set((output_base, output_user_root));
+}
+
+/// `--output_user_root`, else `$XDG_CACHE_HOME` or `~/.cache`, then
+/// `fjfj/_fjfj_<user>`.
 fn output_user_root() -> PathBuf {
+    if let Some(root) = STARTUP.get().and_then(|(_, root)| root.clone()) {
+        return root;
+    }
     let cache = std::env::var_os("XDG_CACHE_HOME")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")))
@@ -163,6 +177,9 @@ fn output_user_root() -> PathBuf {
 /// The output base of a workspace: a directory of the output user root named by
 /// the workspace's path.
 pub(crate) fn default_output_base(workspace_root: &Path) -> PathBuf {
+    if let Some(base) = STARTUP.get().and_then(|(base, _)| base.clone()) {
+        return base;
+    }
     let digest = sha2::Sha256::digest(workspace_root.display().to_string().as_bytes());
     output_user_root().join(&hex::encode(digest)[..32])
 }

@@ -430,6 +430,7 @@ pub fn main() -> std::process::ExitCode {
 
 #[tracing::instrument(skip_all)]
 async fn run(cli: Cli) -> Result<(), CliError> {
+    fetch_command::set_startup(cli.output_base.clone(), cli.output_user_root.clone());
     match cli.command {
         Command::Version => {
             println!("fjfj {}", env!("CARGO_PKG_VERSION"));

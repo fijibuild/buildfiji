@@ -127,11 +127,36 @@ pub struct QueryArgs {
 )]
 pub struct Cli {
     /// Bazel startup option: root of the output base tree.
-    #[arg(long, global = true)]
+    #[arg(long = "output_base", global = true)]
     pub output_base: Option<std::path::PathBuf>,
+    /// Bazel startup option: the directory that holds the output bases and
+    /// the repository cache.
+    #[arg(long = "output_user_root", global = true)]
+    pub output_user_root: Option<std::path::PathBuf>,
     /// Bazel startup option: path to a bazelrc file. Repeatable.
     #[arg(long, global = true)]
     pub bazelrc: Vec<std::path::PathBuf>,
     #[command(subcommand)]
     pub command: Command,
+}
+
+#[cfg(test)]
+mod startup_option_tests {
+    use super::*;
+
+    #[test]
+    fn startup_options_take_bazels_underscore_spelling() {
+        let cli = Cli::try_parse_from([
+            "fjfj",
+            "--output_base=/tmp/ob",
+            "--output_user_root",
+            "/tmp/our",
+            "build",
+            "//...",
+        ])
+        .unwrap();
+        assert_eq!(cli.output_base, Some("/tmp/ob".into()));
+        assert_eq!(cli.output_user_root, Some("/tmp/our".into()));
+        assert!(Cli::try_parse_from(["fjfj", "--output-base=/tmp/ob", "build"]).is_err());
+    }
 }
