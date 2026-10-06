@@ -305,7 +305,15 @@ impl ConfiguredTargetKey {
                         }));
                         return Ok(target);
                     }
-                    if ctx.data::<Env>()?.record_execution_platforms {
+                    // A platform or a constraint is what execution platforms are
+                    // made of: it has none of its own, and asking for it while
+                    // the platforms are being resolved would be a cycle.
+                    if ctx.data::<Env>()?.record_execution_platforms
+                        && !matches!(
+                            rule_class.as_str(),
+                            "platform" | "constraint_setting" | "constraint_value" | "toolchain"
+                        )
+                    {
                         let exec: Vec<Label> = attrs
                             .iter()
                             .find_map(|(n, v)| match (n.as_str(), v) {

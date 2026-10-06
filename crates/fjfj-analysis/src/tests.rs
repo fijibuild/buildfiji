@@ -1322,3 +1322,40 @@ genrule(name = "m", outs = ["m.txt"], cmd = "true", target_compatible_with = [":
     assert!(!compatible(&on_musl, "//:g").await);
     assert!(compatible(&on_musl, "//:m").await);
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn recording_execution_platforms_does_not_cycle_through_an_extra_platform() {
+    let (_dir, repos) = workspace(&[
+        ("MODULE.bazel", ""),
+        (
+            "BUILD.bazel",
+            "constraint_setting(name = \"s\")\nconstraint_value(name = \"v\", constraint_setting = \":s\")\nplatform(name = \"px\", constraint_values = [\":v\"])\ngenrule(name = \"g\", outs = [\"o\"], cmd = \"true\", exec_compatible_with = [\":v\"])\n",
+        ),
+    ]);
+    let engine = engine(Env {
+        source: repos.clone(),
+        rules: repos.clone(),
+        main_repo_name: "_main".into(),
+        registered_toolchains: Vec::new(),
+        extra_toolchains: Vec::new(),
+        registered_execution_platforms: Vec::new(),
+        extra_execution_platforms: vec!["//:px".to_owned()],
+        host_constraints: None,
+        record_execution_platforms: true,
+    });
+    let g = engine
+        .get(ConfiguredTargetKey {
+            label: Label {
+                repo: String::new(),
+                package: String::new(),
+                name: "g".into(),
+            },
+            configuration: Configuration::default(),
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        g.execution_platform.as_ref().map(|l| l.name.as_str()),
+        Some("px")
+    );
+}
