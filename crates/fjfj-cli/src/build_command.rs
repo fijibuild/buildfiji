@@ -1195,6 +1195,14 @@ pub(crate) fn print(
             "ERROR: {at}: {} failed: {}",
             failure.progress, failure.message
         );
+        if report.strategy == "linux-sandbox"
+            && failure.exit_code.is_some_and(|code| code != 0)
+            && !failure.timed_out
+        {
+            eprintln!(
+                "Use --sandbox_debug to see verbose messages from the sandbox and retain the sandbox build root for debugging"
+            );
+        }
         if !failure.output.is_empty() {
             eprint!("{}", failure.output);
         }
@@ -1202,10 +1210,14 @@ pub(crate) fn print(
             failed_owners.push(&failure.owner);
         }
     }
-    for owner in &failed_owners {
-        eprintln!("Target {owner} failed to build");
+    // Under `--keep_going` there is a line for the target only if it is the
+    // only one asked for, and the hint comes after the count of targets.
+    if !keep_going || requested == 1 {
+        for owner in &failed_owners {
+            eprintln!("Target {owner} failed to build");
+        }
     }
-    if !failed_owners.is_empty() && !verbose_failures {
+    if !keep_going && !failed_owners.is_empty() && !verbose_failures {
         eprintln!("Use --verbose_failures to see the command lines of failed build steps.");
     }
     // A target named outright that cannot be built stops the build, and with
@@ -1223,7 +1235,7 @@ pub(crate) fn print(
     let ok = report.succeeded() && !pattern_errors;
     if ok || keep_going {
         let built: Vec<&TargetResult> = report.results.iter().filter(|r| r.built).collect();
-        if !report.succeeded() {
+        if !report.succeeded() && !built.is_empty() {
             eprintln!(
                 "INFO: Build succeeded for only {} of {} top-level targets",
                 built.len(),
@@ -1242,8 +1254,10 @@ pub(crate) fn print(
             ),
         };
         eprintln!("INFO: Found {found}...");
-        if keep_going && incompatible {
+        if keep_going && (incompatible || (!failed_owners.is_empty() && !verbose_failures)) {
             eprintln!("Use --verbose_failures to see the command lines of failed build steps.");
+        }
+        if keep_going && incompatible {
             eprintln!("ERROR: command succeeded, but not all targets were analyzed");
         }
 
