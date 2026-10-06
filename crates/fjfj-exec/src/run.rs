@@ -171,7 +171,13 @@ pub async fn execute(
             by_output.insert(out.clone(), i);
         }
     }
-    let cache = ActionCache::load(layout.output_base.join("fjfj-action-cache.json"));
+    // Beside the output bases, so a fresh one still has the durations.
+    let history = layout
+        .output_base
+        .parent()
+        .map(|root| root.join("cache").join("mnemonic-durations.json"));
+    let cache =
+        ActionCache::load_with_history(layout.output_base.join("fjfj-action-cache.json"), history);
     let ranks = ranks(&actions, &by_output, &cache);
     let scheduler = Arc::new(Scheduler {
         layout: layout.clone(),
@@ -246,6 +252,7 @@ fn ranks(
         .map(|a| {
             cache
                 .duration(a)
+                .or_else(|| cache.mnemonic_mean(&a.mnemonic))
                 .map_or_else(|| guess_us(a), |d| d.as_micros().max(1) as u64)
         })
         .collect();

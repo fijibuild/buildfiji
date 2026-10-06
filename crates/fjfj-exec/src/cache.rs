@@ -34,6 +34,16 @@ struct Entry {
     outputs: Vec<(String, String)>,
 }
 
+/// What actions of one mnemonic have taken, as a mean over the last runs.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+struct Mean {
+    runs: u64,
+    mean_ms: u64,
+}
+
+/// Runs older than this many fade from a mnemonic's mean.
+const MEAN_WINDOW: u64 = 32;
+
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct State {
     version: u32,
@@ -49,6 +59,11 @@ type Fragment = Arc<Mutex<Option<[u8; 32]>>>;
 pub struct ActionCache {
     path: PathBuf,
     state: Mutex<State>,
+    /// How long actions of each mnemonic take, for ranking one never timed.
+    /// Kept in a file of its own, outside the output base, so a build in a
+    /// fresh output base still knows what a compile costs.
+    mnemonics: Mutex<HashMap<String, Mean>>,
+    history: Option<PathBuf>,
     /// Directories an action made, by the key it ran with: a directory
     /// stands for what made it.
     dirs: Mutex<HashMap<String, String>>,
@@ -62,7 +77,17 @@ pub struct ActionCache {
 impl ActionCache {
     /// The cache at `path`, empty if there is none or it is not one.
     pub fn load(path: impl Into<PathBuf>) -> ActionCache {
+        Self::load_with_history(path, None)
+    }
+
+    /// The cache at `path`, and the per-mnemonic durations at `history`.
+    pub fn load_with_history(path: impl Into<PathBuf>, history: Option<PathBuf>) -> ActionCache {
         let path = path.into();
+        let mnemonics = history
+            .as_ref()
+            .and_then(|h| std::fs::read(h).ok())
+            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+            .unwrap_or_default();
         let state = std::fs::read(&path)
             .ok()
             .and_then(|bytes| serde_json::from_slice::<State>(&bytes).ok())
@@ -74,6 +99,8 @@ impl ActionCache {
         ActionCache {
             path,
             state: Mutex::new(state),
+            mnemonics: Mutex::new(mnemonics),
+            history,
             dirs: Mutex::new(HashMap::new()),
             inputs: RwLock::new(HashMap::new()),
         }
@@ -84,7 +111,18 @@ impl ActionCache {
         let bytes = serde_json::to_vec(&*state).map_err(std::io::Error::other)?;
         let tmp = self.path.with_extension("tmp");
         std::fs::write(&tmp, bytes)?;
-        std::fs::rename(tmp, &self.path)
+        std::fs::rename(tmp, &self.path)?;
+        if let Some(history) = &self.history {
+            let bytes = serde_json::to_vec(&*self.mnemonics.lock().unwrap())
+                .map_err(std::io::Error::other)?;
+            if let Some(dir) = history.parent() {
+                std::fs::create_dir_all(dir)?;
+            }
+            let tmp = history.with_extension("tmp");
+            std::fs::write(&tmp, bytes)?;
+            std::fs::rename(tmp, history)?;
+        }
+        Ok(())
     }
 
     /// The digest of the file at `root/exec_path`, `None` if it is not a file
@@ -240,6 +278,16 @@ impl ActionCache {
             .map(|e| std::time::Duration::from_millis(e.duration_ms))
     }
 
+    /// How long an action of `mnemonic` took, on average, over earlier runs.
+    pub fn mnemonic_mean(&self, mnemonic: &str) -> Option<std::time::Duration> {
+        self.mnemonics
+            .lock()
+            .unwrap()
+            .get(mnemonic)
+            .filter(|m| m.runs > 0)
+            .map(|m| std::time::Duration::from_millis(m.mean_ms))
+    }
+
     /// Remember that `action` ran with `key`, took `took`, and left its outputs.
     pub fn record(&self, root: &Path, action: &Action, key: String, took: std::time::Duration) {
         let Some(first) = action.outputs.first() else {
@@ -259,6 +307,16 @@ impl ActionCache {
                 (path, digest)
             })
             .collect();
+        let mut mnemonics = self.mnemonics.lock().unwrap();
+        let mean = mnemonics.entry(action.mnemonic.clone()).or_default();
+        mean.runs = (mean.runs + 1).min(MEAN_WINDOW);
+        let took_ms = took.as_millis() as u64;
+        mean.mean_ms = if mean.runs == 1 {
+            took_ms
+        } else {
+            (mean.mean_ms * (mean.runs - 1) + took_ms) / mean.runs
+        };
+        drop(mnemonics);
         self.state.lock().unwrap().actions.insert(
             first.exec_path(),
             Entry {

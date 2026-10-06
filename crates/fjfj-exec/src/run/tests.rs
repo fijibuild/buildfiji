@@ -632,3 +632,50 @@ fn a_compile_outranks_a_symlink_at_the_same_depth_before_any_build_has_timed_the
     let ranks = ranks(&actions, &by_output, &cache);
     assert!(ranks[0] > ranks[1], "{ranks:?}");
 }
+
+#[test]
+fn an_action_never_timed_is_ranked_by_what_its_mnemonic_took_not_the_hand_set_table() {
+    let dir = tempfile::tempdir().unwrap();
+    let cache = ActionCache::load(dir.path().join("cache.json"));
+    // Earlier builds: Rustc took 1ms and a Genrule 10s, the reverse of the table.
+    let mut fast = shell("true", vec![], vec![out("fast")]);
+    fast.mnemonic = "Rustc".into();
+    let slow = shell("true", vec![], vec![out("slow")]);
+    cache.record(
+        dir.path(),
+        &fast,
+        "k".into(),
+        std::time::Duration::from_millis(1),
+    );
+    cache.record(
+        dir.path(),
+        &slow,
+        "k".into(),
+        std::time::Duration::from_secs(10),
+    );
+    let mut new_rustc = shell("true", vec![], vec![out("new_rustc")]);
+    new_rustc.mnemonic = "Rustc".into();
+    let new_genrule = shell("true", vec![], vec![out("new_genrule")]);
+    let ranks = ranks(&[new_rustc, new_genrule], &HashMap::new(), &cache);
+    assert!(ranks[1] > ranks[0], "{ranks:?}");
+}
+
+#[test]
+fn what_a_mnemonic_took_is_kept_for_a_cache_in_a_fresh_output_base() {
+    let dir = tempfile::tempdir().unwrap();
+    let history = dir.path().join("cache").join("mnemonic-durations.json");
+    let first = ActionCache::load_with_history(dir.path().join("a.json"), Some(history.clone()));
+    let action = shell("true", vec![], vec![out("x")]);
+    first.record(
+        dir.path(),
+        &action,
+        "k".into(),
+        std::time::Duration::from_secs(7),
+    );
+    first.save().unwrap();
+    let fresh = ActionCache::load_with_history(dir.path().join("b.json"), Some(history));
+    assert_eq!(
+        fresh.mnemonic_mean("Genrule"),
+        Some(std::time::Duration::from_secs(7))
+    );
+}
