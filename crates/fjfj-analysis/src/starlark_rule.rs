@@ -441,7 +441,8 @@ pub(crate) async fn resolve_toolchains(
     }
     let mut missing: Vec<Label> = types.iter().map(|(t, _)| t.clone()).collect();
     for (platform_label, platform) in platforms {
-        if !exec.iter().all(|c| platform.contains(c)) {
+        let held = crate::constraints::with_defaults_for(ctx, &platform, exec).await?;
+        if !exec.iter().all(|c| held.contains(c)) {
             continue;
         }
         let mut toolchains: Vec<(Label, Option<DepInfo>)> = Vec::new();

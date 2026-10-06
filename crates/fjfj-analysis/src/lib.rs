@@ -8,6 +8,7 @@
 //! engine's data.
 
 mod aspect;
+mod constraints;
 mod native;
 mod runfiles_tree;
 mod select;

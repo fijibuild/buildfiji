@@ -109,10 +109,13 @@ pub(crate) async fn default_execution_platform(
         _ => None,
     };
     let platforms = ctx.get(ExecutionPlatforms { extra }).await?;
-    Ok(platforms
-        .iter()
-        .find(|p| exec.iter().all(|c| p.constraints.contains(c)))
-        .map(|p| p.label.clone()))
+    for p in platforms.iter() {
+        let held = crate::constraints::with_defaults_for(ctx, &p.constraints, exec).await?;
+        if exec.iter().all(|c| held.contains(c)) {
+            return Ok(Some(p.label.clone()));
+        }
+    }
+    Ok(None)
 }
 
 /// The `rule_class` targets `patterns` name, in order.
@@ -312,8 +315,16 @@ pub(crate) async fn resolve(
         let has = |needed: &[Label], platform: &BTreeSet<Label>| {
             needed.iter().all(|c| platform.contains(c))
         };
-        if !has(&decl.exec_compatible_with, exec)
-            || !has(&decl.target_compatible_with, &config.constraints)
+        let exec_held =
+            crate::constraints::with_defaults_for(ctx, exec, &decl.exec_compatible_with).await?;
+        let target_held = crate::constraints::with_defaults_for(
+            ctx,
+            &config.constraints,
+            &decl.target_compatible_with,
+        )
+        .await?;
+        if !has(&decl.exec_compatible_with, &exec_held)
+            || !has(&decl.target_compatible_with, &target_held)
         {
             if std::env::var_os("FJFJ_TOOLCHAIN_DEBUG").is_some() {
                 eprintln!(

@@ -1280,3 +1280,45 @@ genrule(name = "unless", outs = ["u.txt"], cmd = "true", target_compatible_with 
             .is_none()
     );
 }
+
+/// A platform that names no value for a `constraint_setting` has its default
+/// (buildfiji-491h): `target_compatible_with` of it holds, and a `select()` on
+/// it matches, unless the platform names another value of that setting.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_platform_that_names_no_value_for_a_setting_has_its_default() {
+    let (_dir, repos) = workspace(&[(
+        "BUILD.bazel",
+        r#"
+constraint_setting(name = "os")
+constraint_value(name = "linux", constraint_setting = ":os")
+constraint_setting(name = "libc", default_constraint_value = "glibc")
+constraint_value(name = "glibc", constraint_setting = ":libc")
+constraint_value(name = "musl", constraint_setting = ":libc")
+genrule(name = "g", outs = ["g.txt"], cmd = "true", target_compatible_with = [":glibc"])
+genrule(name = "m", outs = ["m.txt"], cmd = "true", target_compatible_with = [":musl"])
+"#,
+    )]);
+    let label = |name: &str| Label {
+        repo: String::new(),
+        package: String::new(),
+        name: name.into(),
+    };
+    let mut on_linux = config();
+    on_linux.constraints.insert(label("linux"));
+    let compatible = |c: &Configuration, t: &'static str| {
+        let (repos, c) = (repos.clone(), c.clone());
+        async move {
+            analyse_in(&repos, t, c)
+                .await
+                .unwrap()
+                .incompatible
+                .is_none()
+        }
+    };
+    assert!(compatible(&on_linux, "//:g").await);
+    assert!(!compatible(&on_linux, "//:m").await);
+    let mut on_musl = on_linux.clone();
+    on_musl.constraints.insert(label("musl"));
+    assert!(!compatible(&on_musl, "//:g").await);
+    assert!(compatible(&on_musl, "//:m").await);
+}

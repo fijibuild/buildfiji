@@ -474,7 +474,13 @@ async fn constraint_value(
     // A constraint_value is also a condition of a select(), as the
     // config_setting that lists only it.
     target.config_matching = Some(ConfigMatching {
-        matches: key.configuration.constraints.contains(&key.label),
+        matches: crate::constraints::with_defaults_for(
+            ctx,
+            &key.configuration.constraints,
+            std::slice::from_ref(&key.label),
+        )
+        .await?
+        .contains(&key.label),
         conditions: [format!("constraint:{}", label_text(&key.label))].into(),
     });
     target.deps.push(k);
@@ -515,7 +521,13 @@ async fn config_setting(
         }
     }
     for constraint in labels(&key.label, attrs, "constraint_values")? {
-        let holds = config.constraints.contains(&constraint);
+        let holds = crate::constraints::with_defaults_for(
+            ctx,
+            &config.constraints,
+            std::slice::from_ref(&constraint),
+        )
+        .await?
+        .contains(&constraint);
         check(format!("constraint:{}", label_text(&constraint)), holds);
     }
     if let Some(AttrValue::LabelKeyedStringDict(flags)) = attr(attrs, "flag_values") {

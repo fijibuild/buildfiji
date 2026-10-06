@@ -277,7 +277,8 @@ impl ConfiguredTargetKey {
                     // cannot build it, and what it reads is not analysed: only
                     // the constraint values that decided it are.
                     if let Some((values, unsatisfied)) =
-                        unsatisfied_constraints(&self.configuration, rule_class, &attrs)
+                        unsatisfied_constraints(ctx, &self.configuration, rule_class, &attrs)
+                            .await?
                     {
                         // The `select()` conditions were read to get here.
                         for label in values
@@ -389,24 +390,29 @@ impl ConfiguredTargetKey {
 /// platform of `configuration` lacks, when there are any. A configuration
 /// that does not know its platform (no `@platforms`) asks nothing, and a
 /// `toolchain` says what it is for by the attribute, not what it needs.
-fn unsatisfied_constraints(
+async fn unsatisfied_constraints(
+    ctx: &Ctx,
     configuration: &Configuration,
     rule_class: &str,
     attrs: &[(String, AttrValue)],
-) -> Option<(Vec<Label>, Vec<Label>)> {
+) -> Result<Option<(Vec<Label>, Vec<Label>)>, Error> {
     if rule_class == "toolchain" || configuration.constraints.is_empty() {
-        return None;
+        return Ok(None);
     }
-    let values = attrs.iter().find_map(|(name, value)| match value {
+    let Some(values) = attrs.iter().find_map(|(name, value)| match value {
         AttrValue::LabelList(list) if name == "target_compatible_with" => Some(list.clone()),
         _ => None,
-    })?;
+    }) else {
+        return Ok(None);
+    };
+    let held =
+        crate::constraints::with_defaults_for(ctx, &configuration.constraints, &values).await?;
     let missing: Vec<Label> = values
         .iter()
-        .filter(|v| !configuration.constraints.contains(v))
+        .filter(|v| !held.contains(*v))
         .cloned()
         .collect();
-    (!missing.is_empty()).then_some((values, missing))
+    Ok((!missing.is_empty()).then_some((values, missing)))
 }
 
 /// The conditions of every `select()` among `attrs`, once each, in the order
