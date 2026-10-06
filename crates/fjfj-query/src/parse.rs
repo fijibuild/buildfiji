@@ -106,7 +106,14 @@ fn lex(input: &str) -> Result<Vec<Token>, String> {
             }
             c if is_word_char(c) => {
                 let start = at;
-                while at < chars.len() && is_word_char(chars[at]) {
+                // A canonical repository name has `+` in it: `@@rules_cc+//cc:x`.
+                let canonical = chars[start..].starts_with(&['@', '@']);
+                while at < chars.len()
+                    && (is_word_char(chars[at])
+                        || chars[at] == '+'
+                            && canonical
+                            && !chars[start..at].windows(2).any(|w| w == ['/', '/']))
+                {
                     at += 1;
                 }
                 let word: String = chars[start..at].iter().collect();
@@ -354,6 +361,30 @@ mod tests {
 
     fn err(input: &str) -> String {
         parse(input).unwrap_err()
+    }
+
+    /// Probed with `bazel query`: `+` between targets is a union, and in the
+    /// repository name of a canonical label it is part of the word.
+    #[test]
+    fn a_plus_in_a_canonical_repository_name_is_part_of_the_word() {
+        let words = |input: &str| -> Vec<String> {
+            lex(input)
+                .unwrap()
+                .into_iter()
+                .map(|t| match t {
+                    Token::Word(w) => w,
+                    Token::Plus => "+".to_owned(),
+                    _ => "?".to_owned(),
+                })
+                .collect()
+        };
+        assert_eq!(words("@@rules_cc+//cc:x"), ["@@rules_cc+//cc:x"]);
+        assert_eq!(words("@@a++b+c//x:y"), ["@@a++b+c//x:y"]);
+        assert_eq!(words("//:a+//:b"), ["//:a", "+", "//:b"]);
+        assert_eq!(
+            words("@@rules_cc+//cc:x+//:b"),
+            ["@@rules_cc+//cc:x", "+", "//:b"]
+        );
     }
 
     /// Each error text was produced by `bazel query` 9.2.0.
