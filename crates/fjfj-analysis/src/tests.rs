@@ -852,6 +852,32 @@ r(name = "x")
     let x = analyse_traced(&repos, "//:x", config(), toolchains, platforms, Some(debug))
         .await
         .unwrap();
+    // A rule with no toolchain says where it runs when the analysis is done;
+    // alone, with nothing to place it, that is the first platform.
+    let lines = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+    let sink = lines.clone();
+    let debug_b = crate::ResolutionDebug {
+        matches: Arc::new(|label| label == "//:b"),
+        emit: Arc::new(move |message| sink.lock().unwrap().push(message.to_owned())),
+    };
+    let b = analyse_traced(
+        &repos,
+        "//:b",
+        config(),
+        Vec::new(),
+        vec![(String::new(), "//:ex1".to_owned())],
+        Some(debug_b.clone()),
+    )
+    .await
+    .unwrap();
+    assert!(b.debug_no_toolchains);
+    crate::say_no_toolchains(&debug_b, &b, "@@platforms//host:host");
+    assert_eq!(
+        *lines.lock().unwrap(),
+        [
+            "INFO: ToolchainResolution: Target platform @@platforms//host:host: Selected execution platform //:ex1, "
+        ]
+    );
     // The implementation runs where the toolchain was resolved to run.
     assert_eq!(
         x.toolchain_platforms,
