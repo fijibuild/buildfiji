@@ -134,7 +134,7 @@ fn expand_param_file<'a>(
             .and_then(|path| files.iter().find(|(p, _)| p == path))
         {
             Some((path, contents)) => {
-                expanded.extend(contents.lines().map(str::to_owned));
+                expanded.extend(contents.lines().map(shell_unquote));
                 used.push(path);
             }
             None => expanded.push(arg.clone()),
@@ -208,6 +208,22 @@ pub(crate) fn shell_quote(arg: &str) -> String {
         arg.to_owned()
     } else {
         format!("'{}'", arg.replace('\'', "'\\''"))
+    }
+}
+
+/// The argument a line of a shell-format parameter file spells, or the line
+/// itself when it is not what `shell_quote` writes (a multiline file).
+fn shell_unquote(line: &str) -> String {
+    let argument = if line.is_empty() {
+        None
+    } else if let Some(inner) = line.strip_prefix('\'').and_then(|l| l.strip_suffix('\'')) {
+        Some(inner.replace("'\\''", "'"))
+    } else {
+        Some(line.to_owned())
+    };
+    match argument {
+        Some(arg) if shell_quote(&arg) == line => arg,
+        _ => line.to_owned(),
     }
 }
 
@@ -529,6 +545,11 @@ mod tests {
         assert_eq!(shell_quote("-c"), "-c");
         assert_eq!(shell_quote("echo it's"), "'echo it'\\''s'");
         assert_eq!(shell_quote(""), "''");
+        assert_eq!(shell_quote("a=b"), "'a=b'");
+        for arg in ["a=b", "it's", "x y", "plain", "--f=v w"] {
+            assert_eq!(shell_unquote(&shell_quote(arg)), arg);
+        }
+        assert_eq!(shell_unquote("raw 'text'"), "raw 'text'");
     }
 
     #[test]

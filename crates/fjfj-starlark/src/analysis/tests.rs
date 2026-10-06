@@ -891,3 +891,14 @@ r = rule(implementation = _impl, attrs = {
         .map(|(a, b)| (a.to_owned(), b.to_owned()))
     );
 }
+
+#[test]
+fn a_parameter_file_quotes_what_bazels_shell_escaper_quotes() {
+    use super::args_object::{ParamFormat, param_file_contents};
+    // Bazel's safe set is [A-Za-z0-9] and "@%-_+:,./"; `=` is outside it.
+    let items = ["a=b", "--flag=v", "plain-x_1.2/y:z,@%+", "", "it's"].map(String::from);
+    assert_eq!(
+        param_file_contents(&items, ParamFormat::Shell),
+        "'a=b'\n'--flag=v'\nplain-x_1.2/y:z,@%+\n''\n'it'\\''s'\n"
+    );
+}

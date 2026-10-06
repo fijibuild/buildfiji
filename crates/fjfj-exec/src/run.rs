@@ -1054,7 +1054,7 @@ fn quote(arg: &str) -> String {
     let plain = !arg.is_empty()
         && arg
             .chars()
-            .all(|c| c.is_ascii_alphanumeric() || "-_./=:,+@%".contains(c));
+            .all(|c| c.is_ascii_alphanumeric() || "-_./:,+@%".contains(c));
     if plain {
         arg.to_owned()
     } else {
