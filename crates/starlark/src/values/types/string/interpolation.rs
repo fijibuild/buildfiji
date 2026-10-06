@@ -20,7 +20,6 @@
 
 use std::fmt::Write;
 
-use dupe::Dupe;
 use num_traits::Signed;
 use thiserror::Error;
 
@@ -44,16 +43,20 @@ const I32_MIN_OCTAL: &str = "-20000000000";
 const I32_MIN_HEX: &str = "-80000000";
 
 /// Operator `%` format or evaluation errors
-#[derive(Clone, Dupe, Debug, Error)]
+#[derive(Clone, Debug, Error)]
 enum StringInterpolationError {
     #[error("not all arguments converted during string formatting")]
     TooManyParameters,
-    #[error("Not enough arguments for format string")]
-    NotEnoughParameters,
-    #[error("Incomplete format")]
-    IncompleteFormat,
-    #[error("Unsupported format character: {0:?}")]
-    UnsupportedFormatCharacter(char),
+    #[error("not enough arguments for format pattern {format:?}: {args}")]
+    NotEnoughParameters { format: String, args: String },
+    #[error("incomplete format pattern ends with %: {0:?}")]
+    IncompleteFormat(String),
+    #[error("unsupported format character \"{c}\" at index {index} in {format:?}")]
+    UnsupportedFormatCharacter {
+        c: char,
+        index: usize,
+        format: String,
+    },
     #[error("Expecting format character (internal error)")]
     ExpectingFormatCharacter,
 }
@@ -84,6 +87,8 @@ enum PercentSFormat {
 }
 
 struct PercentFormatParser<'a> {
+    /// The whole pattern, which the errors quote.
+    full: &'a str,
     rem: &'a str,
 }
 
@@ -102,7 +107,12 @@ impl<'a> Iterator for PercentFormatParser<'a> {
             let prev_rem = self.rem;
             let (literal, rem) = self.rem.split_at(index_of_percent);
             match rem.as_bytes().get(1) {
-                None => return Some(Err(StringInterpolationError::IncompleteFormat.into())),
+                None => {
+                    return Some(Err(StringInterpolationError::IncompleteFormat(
+                        self.full.to_owned(),
+                    )
+                    .into()));
+                }
                 Some(f) => {
                     let res = match f {
                         b'%' => {
@@ -164,8 +174,14 @@ impl<'a> Iterator for PercentFormatParser<'a> {
                                     StringInterpolationError::ExpectingFormatCharacter.into(),
                                 ));
                             };
+                            let at = self.full.len() - self.rem.len() + index_of_percent + 1;
                             return Some(Err(
-                                StringInterpolationError::UnsupportedFormatCharacter(c).into(),
+                                StringInterpolationError::UnsupportedFormatCharacter {
+                                    c,
+                                    index: self.full[..at].chars().count(),
+                                    format: self.full.to_owned(),
+                                }
+                                .into(),
                             ));
                         }
                     };
@@ -206,13 +222,20 @@ pub(crate) fn percent(format: &str, value: Value) -> crate::Result<String> {
     };
     let mut values = values.iter().copied();
     let mut next_value = || -> anyhow::Result<Value> {
-        values
-            .next()
-            .ok_or_else(|| StringInterpolationError::NotEnoughParameters.into())
+        values.next().ok_or_else(|| {
+            StringInterpolationError::NotEnoughParameters {
+                format: format.to_owned(),
+                args: value.to_repr(),
+            }
+            .into()
+        })
     };
 
     // because of the way format is defined, we can deal with it as bytes
-    for item in (PercentFormatParser { rem: format }) {
+    for item in (PercentFormatParser {
+        full: format,
+        rem: format,
+    }) {
         let item = item?;
         res.push_str(item.literal);
         match item.format {
@@ -481,7 +504,10 @@ pub(crate) fn percent_s_one<'v>(
                 Some(tuple) => match tuple.content() {
                     [] => {
                         return Err(crate::Error::new_other(
-                            StringInterpolationError::NotEnoughParameters,
+                            StringInterpolationError::NotEnoughParameters {
+                                format: format!("{before}%s{after}"),
+                                args: arg.to_repr(),
+                            },
                         ));
                     }
                     [value] => *value,

@@ -337,6 +337,31 @@ mod tests {
         ),
         (
             "r = 1\n",
+            "x = \"%\" % ()",
+            "column 9, in <toplevel>\n\t\tx = \"%\" % ()\nError: incomplete format pattern ends with %: \"%\"",
+        ),
+        (
+            "r = 1\n",
+            "x = \"%z\" % 1",
+            "column 10, in <toplevel>\n\t\tx = \"%z\" % 1\nError: unsupported format character \"z\" at index 1 in \"%z\"",
+        ),
+        (
+            "r = 1\n",
+            "x = \"%s %s\" % (1,)",
+            "column 13, in <toplevel>\n\t\tx = \"%s %s\" % (1,)\nError: not enough arguments for format pattern \"%s %s\": (1,)",
+        ),
+        (
+            "r = 1\n",
+            "x = \"%c\" % 65",
+            "column 10, in <toplevel>\n\t\tx = \"%c\" % 65\nError: unsupported format character \"c\" at index 1 in \"%c\"",
+        ),
+        (
+            "r = 1\n",
+            "x = \"abc%\" % 1",
+            "column 12, in <toplevel>\n\t\tx = \"abc%\" % 1\nError: incomplete format pattern ends with %: \"abc%\"",
+        ),
+        (
+            "r = 1\n",
             "x = max([])",
             "column 8, in <toplevel>\n\t\tx = max([])\nError in max: expected at least one item",
         ),
