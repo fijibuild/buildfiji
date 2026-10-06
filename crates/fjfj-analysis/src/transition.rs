@@ -8,7 +8,7 @@
 //! absent from [`Configuration::settings`].
 
 use crate::target::{ConfiguredTargetKey, Env, PackageKey};
-use fjfj_engine::{Ctx, Error};
+use fjfj_engine::{Ctx, Error, Key};
 use fjfj_graph::config::COMMAND_LINE_OPTION;
 use fjfj_graph::package::TargetKind;
 use fjfj_graph::rule::AttrValue;
@@ -100,6 +100,18 @@ async fn default_of(
 pub(crate) async fn is_build_setting(ctx: &Ctx, label: &Label) -> Result<bool, Error> {
     let label = crate::toolchain::follow_aliases(ctx, label).await?;
     Ok(default_of(ctx, &label).await?.is_some())
+}
+
+/// Whether a label is a build setting, as an engine value.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct BuildSettingKey(pub Label);
+
+impl Key for BuildSettingKey {
+    type Value = bool;
+
+    async fn compute(&self, ctx: &Ctx) -> Result<bool, Error> {
+        is_build_setting(ctx, &self.0).await
+    }
 }
 
 async fn module_of(env: &Env, bzl: &Label) -> Result<FrozenModule, Error> {

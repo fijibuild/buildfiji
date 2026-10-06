@@ -23,6 +23,7 @@ pub use select::ConfigMatching;
 pub use starlark_rule::dep_info;
 pub use target::{ConfiguredTarget, ConfiguredTargetKey, Env, PackageKey, engine};
 pub use target::{Incompatible, PlatformDecl, ToolchainDecl};
+pub use transition::BuildSettingKey;
 
 #[cfg(test)]
 mod tests;

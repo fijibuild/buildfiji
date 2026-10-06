@@ -796,6 +796,7 @@ async fn build_main(
         extra_toolchains: build_flags.extra_toolchains.clone(),
         extra_execution_platforms: build_flags.extra_execution_platforms.clone(),
         host_platform: build_flags.host_platform.clone(),
+        starlark_flags: build_flags.starlark_flags.clone(),
         aspects: build_flags.aspects.clone(),
         output_groups: build_flags.output_groups.clone(),
         keep_going: diagnostics.keep_going,
@@ -879,6 +880,12 @@ async fn build_main(
             "command succeeded, but there were errors parsing the target pattern"
         )));
     };
+    if let Some(error) = &report.flag_error {
+        for line in &error.before {
+            eprintln!("{line}");
+        }
+        return Err(CliError::CommandLine(anyhow::anyhow!("{}", error.message)));
+    }
     if let Some(label) = &report.not_executable {
         eprintln!(
             "ERROR: Cannot run target {}: Not executable",
@@ -1250,6 +1257,7 @@ mod tests {
             extra_toolchains: Vec::new(),
             extra_execution_platforms: Vec::new(),
             host_platform: None,
+            starlark_flags: Vec::new(),
             aspects: Vec::new(),
             output_groups: Vec::new(),
             keep_going: true,
@@ -1359,6 +1367,7 @@ my_test = rule(implementation = _impl, test = True, attrs = {"exit": attr.int()}
             extra_toolchains: Vec::new(),
             extra_execution_platforms: Vec::new(),
             host_platform: None,
+            starlark_flags: Vec::new(),
             aspects: Vec::new(),
             output_groups: Vec::new(),
             keep_going: true,
@@ -1433,5 +1442,107 @@ my_test = rule(implementation = _impl, test = True, attrs = {"exit": attr.int()}
             again,
             [("bad".to_owned(), false), ("good".to_owned(), true)]
         );
+    }
+
+    #[test]
+    fn a_starlark_flag_must_name_a_build_setting_the_main_repository_can_see() {
+        let dir = Scratch::new("starlark-flags");
+        let shell = dir.0.join("rules_shell");
+        std::fs::create_dir_all(shell.join("shell")).unwrap();
+        std::fs::write(shell.join("MODULE.bazel"), "module(name = 'rules_shell')\n").unwrap();
+        std::fs::write(shell.join("BUILD.bazel"), "").unwrap();
+        std::fs::write(shell.join("shell/BUILD.bazel"), "").unwrap();
+        std::fs::write(
+            shell.join("shell/sh_binary.bzl"),
+            "def sh_binary(**kwargs):\n    pass\n",
+        )
+        .unwrap();
+        let module = "module(name = 'root', version = '0')\nbazel_dep(name = 'rules_shell', version = '0.6.1')\n";
+        std::fs::write(
+            dir.0.join("defs.bzl"),
+            "def _i(ctx):\n    return []\nflag = rule(implementation = _i, build_setting = config.string(flag = True))\nplain = rule(implementation = _i)\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.0.join("BUILD.bazel"),
+            "load(':defs.bzl', 'flag', 'plain')\nflag(name = 'f', build_setting_default = 'd')\nplain(name = 'p')\n",
+        )
+        .unwrap();
+        let mut args = fixture_registry_flags();
+        args.push("--lockfile_mode=update".to_owned());
+        let (bzlmod, _) = bzlmod_flags::extract(&args, "build");
+        let flags = fetch_command::FetchFlags {
+            output_base: Some(dir.0.join("ob")),
+            repository_cache: Some(None),
+            repo_overrides: vec![("rules_shell".to_owned(), shell)],
+            ..fetch_command::FetchFlags::default()
+        };
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let message_of = |name: &str| {
+            let options = build_command::Options {
+                configuration: fjfj_graph::Configuration {
+                    cpu: "k8".into(),
+                    ..fjfj_graph::Configuration::default()
+                },
+                platform: None,
+                extra_toolchains: Vec::new(),
+                extra_execution_platforms: Vec::new(),
+                host_platform: None,
+                starlark_flags: vec![(name.to_owned(), "y".to_owned())],
+                aspects: Vec::new(),
+                output_groups: Vec::new(),
+                keep_going: true,
+                build: false,
+                symlink_prefix: "bazel-".into(),
+                jobs: None,
+                strategy: fjfj_exec::run::Options::default().strategy,
+                show_result: 1,
+                record_execution_platforms: false,
+                test: None,
+                workspace_status: None,
+                incompatible: None,
+                run: false,
+            };
+            let (flags, bzlmod, root) = (flags.clone(), bzlmod.clone(), dir.0.clone());
+            let loaded = runtime
+                .block_on(async move {
+                    tokio::task::spawn_blocking(move || {
+                        fetch_command::run_for_build(
+                            &flags,
+                            &bzlmod,
+                            &root,
+                            module,
+                            &["//:p".to_owned()],
+                            "",
+                            Some(&options),
+                        )
+                    })
+                    .await
+                })
+                .unwrap()
+                .unwrap();
+            loaded.report.expect("built").flag_error.map(|e| e.message)
+        };
+        assert_eq!(message_of("//:f"), None);
+        assert_eq!(message_of("@root//:f"), None);
+        assert_eq!(
+            message_of("//:p").as_deref(),
+            Some("//:p :: Unrecognized option: //:p")
+        );
+        assert_eq!(
+            message_of("@nosuch//:f").as_deref(),
+            Some(
+                "@nosuch//:f :: Error loading option @nosuch//:f: No repository visible as '@nosuch' from main repository"
+            )
+        );
+        assert_eq!(
+            message_of("@@nope//:f").as_deref(),
+            Some(
+                "@@nope//:f :: Error loading option @@nope//:f: Repository '@@nope' is not defined"
+            )
+        );
+        assert!(message_of("//:nosuch").unwrap().starts_with(
+            "//:nosuch :: Error loading option //:nosuch: no such target '//:nosuch'"
+        ));
     }
 }

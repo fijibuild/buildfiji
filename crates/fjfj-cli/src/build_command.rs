@@ -25,6 +25,9 @@ pub(crate) struct Options {
     pub extra_execution_platforms: Vec<String>,
     /// `--host_platform`: the platform fjfj runs on, a label as written.
     pub host_platform: Option<String>,
+    /// The Starlark flags, `--//pkg:name=value`: the label as written, and the
+    /// value.
+    pub starlark_flags: Vec<(String, String)>,
     /// `--aspects`: aspects to apply to the targets, `<bzl label>%<name>`.
     pub aspects: Vec<String>,
     /// `--output_groups`.
@@ -101,20 +104,6 @@ pub(crate) fn configuration_from(
             entry.push(' ');
         }
         entry.push_str(value);
-    }
-    for (flag, value) in &flags.starlark_flags {
-        let label = fjfj_graph::Label::parse(
-            flag,
-            fjfj_graph::LabelContext {
-                repo: "",
-                package: "",
-            },
-        )
-        .map_err(|e| format!("While parsing option --{flag}={value}: {e}"))?;
-        configuration.settings.insert(
-            fjfj_graph::expand::label_text(&label),
-            fjfj_graph::SettingValue::Str(value.clone()),
-        );
     }
     Ok(configuration)
 }
@@ -266,6 +255,82 @@ fn place_errors(report: &mut Report, repos: &Repos, configuration: &Configuratio
     }
 }
 
+/// A Starlark flag that does not name a build setting, as Bazel says it.
+#[derive(Debug, Clone)]
+pub(crate) struct FlagError {
+    /// Lines said before the error.
+    pub before: Vec<String>,
+    pub message: String,
+}
+
+/// The labels the Starlark flags name, read as the main repository sees them,
+/// each with its value. Bazel loads the target and refuses one it cannot find.
+pub(crate) fn resolve_starlark_flags(
+    repos: &Repos,
+    flags: &[(String, String)],
+) -> Result<Vec<(String, Label, String)>, FlagError> {
+    let mut found = Vec::new();
+    for (name, value) in flags {
+        let fail = |before: Vec<String>, why: &str| FlagError {
+            before,
+            message: format!("{name} :: Error loading option {name}: {why}"),
+        };
+        let unknown = std::cell::RefCell::new(None);
+        let parsed = fjfj_graph::pattern::TargetPattern::parse(
+            name,
+            fjfj_graph::pattern::PatternContext {
+                repo: "",
+                offset: "",
+            },
+            &mut |apparent| match apparent {
+                "" => String::new(),
+                _ => repos.main_repo_canonical(apparent).unwrap_or_else(|| {
+                    unknown.borrow_mut().get_or_insert(apparent.to_owned());
+                    apparent.to_owned()
+                }),
+            },
+        )
+        .map_err(|e| fail(Vec::new(), &e.to_string()))?;
+        if let Some(apparent) = unknown.into_inner() {
+            return Err(fail(
+                Vec::new(),
+                &format!("No repository visible as '@{apparent}' from main repository"),
+            ));
+        }
+        if let Some(written) = parsed
+            .repo_written
+            .as_deref()
+            .and_then(|r| r.strip_prefix("@@"))
+            && !written.is_empty()
+            && written != "bazel_tools"
+            && !repos.all_repos().iter().any(|r| r == written)
+        {
+            return Err(fail(
+                Vec::new(),
+                &format!("Repository '@@{written}' is not defined"),
+            ));
+        }
+        let fjfj_graph::pattern::Pattern::Target(label) = &parsed.pattern else {
+            return Err(FlagError {
+                before: Vec::new(),
+                message: format!("{name} :: Unrecognized option: {name}"),
+            });
+        };
+        let resolved = fjfj_loading::resolve(std::slice::from_ref(&parsed), repos);
+        if let Some(failure) = resolved.failures.first() {
+            return Err(fail(
+                vec![
+                    "WARNING: Target pattern parsing failed.".to_owned(),
+                    format!("ERROR: Skipping '{}': {}", failure.pattern, failure.message),
+                ],
+                &failure.message,
+            ));
+        }
+        found.push((name.clone(), label.clone(), value.clone()));
+    }
+    Ok(found)
+}
+
 #[derive(Debug)]
 pub(crate) struct Report {
     pub layout: Layout,
@@ -287,6 +352,10 @@ pub(crate) struct Report {
     pub source_files: BTreeSet<Label>,
     /// `run`: the first target asked for that is not an executable.
     pub not_executable: Option<Label>,
+    /// A Starlark flag that names nothing it can set.
+    pub flag_error: Option<FlagError>,
+    /// What the Starlark flags set, by the label that is read.
+    pub starlark_settings: Vec<(String, fjfj_graph::SettingValue)>,
     /// The targets asked for whose analysis failed.
     pub failed_roots: Vec<Label>,
     /// Targets of the request left unbuilt as the platform cannot build them:
@@ -327,6 +396,8 @@ impl Report {
             source_file_warnings: Vec::new(),
             source_files: BTreeSet::new(),
             not_executable: None,
+            flag_error: None,
+            starlark_settings: Vec::new(),
             failed_roots: Vec::new(),
             skipped: Vec::new(),
             analysis_sites: BTreeMap::new(),
@@ -650,6 +721,32 @@ pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> R
     }
     let analysis = engine(env(host));
     let mut configuration = request.options.configuration.clone();
+    match resolve_starlark_flags(repos, &request.options.starlark_flags) {
+        Ok(flags) => {
+            for (name, label, value) in flags {
+                let is_setting = handle
+                    .block_on(analysis.get(fjfj_analysis::BuildSettingKey(label.clone())))
+                    .is_ok_and(|found| *found);
+                if !is_setting {
+                    report.flag_error = Some(FlagError {
+                        before: Vec::new(),
+                        message: format!("{name} :: Unrecognized option: {name}"),
+                    });
+                    report.elapsed = started.elapsed();
+                    return report;
+                }
+                let key = fjfj_graph::expand::label_text(&label);
+                let value = fjfj_graph::SettingValue::Str(value);
+                configuration.settings.insert(key.clone(), value.clone());
+                report.starlark_settings.push((key, value));
+            }
+        }
+        Err(error) => {
+            report.flag_error = Some(error);
+            report.elapsed = started.elapsed();
+            return report;
+        }
+    }
     if let Some(text) = &request.options.platform {
         let platform = fjfj_graph::Label::parse(
             text,

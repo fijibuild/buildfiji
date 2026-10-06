@@ -423,6 +423,7 @@ fn build_options(
         extra_toolchains: flags.extra_toolchains.clone(),
         extra_execution_platforms: flags.extra_execution_platforms.clone(),
         host_platform: flags.host_platform.clone(),
+        starlark_flags: flags.starlark_flags.clone(),
         aspects: flags.aspects.clone(),
         output_groups: Vec::new(),
         keep_going: true,
@@ -521,6 +522,16 @@ fn evaluate(
         }
     }
     let report = build_command::run(repos, &targets, &request);
+    if let Some(error) = &report.flag_error {
+        for line in &error.before {
+            eprintln!("{line}");
+        }
+        return Err(CliError::CommandLine(anyhow::anyhow!("{}", error.message)));
+    }
+    let mut top_level = top_level;
+    top_level
+        .settings
+        .extend(report.starlark_settings.iter().cloned());
     if let Some((label, message)) = report.analysis_errors.first() {
         return Err(CliError::Query(anyhow::anyhow!(
             "{}: {}",
