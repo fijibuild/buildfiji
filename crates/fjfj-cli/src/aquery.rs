@@ -436,9 +436,14 @@ fn text_one(out: &mut String, row: &Row<'_>, settings: Settings, layout: &Layout
                     .execution_platform
                     .clone()
                     .unwrap_or_else(host_platform);
+                let repo = if canonical.repo.is_empty() {
+                    String::new()
+                } else {
+                    format!("@@{}", canonical.repo)
+                };
                 out.push_str(&format!(
-                    "# Execution platform: @@{}//{}:{}\n",
-                    canonical.repo, canonical.package, canonical.name
+                    "# Execution platform: {repo}//{}:{}\n",
+                    canonical.package, canonical.name
                 ));
             }
             if !execution_requirements.is_empty() {
