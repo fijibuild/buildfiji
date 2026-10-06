@@ -259,7 +259,8 @@ pub(crate) fn run_for_build(
     offset: &str,
     build: Option<&crate::build_command::Options>,
 ) -> Result<BuildLoad, CliError> {
-    let (resolved, repos) = begin(flags, bzlmod, workspace_root, module_bazel_text)?;
+    let (resolved, repos) = begin(flags, bzlmod, workspace_root, module_bazel_text)
+        .map_err(|e| asked(e, Asked::Build))?;
     let unknown = std::cell::RefCell::new(None);
     let context = PatternContext { repo: "", offset };
     let parsed = patterns
@@ -385,8 +386,14 @@ pub(crate) fn begin(
             .unwrap_or_default(),
         repo_overrides: flags.repo_overrides.clone(),
     };
-    let mut repos = Repos::from_resolution(options, resolved.resolution.clone())
-        .map_err(|e| CliError::Build(anyhow::anyhow!(e.message)))?;
+    let mut repos = Repos::from_resolution(options, resolved.resolution.clone()).map_err(|e| {
+        // What a file printed before it failed is a line of its own.
+        let mut lines = e.message.lines().peekable();
+        while let Some(line) = lines.next_if(|l| l.starts_with("DEBUG: ")) {
+            eprintln!("{line}");
+        }
+        CliError::Build(anyhow::anyhow!(lines.collect::<Vec<_>>().join("\n")))
+    })?;
     // Extension results the lockfile already has stand while their inputs do.
     if let Some(session) = &resolved.session
         && session.mode() != fjfj_bzlmod::lockfile::LockfileMode::Refresh
@@ -405,6 +412,44 @@ pub(crate) fn begin(
     }
     outcome?;
     Ok((resolved, repos))
+}
+
+/// What a command asked, which words a `REPO.bazel` that fails.
+pub(crate) enum Asked<'a> {
+    /// A query: its text, which says whether a pattern is a tree.
+    Query(&'a str),
+    /// A build, or a query that builds.
+    Build,
+}
+
+/// `error`, worded as Bazel does for a `REPO.bazel` that failed when
+/// `asked`: a query says why its patterns could not be parsed, or that the
+/// package could not load; a build says it did not complete. Any other
+/// error stays as it is.
+pub(crate) fn asked(error: CliError, asked: Asked) -> CliError {
+    const FAILED: &str = "error evaluating REPO.bazel file for ";
+    let CliError::Build(inner) = &error else {
+        return error;
+    };
+    let text = inner.to_string();
+    let Some((before, last)) = text.rsplit_once('\n') else {
+        return error;
+    };
+    if !last.starts_with(&format!("ERROR: {FAILED}")) {
+        return error;
+    }
+    match asked {
+        Asked::Build => CliError::Build(anyhow::anyhow!(
+            "{text}\nERROR: Build did NOT complete successfully"
+        )),
+        Asked::Query(query) if query.contains("...") => CliError::Query(anyhow::anyhow!(
+            "{before}\nERROR: Target parsing failed due to unexpected exception: {}",
+            &last["ERROR: ".len()..]
+        )),
+        Asked::Query(_) => CliError::Query(anyhow::anyhow!(
+            "{before}\nERROR: error loading package '': bad REPO.bazel file"
+        )),
+    }
 }
 
 pub(crate) fn print_warnings(repos: &Repos) {

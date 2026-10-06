@@ -382,7 +382,8 @@ pub(crate) async fn run(args: QueryArgs, kind: Kind) -> Result<(), CliError> {
         })?;
     let output = tokio::task::spawn_blocking(move || -> Result<Vec<u8>, CliError> {
         let (resolved, repos) =
-            fetch_command::begin(&fetch, &bzlmod, &workspace_root, &module_bazel_text)?;
+            fetch_command::begin(&fetch, &bzlmod, &workspace_root, &module_bazel_text)
+                .map_err(|e| fetch_command::asked(e, fetch_command::Asked::Build))?;
         let repos = Arc::new(repos);
         let mut options = build_options(configuration, &build_flags);
         if let Some(platforms) = repos.module_repo("platforms") {
@@ -479,11 +480,17 @@ fn evaluate(
         None => query.expr.patterns(),
     };
     for pattern in patterns {
-        named.extend(
-            graph
-                .pattern(pattern)
-                .map_err(|e| CliError::Query(anyhow::anyhow!(e)))?,
-        );
+        named.extend(graph.pattern(pattern).map_err(|e| {
+            // A repo whose REPO.bazel fails stops the build, after what it
+            // printed and said.
+            if e.starts_with("error evaluating REPO.bazel file for ") {
+                fetch_command::print_warnings(repos);
+                return CliError::Build(anyhow::anyhow!(
+                    "{e}\nERROR: Build did NOT complete successfully"
+                ));
+            }
+            CliError::Query(anyhow::anyhow!(e))
+        })?);
     }
     let top_level = options.configuration.clone();
     let platform_text = options.platform.clone();

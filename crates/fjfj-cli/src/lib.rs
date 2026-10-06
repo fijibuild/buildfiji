@@ -811,6 +811,16 @@ async fn build_main(
         selected_modules = resolution.selection.keys().count(),
         "bzlmod module graph resolved"
     );
+    // A repo whose REPO.bazel fails stops the parsing of every pattern.
+    if let Some(failure) = targets.failures.iter().find(|f| {
+        f.message
+            .starts_with("error evaluating REPO.bazel file for ")
+    }) {
+        return Err(CliError::Build(anyhow::anyhow!(
+            "{}\nERROR: Build did NOT complete successfully",
+            failure.message
+        )));
+    }
     if !targets.failures.is_empty() {
         eprintln!("WARNING: Target pattern parsing failed.");
         for failure in &targets.failures {

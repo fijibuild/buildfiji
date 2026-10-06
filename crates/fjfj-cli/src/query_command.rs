@@ -145,6 +145,15 @@ fn failed_query(query: &str, message: String) -> String {
         .strip_prefix("Error evaluating '")
         .and_then(|rest| rest.split_once("': "))
         .filter(|(pattern, rest)| !pattern.ends_with("...") && rest.ends_with("' contains errors"));
+    // A dependency's REPO.bazel that fails: parsing a tree of it stops, and
+    // any other pattern is a package that cannot load.
+    if let Some(repo) = message.strip_prefix("error evaluating REPO.bazel file for @@") {
+        return if query.contains("...") {
+            format!("Target parsing failed due to unexpected exception: {message}")
+        } else {
+            format!("error loading package '@@{repo}//': bad REPO.bazel file")
+        };
+    }
     match wildcard_of_package {
         Some(_) => format!("Evaluation of query \"{query}\" failed"),
         None => message,
@@ -190,7 +199,8 @@ pub(crate) async fn run(args: QueryArgs) -> Result<(), CliError> {
     let output =
         tokio::task::spawn_blocking(move || -> Result<(Vec<u8>, Vec<String>), CliError> {
             let (resolved, repos) =
-                fetch_command::begin(&fetch, &bzlmod, &workspace_root, &module_bazel_text)?;
+                fetch_command::begin(&fetch, &bzlmod, &workspace_root, &module_bazel_text)
+                    .map_err(|e| fetch_command::asked(e, fetch_command::Asked::Query(&query)))?;
             let repos = Arc::new(repos);
             let graph = QueryGraph::new(repos.clone())
                 .with_relative_locations(flags.relative_locations)
@@ -253,6 +263,15 @@ mod failed_query_tests {
         );
         let tree = "Error evaluating '//...': error loading package '': Package '' contains errors";
         assert_eq!(failed_query("//...", tree.to_owned()), tree);
+        let repo_file = "error evaluating REPO.bazel file for @@dep+";
+        assert_eq!(
+            failed_query("@dep//:t", repo_file.to_owned()),
+            "error loading package '@@dep+//': bad REPO.bazel file"
+        );
+        assert_eq!(
+            failed_query("@dep//...", repo_file.to_owned()),
+            format!("Target parsing failed due to unexpected exception: {repo_file}")
+        );
         let other = "no such target '//:g'";
         assert_eq!(failed_query("//:g", other.to_owned()), other);
     }

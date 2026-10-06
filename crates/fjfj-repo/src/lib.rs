@@ -80,39 +80,66 @@ pub struct FetchError {
     pub message: String,
 }
 
+/// Why the lookup of a repo failed: the events that came first, each as
+/// `file:line:col: message`, a traceback or a `DEBUG: ` line, and what
+/// Bazel says stopped.
+struct LookupFailure {
+    events: Vec<String>,
+    summary: String,
+}
+
+impl LookupFailure {
+    fn plain(message: impl Into<String>) -> LookupFailure {
+        LookupFailure {
+            events: Vec::new(),
+            summary: message.into(),
+        }
+    }
+
+    /// As the one message of an error, the way the main repo's is told: one
+    /// line per event, the caller putting `ERROR: ` before the first.
+    fn into_message(self) -> FetchError {
+        let mut lines: Vec<String> = self
+            .events
+            .iter()
+            .map(|event| match event.starts_with("DEBUG: ") {
+                true => event.clone(),
+                false => format!("ERROR: {event}"),
+            })
+            .collect();
+        lines.push(format!("ERROR: {}", self.summary));
+        let first = lines[0]
+            .strip_prefix("ERROR: ")
+            .unwrap_or(&lines[0])
+            .to_owned();
+        lines[0] = first;
+        FetchError {
+            message: lines.join("\n"),
+        }
+    }
+}
+
 /// The lookup of the repo rooted at `root`: its `.bazelignore` and the
 /// `ignore_directories()` of its `REPO.bazel`. `whose` completes Bazel's
-/// `error evaluating REPO.bazel file for ...`.
-fn lookup_at(root: &Path, whose: &str) -> Result<PackageLookup, FetchError> {
-    let lookup = PackageLookup::new(root).map_err(|e| FetchError {
-        message: e.to_string(),
-    })?;
+/// `error evaluating REPO.bazel file for ...`. The events the file printed
+/// come with it, as Bazel shows them on every command that reads the file.
+fn lookup_at(root: &Path, whose: &str) -> Result<(PackageLookup, Vec<String>), LookupFailure> {
+    let lookup = PackageLookup::new(root).map_err(|e| LookupFailure::plain(e.to_string()))?;
     let file = root.join("REPO.bazel");
     let text = match std::fs::read_to_string(&file) {
         Ok(text) => text,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(lookup),
-        Err(e) => return failed(format!("{}: {e}", file.display())),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok((lookup, Vec::new())),
+        Err(e) => return Err(LookupFailure::plain(format!("{}: {e}", file.display()))),
     };
     match fjfj_starlark::evaluate_repo_file(&file.display().to_string(), &text, whose) {
-        Ok(repo_file) => Ok(lookup.with_ignore_directories(repo_file.ignore_directories)),
-        Err(e) => {
-            // The caller puts `ERROR: ` before the first line.
-            let mut lines: Vec<String> = e
-                .events
-                .iter()
-                .map(|event| match event.starts_with("DEBUG: ") {
-                    true => event.clone(),
-                    false => format!("ERROR: {event}"),
-                })
-                .collect();
-            lines.push(format!("ERROR: {}", e.summary));
-            let first = lines[0]
-                .strip_prefix("ERROR: ")
-                .unwrap_or(&lines[0])
-                .to_owned();
-            lines[0] = first;
-            failed(lines.join("\n"))
-        }
+        Ok(repo_file) => Ok((
+            lookup.with_ignore_directories(repo_file.ignore_directories),
+            repo_file.printed,
+        )),
+        Err(e) => Err(LookupFailure {
+            events: e.events,
+            summary: e.summary,
+        }),
     }
 }
 
@@ -350,7 +377,9 @@ impl Repos {
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
-        let lookup = lookup_at(&options.workspace_root, "the main repo")?
+        let (lookup, printed) = lookup_at(&options.workspace_root, "the main repo")
+            .map_err(LookupFailure::into_message)?;
+        let lookup = lookup
             .with_skipped_root_dirs([
                 "bazel-bin".to_owned(),
                 "bazel-out".to_owned(),
@@ -406,7 +435,10 @@ impl Repos {
             state: Mutex::new(state),
             progress: std::sync::Condvar::new(),
             prints: Prints::default(),
-            events: Mutex::new(Events::default()),
+            events: Mutex::new(Events {
+                queue: printed,
+                ..Events::default()
+            }),
         });
         let loader = BzlLoader::with_provider(Box::new(Provider(Arc::downgrade(&inner))), true);
         let _ = inner.loader.set(loader);
@@ -994,7 +1026,15 @@ impl Inner {
             }
             let _ = std::fs::write(output.join("REPO.bazel"), "");
         }
-        let lookup = lookup_at(output, &format!("repo '{name}'"))?;
+        let (lookup, printed) = match lookup_at(output, &format!("@@{name}")) {
+            Ok(found) => found,
+            Err(failure) => {
+                // What came before is shown as the other events are.
+                self.events.lock().unwrap().extend(failure.events);
+                return failed(failure.summary);
+            }
+        };
+        self.events.lock().unwrap().extend(printed);
         self.state
             .lock()
             .unwrap()
@@ -1098,7 +1138,15 @@ impl Inner {
                 target.display()
             ));
         }
-        let lookup = lookup_at(&output, &format!("repo '{name}'"))?;
+        let (lookup, printed) = match lookup_at(&output, &format!("@@{name}")) {
+            Ok(found) => found,
+            Err(failure) => {
+                // What came before is shown as the other events are.
+                self.events.lock().unwrap().extend(failure.events);
+                return failed(failure.summary);
+            }
+        };
+        self.events.lock().unwrap().extend(printed);
         self.state
             .lock()
             .unwrap()

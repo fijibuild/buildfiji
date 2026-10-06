@@ -200,10 +200,19 @@ const ROWS: &[Row] = &[
 /// The events of `text` against a package whose BUILD file fails, after the
 /// traceback (buildfiji-wtzd).
 fn events_of(text: &str) -> Vec<String> {
+    events_in(text, "x = [1][3]\nfilegroup(name='g')\n", None)
+}
+
+/// The events of `text` against a workspace of one BUILD file and perhaps a
+/// REPO.bazel.
+fn events_in(text: &str, build: &str, repo_file: Option<&str>) -> Vec<String> {
     let dir = tempfile::tempdir().unwrap();
     let ws = dir.path().join("ws");
     std::fs::create_dir_all(&ws).unwrap();
-    std::fs::write(ws.join("BUILD"), "x = [1][3]\nfilegroup(name='g')\n").unwrap();
+    std::fs::write(ws.join("BUILD"), build).unwrap();
+    if let Some(repo_file) = repo_file {
+        std::fs::write(ws.join("REPO.bazel"), repo_file).unwrap();
+    }
     let module = eval_module_file("MODULE.bazel", "module(name = 'm')\n", &EvalOptions::root())
         .unwrap()
         .module;
@@ -233,6 +242,13 @@ fn events_of(text: &str) -> Vec<String> {
         .into_iter()
         .map(|e| e.lines().next().unwrap().to_owned())
         .collect()
+}
+
+#[test]
+fn what_a_repo_file_prints_is_an_event_of_every_command_that_reads_it() {
+    let events = events_in("//:g", "filegroup(name='g')\n", Some("print('hi')\n"));
+    assert_eq!(events.len(), 1);
+    assert!(events[0].starts_with("DEBUG: ") && events[0].ends_with("REPO.bazel:1:6: hi"));
 }
 
 #[test]
