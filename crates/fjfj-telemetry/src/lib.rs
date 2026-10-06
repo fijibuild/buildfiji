@@ -19,12 +19,18 @@ pub fn meter() -> opentelemetry::metrics::Meter {
     opentelemetry::global::meter("fjfj")
 }
 
+/// What is shown of fjfj's own spans and events when `RUST_LOG` is not set:
+/// warnings. Bazel's `INFO:` lines are the console's, not the log's.
+fn default_filter() -> EnvFilter {
+    EnvFilter::new("warn")
+}
+
 /// Initialise the global tracing subscriber and, when OTLP export is on,
 /// the global OTel meter provider. OTLP export is enabled when
 /// `OTEL_EXPORTER_OTLP_ENDPOINT` is set (standard OTel env var); otherwise
-/// only the fmt layer is installed and [`meter`] returns OTel's no-op meter.
+/// only the fmt layer (at `warn`, unless `RUST_LOG` says more) is installed and [`meter`] returns OTel's no-op meter.
 pub fn init() -> Result<TelemetryGuard> {
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| default_filter());
     // FJFJ_SPAN_TIMES=1 prints how long each span took when it closes, for
     // finding where a run spends its time.
     let span_events = if std::env::var_os("FJFJ_SPAN_TIMES").is_some() {
@@ -101,5 +107,14 @@ impl Drop for TelemetryGuard {
         if let Some(file) = self.trace_file.take() {
             file.finish();
         }
+    }
+}
+
+#[cfg(test)]
+mod default_filter_tests {
+    #[test]
+    fn info_is_not_shown_unless_asked_for() {
+        let filter = super::default_filter().to_string();
+        assert_eq!(filter, "warn");
     }
 }

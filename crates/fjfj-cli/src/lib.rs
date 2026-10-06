@@ -11,7 +11,6 @@ use std::io::IsTerminal;
 
 use clap::Parser;
 use fjfj_bazel_compat::bzlmod_flags::BzlmodFlags;
-use fjfj_bazel_compat::console::ProgressUpdate;
 use fjfj_bazel_compat::exit_code::{ExitCode, messages};
 use fjfj_bazel_compat::{
     Cli, Command, bes_flags, build_flags, bzlmod_flags, canonicalize_flags, clap_flags,
@@ -690,12 +689,9 @@ async fn build_main(
         ?console_flags,
         "build requested"
     );
-    // buildfiji-k62.5: real console output for the two steps that
-    // exist so far. `total: 0` is `ProgressUpdate`'s "unknown yet"
-    // form — there's no fixed step count worth promising the user,
-    // only "here's what's happening now" until real action counts
-    // exist to build a `[done / total]` bar from.
-    let mut console = ConsoleUi::new(
+    // Bazel prints its progress on standard error and fjfj has none of its own
+    // yet, so the console is made only to check `--ui_event_filters`.
+    ConsoleUi::new(
         std::io::stdout(),
         &console_flags,
         std::io::stdout().is_terminal(),
@@ -750,13 +746,6 @@ async fn build_main(
     // yet since there's no execroot/bazel-out layout for
     // stable-status.txt/volatile-status.txt to land in (see
     // fjfj_exec::workspace_status).
-    console
-        .progress(&ProgressUpdate {
-            done: 1,
-            total: 0,
-            message: "Computing workspace status".to_owned(),
-        })
-        .map_err(|e| CliError::Internal(anyhow::anyhow!("console write failed: {e}")))?;
     let status = fjfj_exec::workspace_status::compute(&workspace_status)
         .await
         .map_err(|e| CliError::Build(anyhow::anyhow!(e)))?;
@@ -764,13 +753,6 @@ async fn build_main(
     // buildfiji-gwl.17: resolve the bzlmod module graph now, same
     // fail-fast reasoning as the workspace status and execution log
     // above.
-    console
-        .progress(&ProgressUpdate {
-            done: 2,
-            total: 0,
-            message: "Resolving MODULE.bazel".to_owned(),
-        })
-        .map_err(|e| CliError::Internal(anyhow::anyhow!("console write failed: {e}")))?;
     // `run` takes the first target and gives the rest to the program.
     let (texts, program_args): (Vec<String>, Vec<String>) = if run_mode {
         let mut all = rest.iter().chain(after_marker).cloned();
