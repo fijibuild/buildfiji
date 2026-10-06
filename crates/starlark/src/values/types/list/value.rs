@@ -511,7 +511,14 @@ where
     fn compare(&self, other: Value<'v>) -> crate::Result<Ordering> {
         match ListRef::from_value(other) {
             None => ValueError::unsupported_with(self, "cmp()", other),
-            Some(other) => compare_slice(self.0.content(), &other.content, |x, y| x.compare(*y)),
+            Some(other) => compare_slice(self.0.content(), &other.content, |x, y| {
+                // The first elements that are not equal are the ones compared.
+                if x.equals(*y)? {
+                    Ok(Ordering::Equal)
+                } else {
+                    x.compare(*y)
+                }
+            }),
         }
     }
 

@@ -106,6 +106,14 @@ pub(crate) fn list_methods(builder: &mut MethodsBuilder) {
         heap: Heap<'v>,
     ) -> starlark::Result<NoneType> {
         let res = ListData::from_value_mut(this)?;
+        // Bazel's lists are arrays of at most 2^31 - 9 elements.
+        if let Ok(incoming) = other.get().length() {
+            if res.len() as i64 + i64::from(incoming) > i64::from(i32::MAX - 8) {
+                return Err(crate::Error::new_native(anyhow::anyhow!(
+                    "excessive capacity requested"
+                )));
+            }
+        }
         if this.ptr_eq(other.get()) {
             // If the types alias, we can't borrow the `other` for iteration.
             // But we can do something smarter to double the elements

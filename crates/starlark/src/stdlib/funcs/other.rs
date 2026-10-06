@@ -342,6 +342,18 @@ pub(crate) fn register_other(builder: &mut GlobalsBuilder) {
         #[starlark(require = named, default = false)] reverse: bool,
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> starlark::Result<AllocList<impl IntoIterator<Item = Value<'v>> + use<'v>>> {
+        if let Some(key) = key {
+            if !key.is_none() && !key.vtable().starlark_value.HAS_invoke {
+                return Err(crate::Error::new_value(
+                    crate::values::unpack::ParameterType {
+                        function: Some("sorted".to_owned()),
+                        param: "key".to_owned(),
+                        want: "callable or NoneType".to_owned(),
+                        actual: key.get_type().to_owned(),
+                    },
+                ));
+            }
+        }
         let it = x.get().iterate(eval.heap())?;
         let mut it = match key {
             None => it.map(|x| (x, x)).collect(),
@@ -356,7 +368,7 @@ pub(crate) fn register_other(builder: &mut GlobalsBuilder) {
 
         let mut compare_ok = Ok(());
 
-        it.sort_by(|x: &(Value, Value), y: &(Value, Value)| {
+        sort_as_java(&mut it, |x: &(Value, Value), y: &(Value, Value)| {
             let ord_or_err = if reverse {
                 x.1.compare(y.1).map(Ordering::reverse)
             } else {
@@ -365,7 +377,10 @@ pub(crate) fn register_other(builder: &mut GlobalsBuilder) {
             match ord_or_err {
                 Ok(r) => r,
                 Err(e) => {
-                    compare_ok = Err(e);
+                    // The first pair that has no order is the one reported.
+                    if compare_ok.is_ok() {
+                        compare_ok = Err(e);
+                    }
                     Ordering::Equal // does not matter
                 }
             }
@@ -480,5 +495,47 @@ noop(hash)(foo)
         a.disable_static_typechecking();
         a.eq("(1, 2)", "tuple((1, 2))");
         a.eq("(1, 2)", "tuple([1, 2])");
+    }
+}
+
+/// Stable sort of `items`, comparing the pairs Bazel's sort does for a short
+/// list (a run, then a binary insertion), so that the pair that has no order
+/// is the one its error names; a long list is sorted by the library (fjfj).
+fn sort_as_java<T: Clone>(items: &mut Vec<T>, mut compare: impl FnMut(&T, &T) -> Ordering) {
+    const SHORT: usize = 32;
+    if items.len() >= SHORT {
+        items.sort_by(compare);
+        return;
+    }
+    let n = items.len();
+    if n < 2 {
+        return;
+    }
+    // The run at the start: ascending, or strictly descending and reversed.
+    let mut run = 2;
+    if compare(&items[1], &items[0]) == Ordering::Less {
+        while run < n && compare(&items[run], &items[run - 1]) == Ordering::Less {
+            run += 1;
+        }
+        items[..run].reverse();
+    } else {
+        while run < n && compare(&items[run], &items[run - 1]) != Ordering::Less {
+            run += 1;
+        }
+    }
+    // Binary insertion of the rest.
+    for start in run..n {
+        let pivot = items[start].clone();
+        let (mut left, mut right) = (0, start);
+        while left < right {
+            let mid = (left + right) / 2;
+            if compare(&pivot, &items[mid]) == Ordering::Less {
+                right = mid;
+            } else {
+                left = mid + 1;
+            }
+        }
+        items[left..=start].rotate_right(1);
+        items[left] = pivot;
     }
 }

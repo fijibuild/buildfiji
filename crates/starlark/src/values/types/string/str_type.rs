@@ -274,7 +274,14 @@ impl<'v> StarlarkValue<'v> for StarlarkStr {
 
     fn compare(&self, other: Value) -> crate::Result<Ordering> {
         if let Some(other) = other.unpack_str() {
-            Ok(self.as_str().cmp(other))
+            // Bazel orders strings by UTF-16 code unit, not by UTF-8 byte: a
+            // character beyond the basic plane comes before U+FFFD.
+            let (this, other) = (self.as_str(), other);
+            if this.is_ascii() && other.is_ascii() {
+                Ok(this.cmp(other))
+            } else {
+                Ok(this.encode_utf16().cmp(other.encode_utf16()))
+            }
         } else {
             ValueError::unsupported_with(self, "cmp()", other)
         }
@@ -375,7 +382,12 @@ impl<'v> StarlarkValue<'v> for StarlarkStr {
         let l = match i32::unpack_value(other) {
             Ok(Some(l)) => l,
             Ok(None) => return None,
-            Err(e) => return Some(Err(e)),
+            Err(_) => {
+                return Some(Err(crate::Error::new_native(anyhow::anyhow!(
+                    "got {} for repeat, want value in signed 32-bit range",
+                    other.to_repr()
+                ))));
+            }
         };
         if i64::from(cmp::max(0, l)) * self.len() as i64 > i64::from(i32::MAX) {
             return Some(Err(crate::Error::new_native(anyhow::anyhow!(

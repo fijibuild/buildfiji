@@ -29,6 +29,7 @@ use crate::eval::CallStack;
 use crate::eval::runtime::frame_span::FrameSpan;
 use crate::eval::runtime::inlined_frame::InlinedFrames;
 use crate::hint::unlikely;
+use crate::values::FrozenValue;
 use crate::values::Trace;
 use crate::values::Tracer;
 use crate::values::Value;
@@ -172,12 +173,16 @@ impl<'v> CheapCallStack<'v> {
         self.count -= 1;
     }
 
-    /// How many of the frames are calls of `function`: more than one is a
-    /// recursion, which Bazel's Starlark forbids.
-    pub(crate) fn times_active(&self, function: Value<'v>) -> usize {
+    /// How many of the frames are calls of a function made by the `def` or
+    /// `lambda` expression `definition`: more than one is a recursion, which
+    /// Bazel's Starlark forbids, whichever closures made the calls.
+    pub(crate) fn times_defined(&self, definition: FrozenValue) -> usize {
         self.stack[..self.count]
             .iter()
-            .filter(|frame| frame.function.ptr_eq(function))
+            .filter(|frame| {
+                crate::eval::compiler::def::definition_of(frame.function)
+                    .is_some_and(|d| d.to_value().ptr_eq(definition.to_value()))
+            })
             .count()
     }
 

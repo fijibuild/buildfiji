@@ -15,11 +15,5 @@ dict.star:50
 # buildfiji-rkw5: an int too big to convert to a float is an error
 float.star:1
 
-# buildfiji-5alc: recursion, sorted of dicts, replace with a negative count, excessive extend
-function.star:147
-sorted.star:1
-string_misc.star:1
-list_mutation.star:44
-
 # buildfiji-mpiv: json errors
 json.star:1

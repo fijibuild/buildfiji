@@ -599,6 +599,16 @@ impl<V> Display for DefGen<V> {
 pub(crate) type Def<'v> = DefGen<Value<'v>>;
 pub(crate) type FrozenDef = DefGen<FrozenValue>;
 
+/// The `def` or `lambda` a function value is of, if it is one.
+pub(crate) fn definition_of<'v>(function: Value<'v>) -> Option<FrozenValue> {
+    if let Some(def) = function.downcast_ref::<Def>() {
+        return Some(def.def_info.to_frozen_value());
+    }
+    function
+        .downcast_ref::<FrozenDef>()
+        .map(|def| def.def_info.to_frozen_value())
+}
+
 starlark_complex_values!(Def);
 
 impl<'v> Def<'v> {
@@ -830,7 +840,11 @@ where
 
         // Bazel's Starlark forbids a function calling itself, directly or
         // through others.
-        if eval.call_stack.times_active(me) > 1 {
+        if eval
+            .call_stack
+            .times_defined(self.def_info.to_frozen_value())
+            > 1
+        {
             return Err(crate::Error::new_native(anyhow::anyhow!(
                 "function '{}' called recursively",
                 self.def_info.name.as_str()

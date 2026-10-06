@@ -93,7 +93,7 @@ fn unary_message(op: &str, typ: &str) -> String {
 /// How Bazel words a binary operation or a comparison two types do not have (fjfj).
 fn binary_message(op: &str, left: &str, right: &str) -> String {
     match op {
-        "compare" => format!("unsupported comparison: {left} <=> {right}"),
+        "compare" | "cmp()" | "<>" => format!("unsupported comparison: {left} <=> {right}"),
         "[]" => format!("type '{left}' has no operator []({right})"),
         _ => format!("unsupported binary operation: {left} {op} {right}"),
     }

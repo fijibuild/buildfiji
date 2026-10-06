@@ -37,8 +37,6 @@ use crate::values::list::AllocList;
 use crate::values::list::UnpackList;
 use crate::values::none::NoneOr;
 use crate::values::string::dot_format;
-use crate::values::tuple::UnpackTuple;
-use crate::values::type_repr::StarlarkTypeRepr;
 use crate::values::typing::iter::StarlarkIter;
 
 // This does not exists in rust, split would cut the string incorrectly and
@@ -96,10 +94,34 @@ fn rsplitn_whitespace(s: &str, maxsplit: usize) -> Vec<String> {
     v
 }
 
-#[derive(StarlarkTypeRepr, UnpackValue)]
-enum StringOrTuple<'v> {
-    String(&'v str),
-    Tuple(UnpackTuple<&'v str>),
+/// The strings `sub` of `startswith` and `endswith` is: one, or the elements of a tuple.
+fn subs<'v>(function: &str, sub: Value<'v>) -> crate::Result<Vec<&'v str>> {
+    if let Some(one) = sub.unpack_str() {
+        return Ok(vec![one]);
+    }
+    if let Some(tuple) = crate::values::tuple::TupleRef::from_value(sub) {
+        return tuple
+            .content()
+            .iter()
+            .enumerate()
+            .map(|(i, item)| {
+                item.unpack_str().ok_or_else(|| {
+                    crate::Error::new_native(anyhow::anyhow!(
+                        "at index {i} of sub, got element of type {}, want string",
+                        item.get_type()
+                    ))
+                })
+            })
+            .collect();
+    }
+    Err(crate::Error::new_value(
+        crate::values::unpack::ParameterType {
+            function: Some(function.to_owned()),
+            param: "sub".to_owned(),
+            want: "string or tuple".to_owned(),
+            actual: sub.get_type().to_owned(),
+        },
+    ))
 }
 
 #[starlark_module]
@@ -232,20 +254,18 @@ pub(crate) fn string_methods(builder: &mut MethodsBuilder) {
     /// # "#);
     /// ```
     #[starlark(speculative_exec_safe)]
-    fn endswith(
+    fn endswith<'v>(
         this: &str,
-        #[starlark(require = pos)] suffix: StringOrTuple,
+        #[starlark(require = pos)] sub: Value<'v>,
         #[starlark(require = pos, default = NoneOr::None)] start: NoneOr<i32>,
         #[starlark(require = pos, default = NoneOr::None)] end: NoneOr<i32>,
-    ) -> anyhow::Result<bool> {
+    ) -> starlark::Result<bool> {
+        let suffixes = subs("endswith", sub)?;
         let haystack = match convert_str_indices(this, start.into_option(), end.into_option()) {
             Some(StrIndices { haystack, .. }) => haystack,
             None => return Ok(false),
         };
-        match suffix {
-            StringOrTuple::String(x) => Ok(haystack.ends_with(x)),
-            StringOrTuple::Tuple(xs) => Ok(xs.items.iter().any(|x| haystack.ends_with(x))),
-        }
+        Ok(suffixes.iter().any(|x| haystack.ends_with(x)))
     }
 
     /// [string.find](
@@ -385,11 +405,7 @@ pub(crate) fn string_methods(builder: &mut MethodsBuilder) {
                 return Ok((start + index).0 as i32);
             }
         }
-        Err(anyhow::anyhow!(
-            "Substring '{}' not found in '{}'",
-            needle,
-            this
-        ))
+        Err(anyhow::anyhow!("substring not found"))
     }
 
     /// [string.isalnum](
@@ -770,14 +786,9 @@ pub(crate) fn string_methods(builder: &mut MethodsBuilder) {
         #[starlark(require = pos)] count: Option<i32>,
         heap: Heap<'v>,
     ) -> anyhow::Result<StringValue<'v>> {
-        match count {
-            Some(count) if count >= 0 => {
-                Ok(heap.alloc_str(&this.replacen(old, new, count as usize)))
-            }
-            Some(count) => Err(anyhow::anyhow!(
-                "Replace final argument was negative '{}'",
-                count
-            )),
+        // A negative count is no count at all.
+        match count.filter(|count| *count >= 0) {
+            Some(count) => Ok(heap.alloc_str(&this.replacen(old, new, count as usize))),
             None => {
                 // Optimise `replace` using the Rust standard library definition,
                 // but avoiding redundant allocation in the last step
@@ -864,11 +875,7 @@ pub(crate) fn string_methods(builder: &mut MethodsBuilder) {
                 return Ok((start + index).0 as i32);
             }
         }
-        Err(anyhow::anyhow!(
-            "Substring '{}' not found in '{}'",
-            needle,
-            this
-        ))
+        Err(anyhow::anyhow!("substring not found"))
     }
 
     /// [string.rpartition](
@@ -1148,20 +1155,18 @@ pub(crate) fn string_methods(builder: &mut MethodsBuilder) {
     /// # "#);
     /// ```
     #[starlark(speculative_exec_safe)]
-    fn startswith(
+    fn startswith<'v>(
         this: &str,
-        #[starlark(require = pos)] prefix: StringOrTuple,
+        #[starlark(require = pos)] sub: Value<'v>,
         #[starlark(require = pos, default = NoneOr::None)] start: NoneOr<i32>,
         #[starlark(require = pos, default = NoneOr::None)] end: NoneOr<i32>,
-    ) -> anyhow::Result<bool> {
+    ) -> starlark::Result<bool> {
+        let prefixes = subs("startswith", sub)?;
         let haystack = match convert_str_indices(this, start.into_option(), end.into_option()) {
             Some(StrIndices { haystack, .. }) => haystack,
             None => return Ok(false),
         };
-        match prefix {
-            StringOrTuple::String(x) => Ok(haystack.starts_with(x)),
-            StringOrTuple::Tuple(xs) => Ok(xs.items.iter().any(|x| haystack.starts_with(x))),
-        }
+        Ok(prefixes.iter().any(|x| haystack.starts_with(x)))
     }
 
     /// [string.strip](

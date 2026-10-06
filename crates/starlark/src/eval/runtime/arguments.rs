@@ -145,7 +145,6 @@ pub(crate) fn named_native_error(error: crate::Error, function: &str) -> crate::
             ("sorted", "(iter)") => ("iterable", "iterable"),
             ("all" | "any", "(iter)") => ("elements", "iterable"),
             ("reversed", "(iter)") => ("sequence", "iterable"),
-            ("enumerate", "(iter)") => ("list", "iterable"),
             ("extend", "(iter)") => ("items", "iterable"),
             _ => ("", ""),
         };
