@@ -42,9 +42,6 @@ pub struct DepInfo {
     pub rule_class: Option<String>,
     /// A generated file's target, as opposed to a source file's.
     pub generated: bool,
-    /// Whether a rule written in Starlark made it: its `files` are not among
-    /// its default runfiles unless it says so, as a native rule's are.
-    pub starlark_rule: bool,
     /// `DefaultInfo.files`.
     pub files: Vec<Artifact>,
     /// `DefaultInfo.executable`.

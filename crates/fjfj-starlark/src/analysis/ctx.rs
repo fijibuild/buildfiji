@@ -588,12 +588,13 @@ fn ctx_members(builder: &mut MethodsBuilder) {
                 let mut labels = Vec::new();
                 value.labels(&mut labels);
                 for dep in labels.into_iter().filter_map(|l| s.deps.get(l)) {
-                    // A Starlark rule's files are runfiles only if it says so.
+                    // What a rule makes is runfiles when the rule reads it in
+                    // `data`; from `srcs` and `deps` only its runfiles are.
                     let mut contributed = fjfj_graph::Runfiles {
-                        files: if dep.starlark_rule {
-                            Vec::new()
-                        } else {
+                        files: if name == "data" {
                             dep.files.clone()
+                        } else {
+                            Vec::new()
                         },
                         ..fjfj_graph::Runfiles::default()
                     };

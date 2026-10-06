@@ -1138,11 +1138,10 @@ rule_with_outputs(name = "unset")
     assert!(paths(&unset.files).is_empty());
 }
 
-/// Probed with `bazel build`: what `collect_default` gathers from a Starlark
-/// rule's target is its default runfiles, not the files it makes; a file's
-/// target and a native rule's give their files.
+/// Probed with `bazel build`: `collect_default` makes a rule's `data` runfiles
+/// of whatever the targets make, and of `srcs` and `deps` only their runfiles.
 #[tokio::test(flavor = "multi_thread")]
-async fn collect_default_takes_runfiles_of_a_starlark_rule_and_files_of_the_others() {
+async fn collect_default_takes_the_files_of_data_and_the_runfiles_of_the_rest() {
     let (_dir, repos) = workspace(&[
         ("MODULE.bazel", ""),
         (
@@ -1160,19 +1159,31 @@ def _b(ctx):
     ctx.actions.write(e, "", is_executable = True)
     return [DefaultInfo(executable = e, runfiles = ctx.runfiles(collect_default = True))]
 
-b = rule(implementation = _b, executable = True, attrs = {"deps": attr.label_list(allow_files = True)})
+b = rule(implementation = _b, executable = True, attrs = {
+    "deps": attr.label_list(allow_files = True),
+    "srcs": attr.label_list(allow_files = True),
+    "data": attr.label_list(allow_files = True),
+})
 "#,
         ),
         (
             "BUILD.bazel",
-            "load(':defs.bzl', 'a', 'b')\na(name = 'made')\nfilegroup(name = 'group', srcs = ['s.txt'])\nb(name = 'bin', deps = [':made', ':group', 'f.txt'])\n",
+            "load(':defs.bzl', 'a', 'b')\na(name = 'made')\nfilegroup(name = 'group', srcs = ['s.txt'])\nb(name = 'bin', deps = [':made', ':group', 'd.txt'], srcs = ['s.txt'], data = [':made', ':group', 'f.txt'])\n",
         ),
         ("s.txt", ""),
+        ("d.txt", ""),
         ("f.txt", ""),
     ]);
     let bin = analyse(&repos, "//:bin").await.unwrap();
     let mut got: Vec<String> = bin.runfiles.files.iter().map(|a| a.exec_path()).collect();
     got.sort();
-    // The executable is there; `made.txt` is not.
-    assert_eq!(got, [format!("{BIN}/bin"), "f.txt".into(), "s.txt".into()]);
+    assert_eq!(
+        got,
+        [
+            format!("{BIN}/bin"),
+            format!("{BIN}/made.txt"),
+            "f.txt".into(),
+            "s.txt".into()
+        ]
+    );
 }
