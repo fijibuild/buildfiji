@@ -71,7 +71,10 @@ fn build(bazel_command: &'static str) -> (Command, HashMap<&'static str, &'stati
     let mut cmd = Command::new(bazel_command)
         .no_binary_name(true)
         .disable_help_flag(true)
-        .disable_version_flag(true);
+        .disable_version_flag(true)
+        // A flag given twice is not an error: Bazel takes the last, and an rc
+        // file and the command line give them routinely.
+        .args_override_self(true);
     let mut long_names: HashSet<String> = HashSet::new();
     let mut shorts: HashSet<char> = HashSet::new();
     let mut negated_id_of: HashMap<&'static str, &'static str> = HashMap::new();
@@ -209,6 +212,16 @@ mod tests {
     fn implemented_flag_and_pattern_both_pass() {
         validate(
             &args(&["--keep_going", "//foo:bar"]),
+            "build",
+            BUILD_IMPLEMENTED,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn a_flag_given_twice_is_not_an_error() {
+        validate(
+            &args(&["--jobs=2", "--jobs=3", "--keep_going", "--nokeep_going"]),
             "build",
             BUILD_IMPLEMENTED,
         )
