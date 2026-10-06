@@ -653,6 +653,13 @@ impl Scheduler {
                     .map_err(|e| fail(format!("cannot write {}: {e}", at.display())))?;
                 let _ = executable;
             }
+            ActionKind::WorkspaceStatus { stable, volatile } => {
+                for (out, contents) in action.outputs.iter().zip([stable, volatile]) {
+                    let at = execroot.join(out.exec_path());
+                    std::fs::write(&at, contents)
+                        .map_err(|e| fail(format!("cannot write {}: {e}", at.display())))?;
+                }
+            }
             ActionKind::Template {
                 template,
                 substitutions,

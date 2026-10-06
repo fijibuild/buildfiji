@@ -751,3 +751,50 @@ async fn a_parameter_file_write_is_not_counted_as_an_action() {
     let outcome = run(&layout, actions, &[b], false).await;
     assert_eq!((outcome.closure, outcome.ran), (1, 1));
 }
+
+fn internal(
+    mnemonic: &str,
+    kind: ActionKind,
+    inputs: Vec<Artifact>,
+    outputs: Vec<Artifact>,
+) -> Action {
+    Action {
+        mnemonic: mnemonic.into(),
+        kind,
+        ..shell("", inputs, outputs)
+    }
+}
+
+#[tokio::test]
+async fn the_workspace_status_action_writes_both_files() {
+    let (_dir, layout) = layout();
+    let stable = Artifact {
+        root: fjfj_graph::Root::derived("bazel-out"),
+        path: "stable-status.txt".into(),
+        tree: false,
+    };
+    let volatile = Artifact {
+        path: "volatile-status.txt".into(),
+        ..stable.clone()
+    };
+    let action = internal(
+        "BazelWorkspaceStatusAction",
+        ActionKind::WorkspaceStatus {
+            stable: "BUILD_USER me\n".into(),
+            volatile: "BUILD_TIMESTAMP 1\n".into(),
+        },
+        vec![],
+        vec![stable.clone(), volatile.clone()],
+    );
+    let outcome = run(&layout, vec![action], std::slice::from_ref(&stable), false).await;
+    assert_eq!((outcome.closure, outcome.ran, outcome.spawned), (1, 1, 0));
+    let root = layout.execroot();
+    assert_eq!(
+        std::fs::read_to_string(root.join(stable.exec_path())).unwrap(),
+        "BUILD_USER me\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(root.join(volatile.exec_path())).unwrap(),
+        "BUILD_TIMESTAMP 1\n"
+    );
+}

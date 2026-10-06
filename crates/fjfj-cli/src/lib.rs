@@ -816,6 +816,7 @@ async fn build_main(
         },
         record_execution_platforms: false,
         test: test_flags.as_ref().map(|t| t.output),
+        workspace_status: Some((status.render_stable(), status.render_volatile())),
     };
     let build_show_result = build.show_result;
     let build_options = build.clone();
@@ -1214,6 +1215,7 @@ mod tests {
             show_result: 1,
             record_execution_platforms: false,
             test: None,
+            workspace_status: None,
         };
         let patterns = ["//:g".to_owned(), "//:bad".to_owned()];
         // The build is blocking work that needs a runtime to be current.
@@ -1320,6 +1322,7 @@ my_test = rule(implementation = _impl, test = True, attrs = {"exit": attr.int()}
             show_result: 1,
             record_execution_platforms: false,
             test: Some(fjfj_bazel_compat::test_flags::TestOutput::Summary),
+            workspace_status: None,
         };
         let runtime = tokio::runtime::Runtime::new().unwrap();
         let run_once = || {

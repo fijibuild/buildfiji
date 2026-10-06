@@ -432,6 +432,7 @@ fn build_options(
         show_result: 0,
         record_execution_platforms: true,
         test: None,
+        workspace_status: None,
     }
 }
 

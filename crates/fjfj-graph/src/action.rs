@@ -40,6 +40,9 @@ pub enum ActionKind {
         /// Paths under `dir` of empty regular files.
         empty_files: Vec<String>,
     },
+    /// Write `stable-status.txt` and `volatile-status.txt`, the build's
+    /// workspace status, to the action's two outputs.
+    WorkspaceStatus { stable: String, volatile: String },
     /// Write the file `template`, with each key replaced by its value.
     Template {
         template: String,
@@ -137,6 +140,11 @@ impl Action {
                 for path in empty_files {
                     field(path.as_bytes());
                 }
+            }
+            ActionKind::WorkspaceStatus { stable, volatile } => {
+                field(b"workspace-status");
+                field(stable.as_bytes());
+                field(volatile.as_bytes());
             }
             ActionKind::Template {
                 template,

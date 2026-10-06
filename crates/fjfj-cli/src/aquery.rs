@@ -558,7 +558,9 @@ fn text_one(out: &mut String, row: &Row<'_>, settings: Settings, layout: &Layout
                 .collect();
             out.push_str(&format!("  Environment: [{}]\n", env.join(", ")));
         }
-        ActionKind::Symlink { .. } | ActionKind::RunfilesTree { .. } => {}
+        ActionKind::Symlink { .. }
+        | ActionKind::RunfilesTree { .. }
+        | ActionKind::WorkspaceStatus { .. } => {}
     }
     out.push('\n');
 }
@@ -887,7 +889,9 @@ impl Dump {
             ActionKind::UnresolvedSymlink { target } => {
                 message = message.text_field(18, "unresolved_symlink_target", target.as_str());
             }
-            ActionKind::Symlink { .. } | ActionKind::RunfilesTree { .. } => {}
+            ActionKind::Symlink { .. }
+            | ActionKind::RunfilesTree { .. }
+            | ActionKind::WorkspaceStatus { .. } => {}
         }
         message = message.packed(8, "input_dep_set_ids", input_sets).packed(
             9,

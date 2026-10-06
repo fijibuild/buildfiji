@@ -43,6 +43,9 @@ pub(crate) struct Options {
     pub record_execution_platforms: bool,
     /// `test`: run the tests among the targets, and how much of their logs to show.
     pub test: Option<fjfj_bazel_compat::test_flags::TestOutput>,
+    /// The contents of `stable-status.txt` and `volatile-status.txt`, for the
+    /// action that writes them; none for a command that builds nothing.
+    pub workspace_status: Option<(String, String)>,
 }
 
 /// The configuration the build flags ask for.
@@ -563,6 +566,35 @@ pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> R
                 tests_to_run.push((label.clone(), test.clone()));
             }
         }
+    }
+    // Every build writes the workspace status, whatever it stamps.
+    if let Some((stable, volatile)) = &request.options.workspace_status {
+        let output = |name: &str| Artifact {
+            root: fjfj_graph::Root::derived("bazel-out"),
+            path: name.to_owned(),
+            tree: false,
+        };
+        let outputs = vec![output("stable-status.txt"), output("volatile-status.txt")];
+        wanted.push(outputs[0].clone());
+        actions.push(Action {
+            owner: Label {
+                repo: String::new(),
+                package: String::new(),
+                name: String::new(),
+            },
+            owner_kind: String::new(),
+            location: String::new(),
+            configuration: String::new(),
+            mnemonic: "BazelWorkspaceStatusAction".to_owned(),
+            progress_message: None,
+            kind: fjfj_graph::ActionKind::WorkspaceStatus {
+                stable: stable.clone(),
+                volatile: volatile.clone(),
+            },
+            inputs: Vec::new(),
+            input_set: None,
+            outputs,
+        });
     }
     if !request.options.build {
         actions.clear();
