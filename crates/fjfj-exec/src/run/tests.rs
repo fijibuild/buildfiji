@@ -785,9 +785,10 @@ fn runfiles(data: &Artifact) -> (Vec<Action>, Artifact) {
         ),
         internal(
             "SourceSymlinkManifest",
-            ActionKind::WriteFile {
-                contents: b"_main/data d\n".to_vec(),
-                executable: false,
+            ActionKind::SourceManifest {
+                repo_mapping: mapping.exec_path(),
+                entries: vec![("_main/data".into(), data.clone())],
+                empty_files: vec!["_main/z.py".into()],
             },
             vec![],
             vec![manifest.clone()],
@@ -798,7 +799,7 @@ fn runfiles(data: &Artifact) -> (Vec<Action>, Artifact) {
                 dir: dir.exec_path(),
                 repo_mapping: mapping.exec_path(),
                 entries: vec![("_main/data".into(), data.clone())],
-                empty_files: vec![],
+                empty_files: vec!["_main/z.py".into()],
             },
             vec![manifest],
             vec![tree_manifest.clone()],
@@ -831,6 +832,21 @@ async fn a_runfiles_tree_is_four_actions_and_its_directory_is_left_as_the_tree_m
     let listing = std::fs::read_to_string(at.join("MANIFEST")).unwrap();
     assert!(listing.starts_with("_main/data "), "{listing}");
     assert!(listing.contains("_repo_mapping "), "{listing}");
+    // An empty file is a path and a space; a path to a file is absolute; and
+    // the manifest of the tree is the manifest the tree was made from.
+    assert!(listing.contains("\n_main/z.py \n"), "{listing}");
+    let root = layout.execroot();
+    assert!(
+        listing.contains(&format!(
+            "_main/data {}\n",
+            root.join(data.exec_path()).display()
+        )),
+        "{listing}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(root.join(out("bin.runfiles_manifest").exec_path())).unwrap(),
+        listing
+    );
     assert_eq!(
         std::fs::read_to_string(at.join("_main/data")).unwrap(),
         "d\n"

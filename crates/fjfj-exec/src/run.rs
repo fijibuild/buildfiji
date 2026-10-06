@@ -617,6 +617,51 @@ impl Scheduler {
 
     /// The work before a command runs, or all of an action that makes its
     /// outputs itself.
+    /// The manifest of a runfiles tree: a line to each link and empty file, by
+    /// path, the repo mapping among them, with absolute targets.
+    fn manifest_text(
+        &self,
+        mapping_at: &Path,
+        entries: &[(String, Artifact)],
+        empty_files: &[String],
+    ) -> String {
+        // Sorted by path, an empty file with nothing after its path.
+        let mut listed: Vec<(&str, String)> = entries
+            .iter()
+            .map(|(path, artifact)| {
+                (
+                    path.as_str(),
+                    self.layout.resolve(artifact).display().to_string(),
+                )
+            })
+            .chain(
+                empty_files
+                    .iter()
+                    .map(|path| (path.as_str(), String::new())),
+            )
+            .chain(std::iter::once((
+                "_repo_mapping",
+                mapping_at.display().to_string(),
+            )))
+            .collect();
+        listed.sort();
+        let mut lines = String::new();
+        for (path, target) in &listed {
+            // A path with a space, newline or backslash is escaped, and its
+            // line starts with a space.
+            if path.contains([' ', '\n', '\\']) {
+                let escaped = path
+                    .replace('\\', "\\b")
+                    .replace(' ', "\\s")
+                    .replace('\n', "\\n");
+                lines.push_str(&format!(" {escaped} {target}\n"));
+            } else {
+                lines.push_str(&format!("{path} {target}\n"));
+            }
+        }
+        lines
+    }
+
     fn prepare(&self, action: &Action) -> Result<Step, Box<Failure>> {
         let fail = |message: String| Box::new(failure(action, message));
         let execroot = self.layout.execroot();
@@ -688,40 +733,7 @@ impl Scheduler {
                 empty_files,
             } => {
                 let mapping_at = execroot.join(repo_mapping);
-                // Sorted by path, an empty file with nothing after its path.
-                let mut listed: Vec<(&str, String)> = entries
-                    .iter()
-                    .map(|(path, artifact)| {
-                        (
-                            path.as_str(),
-                            self.layout.resolve(artifact).display().to_string(),
-                        )
-                    })
-                    .chain(
-                        empty_files
-                            .iter()
-                            .map(|path| (path.as_str(), String::new())),
-                    )
-                    .chain(std::iter::once((
-                        "_repo_mapping",
-                        mapping_at.display().to_string(),
-                    )))
-                    .collect();
-                listed.sort();
-                let mut lines = String::new();
-                for (path, target) in &listed {
-                    // A path with a space, newline or backslash is escaped,
-                    // and its line starts with a space.
-                    if path.contains([' ', '\n', '\\']) {
-                        let escaped = path
-                            .replace('\\', "\\b")
-                            .replace(' ', "\\s")
-                            .replace('\n', "\\n");
-                        lines.push_str(&format!(" {escaped} {target}\n"));
-                    } else {
-                        lines.push_str(&format!("{path} {target}\n"));
-                    }
-                }
+                let lines = self.manifest_text(&mapping_at, entries, empty_files);
                 // Not what an earlier run left: it may have linked more.
                 let tree = execroot.join(dir);
                 remove(&tree)
@@ -756,6 +768,16 @@ impl Scheduler {
                 })?;
                 std::os::unix::fs::symlink(&mapping_at, tree.join("_repo_mapping"))
                     .map_err(|e| fail(format!("cannot link in {}: {e}", tree.display())))?;
+            }
+            ActionKind::SourceManifest {
+                repo_mapping,
+                entries,
+                empty_files,
+            } => {
+                let text = self.manifest_text(&execroot.join(repo_mapping), entries, empty_files);
+                let at = execroot.join(action.outputs[0].exec_path());
+                std::fs::write(&at, text)
+                    .map_err(|e| fail(format!("cannot write {}: {e}", at.display())))?;
             }
             // The directory is the `SymlinkTree`'s: nothing is made.
             ActionKind::RunfilesTree => {}

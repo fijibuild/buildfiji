@@ -130,10 +130,6 @@ pub(crate) fn register(
         path: format!("{}/MANIFEST", dir.path),
         tree: false,
     };
-    let sources: String = entries
-        .iter()
-        .map(|(path, file)| format!("{path} {}\n", file.exec_path()))
-        .collect();
     let label = fjfj_graph::expand::label_text(&target.label);
     let made = |mnemonic: &str,
                 message: String,
@@ -168,9 +164,10 @@ pub(crate) fn register(
         made(
             "SourceSymlinkManifest",
             format!("Creating source manifest for {label}"),
-            ActionKind::WriteFile {
-                contents: sources.into_bytes(),
-                executable: false,
+            ActionKind::SourceManifest {
+                repo_mapping: repo_mapping.exec_path(),
+                entries: entries.clone(),
+                empty_files: empty_files.clone(),
             },
             Vec::new(),
             vec![manifest.clone()],

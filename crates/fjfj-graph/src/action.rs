@@ -37,6 +37,16 @@ pub enum ActionKind {
         /// Paths under `dir` of empty regular files.
         empty_files: Vec<String>,
     },
+    /// Write the manifest of a runfiles tree (`SourceSymlinkManifest`): a line
+    /// to each link, as the `MANIFEST` of the tree has it.
+    SourceManifest {
+        /// `bin.repo_mapping`, listed as `_repo_mapping`.
+        repo_mapping: String,
+        /// Each link as a path in the tree and the file it leads to.
+        entries: Vec<(String, Artifact)>,
+        /// Paths in the tree of empty regular files.
+        empty_files: Vec<String>,
+    },
     /// The runfiles tree as an input (`RunfilesTree`): it makes nothing, its
     /// output is the directory a `SymlinkTree` filled, and it reads what the
     /// tree links so that whatever reads the tree waits for all of it.
@@ -129,6 +139,22 @@ impl Action {
             } => {
                 field(b"runfiles");
                 field(dir.as_bytes());
+                field(repo_mapping.as_bytes());
+                for (path, artifact) in entries {
+                    field(path.as_bytes());
+                    field(artifact.exec_path().as_bytes());
+                }
+                field(b"empty");
+                for path in empty_files {
+                    field(path.as_bytes());
+                }
+            }
+            ActionKind::SourceManifest {
+                repo_mapping,
+                entries,
+                empty_files,
+            } => {
+                field(b"source-manifest");
                 field(repo_mapping.as_bytes());
                 for (path, artifact) in entries {
                     field(path.as_bytes());

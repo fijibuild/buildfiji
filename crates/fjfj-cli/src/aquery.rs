@@ -478,6 +478,7 @@ fn text_one(out: &mut String, row: &Row<'_>, settings: Settings, layout: &Layout
             out.push_str(&format!("  Environment: [{}]\n", env.join(", ")));
         }
         ActionKind::Symlink { .. }
+        | ActionKind::SourceManifest { .. }
         | ActionKind::RunfilesTree
         | ActionKind::WorkspaceStatus { .. } => {}
     }
@@ -815,6 +816,7 @@ impl Dump {
             }
             ActionKind::Symlink { .. }
             | ActionKind::SymlinkTree { .. }
+            | ActionKind::SourceManifest { .. }
             | ActionKind::RunfilesTree
             | ActionKind::WorkspaceStatus { .. } => {}
         }
