@@ -190,6 +190,8 @@ impl Configuration {
             compilation_mode: CompilationMode::Opt,
             constraints: self.constraints.clone(),
             action_env: self.action_env.clone(),
+            // Bazel's exec transition strips what it links.
+            options: BTreeMap::from([("strip".to_owned(), "always".to_owned())]),
             exec: true,
             ..Configuration::default()
         }
@@ -305,6 +307,16 @@ impl Configuration {
 
 #[cfg(test)]
 mod tests {
+    /// Probed with `bazel config` of a tool: `strip: always`.
+    #[test]
+    fn an_exec_configuration_strips() {
+        let exec = Configuration::default().to_exec();
+        assert_eq!(
+            exec.options.get("strip").map(String::as_str),
+            Some("always")
+        );
+    }
+
     #[test]
     fn the_checksum_tells_configurations_apart() {
         let a = Configuration::default();
