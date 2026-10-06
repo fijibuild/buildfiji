@@ -140,7 +140,7 @@ pub(crate) fn extract(args: &[String]) -> Result<(Flags, Vec<String>), CliError>
 /// What Bazel says last of a query that stopped on a package with errors,
 /// which it has reported already: that the query failed. A pattern that
 /// selects whole trees says which one it was.
-fn failed_query(query: &str, message: String) -> String {
+fn failed_query(query: &str, message: String, package_in: &dyn Fn(&str) -> String) -> String {
     let wildcard_of_package = message
         .strip_prefix("Error evaluating '")
         .and_then(|rest| rest.split_once("': "))
@@ -151,13 +151,49 @@ fn failed_query(query: &str, message: String) -> String {
         return if query.contains("...") {
             format!("Target parsing failed due to unexpected exception: {message}")
         } else {
-            format!("error loading package '@@{repo}//': bad REPO.bazel file")
+            format!(
+                "error loading package '@@{repo}//{}': bad REPO.bazel file",
+                package_in(repo)
+            )
         };
     }
     match wildcard_of_package {
         Some(_) => format!("Evaluation of query \"{query}\" failed"),
         None => message,
     }
+}
+
+/// The package of the first pattern of `expr` that is in the repo called
+/// `repo`, which is where Bazel says a REPO.bazel that fails was needed.
+fn first_package_in(expr: &fjfj_query::Expr, repos: &fjfj_repo::Repos, repo: &str) -> String {
+    use fjfj_graph::pattern::{Pattern, PatternContext, TargetPattern};
+    let ctx = PatternContext {
+        repo: "",
+        offset: "",
+    };
+    expr.patterns()
+        .into_iter()
+        .filter_map(|text| {
+            TargetPattern::parse(text, ctx, &mut |apparent| match apparent {
+                "" => String::new(),
+                _ => repos
+                    .main_repo_canonical(apparent)
+                    .unwrap_or_else(|| apparent.to_owned()),
+            })
+            .ok()
+        })
+        .find_map(|parsed| match parsed.pattern {
+            Pattern::Target(label) if label.repo == repo => Some(label.package),
+            Pattern::InPackage {
+                repo: r, package, ..
+            } if r == repo => Some(package),
+            Pattern::Below {
+                repo: r, directory, ..
+            } if r == repo => Some(directory),
+            Pattern::Path { repo: r, path } if r == repo => Some(path),
+            _ => None,
+        })
+        .unwrap_or_default()
 }
 
 pub(crate) async fn run(args: QueryArgs) -> Result<(), CliError> {
@@ -224,8 +260,11 @@ pub(crate) async fn run(args: QueryArgs) -> Result<(), CliError> {
                     // The errors of the packages come first, as Bazel says
                     // them, and a package that has them is a failed query.
                     fetch_command::print_warnings(&repos);
+                    let package_in = |repo: &str| first_package_in(&expr, &repos, repo);
                     return Err(CliError::Query(anyhow::anyhow!(failed_query(
-                        &query, message
+                        &query,
+                        message,
+                        &package_in
                     ))));
                 }
             };
@@ -258,21 +297,27 @@ mod failed_query_tests {
         let message =
             "Error evaluating '//:all': error loading package '': Package '' contains errors";
         assert_eq!(
-            failed_query("deps(//:all)", message.to_owned()),
+            failed_query("deps(//:all)", message.to_owned(), &|_| String::new()),
             "Evaluation of query \"deps(//:all)\" failed"
         );
         let tree = "Error evaluating '//...': error loading package '': Package '' contains errors";
-        assert_eq!(failed_query("//...", tree.to_owned()), tree);
+        assert_eq!(
+            failed_query("//...", tree.to_owned(), &|_| String::new()),
+            tree
+        );
         let repo_file = "error evaluating REPO.bazel file for @@dep+";
         assert_eq!(
-            failed_query("@dep//:t", repo_file.to_owned()),
-            "error loading package '@@dep+//': bad REPO.bazel file"
+            failed_query("@dep//pkg:t", repo_file.to_owned(), &|_| "pkg".to_owned()),
+            "error loading package '@@dep+//pkg': bad REPO.bazel file"
         );
         assert_eq!(
-            failed_query("@dep//...", repo_file.to_owned()),
+            failed_query("@dep//...", repo_file.to_owned(), &|_| String::new()),
             format!("Target parsing failed due to unexpected exception: {repo_file}")
         );
         let other = "no such target '//:g'";
-        assert_eq!(failed_query("//:g", other.to_owned()), other);
+        assert_eq!(
+            failed_query("//:g", other.to_owned(), &|_| String::new()),
+            other
+        );
     }
 }
