@@ -286,6 +286,7 @@ pub(crate) async fn register(
         inputs,
         input_set: None,
         outputs: vec![log.clone(), xml.clone()],
+        exec_group: None,
     };
     target.test = Some(TestInfo {
         action,

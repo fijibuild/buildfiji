@@ -40,6 +40,7 @@ fn shell(script: &str, inputs: Vec<Artifact>, outputs: Vec<Artifact>) -> Action 
         inputs,
         input_set: None,
         outputs,
+        exec_group: None,
     }
 }
 
@@ -199,6 +200,7 @@ async fn write_file_and_symlink_actions_make_their_outputs() {
             inputs: vec![],
             input_set: None,
             outputs: vec![w.clone()],
+            exec_group: None,
         },
         Action {
             owner,
@@ -213,6 +215,7 @@ async fn write_file_and_symlink_actions_make_their_outputs() {
             inputs: vec![w.clone()],
             input_set: None,
             outputs: vec![l.clone()],
+            exec_group: None,
         },
     ];
     let outcome = run(&layout, actions, std::slice::from_ref(&l), false).await;

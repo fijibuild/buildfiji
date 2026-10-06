@@ -351,6 +351,7 @@ async fn genrule(
         inputs,
         input_set: Some(input_set),
         outputs: outs.clone(),
+        exec_group: None,
     });
     if flag(label, attrs, "executable")? && outs.len() == 1 {
         target.executable = Some(outs[0].clone());

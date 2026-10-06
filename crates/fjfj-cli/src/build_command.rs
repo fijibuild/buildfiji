@@ -979,6 +979,7 @@ pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> R
             inputs: Vec::new(),
             input_set: None,
             outputs,
+            exec_group: None,
         });
     }
     if !request.options.build {

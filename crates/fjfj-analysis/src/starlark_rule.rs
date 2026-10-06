@@ -269,12 +269,34 @@ pub(crate) async fn analyze(
         resolve_toolchains(ctx, key, &schema.toolchains, &exec_compatible).await?;
     // Each exec group runs on a platform of its own, with its own toolchains.
     let mut exec_groups = Vec::new();
+    let mut group_platforms = Vec::new();
     for group in &schema.exec_groups {
-        let (resolved, keys, _) =
-            resolve_toolchains(ctx, key, &group.toolchains, &group.exec_compatible_with).await?;
+        // The target's `exec_group_compatible_with` adds to what the group asks.
+        let mut needed = group.exec_compatible_with.clone();
+        for (name, added) in set
+            .iter()
+            .find_map(|(n, v)| match (n.as_str(), v) {
+                ("exec_group_compatible_with", AttrValue::LabelListDict(d)) => Some(d.as_slice()),
+                _ => None,
+            })
+            .unwrap_or_default()
+        {
+            if *name == group.name {
+                needed.extend(added.iter().cloned());
+            }
+        }
+        let (resolved, keys, platform) =
+            resolve_toolchains(ctx, key, &group.toolchains, &needed).await?;
         toolchain_keys.extend(keys);
         exec_groups.push((group.name.clone(), resolved));
+        // A group with no toolchains still runs where its constraints say.
+        let platform = match platform {
+            Some(p) => Some(p),
+            None => crate::toolchain::default_execution_platform(ctx, key, &needed).await?,
+        };
+        group_platforms.push((group.name.clone(), platform));
     }
+    target.exec_group_platforms = group_platforms;
     if chosen_platform.is_some() {
         target.execution_platform = chosen_platform;
     }

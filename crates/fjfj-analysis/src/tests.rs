@@ -1,7 +1,7 @@
 //! Analysis against what `bazel aquery` showed for the same BUILD files
 //! (Bazel 9.2.0, `bazel-out/k8-fastbuild`).
 
-use crate::{ConfiguredTarget, ConfiguredTargetKey, Env, engine};
+use crate::{ConfiguredTarget, ConfiguredTargetKey, Env, engine, expand_label_text};
 use fjfj_bzlmod::eval::{EvalOptions, eval_module_file};
 use fjfj_graph::{ActionKind, Configuration, Label};
 use fjfj_repo::{Options, Repos};
@@ -727,6 +727,72 @@ r(name = "action", bad = "action")
             .await
             .unwrap_err();
         assert!(error.contains(wanted), "{error}");
+    }
+}
+
+/// Probed with `bazel aquery` of the same files: an action in an exec group
+/// runs on the platform the group's constraints pick, whether the rule or the
+/// target (`exec_group_compatible_with`) added them.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_exec_group_runs_its_actions_on_a_platform_of_its_own() {
+    let (_dir, repos) = workspace(&[
+        ("MODULE.bazel", ""),
+        (
+            "defs.bzl",
+            r#"
+def _impl(ctx):
+    a = ctx.actions.declare_file(ctx.label.name + ".a")
+    b = ctx.actions.declare_file(ctx.label.name + ".b")
+    ctx.actions.run_shell(outputs = [a], command = "true", mnemonic = "Own")
+    ctx.actions.run_shell(outputs = [b], command = "true", mnemonic = "Grouped", exec_group = "eg")
+    return [DefaultInfo(files = depset([a, b]))]
+by_rule = rule(implementation = _impl, exec_groups = {"eg": exec_group(exec_compatible_with = ["//:c2"])})
+by_target = rule(implementation = _impl, exec_groups = {"eg": exec_group()})
+"#,
+        ),
+        (
+            "BUILD.bazel",
+            r#"
+load(":defs.bzl", "by_rule", "by_target")
+constraint_setting(name = "cs")
+constraint_value(name = "c1", constraint_setting = ":cs")
+constraint_value(name = "c2", constraint_setting = ":cs")
+platform(name = "ex1", constraint_values = [":c1"])
+platform(name = "ex2", constraint_values = [":c2"])
+by_rule(name = "r")
+by_target(name = "t", exec_group_compatible_with = {"eg": [":c2"]})
+"#,
+        ),
+    ]);
+    let platforms = vec![
+        (String::new(), "//:ex1".to_owned()),
+        (String::new(), "//:ex2".to_owned()),
+    ];
+    for target in ["//:r", "//:t"] {
+        let done = analyse_on(&repos, target, config(), Vec::new(), platforms.clone())
+            .await
+            .unwrap();
+        let groups: Vec<(&str, Option<&str>)> = done
+            .actions
+            .iter()
+            .map(|a| (a.mnemonic.as_str(), a.exec_group.as_deref()))
+            .collect();
+        assert_eq!(groups, [("Own", None), ("Grouped", Some("eg"))]);
+        let platform: Vec<(String, String)> = done
+            .exec_group_platforms
+            .iter()
+            .map(|(name, p)| {
+                (
+                    name.clone(),
+                    p.as_ref().map(expand_label_text).unwrap_or_default(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            platform,
+            [("eg".to_owned(), "//:ex2".to_owned())],
+            "{target}"
+        );
     }
 }
 

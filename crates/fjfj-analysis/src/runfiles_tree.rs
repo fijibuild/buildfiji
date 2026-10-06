@@ -178,6 +178,7 @@ pub(crate) fn register(
         inputs,
         input_set: None,
         outputs,
+        exec_group: None,
     };
     let mut linked: Vec<Artifact> = entries.iter().map(|(_, a)| a.clone()).collect();
     linked.push(tree_manifest.clone());

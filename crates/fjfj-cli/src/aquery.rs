@@ -58,12 +58,7 @@ pub(crate) fn rows_of<'a>(
     settings: Settings,
     names: &dyn Names,
 ) -> Vec<Row<'a>> {
-    let platform = names.label(
-        &target
-            .execution_platform
-            .clone()
-            .unwrap_or_else(host_platform),
-    );
+    let platform = names.label(&platform_of(target, None));
     // Bazel keeps the actions that write a parameter file out of the graph
     // it prints; they are part of the action that reads the file.
     let listed = |action: &&Action| action.mnemonic != "ParameterFileWrite";
@@ -74,7 +69,10 @@ pub(crate) fn rows_of<'a>(
         target,
         action: std::borrow::Cow::Borrowed(action),
         aspect: Vec::new(),
-        platform: own_platform.clone(),
+        platform: match &action.exec_group {
+            Some(group) => names.label(&platform_of(target, Some(group))),
+            None => own_platform.clone(),
+        },
         target_name: own_name.clone(),
     });
     let made = aspects
@@ -160,6 +158,21 @@ fn expand_param_file<'a>(
         .retain(|a| !used.contains(&a.exec_path().as_str()));
     row.action = std::borrow::Cow::Owned(action);
     row
+}
+
+/// Where an action of `target` runs: the platform its exec group chose, else
+/// the target's own.
+pub(crate) fn platform_of(target: &ConfiguredTarget, group: Option<&str>) -> Label {
+    group
+        .and_then(|group| {
+            target
+                .exec_group_platforms
+                .iter()
+                .find(|(name, _)| name == group)
+        })
+        .and_then(|(_, platform)| platform.clone())
+        .or_else(|| target.execution_platform.clone())
+        .unwrap_or_else(host_platform)
 }
 
 /// The platform Bazel names when none was chosen.
@@ -431,11 +444,7 @@ fn text_one(out: &mut String, row: &Row<'_>, settings: Settings, layout: &Layout
                     row.target.configuration.checksum()
                 ));
                 // The comment gives the platform's canonical label.
-                let canonical = row
-                    .target
-                    .execution_platform
-                    .clone()
-                    .unwrap_or_else(host_platform);
+                let canonical = platform_of(row.target, row.action.exec_group.as_deref());
                 let repo = if canonical.repo.is_empty() {
                     String::new()
                 } else {
@@ -610,6 +619,7 @@ mod tests {
             inputs: Vec::new(),
             input_set: None,
             outputs: Vec::new(),
+            exec_group: None,
         });
         let rows = rows_of(&target, &[], Settings::default(), &Apparent);
         let layout = Layout {

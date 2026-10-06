@@ -85,6 +85,9 @@ pub struct Action {
     /// `inputs`.
     pub input_set: Option<std::sync::Arc<crate::NestedSet<Artifact>>>,
     pub outputs: Vec<Artifact>,
+    /// The exec group the rule put it in, which decides the platform it runs
+    /// on; `None` for the rule's own.
+    pub exec_group: Option<String>,
 }
 
 impl Action {

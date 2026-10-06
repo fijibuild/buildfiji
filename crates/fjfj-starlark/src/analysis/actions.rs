@@ -274,6 +274,7 @@ impl CtxState {
             inputs,
             input_set,
             outputs,
+            exec_group: None,
         });
     }
 }
@@ -893,5 +894,12 @@ fn spawn<'v>(
         Some(input_set),
         outputs,
     );
+    if let Some(group) = bound[10]
+        .filter(|v| !v.is_none())
+        .and_then(|v| v.unpack_str())
+        && let Some(action) = s.actions.lock().unwrap().last_mut()
+    {
+        action.exec_group = Some(group.to_owned());
+    }
     Ok(NoneType)
 }
