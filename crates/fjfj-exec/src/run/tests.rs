@@ -487,6 +487,41 @@ async fn independent_actions_run_at_once_up_to_jobs() {
     );
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn an_action_that_runs_no_command_does_not_wait_for_a_slot() {
+    let (_dir, layout) = layout();
+    let (made, seen) = (out("made.txt"), out("seen.txt"));
+    let mut write = shell("", vec![], vec![made.clone()]);
+    write.kind = ActionKind::WriteFile {
+        contents: b"hi\n".to_vec(),
+        executable: false,
+    };
+    // The only slot is held by a command that ends when the write has happened.
+    let wait = shell(
+        &format!(
+            "for i in $(seq 100); do [ -e {made} ] && exec cp {made} {seen}; sleep 0.1; done; exit 1",
+            made = made.exec_path(),
+            seen = seen.exec_path()
+        ),
+        vec![],
+        vec![seen.clone()],
+    );
+    let options = Options {
+        jobs: 1,
+        strategy: Strategy::Local,
+        ..Options::default()
+    };
+    let outcome = execute(
+        &layout,
+        vec![wait, write],
+        &[made, seen],
+        &options,
+        Arc::new(Quiet),
+    )
+    .await;
+    assert!(outcome.failures.is_empty(), "{:?}", outcome.failures);
+}
+
 /// Spans reach the file from every thread, so the subscriber is the process's:
 /// a span that closes on a blocking thread releases its parent through that
 /// thread's default.

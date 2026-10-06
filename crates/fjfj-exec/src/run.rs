@@ -264,26 +264,7 @@ impl Scheduler {
         for (_, _, result) in finished {
             result?;
         }
-        let _slot = self
-            .slots
-            .acquire()
-            .instrument(tracing::info_span!("step", step = "slot"))
-            .await
-            .expect("the semaphore stays open");
-        if self.stopped.load(Ordering::Acquire) && !self.keep_going {
-            return Err(Arc::new(Failure {
-                owner: String::new(),
-                location: String::new(),
-                repo: String::new(),
-                progress: String::new(),
-                mnemonic: action.mnemonic.clone(),
-                message: "skipped after a failure".to_owned(),
-                details: Vec::new(),
-                exit_code: None,
-                timed_out: false,
-                output: String::new(),
-            }));
-        }
+        self.skip_if_stopped(&action)?;
         let (key, current) = {
             let (me, action) = (self.clone(), action.clone());
             blocking("key", move || {
@@ -309,6 +290,20 @@ impl Scheduler {
             }
             return Ok(());
         }
+        // Only a command holds a slot: an action that makes its outputs itself
+        // runs at once, as Bazel's internal actions do.
+        let _slot = if matches!(action.kind, ActionKind::Spawn { .. }) {
+            let slot = self
+                .slots
+                .acquire()
+                .instrument(tracing::info_span!("step", step = "slot"))
+                .await
+                .expect("the semaphore stays open");
+            self.skip_if_stopped(&action)?;
+            Some(slot)
+        } else {
+            None
+        };
         self.progress.started(&action);
         let started = std::time::Instant::now();
         let outcome = self.execute_one(&action).await;
@@ -339,6 +334,24 @@ impl Scheduler {
                 Err(Arc::new(*failure))
             }
         }
+    }
+
+    fn skip_if_stopped(&self, action: &Action) -> Result<(), Arc<Failure>> {
+        if self.stopped.load(Ordering::Acquire) && !self.keep_going {
+            return Err(Arc::new(Failure {
+                owner: String::new(),
+                location: String::new(),
+                repo: String::new(),
+                progress: String::new(),
+                mnemonic: action.mnemonic.clone(),
+                message: "skipped after a failure".to_owned(),
+                details: Vec::new(),
+                exit_code: None,
+                timed_out: false,
+                output: String::new(),
+            }));
+        }
+        Ok(())
     }
 
     /// `action` made, its blocking work on threads of their own and its command
