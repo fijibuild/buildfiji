@@ -629,9 +629,18 @@ impl Scheduler {
         let mut listed: Vec<(&str, String)> = entries
             .iter()
             .map(|(path, artifact)| {
+                // A link that is not to be followed is listed as it reads.
+                let unresolved =
+                    self.by_output
+                        .get(artifact)
+                        .and_then(|&i| match &self.actions[i].kind {
+                            ActionKind::UnresolvedSymlink { target } => Some(target.clone()),
+                            _ => None,
+                        });
                 (
                     path.as_str(),
-                    self.layout.resolve(artifact).display().to_string(),
+                    unresolved
+                        .unwrap_or_else(|| self.layout.resolve(artifact).display().to_string()),
                 )
             })
             .chain(

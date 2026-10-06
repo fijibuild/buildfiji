@@ -71,11 +71,20 @@ pub(crate) fn register(
     for (path, file) in &root_symlinks {
         add(path.clone(), file.clone());
     }
-    let empty_files = if python_inits {
+    let mut empty_files = if python_inits {
         self::python_inits(main_name, &seen, &entries)
     } else {
         Vec::new()
     };
+    // The main repository's directory is always in the tree.
+    let main_dir = format!("{main_name}/");
+    if !seen
+        .iter()
+        .chain(&empty_files)
+        .any(|p| p.starts_with(&main_dir))
+    {
+        empty_files.push(format!("{main_dir}.runfile"));
+    }
 
     // The repositories with runfiles: canonical names, the main one as "".
     let canonical = |tree_repo: &str| {

@@ -890,3 +890,47 @@ async fn the_workspace_status_action_writes_both_files() {
         "BUILD_TIMESTAMP 1\n"
     );
 }
+
+#[tokio::test]
+async fn a_manifest_lists_a_link_that_is_not_followed_as_it_reads() {
+    let (_dir, layout) = layout();
+    let link = out("venv/python3");
+    let manifest = out("bin.runfiles_manifest");
+    let mapping = out("bin.repo_mapping");
+    let actions = vec![
+        internal(
+            "UnresolvedSymlink",
+            ActionKind::UnresolvedSymlink {
+                target: "../elsewhere/python3".into(),
+            },
+            vec![],
+            vec![link.clone()],
+        ),
+        internal(
+            "SourceSymlinkManifest",
+            ActionKind::SourceManifest {
+                repo_mapping: mapping.exec_path(),
+                entries: vec![("_main/venv/python3".into(), link)],
+                empty_files: vec![],
+            },
+            vec![],
+            vec![manifest.clone()],
+        ),
+        internal(
+            "RepoMappingManifest",
+            ActionKind::WriteFile {
+                contents: Vec::new(),
+                executable: false,
+            },
+            vec![],
+            vec![mapping],
+        ),
+    ];
+    let outcome = run(&layout, actions, std::slice::from_ref(&manifest), false).await;
+    assert!(outcome.failures.is_empty(), "{:?}", outcome.failures);
+    let text = std::fs::read_to_string(layout.execroot().join(manifest.exec_path())).unwrap();
+    assert!(
+        text.starts_with("_main/venv/python3 ../elsewhere/python3\n"),
+        "{text}"
+    );
+}
