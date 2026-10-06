@@ -169,7 +169,21 @@ mod tests {
             workspace_status_command: Some(script.clone()),
             ..Default::default()
         };
-        let status = compute(&flags).await.unwrap();
+        // Another test thread may fork while the script is still open for
+        // writing, which makes the first exec fail with ETXTBSY until that
+        // child has exec'd itself: try again.
+        let mut tries = 0;
+        let status = loop {
+            match compute(&flags).await {
+                Err(ComputeError::Spawn(_, e))
+                    if e.kind() == std::io::ErrorKind::ExecutableFileBusy && tries < 50 =>
+                {
+                    tries += 1;
+                    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                }
+                other => break other.unwrap(),
+            }
+        };
         std::fs::remove_file(&script).ok();
         assert_eq!(status.stable["STABLE_GIT_COMMIT"], "abc123");
     }
