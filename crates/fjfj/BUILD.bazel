@@ -1,4 +1,4 @@
-load("@rules_rust//rust:defs.bzl", "rust_binary")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -10,4 +10,12 @@ rust_binary(
     deps = [
         "//crates/fjfj-cli",
     ],
+)
+
+rust_test(
+    name = "sandbox_helper_test",
+    srcs = ["tests/sandbox_helper.rs"],
+    data = [":fjfj"],
+    edition = "2024",
+    deps = ["@crates//:tempfile"],
 )

@@ -11,3 +11,6 @@ fjfj-cli.workspace = true
 [[bin]]
 name = "fjfj"
 path = "src/main.rs"
+
+[dev-dependencies]
+tempfile.workspace = true

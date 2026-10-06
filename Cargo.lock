@@ -1017,6 +1017,7 @@ name = "fjfj"
 version = "0.0.1"
 dependencies = [
  "fjfj-cli",
+ "tempfile",
 ]
 
 [[package]]
@@ -1104,6 +1105,7 @@ dependencies = [
  "fjfj-query",
  "fjfj-remote",
  "fjfj-repo",
+ "fjfj-sandbox",
  "fjfj-starlark",
  "fjfj-telemetry",
  "futures",

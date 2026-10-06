@@ -5,7 +5,7 @@
 //! `Sandbox` trait so strategies are pluggable and selectable via the Bazel
 //! `--spawn_strategy` / `--strategy=Mnemonic=...` flags.
 
-use std::ffi::CString;
+use std::ffi::{CString, OsStr};
 use std::io;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::process::CommandExt;
@@ -51,14 +51,99 @@ pub struct Isolation {
     pub block_network: bool,
 }
 
-/// Make `command` run in new user, mount, pid, ipc and uts namespaces (and a
-/// net namespace if asked): the root file system is read-only except for
-/// `writable`, `/tmp` and `/dev/shm`, `/proc` is the namespace's own, and the
-/// command is killed with its parent.
+/// The first argument of a process that is the sandbox helper.
+const HELPER_MARKER: &str = "--fjfj-sandbox-helper";
+
+static HELPER: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+
+/// Run commands in namespaces through a fresh process of this program rather
+/// than from a step between `fork` and `exec`. The caller's `main` must start
+/// with [`run_helper_if_asked`].
 ///
-/// The step before `exec` is async-signal-safe: every string is made here,
-/// and the child only makes system calls.
-pub fn isolate(command: &mut std::process::Command, iso: &Isolation) -> io::Result<()> {
+/// A `fork` of a process with gigabytes of memory and many threads copies its
+/// page tables under its memory lock, so a dozen at once take hundreds of
+/// milliseconds each (buildfiji-yi6i); `std` starts a command that has no step
+/// of its own with `posix_spawn`, which copies nothing.
+pub fn use_helper() {
+    let _ = HELPER.set(PathBuf::from("/proc/self/exe"));
+}
+
+/// `program args` in the namespaces `iso` describes, working in `cwd`: through
+/// the helper if [`use_helper`] was called, else with a step before `exec`.
+pub fn isolated(
+    program: &str,
+    args: &[String],
+    cwd: &Path,
+    iso: &Isolation,
+) -> io::Result<std::process::Command> {
+    let Some(helper) = HELPER.get() else {
+        let mut command = std::process::Command::new(program);
+        command.args(args).current_dir(cwd);
+        isolate(&mut command, iso)?;
+        return Ok(command);
+    };
+    let mut command = std::process::Command::new(helper);
+    command
+        .arg(HELPER_MARKER)
+        .arg(if iso.block_network { "net" } else { "host" });
+    for dir in writable_dirs(iso)? {
+        command.arg("-w").arg(OsStr::from_bytes(dir.to_bytes()));
+    }
+    command.arg("--").arg(program).args(args).current_dir(cwd);
+    Ok(command)
+}
+
+/// If this process was started as the helper, be it: enter the namespaces and
+/// become the command. Does not return in that case.
+pub fn run_helper_if_asked() {
+    let mut args = std::env::args_os().skip(1);
+    if args.next().as_deref() != Some(OsStr::new(HELPER_MARKER)) {
+        return;
+    }
+    let flags = namespace_flags(args.next().as_deref() == Some(OsStr::new("net")));
+    let mut writable = vec![];
+    let mut command = vec![];
+    while let Some(arg) = args.next() {
+        if arg == "-w" {
+            let dir = args.next().unwrap_or_default();
+            writable.push(CString::new(dir.as_bytes()).unwrap_or_default());
+        } else if arg == "--" {
+            command = args.collect();
+            break;
+        }
+    }
+    let fail = |what: &str, e: io::Error| -> ! {
+        eprintln!("fjfj sandbox: {what}: {e}");
+        std::process::exit(127)
+    };
+    let cwd = std::env::current_dir()
+        .ok()
+        .and_then(|d| CString::new(d.as_os_str().as_bytes()).ok());
+    let readonly = readonly_mounts(&writable);
+    if let Err(e) = enter(flags, &writable, &readonly, cwd.as_deref()) {
+        fail("cannot enter the namespaces", e);
+    }
+    let Some((program, rest)) = command.split_first() else {
+        fail("no command", io::Error::other("empty"))
+    };
+    let e = std::process::Command::new(program).args(rest).exec();
+    fail(&format!("cannot run {}", program.to_string_lossy()), e)
+}
+
+fn namespace_flags(block_network: bool) -> libc::c_int {
+    let mut flags = libc::CLONE_NEWUSER
+        | libc::CLONE_NEWNS
+        | libc::CLONE_NEWPID
+        | libc::CLONE_NEWIPC
+        | libc::CLONE_NEWUTS;
+    if block_network {
+        flags |= libc::CLONE_NEWNET;
+    }
+    flags
+}
+
+/// The directories that stay writable, as C strings.
+fn writable_dirs(iso: &Isolation) -> io::Result<Vec<CString>> {
     let mut writable = vec![];
     for dir in iso
         .writable
@@ -73,6 +158,18 @@ pub fn isolate(command: &mut std::process::Command, iso: &Isolation) -> io::Resu
             );
         }
     }
+    Ok(writable)
+}
+
+/// Make `command` run in new user, mount, pid, ipc and uts namespaces (and a
+/// net namespace if asked): the root file system is read-only except for
+/// `writable`, `/tmp` and `/dev/shm`, `/proc` is the namespace's own, and the
+/// command is killed with its parent.
+///
+/// The step before `exec` is async-signal-safe: every string is made here,
+/// and the child only makes system calls.
+pub fn isolate(command: &mut std::process::Command, iso: &Isolation) -> io::Result<()> {
+    let writable = writable_dirs(iso)?;
     let readonly = readonly_mounts(&writable);
     // `std` has gone to the working directory before the step below runs, in
     // the file system as it was; it is entered again once that has changed.
@@ -83,14 +180,7 @@ pub fn isolate(command: &mut std::process::Command, iso: &Isolation) -> io::Resu
         ),
         None => None,
     };
-    let mut flags = libc::CLONE_NEWUSER
-        | libc::CLONE_NEWNS
-        | libc::CLONE_NEWPID
-        | libc::CLONE_NEWIPC
-        | libc::CLONE_NEWUTS;
-    if iso.block_network {
-        flags |= libc::CLONE_NEWNET;
-    }
+    let flags = namespace_flags(iso.block_network);
     // SAFETY: the closure calls only system calls and touches no allocator or
     // lock.
     unsafe {
@@ -307,9 +397,8 @@ fn enter(
 pub fn namespaces_available() -> bool {
     static AVAILABLE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *AVAILABLE.get_or_init(|| {
-        let mut probe = std::process::Command::new("/bin/true");
-        isolate(&mut probe, &Isolation::default()).is_ok()
-            && probe.status().is_ok_and(|s| s.success())
+        isolated("/bin/true", &[], Path::new("/"), &Isolation::default())
+            .is_ok_and(|mut probe| probe.status().is_ok_and(|s| s.success()))
     })
 }
 

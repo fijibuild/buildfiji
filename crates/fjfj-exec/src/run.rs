@@ -585,29 +585,31 @@ impl Scheduler {
                     None
                 };
                 let run_in = sandbox.as_ref().map_or(&execroot, |s| &s.exec);
-                let mut command = tokio::process::Command::new(program);
+                let isolation = (self.strategy == Strategy::LinuxSandbox
+                    && sandbox.is_some()
+                    && fjfj_sandbox::namespaces_available())
+                .then(|| fjfj_sandbox::Isolation {
+                    writable: sandbox.iter().map(|s| s.root.clone()).collect(),
+                    block_network: execution_requirements.contains_key("block-network"),
+                });
+                let mut command = match &isolation {
+                    Some(iso) => tokio::process::Command::from(
+                        fjfj_sandbox::isolated(program, args, run_in, iso)
+                            .map_err(|e| fail(format!("cannot isolate the command: {e}")))?,
+                    ),
+                    None => {
+                        let mut command = tokio::process::Command::new(program);
+                        command.args(args).current_dir(run_in);
+                        command
+                    }
+                };
                 command
-                    .args(args)
-                    .current_dir(run_in)
                     .env_clear()
                     .envs(env)
                     .stdin(Stdio::null())
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped())
                     .kill_on_drop(true);
-                if self.strategy == Strategy::LinuxSandbox
-                    && let Some(sandbox) = &sandbox
-                    && fjfj_sandbox::namespaces_available()
-                {
-                    fjfj_sandbox::isolate(
-                        command.as_std_mut(),
-                        &fjfj_sandbox::Isolation {
-                            writable: vec![sandbox.root.clone()],
-                            block_network: execution_requirements.contains_key("block-network"),
-                        },
-                    )
-                    .map_err(|e| fail(format!("cannot isolate the command: {e}")))?;
-                }
                 let limit = execution_requirements
                     .get("timeout")
                     .and_then(|s| s.parse::<u64>().ok())

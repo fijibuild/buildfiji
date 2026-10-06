@@ -376,6 +376,9 @@ async fn fetch_repositories_for_build(
 }
 
 pub fn main() -> std::process::ExitCode {
+    // A command in namespaces starts as a fresh process of this program.
+    fjfj_sandbox::run_helper_if_asked();
+    fjfj_sandbox::use_helper();
     // exits 2 itself on a flag-syntax error
     let cli = Cli::parse_from(workspace::keep_end_of_options(
         std::env::args_os().collect(),

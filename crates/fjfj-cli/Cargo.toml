@@ -26,6 +26,7 @@ regex.workspace = true
 fjfj-analysis.workspace = true
 fjfj-engine.workspace = true
 fjfj-exec.workspace = true
+fjfj-sandbox.workspace = true
 futures.workspace = true
 fjfj-remote.workspace = true
 fjfj-telemetry.workspace = true
