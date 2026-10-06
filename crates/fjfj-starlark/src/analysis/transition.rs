@@ -31,6 +31,53 @@ impl Edge<'_> {
     }
 }
 
+/// Starts the error of a transition that Bazel words as two events: what went
+/// wrong at a place in the `.bzl`, then that the target's transition failed at
+/// the target. The fields follow, each after a [`TRANSITION_ERROR`]: where, what,
+/// the edge it was on (empty for a rule's own transition) and the target.
+pub const TRANSITION_ERROR: char = '\u{4}';
+
+/// The error of a transition: `text` happened at `location`, which is
+/// `<file>:<line>:<column>` or empty when the text says where itself.
+pub fn transition_error(location: &str, text: &str) -> String {
+    format!(
+        "{TRANSITION_ERROR}{location}{TRANSITION_ERROR}{text}{TRANSITION_ERROR}{TRANSITION_ERROR}"
+    )
+}
+
+/// A transition error that says which target it was for and on which edge.
+/// Any other error is returned as it is.
+pub fn transition_error_for(message: String, edge: &str, target: &str) -> String {
+    match split_transition_error(&message) {
+        Some(parts) => format!(
+            "{TRANSITION_ERROR}{}{TRANSITION_ERROR}{}{TRANSITION_ERROR}{edge}{TRANSITION_ERROR}{target}",
+            parts.location, parts.text
+        ),
+        None => message,
+    }
+}
+
+/// The parts of [`transition_error`].
+pub struct TransitionError<'a> {
+    pub location: &'a str,
+    pub text: &'a str,
+    pub edge: &'a str,
+    pub target: &'a str,
+}
+
+/// The parts of an error made by [`transition_error`], if it is one.
+pub fn split_transition_error(message: &str) -> Option<TransitionError<'_>> {
+    let mut parts = message
+        .strip_prefix(TRANSITION_ERROR)?
+        .split(TRANSITION_ERROR);
+    Some(TransitionError {
+        location: parts.next()?,
+        text: parts.next()?,
+        edge: parts.next()?,
+        target: parts.next()?,
+    })
+}
+
 /// One configuration a transition asks for: the key of its split (empty for
 /// an ordinary transition) and the settings it sets.
 pub type Outcome = (String, BTreeMap<String, SettingValue>);
@@ -227,9 +274,22 @@ pub fn apply_transition(
                 Edge::Attr(_) => vec![input, attr],
             };
             eval.eval_function(implementation, &args, &[])
-                .map_err(|e| format!("{e}"))?
+                .map_err(|e| transition_error("", &crate::traceback(&e)))?
         };
-        read_outputs(returned, &outputs)
+        // Bazel says a result it does not accept came from where the function
+        // is written.
+        read_outputs(returned, &outputs).map_err(|text| {
+            let at = starlark::eval::definition_span(implementation).map(|span| {
+                let resolved = span.resolve();
+                format!(
+                    "{}:{}:{}",
+                    resolved.file,
+                    resolved.span.begin.line + 1,
+                    resolved.span.begin.column + 1
+                )
+            });
+            transition_error(at.as_deref().unwrap_or_default(), &text)
+        })
     })
 }
 
@@ -250,7 +310,8 @@ fn read_outputs(returned: Value<'_>, outputs: &[String]) -> Result<Vec<Outcome>,
                 .ok_or_else(|| "transition output keys must be strings".to_owned())?;
             if !outputs.iter().any(|o| o == key) {
                 return Err(format!(
-                    "transition function returned undeclared output '{key}'"
+                    "invalid result from transition function: transition function returned \
+                     undeclared output '{key}'"
                 ));
             }
             out.insert(key.to_owned(), from_starlark(key, v)?);
@@ -273,7 +334,7 @@ fn read_outputs(returned: Value<'_>, outputs: &[String]) -> Result<Vec<Outcome>,
     }
     let Some(dict) = DictRef::from_value(returned) else {
         return Err(format!(
-            "transition function returned {}, want a dict or a list of dicts",
+            "transition function returned {}, want dict or list of dicts",
             returned.get_type()
         ));
     };

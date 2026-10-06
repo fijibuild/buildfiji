@@ -42,6 +42,7 @@ use starlark_syntax::syntax::def::DefParams;
 use crate as starlark;
 use crate::any::ProvidesStaticType;
 use crate::codemap::CodeMap;
+use crate::codemap::FileSpan;
 use crate::codemap::Spanned;
 use crate::collections::Hashed;
 use crate::const_frozen_string;
@@ -607,6 +608,32 @@ pub(crate) fn definition_of<'v>(function: Value<'v>) -> Option<FrozenValue> {
     function
         .downcast_ref::<FrozenDef>()
         .map(|def| def.def_info.to_frozen_value())
+}
+
+/// Where the `def` or `lambda` that made `function` is written: the name after
+/// `def`, or `lambda`, to the end of the parameters. `None` for a function
+/// that is not one of those.
+pub fn definition_span(function: Value<'_>) -> Option<FileSpan> {
+    let info = match function.downcast_ref::<Def>() {
+        Some(def) => def.def_info,
+        None => function.downcast_ref::<FrozenDef>()?.def_info,
+    };
+    let signature = info.signature_span;
+    if info.name.as_str() != "lambda" {
+        return Some(signature.to_file_span());
+    }
+    // A lambda's signature is its parameters; Bazel points at its keyword.
+    let span = signature.span();
+    let before = &info.codemap.source()[..span.begin().get() as usize];
+    let keyword = before.rfind("lambda")?;
+    let begin = crate::codemap::Pos::new(keyword as u32);
+    Some(
+        FrozenFileSpan::new(
+            signature.file(),
+            crate::codemap::Span::new(begin, span.end()),
+        )
+        .to_file_span(),
+    )
 }
 
 starlark_complex_values!(Def);

@@ -220,6 +220,16 @@ pub(crate) struct Site {
 /// `in <what> rule <label>: <why>`, which is how Bazel starts the error of a
 /// rule, whichever target of the build that rule is the target of.
 fn failing_target(message: &str) -> Option<Label> {
+    if let Some(transition) = fjfj_starlark::split_transition_error(message) {
+        return Label::parse(
+            transition.target,
+            fjfj_graph::LabelContext {
+                repo: "",
+                package: "",
+            },
+        )
+        .ok();
+    }
     let message = message
         .strip_prefix(fjfj_starlark::ATTRIBUTE_ERRORS)
         .unwrap_or(message);
@@ -1245,6 +1255,30 @@ fn plural(n: usize, one: &str, many: &str) -> String {
     format!("{n} {}", if n == 1 { one } else { many })
 }
 
+/// What Bazel says when a transition fails: what went wrong where the `.bzl`
+/// says, then that the transition of the target at `at` failed.
+fn transition_events(
+    transition: &fjfj_starlark::TransitionError<'_>,
+    files: &dyn Fn(&str) -> String,
+    at: &str,
+) -> Vec<String> {
+    let first = match transition.location.rsplitn(3, ':').collect::<Vec<_>>()[..] {
+        [column, line, file] => format!(
+            "ERROR: {}:{line}:{column}: {}",
+            files(file),
+            transition.text
+        ),
+        _ => format!("ERROR: {}", transition.text),
+    };
+    vec![
+        first,
+        format!(
+            "ERROR: {at}: {}Errors encountered while applying Starlark transition",
+            transition.edge
+        ),
+    ]
+}
+
 /// What Bazel says of the targets that did not analyse: for each failing
 /// target, once, the error and `Analysis of target ... failed` at the place
 /// its BUILD file declared it, then, for each target asked for and not built,
@@ -1260,14 +1294,18 @@ fn analysis_error_lines(report: &Report, layout: &Layout, keep_going: bool) -> V
             Some(site) => {
                 let at = absolute(layout, &site.failing.repo, &site.location);
                 if reported.insert(site.failing.clone()) {
-                    for event in fjfj_starlark::error_events(&message) {
-                        lines.push(format!("ERROR: {at}: {event}"));
+                    if let Some(transition) = fjfj_starlark::split_transition_error(&message) {
+                        lines.extend(transition_events(&transition, &files, &at));
+                    } else {
+                        for event in fjfj_starlark::error_events(&message) {
+                            lines.push(format!("ERROR: {at}: {event}"));
+                        }
+                        lines.push(format!(
+                            "ERROR: {at}: Analysis of target '{}' (config: {}) failed",
+                            label_text(&site.failing),
+                            site.config
+                        ));
                     }
-                    lines.push(format!(
-                        "ERROR: {at}: Analysis of target '{}' (config: {}) failed",
-                        label_text(&site.failing),
-                        site.config
-                    ));
                 }
                 if !keep_going {
                     lines.push(format!(
@@ -1798,6 +1836,25 @@ mod tests {
                 "ERROR: ws/k/BUILD:1:8: Analysis of target '//k:bad' (config: a7a71fd) failed",
                 "ERROR: Analysis of target '//k:bad' failed; build aborted",
                 "ERROR: Analysis of target '//k:top' failed; build aborted: Analysis failed",
+            ]
+        );
+    }
+
+    #[test]
+    fn a_failing_transition_is_two_events_and_no_analysis_failure() {
+        let message = fjfj_starlark::transition_error_for(
+            fjfj_starlark::transition_error("@@//k:defs.bzl:4:5", "no good"),
+            "on dependency edge //k:bad (a7a71fd) -|dep|-> //k:l: ",
+            "//k:bad",
+        );
+        assert_eq!(failing_target(&message), Some(label("k", "bad")));
+        let report = report(&[("bad", &message)], &[("bad", "bad")]);
+        assert_eq!(
+            analysis_error_lines(&report, &report.layout, false),
+            [
+                "ERROR: ws/k/defs.bzl:4:5: no good",
+                "ERROR: ws/k/BUILD:1:8: on dependency edge //k:bad (a7a71fd) -|dep|-> //k:l: Errors encountered while applying Starlark transition",
+                "ERROR: Analysis of target '//k:bad' failed; build aborted",
             ]
         );
     }

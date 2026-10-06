@@ -32,6 +32,18 @@ pub fn dep_info(target: &ConfiguredTarget, generated: bool) -> DepInfo {
     }
 }
 
+/// What went wrong in a transition, as the error of the target `label`:
+/// Bazel's two events for a transition function, or the message as it was
+/// with the target in front.
+fn transition_failure(e: Error, label: &Label, edge: &str) -> Error {
+    let text = e.to_string();
+    let wrapped = fjfj_starlark::transition_error_for(text.clone(), edge, &label_text(label));
+    if wrapped == text {
+        return Error::msg(format!("{}: {edge}{text}", label_text(label)));
+    }
+    Error::msg(wrapped)
+}
+
 /// The repository that stands for the builtins as the file a rule is defined in.
 pub(crate) const NATIVE_REPO: &str = "_builtins";
 
@@ -122,11 +134,19 @@ pub(crate) async fn analyze(
             &resolved_attrs(&schema, &flat),
         )
         .await
-        .map_err(|e| Error::msg(format!("{}: {e}", label_text(label))))?;
+        .map_err(|e| transition_failure(e, label, ""))?;
         if made.len() != 1 {
-            return Err(Error::msg(format!(
-                "{}: Rule transition only allowed to return a single transitioned configuration.",
-                label_text(label)
+            let at = fjfj_starlark::transition_spec(&module, rule_class, Edge::Incoming)
+                .map(|spec| spec.defined_at)
+                .unwrap_or_default();
+            // `@@repo//pkg:file.bzl:line:col` is already where Bazel says.
+            return Err(Error::msg(fjfj_starlark::transition_error_for(
+                fjfj_starlark::transition_error(
+                    &at,
+                    "Rule transition only allowed to return a single transitioned configuration.",
+                ),
+                "",
+                &label_text(label),
             )));
         }
         let (_, configuration) = made.remove(0);
@@ -280,13 +300,14 @@ pub(crate) async fn analyze(
                 )
                 .await
                 .map_err(|e| {
-                    Error::msg(format!(
-                        "{}: on dependency edge {} -|{}|-> {}: {e}",
+                    let on_edge = format!(
+                        "on dependency edge {} ({}) -|{}|-> {}: ",
                         label_text(label),
-                        label_text(label),
+                        &key.configuration.checksum()[..7],
                         edge.attr,
                         label_text(&edge.label)
-                    ))
+                    );
+                    transition_failure(e, label, &on_edge)
                 })?;
                 // The branches of a split are in the order of their configurations.
                 made.sort_by_key(|(_, c)| c.bin_dir());

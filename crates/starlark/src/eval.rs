@@ -28,6 +28,7 @@ use std::collections::HashMap;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 
+pub use compiler::def::definition_span;
 use dupe::Dupe;
 pub use runtime::arguments::Arguments;
 pub use runtime::before_stmt::BeforeStmtFunc;

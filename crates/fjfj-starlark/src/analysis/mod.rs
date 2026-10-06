@@ -112,7 +112,10 @@ pub use run::{
     labels_of_attrs, resolved_attrs, rule_schema, run_rule, split_printed, with_printed,
 };
 pub use target::{DepInfo, StoredProvider};
-pub use transition::{Edge, TransitionSpec, apply_transition, transition_spec};
+pub use transition::{
+    Edge, TRANSITION_ERROR, TransitionError, TransitionSpec, apply_transition,
+    split_transition_error, transition_error, transition_error_for, transition_spec,
+};
 
 mod computed;
 mod transition;

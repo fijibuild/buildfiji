@@ -1313,6 +1313,45 @@ rule_split = rule(implementation = _leaf, cfg = split)
     );
 }
 
+/// A transition that fails says what it did wrong where its function is
+/// written, which is the first of the two events Bazel prints, and for which
+/// target and edge, which are the second.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_failing_transition_says_where_its_function_is_written() {
+    let (_dir, repos) = workspace(&[
+        (
+            "defs.bzl",
+            r#"
+def _leaf(ctx):
+    return []
+def _bad(settings, attr):
+    return {"//command_line_option:copt": ["x"]}
+bad = transition(implementation = _bad, inputs = [], outputs = ["//command_line_option:compilation_mode"])
+leaf = rule(implementation = _leaf)
+rule_bad = rule(implementation = _leaf, cfg = bad)
+top = rule(implementation = _leaf, attrs = {"dep": attr.label(cfg = bad)})
+"#,
+        ),
+        (
+            "BUILD.bazel",
+            "load(':defs.bzl', 'leaf', 'rule_bad', 'top')\nleaf(name = 'leaf')\nrule_bad(name = 'r')\ntop(name = 't', dep = ':leaf')\n",
+        ),
+    ]);
+    for (target, edge) in [("r", ""), ("t", "on dependency edge //:t (")] {
+        let err = analyse(&repos, &format!("//:{target}")).await.unwrap_err();
+        let message = err.to_string();
+        let parts = fjfj_starlark::split_transition_error(&message).expect(&message);
+        assert!(parts.location.ends_with("defs.bzl:4:5"), "{message}");
+        assert_eq!(
+            parts.text,
+            "invalid result from transition function: transition function returned undeclared \
+             output '//command_line_option:copt'"
+        );
+        assert!(parts.edge.starts_with(edge), "{message}");
+        assert_eq!(parts.target, format!("//:{target}"));
+    }
+}
+
 /// A `toolchain` may name a `toolchain_type` through an alias (rules_rust does),
 /// and a `label_flag` is the target its value names.
 #[tokio::test(flavor = "multi_thread")]
