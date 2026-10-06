@@ -196,6 +196,20 @@ pub const ATTRIBUTE_ERRORS: &str = "\u{1}";
 /// The events in an analysis error: one for each line of one that starts with
 /// [`ATTRIBUTE_ERRORS`], otherwise the whole message.
 pub fn error_events(message: &str) -> Vec<String> {
+    if let Some(t) = super::transition::split_transition_error(message) {
+        let at = if t.location.is_empty() {
+            String::new()
+        } else {
+            format!("{}: ", t.location)
+        };
+        return vec![
+            format!("{at}{}", t.text),
+            format!(
+                "{}Errors encountered while applying Starlark transition",
+                t.edge
+            ),
+        ];
+    }
     match message.strip_prefix(ATTRIBUTE_ERRORS) {
         Some(events) => events.lines().map(str::to_owned).collect(),
         None => vec![message.to_owned()],

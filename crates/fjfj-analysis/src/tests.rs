@@ -1352,6 +1352,60 @@ top = rule(implementation = _leaf, attrs = {"dep": attr.label(cfg = bad)})
     }
 }
 
+/// A transition that returns an empty dict changes nothing; one that returns
+/// some of its outputs and not all of them says which it left out.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_transition_may_return_an_empty_dict_but_not_some_of_its_outputs() {
+    let (_dir, repos) = workspace(&[
+        (
+            "defs.bzl",
+            r#"
+def _show(ctx):
+    print("mode:", ctx.var["COMPILATION_MODE"])
+    return []
+def _none(settings, attr):
+    return {}
+def _some(settings, attr):
+    return {"//command_line_option:copt": ["-O1"]}
+def _list(settings, attr):
+    return [{}]
+outs = ["//command_line_option:copt", "//command_line_option:compilation_mode"]
+none = transition(implementation = _none, inputs = [], outputs = outs)
+some = transition(implementation = _some, inputs = [], outputs = outs)
+listed = transition(implementation = _list, inputs = [], outputs = outs)
+r_none = rule(implementation = _show, cfg = none)
+r_some = rule(implementation = _show, cfg = some)
+r_list = rule(implementation = _show, cfg = listed)
+"#,
+        ),
+        (
+            "BUILD.bazel",
+            "load(':defs.bzl', 'r_none', 'r_some', 'r_list')\nr_none(name = 'n')\nr_some(name = 's')\nr_list(name = 'l')\n",
+        ),
+    ]);
+    let n = analyse(&repos, "//:n").await.unwrap();
+    assert_eq!(n.printed.without_sites(), ["mode: fastbuild"]);
+    for target in ["s", "l"] {
+        let message = analyse(&repos, &format!("//:{target}"))
+            .await
+            .unwrap_err()
+            .to_string();
+        let parts = fjfj_starlark::split_transition_error(&message).expect(&message);
+        let missing = if target == "s" {
+            "//command_line_option:compilation_mode"
+        } else {
+            "//command_line_option:copt,//command_line_option:compilation_mode"
+        };
+        assert_eq!(
+            parts.text,
+            format!(
+                "invalid result from transition function: transition outputs [{missing}] were \
+                 not defined by transition function"
+            )
+        );
+    }
+}
+
 /// A `toolchain` may name a `toolchain_type` through an alias (rules_rust does),
 /// and a `label_flag` is the target its value names.
 #[tokio::test(flavor = "multi_thread")]

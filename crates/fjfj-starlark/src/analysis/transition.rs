@@ -296,7 +296,7 @@ pub fn apply_transition(
 /// A transition returns a dict of settings, a list of such dicts, or a dict
 /// of them by key (a split).
 fn read_outputs(returned: Value<'_>, outputs: &[String]) -> Result<Vec<Outcome>, String> {
-    let one = |dict: Value<'_>| -> Result<BTreeMap<String, SettingValue>, String> {
+    let one = |dict: Value<'_>, alone: bool| -> Result<BTreeMap<String, SettingValue>, String> {
         let dict = DictRef::from_value(dict).ok_or_else(|| {
             format!(
                 "transition output must be a dict, got a {}",
@@ -316,12 +316,18 @@ fn read_outputs(returned: Value<'_>, outputs: &[String]) -> Result<Vec<Outcome>,
             }
             out.insert(key.to_owned(), from_starlark(key, v)?);
         }
-        for declared in outputs {
-            if !out.contains_key(declared) {
-                return Err(format!(
-                    "transition function did not return a value for declared output '{declared}'"
-                ));
-            }
+        // A lone empty dict leaves the configuration as it was.
+        let missing: Vec<&str> = outputs
+            .iter()
+            .filter(|declared| !out.contains_key(*declared))
+            .map(String::as_str)
+            .collect();
+        if !missing.is_empty() && !(alone && out.is_empty()) {
+            return Err(format!(
+                "invalid result from transition function: transition outputs [{}] were not \
+                 defined by transition function",
+                missing.join(",")
+            ));
         }
         Ok(out)
     };
@@ -329,7 +335,7 @@ fn read_outputs(returned: Value<'_>, outputs: &[String]) -> Result<Vec<Outcome>,
         return list
             .iter()
             .enumerate()
-            .map(|(i, d)| Ok((i.to_string(), one(d)?)))
+            .map(|(i, d)| Ok((i.to_string(), one(d, false)?)))
             .collect();
     }
     let Some(dict) = DictRef::from_value(returned) else {
@@ -342,9 +348,12 @@ fn read_outputs(returned: Value<'_>, outputs: &[String]) -> Result<Vec<Outcome>,
     if !dict.is_empty() && dict.iter().all(|(_, v)| DictRef::from_value(v).is_some()) {
         let mut out = Vec::new();
         for (k, v) in dict.iter() {
-            out.push((k.unpack_str().unwrap_or_default().to_owned(), one(v)?));
+            out.push((
+                k.unpack_str().unwrap_or_default().to_owned(),
+                one(v, false)?,
+            ));
         }
         return Ok(out);
     }
-    Ok(vec![(String::new(), one(returned)?)])
+    Ok(vec![(String::new(), one(returned, true)?)])
 }
