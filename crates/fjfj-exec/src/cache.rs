@@ -13,7 +13,7 @@ use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::UNIX_EPOCH;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -43,6 +43,9 @@ struct State {
 
 const VERSION: u32 = 1;
 
+/// An input's fragment of a key, once it is known.
+type Fragment = Arc<Mutex<Option<[u8; 32]>>>;
+
 pub struct ActionCache {
     path: PathBuf,
     state: Mutex<State>,
@@ -51,7 +54,9 @@ pub struct ActionCache {
     dirs: Mutex<HashMap<String, String>>,
     /// The fragments [`ActionCache::input_fragment`] has found this run: an input
     /// is read after what makes it has finished, so it does not change again.
-    inputs: RwLock<HashMap<String, [u8; 32]>>,
+    /// Each input has a slot of its own, held while it is found, so actions
+    /// that need the same input at once wait for one reading of it.
+    inputs: RwLock<HashMap<String, Fragment>>,
 }
 
 impl ActionCache {
@@ -130,8 +135,20 @@ impl ActionCache {
     /// SHA-256 of the input's path and digest, found once however many
     /// actions read it.
     fn input_fragment(&self, root: &Path, exec_path: &str) -> Option<[u8; 32]> {
-        if let Some(known) = self.inputs.read().unwrap().get(exec_path) {
-            return Some(*known);
+        let known = self.inputs.read().unwrap().get(exec_path).cloned();
+        let slot = match known {
+            Some(slot) => slot,
+            None => self
+                .inputs
+                .write()
+                .unwrap()
+                .entry(exec_path.to_owned())
+                .or_default()
+                .clone(),
+        };
+        let mut found = slot.lock().unwrap();
+        if let Some(fragment) = *found {
+            return Some(fragment);
         }
         let digest = self.digest(root, exec_path)?;
         let mut hasher = Sha256::new();
@@ -140,10 +157,7 @@ impl ActionCache {
             hasher.update(bytes);
         }
         let fragment: [u8; 32] = hasher.finalize().into();
-        self.inputs
-            .write()
-            .unwrap()
-            .insert(exec_path.to_owned(), fragment);
+        *found = Some(fragment);
         Some(fragment)
     }
 
