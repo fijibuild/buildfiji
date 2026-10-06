@@ -5,6 +5,8 @@
 .beads-credential-key
 .beads/proxieddb/
 .beads/interactions.jsonl
+.beads.gate.lock
+.beads/*.gate.lock
 user.bazelrc
 /target
 bazel-*
