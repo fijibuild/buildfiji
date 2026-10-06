@@ -717,6 +717,30 @@ impl CtxState {
         })
     }
 
+    /// The runfiles tree of `file` if it is a `ctx.executable` of this rule (or,
+    /// for an aspect, of the rule it looks at): Bazel runs such a file with
+    /// the runfiles of the target it came from, as a `files_to_run` is.
+    pub(crate) fn executable_runfiles(&self, file: &Artifact) -> Option<Artifact> {
+        let own = self.schema.attrs.iter().any(|a| {
+            self.is_executable(&a.name)
+                && self.attrs.iter().any(|(n, v)| {
+                    *n == a.name
+                        && matches!(v, AttrValue::Label(l)
+                            if self.deps.get(l).is_some_and(|d| d.executable.as_ref() == Some(file)))
+                })
+        });
+        if own {
+            return Some(Artifact {
+                root: file.root.clone(),
+                path: format!("{}.runfiles", file.path),
+                tree: false,
+            });
+        }
+        self.rule
+            .as_ref()
+            .and_then(|rule| rule.executable_runfiles(file))
+    }
+
     fn is_executable(&self, name: &str) -> bool {
         self.attr_def(name)
             .is_some_and(|d| d.executable() && matches!(d.ty, AttrType::Label))

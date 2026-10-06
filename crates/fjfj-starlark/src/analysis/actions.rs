@@ -124,21 +124,19 @@ fn unique(files: &[Artifact]) -> Vec<Artifact> {
     out
 }
 
-/// What an action that uses a `FilesToRunProvider` needs: the executable, and
-/// the runfiles tree that makes it runnable.
+/// What an action that uses a `FilesToRunProvider` needs, as Bazel lists it:
+/// the executable and its runfiles tree, which stands for the manifest, the
+/// repository mapping and the files they name.
 fn files_to_run_inputs(value: Value<'_>) -> Option<Vec<Artifact>> {
     let fields = crate::structs::fields_of(value)?;
     let field = |name: &str| fields.iter().find(|(n, _)| *n == name).map(|(_, v)| *v);
     field("runfiles_manifest")?;
     field("repo_mapping_manifest")?;
     let mut out = Vec::new();
-    for name in ["executable", "runfiles_manifest", "repo_mapping_manifest"] {
-        if let Some(artifact) = field(name).and_then(artifact_of) {
-            out.push(artifact);
-        }
-    }
+    let exe = field("executable").and_then(artifact_of);
+    out.extend(exe.clone());
     // A plain file has no runfiles tree.
-    if let Some(exe) = field("executable").and_then(artifact_of)
+    if let Some(exe) = exe
         && field("runfiles_manifest").and_then(artifact_of).is_some()
     {
         out.push(Artifact {
@@ -847,8 +845,11 @@ fn spawn<'v>(
         argv
     } else {
         let executable = if let Some(file) = artifact_of(last) {
-            nested.push(Arc::new(NestedSet::of(vec![file.clone()])));
-            inputs.push(file.clone());
+            // A tool of the rule comes with its runfiles.
+            let mut tool = vec![file.clone()];
+            tool.extend(s.executable_runfiles(&file));
+            nested.push(Arc::new(NestedSet::of(tool.clone())));
+            inputs.extend(tool);
             file.exec_path()
         } else if let Some(files) = files_to_run_inputs(last)
             && let Some(file) = files.first().cloned()

@@ -752,9 +752,44 @@ r = rule(implementation = _impl, attrs = {"tool": attr.label(executable = True, 
         [
             format!("{BIN}/plain"),
             "bazel-out/k8-opt-exec/bin/tool".to_owned(),
-            "bazel-out/k8-opt-exec/bin/tool.repo_mapping".to_owned(),
             "bazel-out/k8-opt-exec/bin/tool.runfiles".to_owned(),
-            "bazel-out/k8-opt-exec/bin/tool.runfiles_manifest".to_owned(),
+        ]
+    );
+}
+
+/// A file that is a `ctx.executable` of the rule runs with its target's
+/// runfiles, as a `files_to_run` does; any other file is just a file.
+#[test]
+fn an_executable_attribute_file_comes_with_its_runfiles_tree_to_an_action() {
+    let src = r#"
+def _impl(ctx):
+    out = ctx.actions.declare_file("out")
+    ctx.actions.run(executable = ctx.executable.tool, outputs = [out], arguments = ["x"])
+    return []
+r = rule(implementation = _impl, attrs = {"tool": attr.label(executable = True, cfg = "exec")})
+"#;
+    let exe = Artifact::derived("bazel-out/k8-opt-exec/bin", "", "", "tool");
+    let tool = DepInfo {
+        label: label("", "tool"),
+        rule_class: Some("sh_binary".to_owned()),
+        generated: false,
+        files: vec![exe.clone()],
+        executable: Some(exe),
+        runfiles: Default::default(),
+        providers: Vec::new(),
+    };
+    let attrs = vec![("tool".to_owned(), AttrValue::Label(label("", "tool")))];
+    let out = run_rule(&request(src, "r", attrs, vec![tool])).unwrap();
+    let [run] = &out.actions[..] else {
+        panic!("{:?}", out.actions)
+    };
+    let mut inputs: Vec<String> = run.inputs.iter().map(|i| i.exec_path()).collect();
+    inputs.sort();
+    assert_eq!(
+        inputs,
+        [
+            "bazel-out/k8-opt-exec/bin/tool".to_owned(),
+            "bazel-out/k8-opt-exec/bin/tool.runfiles".to_owned(),
         ]
     );
 }
