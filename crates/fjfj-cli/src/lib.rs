@@ -819,7 +819,7 @@ async fn build_main(
                 ))
             })?,
         },
-        record_execution_platforms: false,
+        record_execution_platforms: true,
         test: test_flags.as_ref().map(|t| t.output),
         workspace_status: Some((status.render_stable(), status.render_volatile())),
         run: run_mode,

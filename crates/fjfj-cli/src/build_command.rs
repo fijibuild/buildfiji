@@ -1206,7 +1206,13 @@ pub(crate) fn print(
                     "ERROR: {at}: {} failed: {message}{block}# Configuration: {}",
                     failure.progress, report.configuration_checksum
                 );
-                eprintln!("# Execution platform: @@platforms//host:host\n");
+                let platform = report
+                    .analysed
+                    .iter()
+                    .find(|t| label_text(&t.label) == failure.owner)
+                    .and_then(|t| t.execution_platform.as_ref())
+                    .map_or_else(|| "@@platforms//host:host".to_owned(), label_text);
+                eprintln!("# Execution platform: {platform}\n");
             }
             _ => eprintln!(
                 "ERROR: {at}: {} failed: {}",
