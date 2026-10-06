@@ -2,7 +2,7 @@
 
 use super::actions::ActionsValue;
 use super::file::alloc_file;
-use super::target::{DepInfo, alloc_target};
+use super::target::{DepInfo, alloc_target, template_variables};
 use crate::args::{Wording, bind, fatal, param};
 use crate::label::StarlarkLabel;
 use crate::structs::new_struct;
@@ -15,7 +15,7 @@ use starlark::environment::{Methods, MethodsBuilder, MethodsStatic};
 use starlark::eval::{Arguments, Evaluator};
 use starlark::starlark_module;
 use starlark::starlark_simple_value;
-use starlark::values::dict::AllocDict;
+use starlark::values::dict::{AllocDict, DictRef};
 use starlark::values::list::AllocList;
 use starlark::values::{Heap, NoSerialize, ProvidesStaticType, StarlarkValue, Value, ValueLike};
 use starlark_derive::starlark_value;
@@ -55,9 +55,93 @@ pub(crate) struct CtxState {
     pub(crate) nested: Mutex<std::collections::HashMap<u64, Arc<fjfj_graph::NestedSet<Artifact>>>>,
     /// Exec paths declared so far, which another declaration may not repeat.
     pub(crate) declared: Mutex<BTreeSet<String>>,
+    /// Errors in an attribute the rule went on after, as Bazel's
+    /// `attributeError` does: each is `in <attribute> attribute of <rule>
+    /// rule <label>: <message>`, once however often it is raised, and the
+    /// rule fails when its implementation returns.
+    pub(crate) errors: Mutex<Vec<String>>,
+}
+
+/// The Make variables of a target (probed on Bazel 9.2.0): the
+/// configuration's own, the `TemplateVariableInfo` of each target of the
+/// `toolchains` attribute, and the `--define`s.
+pub(crate) struct MakeVariables {
+    builtin: Vec<(String, String)>,
+    toolchains: Vec<Vec<(String, String)>>,
+    defines: Vec<(String, String)>,
+}
+
+impl MakeVariables {
+    /// `ctx.var`: one dict, where a toolchain overrides the configuration,
+    /// a later toolchain an earlier one, and a `--define` anything.
+    fn dict(&self) -> Vec<(String, String)> {
+        let mut vars: Vec<(String, String)> = Vec::new();
+        for (k, v) in self
+            .builtin
+            .iter()
+            .chain(self.toolchains.iter().flatten())
+            .chain(&self.defines)
+        {
+            match vars.iter_mut().find(|(name, _)| name == k) {
+                Some(entry) => entry.1 = v.clone(),
+                None => vars.push((k.clone(), v.clone())),
+            }
+        }
+        vars
+    }
+
+    /// `$(NAME)` in `expand_make_variables`: a `--define` first, then the
+    /// toolchains in the order the attribute lists them, then the
+    /// configuration's.
+    fn lookup(&self, name: &str) -> Option<String> {
+        let find = |list: &Vec<(String, String)>| {
+            list.iter()
+                .rev()
+                .find(|(k, _)| k == name)
+                .map(|(_, v)| v.clone())
+        };
+        find(&self.defines)
+            .or_else(|| self.toolchains.iter().find_map(find))
+            .or_else(|| find(&self.builtin))
+    }
 }
 
 impl CtxState {
+    /// The Make variables of this target, in the layers Bazel keeps them.
+    pub(crate) fn make_variables<'v>(&self, heap: Heap<'v>) -> MakeVariables {
+        let builtin = vec![
+            (
+                "TARGET_CPU".to_owned(),
+                target_cpu(&self.configuration.cpu).to_owned(),
+            ),
+            (
+                "COMPILATION_MODE".to_owned(),
+                self.configuration.compilation_mode.name().to_owned(),
+            ),
+            ("BINDIR".to_owned(), self.bin_dir()),
+            ("GENDIR".to_owned(), self.bin_dir()),
+        ];
+        let toolchains = self.attrs.iter().find_map(|(name, value)| match value {
+            AttrValue::LabelList(labels) if name == "toolchains" => Some(labels),
+            _ => None,
+        });
+        MakeVariables {
+            builtin,
+            toolchains: toolchains
+                .into_iter()
+                .flatten()
+                .filter_map(|label| self.deps.get(label))
+                .map(|info| template_variables(info, heap))
+                .collect(),
+            defines: self
+                .configuration
+                .defines
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect(),
+        }
+    }
+
     pub(crate) fn bin_dir(&self) -> String {
         self.configuration.bin_dir()
     }
@@ -356,23 +440,11 @@ fn ctx_members(builder: &mut MethodsBuilder) {
 
     #[starlark(attribute)]
     fn var<'v>(this: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
-        let s = state(this);
-        let mut vars = vec![
-            ("TARGET_CPU", target_cpu(&s.configuration.cpu).to_owned()),
-            (
-                "COMPILATION_MODE",
-                s.configuration.compilation_mode.name().to_owned(),
-            ),
-            ("BINDIR", s.bin_dir()),
-            ("GENDIR", s.bin_dir()),
-        ];
-        for (k, v) in &s.configuration.defines {
-            vars.push((k.as_str(), v.clone()));
-        }
-        Ok(heap.alloc(AllocDict(
-            vars.into_iter()
-                .map(|(k, v)| (heap.alloc(k), heap.alloc(v.as_str()))),
-        )))
+        let vars = state(this).make_variables(heap).dict();
+        Ok(heap
+            .alloc(AllocDict(vars.into_iter().map(|(k, v)| {
+                (heap.alloc(k.as_str()), heap.alloc(v.as_str()))
+            }))))
     }
 
     #[starlark(attribute)]
@@ -649,6 +721,63 @@ fn ctx_members(builder: &mut MethodsBuilder) {
                 ))
             })?;
         Ok(s.configuration.constraints.contains(&label))
+    }
+
+    /// `ctx.expand_make_variables(attribute_name, command,
+    /// additional_substitutions)`: `$(VAR)` read from the substitutions, then
+    /// the variables of the `toolchains` attribute, then the configuration's.
+    /// A reference that cannot be expanded is an error of the attribute the
+    /// rule goes on after: the command comes back as it was and the rule
+    /// fails when its implementation returns.
+    fn expand_make_variables<'v>(
+        this: Value<'v>,
+        attribute_name: &str,
+        command: &str,
+        additional_substitutions: Value<'v>,
+        heap: Heap<'v>,
+    ) -> starlark::Result<String> {
+        let s = state(this);
+        let extra = DictRef::from_value(additional_substitutions).ok_or_else(|| {
+            fatal(format!(
+                "in call to expand_make_variables(), parameter 'additional_substitutions' got \
+                 value of type '{}', want 'dict'",
+                additional_substitutions.get_type()
+            ))
+        })?;
+        let mut given: BTreeMap<String, String> = BTreeMap::new();
+        for (k, v) in extra.iter() {
+            match (k.unpack_str(), v.unpack_str()) {
+                (Some(k), Some(v)) => {
+                    given.insert(k.to_owned(), v.to_owned());
+                }
+                _ => {
+                    return Err(fatal(format!(
+                        "expected a dict of string to string for 'additional_substitutions', \
+                         got {}",
+                        crate::args::describe(additional_substitutions)
+                    )));
+                }
+            }
+        }
+        let vars = s.make_variables(heap);
+        let lookup = |name: &str| given.get(name).cloned().or_else(|| vars.lookup(name));
+        match fjfj_graph::expand::expand_make_variables(command, &lookup) {
+            Ok(expanded) => Ok(expanded),
+            Err(message) => {
+                let error = fjfj_graph::expand::ExpandError {
+                    attribute: attribute_name.to_owned(),
+                    rule_class: s.rule_kind.clone(),
+                    label: fjfj_graph::expand::label_text(&s.label),
+                    message,
+                }
+                .to_string();
+                let mut errors = s.errors.lock().unwrap();
+                if !errors.contains(&error) {
+                    errors.push(error);
+                }
+                Ok(command.to_owned())
+            }
+        }
     }
 
     /// `ctx.expand_location(input, targets = [])`.

@@ -177,6 +177,19 @@ impl starlark::PrintHandler for Printed {
     }
 }
 
+/// Starts the error of a rule whose attributes were wrong, which already says
+/// which rule it is and so is not wrapped as an `in <rule> rule` failure.
+pub const ATTRIBUTE_ERRORS: &str = "\u{1}";
+
+/// The events in an analysis error: one for each line of one that starts with
+/// [`ATTRIBUTE_ERRORS`], otherwise the whole message.
+pub fn error_events(message: &str) -> Vec<String> {
+    match message.strip_prefix(ATTRIBUTE_ERRORS) {
+        Some(events) => events.lines().map(str::to_owned).collect(),
+        None => vec![message.to_owned()],
+    }
+}
+
 /// Run the rule's `implementation`.
 pub fn run_rule(req: &RuleRequest) -> Result<RuleResult, String> {
     // A native rule is its schema and a function in a table of the builtins.
@@ -238,6 +251,7 @@ pub fn run_rule(req: &RuleRequest) -> Result<RuleResult, String> {
         actions: Mutex::new(Vec::new()),
         nested: Mutex::default(),
         declared: Mutex::new(outputs.iter().map(|(_, a)| a.exec_path()).collect()),
+        errors: Mutex::default(),
     });
     execute(
         state,
@@ -302,6 +316,12 @@ pub(super) fn execute<'a>(
             eval.eval_function(implementation, &args, &[])
                 .map_err(|e| format!("\n{}", crate::traceback(&e)))?
         };
+        // Errors the rule went on after fail it now.
+        let errors = state.errors.lock().unwrap();
+        if !errors.is_empty() {
+            return Err(format!("{ATTRIBUTE_ERRORS}{}", errors.join("\n")));
+        }
+        drop(errors);
         let mut default_files: Option<Vec<Artifact>> = None;
         let mut executable = None;
         let mut runfiles = fjfj_graph::Runfiles::default();

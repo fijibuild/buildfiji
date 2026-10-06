@@ -210,6 +210,9 @@ pub(crate) struct Site {
 /// `in <what> rule <label>: <why>`, which is how Bazel starts the error of a
 /// rule, whichever target of the build that rule is the target of.
 fn failing_target(message: &str) -> Option<Label> {
+    let message = message
+        .strip_prefix(fjfj_starlark::ATTRIBUTE_ERRORS)
+        .unwrap_or(message);
     let after = message.strip_prefix("in ")?.split_once(" rule ")?.1;
     let text = after.split_once(": ")?.0;
     Label::parse(
@@ -857,7 +860,9 @@ fn analysis_error_lines(report: &Report, layout: &Layout, keep_going: bool) -> V
             Some(site) => {
                 let at = absolute(layout, &site.failing.repo, &site.location);
                 if reported.insert(site.failing.clone()) {
-                    lines.push(format!("ERROR: {at}: {message}"));
+                    for event in fjfj_starlark::error_events(&message) {
+                        lines.push(format!("ERROR: {at}: {event}"));
+                    }
                     lines.push(format!(
                         "ERROR: {at}: Analysis of target '{}' (config: {}) failed",
                         label_text(&site.failing),
@@ -877,7 +882,9 @@ fn analysis_error_lines(report: &Report, layout: &Layout, keep_going: bool) -> V
                 }
             }
             None => {
-                lines.push(format!("ERROR: {message}"));
+                for event in fjfj_starlark::error_events(&message) {
+                    lines.push(format!("ERROR: {event}"));
+                }
                 lines.push(format!(
                     "ERROR: Analysis of target '{}' failed{}",
                     label_text(label),
@@ -1256,6 +1263,24 @@ mod tests {
                 "ERROR: ws/k/BUILD:1:8: Analysis of target '//k:bad' (config: a7a71fd) failed",
                 "ERROR: Analysis of target '//k:bad' failed; build aborted",
                 "ERROR: Analysis of target '//k:top' failed; build aborted: Analysis failed",
+            ]
+        );
+    }
+
+    #[test]
+    fn the_errors_of_a_rules_attributes_are_one_event_each() {
+        let message = format!(
+            "{}in cmd attribute of r rule //k:bad: $(nope) not defined\nin cmd attribute of r rule //k:bad: unterminated $",
+            fjfj_starlark::ATTRIBUTE_ERRORS
+        );
+        assert_eq!(failing_target(&message), Some(label("k", "bad")));
+        let report = report(&[("top", &message)], &[("top", "bad")]);
+        assert_eq!(
+            analysis_error_lines(&report, &report.layout, true),
+            [
+                "ERROR: ws/k/BUILD:1:8: in cmd attribute of r rule //k:bad: $(nope) not defined",
+                "ERROR: ws/k/BUILD:1:8: in cmd attribute of r rule //k:bad: unterminated $",
+                "ERROR: ws/k/BUILD:1:8: Analysis of target '//k:bad' (config: a7a71fd) failed",
             ]
         );
     }

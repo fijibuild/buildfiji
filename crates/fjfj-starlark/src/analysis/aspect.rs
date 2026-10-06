@@ -186,6 +186,7 @@ pub fn run_aspect(req: &AspectRequest) -> Result<RuleResult, String> {
             actions: Mutex::new(Vec::new()),
             nested: Mutex::default(),
             declared: Mutex::new(Default::default()),
+            errors: Mutex::default(),
         })
     };
     let rule = make(&req.rule_schema, &req.rule_attrs, &req.rule_deps, None);

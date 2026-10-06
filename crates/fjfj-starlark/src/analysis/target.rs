@@ -11,6 +11,7 @@ use fjfj_graph::{Artifact, Label};
 use starlark::environment::{Methods, MethodsBuilder, MethodsStatic};
 use starlark::starlark_module;
 use starlark::starlark_simple_value;
+use starlark::values::dict::DictRef;
 use starlark::values::{
     Heap, NoSerialize, OwnedFrozenValue, ProvidesStaticType, StarlarkValue, Value, ValueLike,
 };
@@ -213,6 +214,30 @@ impl<'v> StarlarkValue<'v> for TargetValue {
     }
 }
 
+/// The Make variables a target gives, which is what its `TemplateVariableInfo`
+/// holds in `variables`.
+pub(super) fn template_variables<'v>(info: &Arc<DepInfo>, heap: Heap<'v>) -> Vec<(String, String)> {
+    let target = TargetValue {
+        info: info.clone(),
+        build_options: None,
+    };
+    let Some(instance) =
+        builtin_by_path("platform_common.TemplateVariableInfo").and_then(|p| target.find(p, heap))
+    else {
+        return Vec::new();
+    };
+    let variables = crate::structs::fields_of(instance)
+        .and_then(|fields| fields.into_iter().find(|(name, _)| *name == "variables"))
+        .and_then(|(_, value)| DictRef::from_value(value));
+    variables
+        .map(|dict| {
+            dict.iter()
+                .filter_map(|(k, v)| Some((k.unpack_str()?.to_owned(), v.unpack_str()?.to_owned())))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 impl TargetValue {
     /// `providers(target)` of `cquery`: each provider the target gave, by
     /// name, `DefaultInfo` first.
@@ -232,7 +257,7 @@ impl TargetValue {
         out
     }
 
-    fn find<'v>(&self, provider: Value<'v>, heap: Heap<'v>) -> Option<Value<'v>> {
+    pub(super) fn find<'v>(&self, provider: Value<'v>, heap: Heap<'v>) -> Option<Value<'v>> {
         if same_provider(builtin("DefaultInfo"), Some(provider)) {
             // A file, or an alias of one, is its own executable for `files_to_run`.
             let executable = self.info.executable.as_ref().or_else(|| {

@@ -287,6 +287,103 @@ r = rule(implementation = _impl, attrs = {"deps": attr.label_list()})
     assert_eq!(second.printed.without_sites(), ["[42, 1]"]);
 }
 
+/// `ctx.expand_make_variables`, with what Bazel 9.2.0 printed for the same
+/// calls (additional substitutions first, then the variables of the
+/// `toolchains` attribute, then the configuration's).
+#[test]
+fn expand_make_variables_reads_substitutions_toolchain_variables_and_the_configuration() {
+    let src = r#"
+def _tc(ctx):
+    return [platform_common.TemplateVariableInfo({"FOO": "from_toolchain", "TC": "tc", "TARGET_CPU": "mine", "DEFINE_ME": "tcdef", "SAME": "first"})]
+tc = rule(implementation = _tc)
+def _tc2(ctx):
+    return [platform_common.TemplateVariableInfo({"SAME": "second", "ONLY2": "o2"})]
+tc2 = rule(implementation = _tc2)
+
+def _impl(ctx):
+    for s in ctx.attr.cmds:
+        print("OUT[" + s + "] =", ctx.expand_make_variables("cmd", s, {"FOO": "bar", "SPACE": "a b"}))
+    print("var", ctx.var["TC"], ctx.var["FOO"], ctx.var["TARGET_CPU"], ctx.var["DEFINE_ME"], ctx.var["SAME"])
+    return []
+r = rule(implementation = _impl, attrs = {"cmds": attr.string_list()})
+"#;
+    let module = module_in("", "", src).unwrap();
+    let provided = run_rule(&request_in(module.clone(), "tc", Vec::new(), Vec::new())).unwrap();
+    assert_eq!(provided.providers.len(), 1);
+    let provided2 = run_rule(&request_in(module.clone(), "tc2", Vec::new(), Vec::new())).unwrap();
+    let dep_of = |name: &str, class: &str, providers| DepInfo {
+        label: label("", name),
+        rule_class: Some(class.into()),
+        generated: false,
+        files: Vec::new(),
+        executable: None,
+        runfiles: fjfj_graph::Runfiles::default(),
+        providers,
+    };
+    let deps = vec![
+        dep_of("tc", "tc", provided.providers),
+        dep_of("tc2", "tc2", provided2.providers),
+    ];
+    let run = |cmds: &[&str]| {
+        run_rule(&request_in(
+            module.clone(),
+            "r",
+            vec![
+                (
+                    "cmds".into(),
+                    AttrValue::StringList(cmds.iter().map(|c| c.to_string()).collect()),
+                ),
+                (
+                    "toolchains".into(),
+                    AttrValue::LabelList(vec![label("", "tc"), label("", "tc2")]),
+                ),
+            ],
+            deps.clone(),
+        ))
+    };
+    let ok = run(&[
+        "plain",
+        "$(FOO) $(FOO)",
+        "$$FOO",
+        "$(TC)",
+        "$(SPACE)",
+        "$(COMPILATION_MODE)",
+        "$(TARGET_CPU)",
+        "$(DEFINE_ME)",
+        "$(SAME)",
+        "$(ONLY2)",
+        "$(BINDIR)x",
+    ])
+    .unwrap();
+    assert_eq!(
+        ok.printed.without_sites(),
+        [
+            "OUT[plain] = plain",
+            "OUT[$(FOO) $(FOO)] = bar bar",
+            "OUT[$$FOO] = $FOO",
+            "OUT[$(TC)] = tc",
+            "OUT[$(SPACE)] = a b",
+            "OUT[$(COMPILATION_MODE)] = fastbuild",
+            "OUT[$(TARGET_CPU)] = mine",
+            "OUT[$(DEFINE_ME)] = tcdef",
+            "OUT[$(SAME)] = first",
+            "OUT[$(ONLY2)] = o2",
+            "OUT[$(BINDIR)x] = bazel-out/k8-fastbuild/binx",
+            "var tc from_toolchain mine tcdef second",
+        ]
+    );
+    // An error is the attribute's: the call returns its argument, the rule
+    // goes on, and fails at the end, each message once.
+    let failed = run(&["$FOO", "$(NOPE)", "$(NOPE)", "$(location :t)"]).unwrap_err();
+    assert_eq!(
+        failed,
+        format!(
+            "{}in cmd attribute of r rule //:t: '$FOO' syntax is not supported; use '$(FOO)' instead for \"Make\" variables, or escape the '$' as '$$' if you intended this for the shell\nin cmd attribute of r rule //:t: $(NOPE) not defined\nin cmd attribute of r rule //:t: $(location) not defined",
+            crate::ATTRIBUTE_ERRORS
+        )
+    );
+}
+
 #[test]
 fn errors_in_the_implementation_come_back_as_text() {
     let src = r#"

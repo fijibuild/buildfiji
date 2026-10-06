@@ -32,6 +32,79 @@ pub struct ExpandError {
     pub message: String,
 }
 
+/// `ctx.expand_make_variables`: `$(NAME)` from `lookup`, `$$` as `$`, and
+/// `$@`, `$<` and `$^` as the variables of those names. Bazel 9.2.0's
+/// reasons for refusing, in its words, without the `in <attribute> attribute
+/// of <rule>` that precedes them:
+///
+/// - `$(name args)` is a function call, and no function is known here, so
+///   its first word is reported as undefined;
+/// - `$NAME` and `${NAME}` are not supported and say what to write instead;
+///   a lone `$` at the end is unterminated, as is a `$(` with no `)`.
+pub fn expand_make_variables(
+    text: &str,
+    lookup: &dyn Fn(&str) -> Option<String>,
+) -> Result<String, String> {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.char_indices().peekable();
+    while let Some((at, c)) = chars.next() {
+        if c != '$' {
+            out.push(c);
+            continue;
+        }
+        let Some((_, next)) = chars.next() else {
+            return Err("unterminated $".to_owned());
+        };
+        match next {
+            '$' => out.push('$'),
+            '(' | '{' => {
+                let close = if next == '(' { ')' } else { '}' };
+                let start = at + 2;
+                let Some(len) = text[start..].find(close) else {
+                    return Err("unterminated variable reference".to_owned());
+                };
+                let name = &text[start..start + len];
+                while chars.peek().is_some_and(|&(i, _)| i < start + len + 1) {
+                    chars.next();
+                }
+                if next == '{' {
+                    return Err(not_supported(&format!("{{{name}}}"), name));
+                }
+                match name.split_once(char::is_whitespace) {
+                    Some((function, _)) => return Err(format!("$({function}) not defined")),
+                    None => match lookup(name) {
+                        Some(value) => out.push_str(&value),
+                        None => return Err(format!("$({name}) not defined")),
+                    },
+                }
+            }
+            '@' | '<' | '^' => match lookup(&next.to_string()) {
+                Some(value) => out.push_str(&value),
+                None => return Err(format!("$({next}) not defined")),
+            },
+            first => {
+                let mut name = first.to_string();
+                while let Some(&(_, w)) = chars.peek() {
+                    if !(w.is_ascii_alphanumeric() || w == '_') {
+                        break;
+                    }
+                    name.push(w);
+                    chars.next();
+                }
+                return Err(not_supported(&name, &name));
+            }
+        }
+    }
+    Ok(out)
+}
+
+fn not_supported(written: &str, name: &str) -> String {
+    format!(
+        "'${written}' syntax is not supported; use '$({name})' instead for \"Make\" variables, \
+         or escape the '$' as '$$' if you intended this for the shell"
+    )
+}
+
 /// What a command may refer to.
 pub struct Expander<'a> {
     pub rule_class: &'a str,
@@ -482,5 +555,62 @@ mod tests {
             expand(&[], &[out("o")], &pre, "echo $(execpath @@dep+//p:x.txt) $(rootpath @@dep+//p:x.txt) $(rlocationpath @@dep+//p:x.txt)").unwrap(),
             "echo external/dep+/p/x.txt ../dep+/p/x.txt dep+/p/x.txt"
         );
+    }
+
+    /// Every row is what Bazel 9.2.0's `ctx.expand_make_variables` gave with
+    /// `FOO = bar` and `"" = empty` as the variables.
+    #[test]
+    fn make_variables_expand_as_bazel_does() {
+        let lookup = |name: &str| match name {
+            "FOO" => Some("bar".to_owned()),
+            "" => Some("empty".to_owned()),
+            _ => None,
+        };
+        let not_supported = |written: &str, name: &str| {
+            format!(
+                "'${written}' syntax is not supported; use '$({name})' instead for \"Make\" variables, or escape the '$' as '$$' if you intended this for the shell"
+            )
+        };
+        for (text, want) in [
+            ("plain", Ok("plain")),
+            ("$(FOO) $(FOO)", Ok("bar bar")),
+            ("$(FOO)$(FOO)", Ok("barbar")),
+            ("$$FOO", Ok("$FOO")),
+            ("$$", Ok("$")),
+            ("$$(FOO)", Ok("$(FOO)")),
+            ("$$$(FOO)", Ok("$bar")),
+            ("$(FOO))", Ok("bar)")),
+            ("é$(FOO)é", Ok("ébaré")),
+            ("$()", Ok("empty")),
+            ("$(FOO", Err("unterminated variable reference".to_owned())),
+            ("${", Err("unterminated variable reference".to_owned())),
+            ("a$", Err("unterminated $".to_owned())),
+            ("$(NOPE)", Err("$(NOPE) not defined".to_owned())),
+            ("$(foo)", Err("$(foo) not defined".to_owned())),
+            ("$(FOO )", Err("$(FOO) not defined".to_owned())),
+            ("$(location :t)", Err("$(location) not defined".to_owned())),
+            ("$(FOO$(FOO))", Err("$(FOO$(FOO) not defined".to_owned())),
+            ("$@", Err("$(@) not defined".to_owned())),
+            ("$<", Err("$(<) not defined".to_owned())),
+            ("$^", Err("$(^) not defined".to_owned())),
+            ("$FOO-bar", Err(not_supported("FOO", "FOO"))),
+            ("$1", Err(not_supported("1", "1"))),
+            ("$-", Err(not_supported("-", "-"))),
+            ("$ x", Err(not_supported(" x", " x"))),
+            ("$A.B", Err(not_supported("A", "A"))),
+            ("$*", Err(not_supported("*", "*"))),
+            ("${FOO}x", Err(not_supported("{FOO}", "FOO"))),
+            ("${}", Err(not_supported("{}", ""))),
+            ("${F OO}", Err(not_supported("{F OO}", "F OO"))),
+        ] {
+            assert_eq!(
+                expand_make_variables(text, &lookup),
+                want.map(str::to_owned),
+                "{text}"
+            );
+        }
+        // `$@` is a variable when something defines it.
+        let at = |name: &str| (name == "@").then(|| "out".to_owned());
+        assert_eq!(expand_make_variables("a $@ b", &at), Ok("a out b".into()));
     }
 }

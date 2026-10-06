@@ -514,8 +514,9 @@ fn evaluate(
     let report = build_command::run(repos, &targets, &request);
     if let Some((label, message)) = report.analysis_errors.first() {
         return Err(CliError::Query(anyhow::anyhow!(
-            "{}: {message}",
-            build_command::label_name(label)
+            "{}: {}",
+            build_command::label_name(label),
+            fjfj_starlark::error_events(message).join("\n")
         )));
     }
     let configured = ConfiguredGraph::new(&graph, &report.analysed, &top_level, platforms);

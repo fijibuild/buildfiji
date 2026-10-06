@@ -172,11 +172,11 @@ mod test_support;
 mod traceback;
 
 pub use analysis::{
-    AspectRef, AspectRequest, AspectSpec, DepEdge, DepInfo, Edge, Field, FormatTarget, RuleRequest,
-    RuleResult, RuleSource, StoredProvider, TransitionSpec, apply_transition, aspect_applies,
-    aspect_spec, attr_aspects, computed_defaults, feature_flag_value, format_targets,
-    labels_of_attrs, native_provider, output_group_files, resolved_attrs, rule_schema, run_aspect,
-    run_rule, transition_spec,
+    ATTRIBUTE_ERRORS, AspectRef, AspectRequest, AspectSpec, DepEdge, DepInfo, Edge, Field,
+    FormatTarget, RuleRequest, RuleResult, RuleSource, StoredProvider, TransitionSpec,
+    apply_transition, aspect_applies, aspect_spec, attr_aspects, computed_defaults, error_events,
+    feature_flag_value, format_targets, labels_of_attrs, native_provider, output_group_files,
+    resolved_attrs, rule_schema, run_aspect, run_rule, transition_spec,
 };
 pub use depset::{
     Depset, DepsetGen, FrozenDepset, Order, depset_to_list, is_depset, nested_of, new_depset,
