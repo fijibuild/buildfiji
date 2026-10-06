@@ -50,6 +50,15 @@ pub enum Strategy {
 }
 
 impl Strategy {
+    /// What Bazel's summary calls a process run this way.
+    pub fn name(self) -> &'static str {
+        match self {
+            Strategy::Local => "local",
+            Strategy::Sandboxed => "processwrapper-sandbox",
+            Strategy::LinuxSandbox => "linux-sandbox",
+        }
+    }
+
     /// The strategy a `--spawn_strategy` list asks for: the first name that
     /// is one this runs.
     pub fn parse(list: &str) -> Result<Strategy, String> {
@@ -224,6 +233,12 @@ pub async fn execute(
     }
 }
 
+/// Whether the summary counts `action`. Bazel writes a parameter file as part
+/// of the command that reads it, so it is not an action of its own there.
+fn counted(action: &Action) -> bool {
+    action.mnemonic != "ParameterFileWrite"
+}
+
 /// How many actions `roots` and everything they read come to.
 fn closure_size(
     actions: &[Arc<Action>],
@@ -237,7 +252,7 @@ fn closure_size(
         if std::mem::replace(&mut seen[id], true) {
             continue;
         }
-        count += 1;
+        count += usize::from(counted(&actions[id]));
         stack.extend(
             actions[id]
                 .inputs
@@ -391,7 +406,9 @@ impl Scheduler {
         };
         tracing::Span::current().record("cached", current);
         if current {
-            self.cached.fetch_add(1, Ordering::Relaxed);
+            if counted(&action) {
+                self.cached.fetch_add(1, Ordering::Relaxed);
+            }
             if let Some(first) = action.outputs.first() {
                 let took = self.cache.duration(&action).unwrap_or_default();
                 self.durations
@@ -433,7 +450,9 @@ impl Scheduler {
                     })
                     .await;
                 }
-                self.ran.fetch_add(1, Ordering::Relaxed);
+                if counted(&action) {
+                    self.ran.fetch_add(1, Ordering::Relaxed);
+                }
                 Ok(())
             }
             Err(failure) => {

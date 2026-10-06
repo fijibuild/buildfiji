@@ -685,11 +685,41 @@ async fn the_closure_counts_what_the_requested_outputs_need_and_no_more() {
     let (_dir, layout) = layout();
     let (a, b, c) = (out("a"), out("b"), out("c"));
     let actions = vec![
-        shell("echo a > $0", vec![], vec![a.clone()]),
-        shell("echo b > $0", vec![a.clone()], vec![b.clone()]),
+        shell(
+            &format!("echo a > {}", a.exec_path()),
+            vec![],
+            vec![a.clone()],
+        ),
+        shell(
+            &format!("echo b > {}", b.exec_path()),
+            vec![a.clone()],
+            vec![b.clone()],
+        ),
         // Analysed, but nothing requested needs it.
-        shell("echo c > $0", vec![], vec![c]),
+        shell(&format!("echo c > {}", c.exec_path()), vec![], vec![c]),
     ];
     let outcome = run(&layout, actions, &[b], false).await;
     assert_eq!(outcome.closure, 2);
+}
+
+#[tokio::test]
+async fn a_parameter_file_write_is_not_counted_as_an_action() {
+    let (_dir, layout) = layout();
+    let (params, b) = (out("p"), out("b"));
+    let mut write = shell(
+        &format!("echo p > {}", params.exec_path()),
+        vec![],
+        vec![params.clone()],
+    );
+    write.mnemonic = "ParameterFileWrite".into();
+    let actions = vec![
+        write,
+        shell(
+            &format!("echo b > {}", b.exec_path()),
+            vec![params],
+            vec![b.clone()],
+        ),
+    ];
+    let outcome = run(&layout, actions, &[b], false).await;
+    assert_eq!((outcome.closure, outcome.ran), (1, 1));
 }

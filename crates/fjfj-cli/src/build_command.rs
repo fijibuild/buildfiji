@@ -210,6 +210,12 @@ pub(crate) struct Report {
     pub packages: usize,
     pub total_actions: usize,
     pub spawned: usize,
+    /// Actions that ran in fjfj itself (a symlink, a written file).
+    pub internal: usize,
+    /// Actions whose outputs were as the last run left them.
+    pub cache_hits: usize,
+    /// What `spawned` ran under, as Bazel names it.
+    pub strategy: &'static str,
     pub elapsed: Duration,
     pub execution: Duration,
 }
@@ -229,6 +235,9 @@ impl Report {
             packages: 0,
             total_actions: 0,
             spawned: 0,
+            internal: 0,
+            cache_hits: 0,
+            strategy: "linux-sandbox",
             elapsed: Duration::ZERO,
             execution: Duration::ZERO,
         }
@@ -588,6 +597,9 @@ pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> R
     report.execution = execution_started.elapsed();
     report.outputs = std::mem::take(&mut *collector.outputs.lock().unwrap());
     report.spawned = outcome.spawned;
+    report.internal = outcome.ran.saturating_sub(outcome.spawned);
+    report.cache_hits = outcome.cached;
+    report.strategy = request.options.strategy.name();
     // Bazel counts the actions the requested targets need, not every one analysed.
     if request.options.build {
         report.total_actions = outcome.closure;
@@ -851,13 +863,25 @@ pub(crate) fn print(
         report.elapsed.as_secs_f64(),
         report.execution.as_secs_f64()
     );
-    if report.spawned == 0 {
+    // Bazel's summary: `N processes: H action cache hit, I internal, S linux-sandbox.`
+    let processes = report.spawned + report.internal;
+    if processes == 0 && report.cache_hits == 0 {
         eprintln!("INFO: 0 processes.");
     } else {
+        let mut parts = Vec::new();
+        if report.cache_hits > 0 {
+            parts.push(format!("{} action cache hit", report.cache_hits));
+        }
+        if report.internal > 0 {
+            parts.push(format!("{} internal", report.internal));
+        }
+        if report.spawned > 0 {
+            parts.push(format!("{} {}", report.spawned, report.strategy));
+        }
         eprintln!(
-            "INFO: {}: {} local.",
-            plural(report.spawned, "process", "processes"),
-            report.spawned
+            "INFO: {}: {}.",
+            plural(processes, "process", "processes"),
+            parts.join(", ")
         );
     }
     let tests_failed = report
