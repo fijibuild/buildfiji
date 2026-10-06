@@ -61,6 +61,32 @@ fn check(rows: &[(&str, Result<&str, &str>)]) {
 }
 
 /// `struct` is a `.bzl` builtin; `set`, `json` and `proto` are in both.
+/// A shift is an int of any size, not a 32-bit wrap, and its count is checked
+/// as Bazel checks it (buildfiji-sbj).
+#[test]
+fn shifts_are_bazels() {
+    check(&[
+        ("print(1 << 30)", Ok("1073741824")),
+        ("print(1 << 31)", Ok("2147483648")),
+        ("print((1 << 31) - 1)", Ok("2147483647")),
+        ("print(-(1 << 31) - 1)", Ok("-2147483649")),
+        ("print(1 << 32)", Ok("4294967296")),
+        ("print(1 << 62)", Ok("4611686018427387904")),
+        ("print(1 << 63)", Ok("9223372036854775808")),
+        ("print(1 << 64)", Ok("18446744073709551616")),
+        ("print(-1 << 31)", Ok("-2147483648")),
+        ("print(1 << 511 > 0)", Ok("True")),
+        ("print(1 << 512)", Err("shift count too large: 512")),
+        ("print(0 << 1000)", Err("shift count too large: 1000")),
+        ("print(1 << -4)", Err("negative shift count: -4")),
+        ("print(2 >> -1)", Err("negative shift count: -1")),
+        (
+            "print(1 << 4294967296)",
+            Err("got 4294967296 for shift count, want value in signed 32-bit range"),
+        ),
+    ]);
+}
+
 #[test]
 fn scopes_are_bazels() {
     use crate::{build_globals, bzl_globals};

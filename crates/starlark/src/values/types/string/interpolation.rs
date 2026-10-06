@@ -237,7 +237,19 @@ pub(crate) fn percent(format: &str, value: Value) -> crate::Result<String> {
                     Some(NumRef::Float(v)) => {
                         match NumRef::Float(StarlarkFloat(v.0.trunc())).as_int() {
                             Some(v) => write!(res, "{v}").unwrap(),
-                            None => ValueError::unsupported_type(value, "format(%d)")?,
+                            // A float too big for an int is an integer all the same.
+                            None => {
+                                match <num_bigint::BigInt as num_traits::FromPrimitive>::from_f64(
+                                    v.0.trunc(),
+                                ) {
+                                    Some(big) => write!(res, "{big}").unwrap(),
+                                    None => {
+                                        return Err(crate::Error::new_native(anyhow::anyhow!(
+                                            "got {value}, want a finite number"
+                                        )));
+                                    }
+                                }
+                            }
                         }
                     }
                     None => ValueError::unsupported_type(value, "format(%d)")?,
@@ -265,9 +277,33 @@ pub(crate) fn percent(format: &str, value: Value) -> crate::Result<String> {
                         )
                         .unwrap()
                     }
-                    Some(NumRef::Float(_)) | None => {
-                        ValueError::unsupported_type(value, "format(%o)")?
+                    Some(NumRef::Float(v)) => {
+                        // A float is the integer it truncates to.
+                        match <num_bigint::BigInt as num_traits::FromPrimitive>::from_f64(
+                            v.0.trunc(),
+                        ) {
+                            Some(big) => {
+                                let abs = big.magnitude();
+                                write!(
+                                    res,
+                                    "{}{:o}",
+                                    if big.sign() == num_bigint::Sign::Minus {
+                                        "-"
+                                    } else {
+                                        ""
+                                    },
+                                    abs
+                                )
+                                .unwrap()
+                            }
+                            None => {
+                                return Err(crate::Error::new_native(anyhow::anyhow!(
+                                    "got {value}, want a finite number"
+                                )));
+                            }
+                        }
                     }
+                    None => ValueError::unsupported_type(value, "format(%o)")?,
                 }
             }
             Some(PercentSFormat::Hex) => {
@@ -292,9 +328,33 @@ pub(crate) fn percent(format: &str, value: Value) -> crate::Result<String> {
                         )
                         .unwrap()
                     }
-                    Some(NumRef::Float(_)) | None => {
-                        ValueError::unsupported_type(value, "format(%x)")?
+                    Some(NumRef::Float(v)) => {
+                        // A float is the integer it truncates to.
+                        match <num_bigint::BigInt as num_traits::FromPrimitive>::from_f64(
+                            v.0.trunc(),
+                        ) {
+                            Some(big) => {
+                                let abs = big.magnitude();
+                                write!(
+                                    res,
+                                    "{}{:x}",
+                                    if big.sign() == num_bigint::Sign::Minus {
+                                        "-"
+                                    } else {
+                                        ""
+                                    },
+                                    abs
+                                )
+                                .unwrap()
+                            }
+                            None => {
+                                return Err(crate::Error::new_native(anyhow::anyhow!(
+                                    "got {value}, want a finite number"
+                                )));
+                            }
+                        }
                     }
+                    None => ValueError::unsupported_type(value, "format(%x)")?,
                 }
             }
             Some(PercentSFormat::HexUpper) => {
@@ -319,9 +379,33 @@ pub(crate) fn percent(format: &str, value: Value) -> crate::Result<String> {
                         )
                         .unwrap()
                     }
-                    Some(NumRef::Float(_)) | None => {
-                        ValueError::unsupported_type(value, "format(%X)")?
+                    Some(NumRef::Float(v)) => {
+                        // A float is the integer it truncates to.
+                        match <num_bigint::BigInt as num_traits::FromPrimitive>::from_f64(
+                            v.0.trunc(),
+                        ) {
+                            Some(big) => {
+                                let abs = big.magnitude();
+                                write!(
+                                    res,
+                                    "{}{:X}",
+                                    if big.sign() == num_bigint::Sign::Minus {
+                                        "-"
+                                    } else {
+                                        ""
+                                    },
+                                    abs
+                                )
+                                .unwrap()
+                            }
+                            None => {
+                                return Err(crate::Error::new_native(anyhow::anyhow!(
+                                    "got {value}, want a finite number"
+                                )));
+                            }
+                        }
                     }
+                    None => ValueError::unsupported_type(value, "format(%X)")?,
                 }
             }
             Some(PercentSFormat::Exp) => {
@@ -338,11 +422,11 @@ pub(crate) fn percent(format: &str, value: Value) -> crate::Result<String> {
             }
             Some(PercentSFormat::FloatCompact) => {
                 let v = NumRef::unpack_param(next_value()?)?.as_float();
-                float::write_compact(&mut res, v, 'e').unwrap()
+                float::write_repr(&mut res, v).unwrap()
             }
             Some(PercentSFormat::FloatCompactUpper) => {
                 let v = NumRef::unpack_param(next_value()?)?.as_float();
-                float::write_compact(&mut res, v, 'E').unwrap()
+                res.push_str(&float::bazel_repr(v).replace('e', "E"))
             }
         }
     }

@@ -49,7 +49,7 @@ use crate::values::types::int::inline_int::InlineInt;
 
 #[derive(Debug, thiserror::Error)]
 enum StarlarkIntError {
-    #[error("Float `{0}` cannot be represented as exact integer")]
+    #[error("can't convert float {} to int", crate::values::types::float::float::bazel_repr(*.0))]
     CannotRepresentAsExact(f64),
     #[error("integer division by zero")]
     FloorDivisionByZero(StarlarkInt, StarlarkInt),
@@ -57,10 +57,6 @@ enum StarlarkIntError {
     ModuloByZero(StarlarkInt, StarlarkInt),
     #[error("Integer overflow computing left shift")]
     LeftShiftOverflow,
-    #[error("Negative left shift")]
-    LeftShiftNegative,
-    #[error("Negative right shift")]
-    RightShiftNegative,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, derive_more::Display, Hash, AllocValue, AllocFrozenValue)]
@@ -153,7 +149,7 @@ impl<'v> StarlarkIntRef<'v> {
         }
     }
 
-    fn to_big(self) -> BigInt {
+    pub(crate) fn to_big(self) -> BigInt {
         match self {
             StarlarkIntRef::Small(i) => i.to_bigint(),
             StarlarkIntRef::Big(i) => i.get().clone(),
@@ -321,25 +317,34 @@ impl<'v> StarlarkIntRef<'v> {
 
     /// `<<`.
     pub(crate) fn left_shift(self, other: StarlarkIntRef) -> anyhow::Result<StarlarkInt> {
-        // Handle the most common case first.
+        // Handle the most common case first: a result that fits.
         if let (StarlarkIntRef::Small(a), StarlarkIntRef::Small(b)) = (self, other) {
-            if let Some(b) = b.to_u32() {
-                if let Some(r) = a.checked_shl(b) {
-                    return Ok(StarlarkInt::Small(r));
+            if let Some(b) = b.to_u32().filter(|b| *b < 32) {
+                let r = i64::from(a.to_i32()) << b;
+                if let Ok(r) = i32::try_from(r) {
+                    return Ok(StarlarkInt::from(r));
                 }
             }
         }
 
-        if other.is_negative() {
-            return Err(StarlarkIntError::LeftShiftNegative.into());
+        // Bazel takes a shift count of 32 bits, and no more than 511 of them.
+        let count = match other {
+            StarlarkIntRef::Small(b) => b.to_i32(),
+            StarlarkIntRef::Big(b) => {
+                return Err(anyhow::anyhow!(
+                    "got {} for shift count, want value in signed 32-bit range",
+                    b.get()
+                ));
+            }
+        };
+        if count < 0 {
+            return Err(anyhow::anyhow!("negative shift count: {count}"));
+        }
+        if count >= 512 {
+            return Err(anyhow::anyhow!("shift count too large: {count}"));
         }
         if self.is_zero() || other.is_zero() {
             return Ok(self.to_owned());
-        }
-        if other > 100_000 {
-            // Limit the size of the BigInt to avoid accidentally consuming
-            // too much memory. 100_000 is practically enough for most use cases.
-            return Err(StarlarkIntError::LeftShiftOverflow.into());
         }
 
         match other {
@@ -364,7 +369,7 @@ impl<'v> StarlarkIntRef<'v> {
         }
 
         if other.is_negative() {
-            return Err(StarlarkIntError::RightShiftNegative.into());
+            return Err(anyhow::anyhow!("negative shift count: {}", other.to_big()));
         }
         if self.is_zero() || other.is_zero() {
             return Ok(self.to_owned());

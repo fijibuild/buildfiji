@@ -21,7 +21,6 @@ use starlark_derive::starlark_module;
 use crate as starlark;
 use crate::environment::GlobalsBuilder;
 use crate::values::float::StarlarkFloat;
-use crate::values::string::repr::string_repr;
 use crate::values::types::num::value::NumRef;
 
 #[starlark_module]
@@ -77,11 +76,7 @@ pub(crate) fn register_float(globals: &mut GlobalsBuilder) {
                             Ok(f)
                         }
                     }
-                    Err(x) => {
-                        let mut repr = String::new();
-                        string_repr(s, &mut repr);
-                        Err(anyhow::anyhow!("{} is not a valid number: {}", repr, x,))
-                    }
+                    Err(_) => Err(anyhow::anyhow!("invalid float literal: {}", s)),
                 }
             }
         }

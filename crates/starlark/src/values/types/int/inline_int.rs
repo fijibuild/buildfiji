@@ -161,13 +161,6 @@ impl InlineInt {
             .and_then(|i| InlineInt::try_from(i).ok())
     }
 
-    #[inline]
-    pub(crate) fn checked_shl(self, rhs: u32) -> Option<InlineInt> {
-        self.0
-            .checked_shl(rhs)
-            .and_then(|i| InlineInt::try_from(i).ok())
-    }
-
     pub(crate) fn to_bigint(self) -> BigInt {
         BigInt::from(self.0)
     }

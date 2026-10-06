@@ -12,10 +12,8 @@ function.star:84
 # buildfiji-ahp: a builtin function is unhashable to Bazel
 dict.star:50
 
-# buildfiji-rkw5: floats and ints (repr digits, shifts, 32-bit range errors)
+# buildfiji-rkw5: an int too big to convert to a float is an error
 float.star:1
-int.star:1
-range.star:1
 
 # buildfiji-5alc: recursion, sorted of dicts, replace with a negative count, excessive extend
 function.star:147

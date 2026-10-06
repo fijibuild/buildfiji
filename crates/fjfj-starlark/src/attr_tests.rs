@@ -48,8 +48,6 @@ const SKIPPED: &[&str] = &[
     // not (buildfiji-v32).
     "=print)",
     "dir(config",
-    // `1<<31` wraps to -2147483648 in the crate (buildfiji-sbj).
-    "<<31",
 ];
 
 fn assert_replays(wrong: Vec<String>) {

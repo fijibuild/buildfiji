@@ -59,6 +59,38 @@ pub enum Num {
 }
 
 impl<'v> NumRef<'v> {
+    /// Compare where one of the two is a float, exactly: an int is not
+    /// rounded to the float it is nearest to (fjfj).
+    fn compare_mixed(&self, other: &Self) -> Ordering {
+        fn int_float(i: StarlarkIntRef, f: f64) -> Ordering {
+            if f.is_nan() {
+                return StarlarkFloat::compare_impl(i.to_f64(), f);
+            }
+            if f.is_infinite() {
+                return if f > 0.0 {
+                    Ordering::Less
+                } else {
+                    Ordering::Greater
+                };
+            }
+            let floor = f.floor();
+            let Some(floor_int) =
+                <num_bigint::BigInt as num_traits::FromPrimitive>::from_f64(floor)
+            else {
+                return StarlarkFloat::compare_impl(i.to_f64(), f);
+            };
+            match i.to_big().cmp(&floor_int) {
+                Ordering::Equal if f > floor => Ordering::Less,
+                other => other,
+            }
+        }
+        match (self, other) {
+            (NumRef::Int(a), NumRef::Float(b)) => int_float(*a, b.0),
+            (NumRef::Float(a), NumRef::Int(b)) => int_float(*b, a.0).reverse(),
+            _ => StarlarkFloat::compare_impl(self.as_float(), other.as_float()),
+        }
+    }
+
     /// Get underlying value as float
     pub(crate) fn as_float(&self) -> f64 {
         match self {
@@ -160,10 +192,9 @@ impl<'v> From<f64> for NumRef<'v> {
 /// This is total eq per starlark spec, not Rust's partial eq.
 impl<'v> PartialEq for NumRef<'v> {
     fn eq(&self, other: &Self) -> bool {
-        if let (NumRef::Int(a), NumRef::Int(b)) = (self, other) {
-            a == b
-        } else {
-            StarlarkFloat::compare_impl(self.as_float(), other.as_float()) == Ordering::Equal
+        match (self, other) {
+            (NumRef::Int(a), NumRef::Int(b)) => a == b,
+            _ => self.compare_mixed(other) == Ordering::Equal,
         }
     }
 }
@@ -178,10 +209,9 @@ impl<'v> PartialOrd for NumRef<'v> {
 
 impl<'v> Ord for NumRef<'v> {
     fn cmp(&self, other: &Self) -> Ordering {
-        if let (NumRef::Int(a), NumRef::Int(b)) = (self, other) {
-            a.cmp(b)
-        } else {
-            StarlarkFloat::compare_impl(self.as_float(), other.as_float())
+        match (self, other) {
+            (NumRef::Int(a), NumRef::Int(b)) => a.cmp(b),
+            _ => self.compare_mixed(other),
         }
     }
 }

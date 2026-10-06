@@ -122,30 +122,20 @@ impl<'v> StarlarkValue<'v> for Range {
             return Ok(0);
         }
 
-        // Convert range and step to `u64`
-        let (dist, step) = if self.step.get() >= 0 {
-            (
-                self.stop.wrapping_sub(self.start) as u64,
-                self.step.get() as u64,
-            )
-        } else {
-            (
-                self.start.wrapping_sub(self.stop) as u64,
-                self.step.get().wrapping_neg() as u64,
-            )
-        };
-        let i = ((dist - 1) / step + 1) as i32;
-        if i >= 0 {
-            Ok(i)
-        } else {
-            Err(ValueError::IntegerOverflow.into())
+        // The distance and the step, exactly.
+        let dist = (i64::from(self.stop) - i64::from(self.start)).unsigned_abs();
+        let step = i64::from(self.step.get()).unsigned_abs();
+        match i32::try_from((dist - 1) / step + 1) {
+            Ok(i) => Ok(i),
+            Err(_) => Err(ValueError::IntegerOverflow.into()),
         }
     }
 
     fn at(&self, index: Value, heap: Heap<'v>) -> crate::Result<Value<'v>> {
         let index = convert_index(index, self.length()?)?;
         // Must not overflow if `length` is computed correctly
-        Ok(heap.alloc(self.start + self.step.get() * index))
+        Ok(heap
+            .alloc((i64::from(self.start) + i64::from(self.step.get()) * i64::from(index)) as i32))
     }
 
     fn equals(&self, other: Value) -> crate::Result<bool> {
@@ -164,28 +154,32 @@ impl<'v> StarlarkValue<'v> for Range {
         heap: Heap<'v>,
     ) -> crate::Result<Value<'v>> {
         let (start, stop, step) = convert_slice_indices(self.length()?, start, stop, stride)?;
-        return Ok(heap.alloc(Range {
-            start: self
-                .start
-                .checked_add(
-                    start
-                        .checked_mul(self.step.get())
-                        .ok_or(ValueError::IntegerOverflow)?,
-                )
-                .ok_or(ValueError::IntegerOverflow)?,
-            stop: self
-                .start
-                .checked_add(
-                    stop.checked_mul(self.step.get())
-                        .ok_or(ValueError::IntegerOverflow)?,
-                )
-                .ok_or(ValueError::IntegerOverflow)?,
-            step: NonZeroI32::new(
-                step.checked_mul(self.step.get())
-                    .ok_or(ValueError::IntegerOverflow)?,
-            )
-            .unwrap(),
-        }));
+        // Exact arithmetic. How many elements the slice has decides the rest:
+        // with two or more the step is within 32 bits, and with fewer it only
+        // has to point the right way.
+        let clamp = |v: i64| v.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32;
+        let (base, own) = (i64::from(self.start), i64::from(self.step.get()));
+        let (first, bound, step) = (i64::from(start), i64::from(stop), i64::from(step));
+        let count = if step > 0 {
+            ((bound - first).max(0) + step - 1) / step
+        } else {
+            ((first - bound).max(0) - step - 1) / -step
+        };
+        let begin = clamp(base + first * own);
+        let new_step = step * own;
+        let (stop, step) = match count {
+            0 => (begin, 1),
+            1 => {
+                let one = if new_step > 0 { 1 } else { -1 };
+                (begin.saturating_add(one), one as i32)
+            }
+            _ => (clamp(base + bound * own), clamp(new_step)),
+        };
+        Ok(heap.alloc(Range {
+            start: begin,
+            stop,
+            step: NonZeroI32::new(step).unwrap(),
+        }))
     }
 
     unsafe fn iterate(&self, me: Value<'v>, _heap: Heap<'v>) -> crate::Result<Value<'v>> {

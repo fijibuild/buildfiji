@@ -21,7 +21,10 @@ use starlark_derive::starlark_module;
 
 use crate as starlark;
 use crate::environment::GlobalsBuilder;
+use crate::values::Value;
 use crate::values::range::Range;
+use crate::values::types::num::value::NumRef;
+use crate::values::unpack::ParameterType;
 
 #[starlark_module]
 pub(crate) fn register_range(globals: &mut GlobalsBuilder) {
@@ -58,22 +61,52 @@ pub(crate) fn register_range(globals: &mut GlobalsBuilder) {
     /// # "#);
     /// ```
     #[starlark(as_type = Range, speculative_exec_safe)]
-    fn range(
-        #[starlark(require = pos)] a1: i32,
-        #[starlark(require = pos)] a2: Option<i32>,
-        #[starlark(require = pos, default = 1)] step: i32,
-    ) -> anyhow::Result<Range> {
-        let start = match a2 {
-            None => 0,
-            Some(_) => a1,
-        };
-        let stop = a2.unwrap_or(a1);
-        let step = match NonZeroI32::new(step) {
-            Some(step) => step,
-            None => {
-                return Err(anyhow::anyhow!("step cannot be 0"));
+    fn range<'v>(
+        #[starlark(require = pos)] a1: Value<'v>,
+        #[starlark(require = pos)] a2: Option<Value<'v>>,
+        #[starlark(require = pos)] step: Option<Value<'v>>,
+    ) -> starlark::Result<Range> {
+        // Bazel takes 32-bit arguments, and says which one is not.
+        let int = |value: Value, what: &str, param: &str| -> starlark::Result<i32> {
+            match value.unpack_num() {
+                Some(NumRef::Int(i)) => i.to_i32().ok_or_else(|| {
+                    crate::Error::new_native(anyhow::anyhow!(
+                        "got {} for {what}, want value in signed 32-bit range",
+                        value.to_str()
+                    ))
+                }),
+                _ => Err(crate::Error::new_value(ParameterType {
+                    function: Some("range".to_owned()),
+                    param: param.to_owned(),
+                    want: "int".to_owned(),
+                    actual: value.get_type().to_owned(),
+                })),
             }
         };
-        Ok(Range::new(start, stop, step))
+        let (start, stop) = match a2 {
+            None => (0, int(a1, "stop", "start_or_stop")?),
+            Some(a2) => (int(a1, "start", "start_or_stop")?, int(a2, "stop", "stop")?),
+        };
+        let step = match step {
+            None => 1,
+            Some(step) => int(step, "step", "step")?,
+        };
+        let Some(step) = NonZeroI32::new(step) else {
+            return Err(crate::Error::new_native(anyhow::anyhow!(
+                "step cannot be 0"
+            )));
+        };
+        let range = Range::new(start, stop, step);
+        if crate::values::StarlarkValue::length(&range).is_err() {
+            return Err(crate::Error::new_native(anyhow::anyhow!(
+                "len(range({start}, {stop}{})) exceeds signed 32-bit range",
+                if step.get() == 1 {
+                    String::new()
+                } else {
+                    format!(", {step}")
+                }
+            )));
+        }
+        Ok(range)
     }
 }

@@ -70,8 +70,36 @@ pub(crate) fn write_decimal<W: fmt::Write>(output: &mut W, f: f64) -> fmt::Resul
     if !f.is_finite() {
         write_non_finite(output, f)
     } else {
-        write!(output, "{f:.WRITE_PRECISION$}")
+        output.write_str(&fixed(f))
     }
+}
+
+/// `%f`: the shortest digits of the float, rounded half up at the sixth
+/// decimal, as Java does it: 1.23e45 is `123` and zeros, not its exact
+/// binary value (fjfj).
+fn fixed(f: f64) -> String {
+    use num_bigint::BigInt;
+    let sign = if f.is_sign_negative() { "-" } else { "" };
+    let abs = f.abs();
+    if abs == 0.0 {
+        return format!("{sign}0.000000");
+    }
+    let sci = format!("{abs:e}");
+    let (mantissa, exponent) = sci.split_once('e').expect("`{:e}` writes an exponent");
+    let exponent: i32 = exponent.parse().expect("an integer exponent");
+    let digits: String = mantissa.chars().filter(|c| *c != '.').collect();
+    let scale = digits.len() as i32 - 1 - exponent;
+    let n: BigInt = digits.parse().expect("digits");
+    let scaled = if scale <= 6 {
+        n * BigInt::from(10).pow((6 - scale) as u32)
+    } else {
+        let divisor = BigInt::from(10).pow((scale - 6) as u32);
+        let (q, r) = (&n / &divisor, &n % &divisor);
+        if r * 2 >= divisor { q + 1 } else { q }
+    };
+    let text = format!("{scaled:0>7}");
+    let (whole, fraction) = text.split_at(text.len() - 6);
+    format!("{sign}{whole}.{fraction}")
 }
 
 pub(crate) fn write_scientific<W: fmt::Write>(
@@ -129,34 +157,6 @@ pub(crate) fn write_scientific<W: fmt::Write>(
         // add exponent part
         output.write_char(exponent_char)?;
         output.write_fmt(format_args!("{exponent:+03}"))
-    }
-}
-
-pub(crate) fn write_compact<W: fmt::Write>(
-    output: &mut W,
-    f: f64,
-    exponent_char: char,
-) -> fmt::Result {
-    if !f.is_finite() {
-        write_non_finite(output, f)
-    } else {
-        let abs = f.abs();
-        let exponent = if f == 0.0 {
-            0
-        } else {
-            abs.log10().floor() as i32
-        };
-
-        if exponent.abs() >= WRITE_PRECISION as i32 {
-            // use scientific notation if exponent is outside of our precision (but strip 0s)
-            write_scientific(output, f, exponent_char, true)
-        } else if f.fract() == 0.0 {
-            // make sure there's a fractional part even if the number doesn't have it
-            output.write_fmt(format_args!("{f:.1}"))
-        } else {
-            // rely on the built-in formatting otherwise
-            output.write_fmt(format_args!("{f}"))
-        }
     }
 }
 
@@ -247,7 +247,62 @@ impl<'v> UnpackValue<'v> for StarlarkFloat {
 
 impl Display for StarlarkFloat {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write_compact(f, self.0, 'e')
+        f.write_str(&bazel_repr(self.0))
+    }
+}
+
+/// `%g`: what `str` of a float is.
+pub(crate) fn write_repr<W: fmt::Write>(output: &mut W, f: f64) -> fmt::Result {
+    output.write_str(&bazel_repr(f))
+}
+
+/// How Bazel writes a float: the shortest digits that read back as the same
+/// float, laid out positionally when the decimal exponent is from -4 to 16 and as
+/// `d.ddde+XX` otherwise, with a `.0` if they would read as an int (fjfj).
+pub(crate) fn bazel_repr(value: f64) -> String {
+    if value.is_nan() {
+        return "nan".to_owned();
+    }
+    if value.is_infinite() {
+        return if value > 0.0 { "+inf" } else { "-inf" }.to_owned();
+    }
+    // Rust's `{:e}` gives the shortest digits: `-1.2345e-7`.
+    let sci = format!("{value:e}");
+    let (mantissa, exponent) = sci.split_once('e').expect("`{:e}` writes an exponent");
+    let exponent: i32 = exponent.parse().expect("an integer exponent");
+    let (sign, mantissa) = match mantissa.strip_prefix('-') {
+        Some(rest) => ("-", rest),
+        None => ("", mantissa),
+    };
+    let digits: String = mantissa.chars().filter(|c| *c != '.').collect();
+    if (-4..17).contains(&exponent) {
+        let point = exponent + 1;
+        let body = if point <= 0 {
+            format!("0.{}{}", "0".repeat((-point) as usize), digits)
+        } else if digits.len() as i32 <= point {
+            format!(
+                "{digits}{}.0",
+                "0".repeat((point - digits.len() as i32) as usize)
+            )
+        } else {
+            format!(
+                "{}.{}",
+                &digits[..point as usize],
+                &digits[point as usize..]
+            )
+        };
+        format!("{sign}{body}")
+    } else {
+        let mantissa = if digits.len() == 1 {
+            digits
+        } else {
+            format!("{}.{}", &digits[..1], &digits[1..])
+        };
+        format!(
+            "{sign}{mantissa}e{}{:02}",
+            if exponent < 0 { '-' } else { '+' },
+            exponent.abs()
+        )
     }
 }
 
