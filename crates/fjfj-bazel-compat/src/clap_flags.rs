@@ -127,7 +127,7 @@ fn build(bazel_command: &'static str) -> (Command, HashMap<&'static str, &'stati
     // accepted positional. `validate` pulls the one legitimate
     // hyphen-prefixed positional shape — a negative target pattern like
     // `-//pkg:excluded` or `-@repo//pkg:excluded` — out before parsing.
-    let cmd = cmd.arg(Arg::new("patterns").num_args(0..).trailing_var_arg(true));
+    let cmd = cmd.arg(Arg::new("patterns").num_args(0..));
     (cmd, negated_id_of)
 }
 
@@ -216,6 +216,30 @@ mod tests {
             BUILD_IMPLEMENTED,
         )
         .unwrap();
+    }
+
+    #[test]
+    fn a_flag_after_the_pattern_is_checked_as_one_before_it_is() {
+        let err = validate(
+            &args(&["//foo:bar", "--copt=-O2"]),
+            "build",
+            BUILD_IMPLEMENTED,
+        )
+        .unwrap_err();
+        assert_eq!(
+            err,
+            FlagSurfaceError::NotImplemented {
+                flag: "copt".to_string(),
+                command: "build".to_string(),
+            }
+        );
+        let err = validate(
+            &args(&["//foo:bar", "--not-a-real-flag"]),
+            "build",
+            BUILD_IMPLEMENTED,
+        )
+        .unwrap_err();
+        assert!(matches!(err, FlagSurfaceError::Rejected(_)));
     }
 
     #[test]
