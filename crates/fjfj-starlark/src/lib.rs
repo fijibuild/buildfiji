@@ -176,7 +176,8 @@ pub use analysis::{
     FormatTarget, RuleRequest, RuleResult, RuleSource, StoredProvider, TransitionSpec,
     apply_transition, aspect_applies, aspect_spec, attr_aspects, computed_defaults, error_events,
     feature_flag_value, format_targets, labels_of_attrs, native_provider, output_group_files,
-    resolved_attrs, rule_schema, run_aspect, run_rule, transition_spec,
+    resolved_attrs, rule_schema, run_aspect, run_rule, split_printed, transition_spec,
+    with_printed,
 };
 pub use depset::{
     Depset, DepsetGen, FrozenDepset, Order, depset_to_list, is_depset, nested_of, new_depset,

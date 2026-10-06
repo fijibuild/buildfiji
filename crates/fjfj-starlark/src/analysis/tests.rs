@@ -291,6 +291,29 @@ r = rule(implementation = _impl, attrs = {"deps": attr.label_list()})
 /// calls (additional substitutions first, then the variables of the
 /// `toolchains` attribute, then the configuration's).
 #[test]
+fn a_rule_that_fails_keeps_what_it_printed_ahead_of_its_error() {
+    let src = r#"
+def _fails(ctx):
+    print("before fail")
+    fail("boom")
+f = rule(implementation = _fails)
+def _bad(ctx):
+    print("before attr")
+    ctx.expand_make_variables("cmd", "$(NOPE)", {})
+    return []
+b = rule(implementation = _bad)
+"#;
+    let module = module_in("", "", src).unwrap();
+    for (rule, line, error) in [("f", "before fail", "boom"), ("b", "before attr", "NOPE")] {
+        let err = run_rule(&request_in(module.clone(), rule, Vec::new(), Vec::new())).unwrap_err();
+        let (printed, rest) = split_printed(&err);
+        assert_eq!(printed.len(), 1, "{err}");
+        assert!(printed[0].ends_with(line), "{printed:?}");
+        assert!(rest.contains(error), "{rest}");
+    }
+}
+
+#[test]
 fn expand_make_variables_reads_substitutions_toolchain_variables_and_the_configuration() {
     let src = r#"
 def _tc(ctx):
@@ -376,7 +399,7 @@ r = rule(implementation = _impl, attrs = {"cmds": attr.string_list()})
     // goes on, and fails at the end, each message once.
     let failed = run(&["$FOO", "$(NOPE)", "$(NOPE)", "$(location :t)"]).unwrap_err();
     assert_eq!(
-        failed,
+        split_printed(&failed).1,
         format!(
             "{}in cmd attribute of r rule //:t: '$FOO' syntax is not supported; use '$(FOO)' instead for \"Make\" variables, or escape the '$' as '$$' if you intended this for the shell\nin cmd attribute of r rule //:t: $(NOPE) not defined\nin cmd attribute of r rule //:t: $(location) not defined",
             crate::ATTRIBUTE_ERRORS

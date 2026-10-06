@@ -190,6 +190,40 @@ pub fn error_events(message: &str) -> Vec<String> {
     }
 }
 
+/// Starts each line a rule printed before its analysis failed, at the head of
+/// its error message; [`PRINTED_END`] ends them and the message follows.
+pub const PRINTED_LINE: char = '\u{2}';
+/// Ends what a failed rule printed at the head of its error.
+pub const PRINTED_END: char = '\u{3}';
+
+/// Puts what a rule printed ahead of its error, for [`split_printed`].
+pub fn with_printed(printed: &[String], message: String) -> String {
+    if printed.is_empty() {
+        return message;
+    }
+    let mut out = String::new();
+    for line in printed {
+        out.push(PRINTED_LINE);
+        out.push_str(line);
+    }
+    out.push(PRINTED_END);
+    out + &message
+}
+
+/// What a failed rule printed, and its error without that.
+pub fn split_printed(message: &str) -> (Vec<String>, &str) {
+    let Some(rest) = message.strip_prefix(PRINTED_LINE) else {
+        return (Vec::new(), message);
+    };
+    match rest.split_once(PRINTED_END) {
+        Some((lines, message)) => (
+            lines.split(PRINTED_LINE).map(str::to_owned).collect(),
+            message,
+        ),
+        None => (Vec::new(), message),
+    }
+}
+
 /// Run the rule's `implementation`.
 pub fn run_rule(req: &RuleRequest) -> Result<RuleResult, String> {
     // A native rule is its schema and a function in a table of the builtins.
@@ -346,7 +380,8 @@ pub(super) fn execute<'a>(
         module.set("providers", heap.alloc(others));
         let frozen = module.freeze().map_err(|e| format!("{e:?}"))?;
         Ok((frozen, default_files, executable, runfiles))
-    })?;
+    })
+    .map_err(|message| with_printed(&printed.0.lock().unwrap(), message))?;
     let (frozen, default_files, executable, runfiles) = frozen;
     let providers = match frozen.get_any_visibility("providers") {
         Ok((list, _)) => frozen_items(&list),

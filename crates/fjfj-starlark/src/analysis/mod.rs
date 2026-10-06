@@ -109,7 +109,7 @@ pub use format::{FormatTarget, format_targets};
 pub use native_providers::{Field, feature_flag_value, native_provider, output_group_files};
 pub use run::{
     ATTRIBUTE_ERRORS, DepEdge, RuleRequest, RuleResult, error_events, labels_of_attrs,
-    resolved_attrs, rule_schema, run_rule,
+    resolved_attrs, rule_schema, run_rule, split_printed, with_printed,
 };
 pub use target::{DepInfo, StoredProvider};
 pub use transition::{Edge, TransitionSpec, apply_transition, transition_spec};

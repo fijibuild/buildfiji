@@ -319,16 +319,17 @@ pub(crate) async fn analyze(
         .await
         .map_err(|e| Error::msg(format!("running a rule panicked: {e}")))?
         .map_err(|message| {
-            // The errors of attributes say which rule they are of; the mark
-            // that tells so stays, for whoever prints one event per line.
-            if message.starts_with(fjfj_starlark::ATTRIBUTE_ERRORS) {
-                Error::msg(message)
+            // What the rule printed stays ahead of its error, which is the
+            // part that is wrapped; the errors of attributes say which rule
+            // they are of, and the mark that tells so stays, for whoever
+            // prints one event per line.
+            let (printed, message) = fjfj_starlark::split_printed(&message);
+            let message = if message.starts_with(fjfj_starlark::ATTRIBUTE_ERRORS) {
+                message.to_owned()
             } else {
-                Error::msg(format!(
-                    "in {rule_class} rule {}: {message}",
-                    label_text(label)
-                ))
-            }
+                format!("in {rule_class} rule {}: {message}", label_text(label))
+            };
+            Error::msg(fjfj_starlark::with_printed(&printed, message))
         })?;
     let run_time = started.elapsed();
     let started = std::time::Instant::now();

@@ -588,8 +588,22 @@ pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> R
         &mut report,
     ));
     report.analysed = all.clone();
+    let mut failed_prints: Vec<String> = Vec::new();
+    for (_, message) in &mut report.analysis_errors {
+        let (printed, rest) = fjfj_starlark::split_printed(message);
+        let rest = rest.to_owned();
+        for line in printed {
+            if !failed_prints.contains(&line) {
+                failed_prints.push(line);
+            }
+        }
+        *message = rest;
+    }
     place_errors(&mut report, repos, &configuration);
-    report.printed = all.iter().flat_map(|t| t.printed.clone()).collect();
+    report.printed = failed_prints
+        .into_iter()
+        .chain(all.iter().flat_map(|t| t.printed.clone()))
+        .collect();
     report.configured = all.iter().filter(|t| t.rule_class.is_some()).count();
     report.packages = all
         .iter()
