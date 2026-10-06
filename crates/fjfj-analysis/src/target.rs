@@ -119,6 +119,9 @@ pub struct ConfiguredTarget {
     pub execution_platform: Option<Label>,
     /// The platform each exec group the rule declared runs its actions on.
     pub exec_group_platforms: Vec<(String, Option<Label>)>,
+    /// The toolchain implementations it resolved, each with the platform they
+    /// were resolved to run on, which is where their own actions run.
+    pub toolchain_platforms: Vec<(Label, Label)>,
     /// The actions this target registered.
     pub actions: Vec<Action>,
     /// The targets it read, for finding every action a build needs.
@@ -205,6 +208,7 @@ impl ConfiguredTarget {
             config_matching: None,
             execution_platform: None,
             exec_group_platforms: Vec::new(),
+            toolchain_platforms: Vec::new(),
             attrs: Vec::new(),
             aspect: None,
             actions: Vec::new(),

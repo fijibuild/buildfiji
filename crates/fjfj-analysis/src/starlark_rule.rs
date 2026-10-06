@@ -267,6 +267,14 @@ pub(crate) async fn analyze(
         .unwrap_or_default();
     let (toolchains, mut toolchain_keys, chosen_platform) =
         resolve_toolchains(ctx, key, &schema.toolchains, &exec_compatible).await?;
+    let mut toolchain_platforms: Vec<(Label, Label)> = Vec::new();
+    if let Some(platform) = &chosen_platform {
+        toolchain_platforms.extend(
+            toolchains
+                .iter()
+                .filter_map(|(_, d)| Some((d.as_ref()?.label.clone(), platform.clone()))),
+        );
+    }
     // Each exec group runs on a platform of its own, with its own toolchains.
     let mut exec_groups = Vec::new();
     let mut group_platforms = Vec::new();
@@ -288,6 +296,13 @@ pub(crate) async fn analyze(
         let (resolved, keys, platform) =
             resolve_toolchains(ctx, key, &group.toolchains, &needed).await?;
         toolchain_keys.extend(keys);
+        if let Some(platform) = &platform {
+            toolchain_platforms.extend(
+                resolved
+                    .iter()
+                    .filter_map(|(_, d)| Some((d.as_ref()?.label.clone(), platform.clone()))),
+            );
+        }
         exec_groups.push((group.name.clone(), resolved));
         // A group with no toolchains still runs where its constraints say.
         let platform = match platform {
@@ -297,6 +312,15 @@ pub(crate) async fn analyze(
         group_platforms.push((group.name.clone(), platform));
     }
     target.exec_group_platforms = group_platforms;
+    target.toolchain_platforms = toolchain_platforms;
+    let mut toolchain_platforms: Vec<(Label, Label)> = Vec::new();
+    if let Some(platform) = &chosen_platform {
+        toolchain_platforms.extend(
+            toolchains
+                .iter()
+                .filter_map(|(_, d)| Some((d.as_ref()?.label.clone(), platform.clone()))),
+        );
+    }
     if chosen_platform.is_some() {
         target.execution_platform = chosen_platform;
     }

@@ -257,6 +257,31 @@ fn place_errors(report: &mut Report, repos: &Repos, configuration: &Configuratio
     }
 }
 
+/// A toolchain implementation runs where the target that resolved it chose to
+/// run, as Bazel has it: the targets that resolved one say where.
+fn place_toolchains(all: &[Arc<ConfiguredTarget>]) -> Vec<Arc<ConfiguredTarget>> {
+    let mut platforms: BTreeMap<(&Label, &Configuration), &Label> = BTreeMap::new();
+    for target in all {
+        for (implementation, platform) in &target.toolchain_platforms {
+            platforms
+                .entry((implementation, &target.configuration))
+                .or_insert(platform);
+        }
+    }
+    all.iter()
+        .map(
+            |target| match platforms.get(&(&target.label, &target.configuration)) {
+                Some(platform) if target.execution_platform.as_ref() != Some(*platform) => {
+                    let mut placed = (**target).clone();
+                    placed.execution_platform = Some((*platform).clone());
+                    Arc::new(placed)
+                }
+                _ => target.clone(),
+            },
+        )
+        .collect()
+}
+
 /// `--toolchain_resolution_debug`'s value as a test of a label: the
 /// comma-separated regular expressions it finds, less those a `-` marks.
 pub(crate) fn resolution_filter(text: &str) -> Result<fjfj_analysis::LabelFilter, String> {
@@ -846,7 +871,7 @@ pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> R
     let (mut roots, skipped_roots) =
         split_incompatible(roots, request.options.incompatible.as_ref());
     let mut aspect_roots = aspect_roots;
-    report.analysed = all.clone();
+    report.analysed = place_toolchains(&all);
     // A source file is built by nothing; a source file that is executable
     // can still be run.
     let mut source_files: BTreeSet<Label> = BTreeSet::new();

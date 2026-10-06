@@ -849,9 +849,27 @@ r(name = "x")
         (String::new(), "//:ex1".to_owned()),
         (String::new(), "//:ex2".to_owned()),
     ];
-    analyse_traced(&repos, "//:x", config(), toolchains, platforms, Some(debug))
+    let x = analyse_traced(&repos, "//:x", config(), toolchains, platforms, Some(debug))
         .await
         .unwrap();
+    // The implementation runs where the toolchain was resolved to run.
+    assert_eq!(
+        x.toolchain_platforms,
+        [(
+            Label {
+                repo: String::new(),
+                package: String::new(),
+                name: "b".into()
+            },
+            Label {
+                repo: String::new(),
+                package: String::new(),
+                name: "ex2".into()
+            }
+        )],
+        "{:?}",
+        x.toolchain_platforms
+    );
     let said = said.lock().unwrap().join("\n");
     assert_eq!(
         said,
