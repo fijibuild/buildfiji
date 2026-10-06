@@ -25,6 +25,7 @@ pub fn dep_info(target: &ConfiguredTarget, generated: bool) -> DepInfo {
         label: target.label.clone(),
         rule_class: target.rule_class.clone(),
         generated,
+        starlark_rule: target.rule_info.is_some(),
         files: target.files.to_vec(),
         executable: target.executable.clone(),
         runfiles: target.runfiles.clone(),

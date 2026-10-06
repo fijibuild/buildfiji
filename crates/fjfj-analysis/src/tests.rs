@@ -1137,3 +1137,42 @@ rule_with_outputs(name = "unset")
     let unset = analyse(&repos, "//:unset").await.unwrap();
     assert!(paths(&unset.files).is_empty());
 }
+
+/// Probed with `bazel build`: what `collect_default` gathers from a Starlark
+/// rule's target is its default runfiles, not the files it makes; a file's
+/// target and a native rule's give their files.
+#[tokio::test(flavor = "multi_thread")]
+async fn collect_default_takes_runfiles_of_a_starlark_rule_and_files_of_the_others() {
+    let (_dir, repos) = workspace(&[
+        ("MODULE.bazel", ""),
+        (
+            "defs.bzl",
+            r#"
+def _a(ctx):
+    f = ctx.actions.declare_file(ctx.label.name + ".txt")
+    ctx.actions.write(f, "x")
+    return [DefaultInfo(files = depset([f]))]
+
+a = rule(implementation = _a)
+
+def _b(ctx):
+    e = ctx.actions.declare_file(ctx.label.name)
+    ctx.actions.write(e, "", is_executable = True)
+    return [DefaultInfo(executable = e, runfiles = ctx.runfiles(collect_default = True))]
+
+b = rule(implementation = _b, executable = True, attrs = {"deps": attr.label_list(allow_files = True)})
+"#,
+        ),
+        (
+            "BUILD.bazel",
+            "load(':defs.bzl', 'a', 'b')\na(name = 'made')\nfilegroup(name = 'group', srcs = ['s.txt'])\nb(name = 'bin', deps = [':made', ':group', 'f.txt'])\n",
+        ),
+        ("s.txt", ""),
+        ("f.txt", ""),
+    ]);
+    let bin = analyse(&repos, "//:bin").await.unwrap();
+    let mut got: Vec<String> = bin.runfiles.files.iter().map(|a| a.exec_path()).collect();
+    got.sort();
+    // The executable is there; `made.txt` is not.
+    assert_eq!(got, [format!("{BIN}/bin"), "f.txt".into(), "s.txt".into()]);
+}
