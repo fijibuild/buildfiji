@@ -588,6 +588,10 @@ pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> R
     report.execution = execution_started.elapsed();
     report.outputs = std::mem::take(&mut *collector.outputs.lock().unwrap());
     report.spawned = outcome.spawned;
+    // Bazel counts the actions the requested targets need, not every one analysed.
+    if request.options.build {
+        report.total_actions = outcome.closure;
+    }
     // A test that fails is a result; everything else that failed is an error.
     let (test_failures, failures): (Vec<_>, Vec<_>) = outcome
         .failures

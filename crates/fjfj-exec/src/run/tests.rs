@@ -679,3 +679,17 @@ fn what_a_mnemonic_took_is_kept_for_a_cache_in_a_fresh_output_base() {
         Some(std::time::Duration::from_secs(7))
     );
 }
+
+#[tokio::test]
+async fn the_closure_counts_what_the_requested_outputs_need_and_no_more() {
+    let (_dir, layout) = layout();
+    let (a, b, c) = (out("a"), out("b"), out("c"));
+    let actions = vec![
+        shell("echo a > $0", vec![], vec![a.clone()]),
+        shell("echo b > $0", vec![a.clone()], vec![b.clone()]),
+        // Analysed, but nothing requested needs it.
+        shell("echo c > $0", vec![], vec![c]),
+    ];
+    let outcome = run(&layout, actions, &[b], false).await;
+    assert_eq!(outcome.closure, 2);
+}

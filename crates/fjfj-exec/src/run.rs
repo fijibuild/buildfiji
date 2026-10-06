@@ -103,6 +103,8 @@ pub struct Failure {
 /// What happened to a build's actions.
 #[derive(Debug, Default)]
 pub struct Outcome {
+    /// Actions the requested outputs need: what makes them, and what that reads.
+    pub closure: usize,
     /// Actions that ran a command.
     pub spawned: usize,
     /// Actions of any kind that ran.
@@ -207,10 +209,12 @@ pub async fn execute(
         .collect();
     wanted.sort_unstable();
     wanted.dedup();
+    let closure = closure_size(&scheduler.actions, &scheduler.by_output, &wanted);
     join_all(wanted.into_iter().map(|id| scheduler.run(id))).await;
     let _ = scheduler.cache.save();
     let _ = remove(&layout.output_base.join("sandbox"));
     Outcome {
+        closure,
         spawned: scheduler.spawned.load(Ordering::Relaxed),
         ran: scheduler.ran.load(Ordering::Relaxed),
         cached: scheduler.cached.load(Ordering::Relaxed),
@@ -218,6 +222,30 @@ pub async fn execute(
         durations: std::mem::take(&mut *scheduler.durations.lock().unwrap()),
         cached_outputs: std::mem::take(&mut *scheduler.cached_outputs.lock().unwrap()),
     }
+}
+
+/// How many actions `roots` and everything they read come to.
+fn closure_size(
+    actions: &[Arc<Action>],
+    by_output: &HashMap<Artifact, usize>,
+    roots: &[usize],
+) -> usize {
+    let mut seen = vec![false; actions.len()];
+    let mut stack: Vec<usize> = roots.to_vec();
+    let mut count = 0;
+    while let Some(id) = stack.pop() {
+        if std::mem::replace(&mut seen[id], true) {
+            continue;
+        }
+        count += 1;
+        stack.extend(
+            actions[id]
+                .inputs
+                .iter()
+                .filter_map(|i| by_output.get(i).copied()),
+        );
+    }
+    count
 }
 
 /// What an action not run before is expected to take, in microseconds: by
