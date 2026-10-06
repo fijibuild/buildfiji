@@ -105,6 +105,13 @@ pub fn transition_specs(
     crate::decl::defined_parts(transition)?
         .into_iter()
         .map(|part| {
+            if let Some(settings) = crate::decl::analysis_test_settings(part) {
+                return Some(TransitionSpec {
+                    inputs: Vec::new(),
+                    outputs: settings.into_iter().map(|(name, _)| name).collect(),
+                    defined_at: String::new(),
+                });
+            }
             let (_, inputs, outputs) = crate::decl::defined_transition(part)?;
             Some(TransitionSpec {
                 inputs,
@@ -239,6 +246,17 @@ pub fn apply_transition(
             .ok_or_else(|| format!("{rule} has no transition there"))?;
         let parts = crate::decl::defined_parts(transition)
             .ok_or_else(|| "only a transition() can be applied".to_owned())?;
+        // An analysis test's transition sets what it was given.
+        if let Some(settings) = parts
+            .get(part)
+            .and_then(|p| crate::decl::analysis_test_settings(*p))
+        {
+            let mut set = BTreeMap::new();
+            for (name, value) in settings {
+                set.insert(name.clone(), from_starlark(&name, value)?);
+            }
+            return Ok(vec![(String::new(), set)]);
+        }
         let (implementation, _inputs, outputs) = parts
             .get(part)
             .and_then(|part| crate::decl::defined_transition(*part))

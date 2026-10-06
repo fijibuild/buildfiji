@@ -1438,13 +1438,20 @@ pub(crate) fn defined_transition<'v>(
         .then(|| (t.values[0], t.inputs, t.outputs))
 }
 
+/// The settings an `analysis_test_transition()` sets, by name. `None` for any
+/// other kind.
+pub(crate) fn analysis_test_settings<'v>(value: Value<'v>) -> Option<Vec<(String, Value<'v>)>> {
+    let t = transition_view(value)?;
+    (t.kind == TransitionKind::AnalysisTest).then(|| t.outputs.into_iter().zip(t.values).collect())
+}
+
 /// The transitions a transition runs, in order: itself if it is defined, the
 /// parts of `a.and_then(b)` one after the other. `None` if any part is not a
-/// defined transition.
+/// defined or analysis test transition.
 pub(crate) fn defined_parts<'v>(value: Value<'v>) -> Option<Vec<Value<'v>>> {
     let t = transition_view(value)?;
     match t.kind {
-        TransitionKind::Defined => Some(vec![value]),
+        TransitionKind::Defined | TransitionKind::AnalysisTest => Some(vec![value]),
         TransitionKind::Composed => {
             let mut parts = Vec::new();
             for part in &t.values {

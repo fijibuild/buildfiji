@@ -1412,6 +1412,38 @@ two = rule(implementation = _top, attrs = {"dep": attr.label(cfg = by_mode.and_t
     }
 }
 
+/// An `analysis_test_transition` sets the settings it was given.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_analysis_test_transition_sets_the_settings_it_was_given() {
+    let (_dir, repos) = workspace(&[
+        ("MODULE.bazel", ""),
+        (
+            "defs.bzl",
+            r#"
+def _leaf(ctx):
+    out = ctx.actions.declare_file(ctx.label.name)
+    ctx.actions.write(out, "x")
+    return [DefaultInfo(files = depset([out]))]
+leaf = rule(implementation = _leaf)
+opt = analysis_test_transition(settings = {"//command_line_option:compilation_mode": "opt"})
+def _top(ctx):
+    print(type(ctx.attr.dep), [f.path for f in ctx.attr.dep[0][DefaultInfo].files.to_list()])
+    return []
+top = rule(implementation = _top, attrs = {"dep": attr.label(cfg = opt)})
+"#,
+        ),
+        (
+            "BUILD.bazel",
+            "load(':defs.bzl', 'leaf', 'top')\nleaf(name = 'leaf')\ntop(name = 't', dep = ':leaf')\n",
+        ),
+    ]);
+    let t = analyse(&repos, "//:t").await.unwrap();
+    assert_eq!(
+        t.printed.without_sites(),
+        [r#"list ["bazel-out/k8-opt/bin/leaf"]"#]
+    );
+}
+
 /// A transition that returns an empty dict changes nothing; one that returns
 /// some of its outputs and not all of them says which it left out.
 #[tokio::test(flavor = "multi_thread")]
