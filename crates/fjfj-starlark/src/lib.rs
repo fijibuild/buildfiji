@@ -155,6 +155,7 @@ mod repo_download;
 mod repo_download_matrix;
 #[cfg(test)]
 mod repo_download_tests;
+mod repo_file;
 mod rule;
 #[cfg(test)]
 mod rule_tests;
@@ -197,6 +198,7 @@ pub use repo_ctx::{
     repository_rule_is_local, run_repository_rule,
 };
 pub use repo_download::{Downloader, HttpRequest};
+pub use repo_file::{RepoFile, RepoFileError, evaluate_repo_file};
 pub use structs::{FrozenStruct, Struct, StructGen};
 pub use syntax_event::{contains_event, syntax_event};
 pub use traceback::StaticErrors;

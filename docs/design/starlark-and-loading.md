@@ -151,8 +151,15 @@ names the behaviour it copies.
   trimming, `c/` and `./c` normalise, `..` entries match nothing, an absolute
   path is an error. Both report "Package is considered deleted due to
   --deleted_packages", which is what Bazel says for `.bazelignore` too.
-  `REPO.bazel`'s `ignore_directories()` is a third source and is not done
-  (buildfiji-e4r).
+  `REPO.bazel`'s `ignore_directories(patterns)` is a third source
+  (buildfiji-e4r): `fjfj_starlark::evaluate_repo_file` runs the file (BUILD
+  dialect, no `load`, only `ignore_directories` and `repo`, each once and
+  `repo` first) and `fjfj-repo` hands the patterns to
+  `PackageLookup::with_ignore_directories`. A pattern is `glob()`'s segments
+  over the directory's path with `?` as one character; `["c", "**/gen",
+  "x/*"]` removes `c`, any `gen` and every child of `x`, not `x`. An absolute
+  pattern, one ending in `/`, or with `.`, `..` or an empty segment matches
+  nothing. The wording of a failing file per command is buildfiji-dzb0.
 - **Subpackage crossing.** A target name inside package `a` may not walk into
   a subpackage: `//a:sub/f.txt` fails when `a/sub` is a package, naming the
   *deepest* such package and suggesting `//a/sub:f.txt`. Only names in the

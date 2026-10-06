@@ -260,6 +260,39 @@ fn check_pattern(pattern: &str, forbid_question: bool) -> Result<Vec<Segment>, &
         .collect()
 }
 
+/// One pattern of `REPO.bazel`'s `ignore_directories()`: the segments of a
+/// `glob()` pattern over a directory path, with `?` standing for any one
+/// character.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct IgnorePattern(Vec<Segment>);
+
+impl IgnorePattern {
+    /// `None` for a pattern that can match no directory: an empty segment
+    /// (so a leading or trailing `/`), `.` or `..`.
+    pub(crate) fn parse(pattern: &str) -> Option<IgnorePattern> {
+        let segments = pattern
+            .split('/')
+            .map(|segment| match segment {
+                "" | "." | ".." => None,
+                "**" => Some(Segment::Recursive),
+                s => Some(Segment::Name(s.to_owned())),
+            })
+            .collect::<Option<Vec<_>>>()?;
+        Some(IgnorePattern(segments))
+    }
+
+    /// Does the directory `path` (relative to the repo root, `""` for the
+    /// root) match?
+    pub(crate) fn matches(&self, path: &str) -> bool {
+        let parts: Vec<&str> = if path.is_empty() {
+            Vec::new()
+        } else {
+            path.split('/').collect()
+        };
+        segments_match_with(&self.0, &parts, true)
+    }
+}
+
 /// `*` matches any run of characters within one name, and with `question`
 /// set `?` matches any one.
 fn wildcard_match_with(pattern: &str, name: &str, question: bool) -> bool {

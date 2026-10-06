@@ -11,10 +11,16 @@
 //!   skipped, nothing else is trimmed, and there are no wildcards. `c/`,
 //!   `./c` and `c//d` are normalised; an entry with `..` in it matches
 //!   nothing; an absolute path is an error.
+//! - `REPO.bazel`'s `ignore_directories()` is `.bazelignore` with patterns:
+//!   `glob()`'s segments over a directory's path, `?` standing for any one
+//!   character. `["c", "**/gen", "x/*"]` removes `c`, any `gen`, and every
+//!   child of `x` with its subtree, but not `x`. A pattern that is absolute,
+//!   ends in `/` or has an empty, `.` or `..` segment matches nothing.
 //! - `--deleted_packages=a/sub` removes exactly that package.
 //! - an ignored or deleted package is reported as deleted, in the same words
 //!   for both.
 
+use crate::glob::IgnorePattern;
 use fjfj_graph::LabelError;
 use fjfj_graph::label::validate_package_name;
 use std::collections::BTreeSet;
@@ -43,6 +49,8 @@ pub enum LookupError {
 pub struct PackageLookup {
     root: PathBuf,
     ignored: BTreeSet<String>,
+    /// `REPO.bazel`'s `ignore_directories()`.
+    ignore_patterns: Vec<IgnorePattern>,
     deleted: BTreeSet<String>,
     /// Directories directly under the root that a `//...` walk skips: the
     /// `bazel-*` convenience symlinks, which lead into the output base.
@@ -63,9 +71,27 @@ impl PackageLookup {
         Ok(PackageLookup {
             root,
             ignored,
+            ignore_patterns: Vec::new(),
             deleted: BTreeSet::new(),
             skipped_at_root: BTreeSet::new(),
         })
+    }
+
+    /// `REPO.bazel`'s `ignore_directories(patterns)`: a directory a pattern
+    /// matches is ignored as a `.bazelignore` entry is, subtree and all.
+    /// Patterns are `glob()`'s over the directory's path from the repo root,
+    /// `?` included; one with an empty, `.` or `..` segment matches nothing.
+    pub fn with_ignore_directories<I, S>(mut self, patterns: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        self.ignore_patterns.extend(
+            patterns
+                .into_iter()
+                .filter_map(|p| IgnorePattern::parse(p.as_ref())),
+        );
+        self
     }
 
     /// `--deleted_packages`: each named package stops being one.
@@ -201,8 +227,15 @@ impl PackageLookup {
 
     /// Is `package` at or below a `.bazelignore` directory?
     pub fn is_ignored(&self, package: &str) -> bool {
-        if self.ignored.is_empty() {
+        if self.ignored.is_empty() && self.ignore_patterns.is_empty() {
             return false;
+        }
+        let matches = |path: &str| {
+            self.ignored.contains(path) || self.ignore_patterns.iter().any(|p| p.matches(path))
+        };
+        // The root is a directory too: `**` matches it.
+        if !self.ignore_patterns.is_empty() && matches("") {
+            return true;
         }
         let mut prefix = String::new();
         for component in package.split('/').filter(|c| !c.is_empty()) {
@@ -210,7 +243,7 @@ impl PackageLookup {
                 prefix.push('/');
             }
             prefix.push_str(component);
-            if self.ignored.contains(&prefix) {
+            if matches(&prefix) {
                 return true;
             }
         }
@@ -463,5 +496,53 @@ mod tests {
         symlink("..", dir.path().join("a/up")).unwrap();
         let l = PackageLookup::new(dir.path()).unwrap();
         assert_eq!(packages(&l), ["a"]);
+    }
+
+    #[test]
+    fn ignore_directories_patterns_remove_what_they_match_and_below() {
+        let files = [
+            "BUILD",
+            "c/BUILD",
+            "c/sub/BUILD",
+            "x/BUILD",
+            "x/k/BUILD",
+            "x/k/deep/BUILD",
+            "gen/BUILD",
+            "a/gen/BUILD",
+            "a/b/gen/BUILD",
+            "keep/BUILD",
+            "a/keep/BUILD",
+        ];
+        let packages = |patterns: &[&str]| {
+            let dir = repo(&files);
+            PackageLookup::new(dir.path())
+                .unwrap()
+                .with_ignore_directories(patterns)
+                .packages_under("")
+                .unwrap()
+        };
+        assert_eq!(
+            packages(&["c", "**/gen", "x/*"]),
+            ["", "a/keep", "keep", "x"]
+        );
+        assert_eq!(packages(&["?"]), ["", "gen", "keep"]);
+        assert_eq!(packages(&["x/k"]).len(), 9);
+        assert_eq!(packages(&["c/sub"]).len(), 10);
+        // Nothing to match: written wrong, or no pattern at all.
+        for none in [&["/abs"][..], &["a/../b"], &["c/"], &["./c"], &[""], &[]] {
+            assert_eq!(packages(none).len(), 11, "{none:?}");
+        }
+        assert_eq!(packages(&["*"]), [""]);
+        assert_eq!(packages(&["**"]), Vec::<String>::new());
+        let dir = repo(&files);
+        let l = PackageLookup::new(dir.path())
+            .unwrap()
+            .with_ignore_directories(["c"]);
+        assert!(
+            l.build_file("c/sub")
+                .unwrap_err()
+                .to_string()
+                .ends_with("Package is considered deleted due to --deleted_packages")
+        );
     }
 }

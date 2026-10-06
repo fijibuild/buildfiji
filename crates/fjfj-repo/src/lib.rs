@@ -80,6 +80,42 @@ pub struct FetchError {
     pub message: String,
 }
 
+/// The lookup of the repo rooted at `root`: its `.bazelignore` and the
+/// `ignore_directories()` of its `REPO.bazel`. `whose` completes Bazel's
+/// `error evaluating REPO.bazel file for ...`.
+fn lookup_at(root: &Path, whose: &str) -> Result<PackageLookup, FetchError> {
+    let lookup = PackageLookup::new(root).map_err(|e| FetchError {
+        message: e.to_string(),
+    })?;
+    let file = root.join("REPO.bazel");
+    let text = match std::fs::read_to_string(&file) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(lookup),
+        Err(e) => return failed(format!("{}: {e}", file.display())),
+    };
+    match fjfj_starlark::evaluate_repo_file(&file.display().to_string(), &text, whose) {
+        Ok(repo_file) => Ok(lookup.with_ignore_directories(repo_file.ignore_directories)),
+        Err(e) => {
+            // The caller puts `ERROR: ` before the first line.
+            let mut lines: Vec<String> = e
+                .events
+                .iter()
+                .map(|event| match event.starts_with("DEBUG: ") {
+                    true => event.clone(),
+                    false => format!("ERROR: {event}"),
+                })
+                .collect();
+            lines.push(format!("ERROR: {}", e.summary));
+            let first = lines[0]
+                .strip_prefix("ERROR: ")
+                .unwrap_or(&lines[0])
+                .to_owned();
+            lines[0] = first;
+            failed(lines.join("\n"))
+        }
+    }
+}
+
 fn failed<T>(message: impl Into<String>) -> Result<T, FetchError> {
     Err(FetchError {
         message: message.into(),
@@ -314,10 +350,7 @@ impl Repos {
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
-        let lookup = PackageLookup::new(&options.workspace_root)
-            .map_err(|e| FetchError {
-                message: e.to_string(),
-            })?
+        let lookup = lookup_at(&options.workspace_root, "the main repo")?
             .with_skipped_root_dirs([
                 "bazel-bin".to_owned(),
                 "bazel-out".to_owned(),
@@ -933,9 +966,7 @@ impl Inner {
             }
             let _ = std::fs::write(output.join("REPO.bazel"), "");
         }
-        let lookup = PackageLookup::new(output).map_err(|e| FetchError {
-            message: e.to_string(),
-        })?;
+        let lookup = lookup_at(output, &format!("repo '{name}'"))?;
         self.state
             .lock()
             .unwrap()
@@ -1039,9 +1070,7 @@ impl Inner {
                 target.display()
             ));
         }
-        let lookup = PackageLookup::new(&output).map_err(|e| FetchError {
-            message: e.to_string(),
-        })?;
+        let lookup = lookup_at(&output, &format!("repo '{name}'"))?;
         self.state
             .lock()
             .unwrap()
