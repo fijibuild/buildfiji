@@ -344,6 +344,17 @@ exec_transition = _unavailable("exec_transition", "buildfiji-136.6")
 def _merge_runfiles_with_generated_inits(*, ctx, runfiles):
     return runfiles.merge(ctx.runfiles(_python_inits = True))
 
+# An analysis test (`rule(analysis_test = True)`) returns an
+# AnalysisTestResultInfo and no executable; Bazel makes the test's script: it
+# says the message, each character escaped for sh, a line to each line of it,
+# and exits 0 or 1. Called with the context once the implementation is done.
+def _analysis_test_script(ctx, result):
+    script = ctx.actions.declare_file(ctx.label.name + ".sh")
+    lines = ["echo " + "".join(["\\" + c for c in line.elems()]) for line in result.message.split("\n")]
+    status = "0" if result.success else "1"
+    ctx.actions.write(script, "#!/bin/sh\n" + "\n".join(lines) + "\nexit " + status, is_executable = True)
+    return script
+
 # `ctx.actions.template_dict()`: substitutions for `expand_template` that are
 # computed from lists. `_computed_substitutions` is what `expand_template`
 # turns one into.

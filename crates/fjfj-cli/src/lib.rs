@@ -1343,12 +1343,17 @@ def _impl(ctx):
     return [DefaultInfo(executable = exe)]
 
 my_test = rule(implementation = _impl, test = True, attrs = {"exit": attr.int()})
+
+def _checks(ctx):
+    return [AnalysisTestResultInfo(success = ctx.attr.ok, message = "checked")]
+
+checks_test = rule(implementation = _checks, analysis_test = True, attrs = {"ok": attr.bool()})
 "#,
         )
         .unwrap();
         std::fs::write(
             dir.0.join("BUILD.bazel"),
-            "load(':defs.bzl', 'my_test')\nmy_test(name = 'good', size = 'small', args = ['a', 'b c'])\nmy_test(name = 'bad', exit = 3)\n",
+            "load(':defs.bzl', 'my_test', 'checks_test')\nmy_test(name = 'good', size = 'small', args = ['a', 'b c'])\nmy_test(name = 'bad', exit = 3)\nchecks_test(name = 'ok_test', ok = True)\nchecks_test(name = 'no_test', ok = False)\n",
         )
         .unwrap();
         let mut args = fixture_registry_flags();
@@ -1401,7 +1406,12 @@ my_test = rule(implementation = _impl, test = True, attrs = {"exit": attr.int()}
                             &bzlmod,
                             &root,
                             module,
-                            &["//:good".to_owned(), "//:bad".to_owned()],
+                            &[
+                                "//:good".to_owned(),
+                                "//:bad".to_owned(),
+                                "//:ok_test".to_owned(),
+                                "//:no_test".to_owned(),
+                            ],
                             "",
                             Some(&options),
                         )
@@ -1428,7 +1438,10 @@ my_test = rule(implementation = _impl, test = True, attrs = {"exit": attr.int()}
             statuses,
             [
                 ("bad".to_owned(), TestStatus::Failed(3), false),
-                ("good".to_owned(), TestStatus::Passed, false)
+                ("good".to_owned(), TestStatus::Passed, false),
+                // An analysis test's script says its result and exits 0 or 1.
+                ("no_test".to_owned(), TestStatus::Failed(1), false),
+                ("ok_test".to_owned(), TestStatus::Passed, false),
             ]
         );
         let log = std::fs::read_to_string(dir.0.join("bazel-testlogs/good/test.log")).unwrap();
@@ -1443,7 +1456,12 @@ my_test = rule(implementation = _impl, test = True, attrs = {"exit": attr.int()}
             .collect();
         assert_eq!(
             again,
-            [("bad".to_owned(), false), ("good".to_owned(), true)]
+            [
+                ("bad".to_owned(), false),
+                ("good".to_owned(), true),
+                ("no_test".to_owned(), false),
+                ("ok_test".to_owned(), true),
+            ]
         );
     }
 

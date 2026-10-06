@@ -433,6 +433,24 @@ pub(super) fn execute<'a>(
                 others.push(instance);
             }
         }
+        // An analysis test gives its result and no executable: Bazel makes the
+        // script that says it.
+        if executable.is_none()
+            && let Some(result_info) = builtin("AnalysisTestResultInfo")
+            && let Some(result) = others
+                .iter()
+                .copied()
+                .find(|instance| same_provider(Some(result_info), provider_of(*instance).flatten()))
+            && let Some(make) = builtin("_analysis_test_script")
+        {
+            let mut eval = Evaluator::new(&module);
+            eval.extra = Some(&running);
+            eval.set_print_handler(&printed);
+            let script = eval
+                .eval_function(make, &[ctx, result], &[])
+                .map_err(|e| format!("\n{}", crate::traceback(&e)))?;
+            executable = artifact_of(script);
+        }
         module.set("providers", heap.alloc(others));
         let frozen = module.freeze().map_err(|e| format!("{e:?}"))?;
         Ok((frozen, default_files, executable, runfiles))
