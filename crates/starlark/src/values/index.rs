@@ -26,12 +26,18 @@ fn convert_index_aux(
     default: i32,
     min: i32,
     max: i32,
+    what: &str,
 ) -> crate::Result<i32> {
     if let Some(v) = v1 {
         if v.is_none() {
             Ok(default)
         } else {
-            let x = i32::unpack_value_err(v)?;
+            let x = i32::unpack_value_err(v).map_err(|_| {
+                crate::Error::new_native(anyhow::anyhow!(
+                    "got {} for {what} index, want int",
+                    v.get_type()
+                ))
+            })?;
             let i = if x < 0 { len + x } else { x };
             if i < min {
                 Ok(min)
@@ -52,7 +58,12 @@ fn convert_index_aux(
 /// and len. Raise the correct errors if the value is not numeric or the
 /// index is out of bound.
 pub(crate) fn convert_index(v: Value, len: i32) -> crate::Result<i32> {
-    let x = i32::unpack_value_err(v)?;
+    let x = i32::unpack_value_err(v).map_err(|_| {
+        crate::Error::new_native(anyhow::anyhow!(
+            "got {} for sequence index, want int",
+            v.get_type()
+        ))
+    })?;
     let i = if x < 0 {
         len.checked_add(x).ok_or(ValueError::IntegerOverflow)?
     } else {
@@ -92,8 +103,8 @@ pub(crate) fn convert_slice_indices(
             let def_start = if stride < 0 { len - 1 } else { 0 };
             let def_end = if stride < 0 { -1 } else { len };
             let clamp = if stride < 0 { -1 } else { 0 };
-            let start = convert_index_aux(len, start, def_start, clamp, len + clamp);
-            let stop = convert_index_aux(len, stop, def_end, clamp, len + clamp);
+            let start = convert_index_aux(len, start, def_start, clamp, len + clamp, "start");
+            let stop = convert_index_aux(len, stop, def_end, clamp, len + clamp, "stop");
             match (start, stop) {
                 (Ok(s1), Ok(s2)) => Ok((s1, s2, stride)),
                 (Err(x), ..) => Err(x),

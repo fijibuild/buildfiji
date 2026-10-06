@@ -92,13 +92,16 @@ phase as integration tests and diff `fjfj query` against `bazel query`.
 `crates/fjfj-starlark/testdata/bazel-starlark`, copied from the 9.2.0 tag)
 run in `conformance.rs` the way its `ScriptTest.java` runs them (chunks
 separated by `---`, `### regexp` for an expected error, `assert_`,
-`assert_eq`, `assert_fails`). 67 of about 600 chunks fail, all listed in
+`assert_eq`, `assert_fails`). 13 of about 600 chunks fail, all listed in
 `testdata/conformance_known.txt` with the bead that owns the difference;
 the test fails if a chunk not listed starts to fail and if a listed one
-starts to pass, so the list only shrinks. Most are the crate's wording of an
-error (buildfiji-v32); the real differences are recursion (buildfiji-2r5),
-a huge repeat that panics (buildfiji-gpj, run by nothing: it takes minutes),
-`split(sep=...)` (buildfiji-wtt), `elems()` (buildfiji-9zq) and cyclic reprs
+starts to pass, so the list only shrinks. What is left is frozen values
+(buildfiji-exk), sets (buildfiji-tg2), floats and ints (buildfiji-rkw5), json
+(buildfiji-mpiv), a lambda that calls itself and a few builtins (buildfiji-5alc),
+and a builtin as a dict key (buildfiji-ahp); the wording of errors is done
+(buildfiji-v32). Other known differences are a huge repeat that panics
+(buildfiji-gpj, run by nothing: it takes minutes), `split(sep=...)` (buildfiji-wtt),
+`elems()` (buildfiji-9zq) and cyclic reprs
 (buildfiji-sib). The `starlark-spec` test suite is not run yet.
 
 ## No native modules (decision 2026-09-03)
@@ -1085,8 +1088,17 @@ source is cheaper and `git log` on the file says why a line is there.
 Options considered earlier: a `[patch.crates-io]` fork (this, minus the redundancy of a patch
 queue), upstream PRs only (too slow for Bazel parity), workarounds in fjfj (kept where cheap:
 buildfiji-8q5 is a check in `dialect.rs`), replacing the evaluator (rejected by the mum.1 spike).
-Error wording (buildfiji-v32) is a change in the crate when a whole family of messages is its
-own, a wrapper when it is one call.
+Error wording (buildfiji-v32, buildfiji-rjbw) is a change in the crate when a whole family of
+messages is its own, a wrapper when it is one call. Both were needed. The messages that do not
+need to name the function are edited at their source in the vendored crate (`ValueError`,
+`FunctionError`, the index, key, attribute, format, int and unpack errors): about forty
+messages, which is what Bazel's script tests and the probe tables hit. The ones that say
+`in call to f(), parameter 'p' got value of type ...` or `f() accepts no more than ...` need the
+name of the native function, which only the call knows, so `named_native_error`
+(`eval/runtime/arguments.rs`) rewrites them where a native function or method is invoked.
+Where an error is reported is the crate's compiler too: the span of an operator, index,
+attribute or call expression begins at its operator, `[`, `.` or `(`, as Bazel's column does,
+and a call that does not fit a `def` is reported at the `def`, in the callee.
 
 ## Native rules: Starlark where it takes no hooks (decided 2026-10-01, buildfiji-4qs)
 

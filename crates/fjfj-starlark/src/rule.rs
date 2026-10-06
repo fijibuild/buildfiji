@@ -314,7 +314,7 @@ fn wrong(keyword: &str, value: Value<'_>, want: &str) -> starlark::Error {
 fn is_callable(value: Value<'_>) -> bool {
     matches!(
         value.get_type(),
-        "function" | "Provider" | "RawConstructor" | "rule"
+        "function" | "builtin_function_or_method" | "Provider" | "RawConstructor" | "rule"
     )
 }
 

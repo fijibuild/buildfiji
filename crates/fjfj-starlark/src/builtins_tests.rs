@@ -48,23 +48,7 @@ const RUNTIME_WORDING: &[&str] = &[
 ];
 
 /// Messages the runtime words the same way for every type.
-const GENERIC: &[&str] = &[
-    "unsupported comparison",
-    "unsupported binary operation",
-    "has no operator",
-    "has no field or method",
-    "is not iterable",
-    "in call to hash()",
-    "in call to len()",
-    "keywords must be strings",
-    "does not support field assignment",
-    "duplicate keyword argument",
-    "may not follow **kwargs",
-    "unhashable type",
-    "cannot encode builtin_function_or_method",
-    "cannot encode Provider",
-    "got builtin_function_or_method",
-];
+const GENERIC: &[&str] = &["cannot encode Provider"];
 
 fn check(rows: &[(&str, Result<&str, &str>)]) {
     let wrong = replay(rows, RUNTIME_WORDING, GENERIC);

@@ -25,7 +25,6 @@ use crate::collections::string_pool::StringPool;
 use crate::values::Heap;
 use crate::values::StringValue;
 use crate::values::Value;
-use crate::values::ValueError;
 use crate::values::ValueLike;
 use crate::values::dict::Dict;
 
@@ -88,6 +87,8 @@ struct FormatArgs<'v, T: Iterator<Item = Value<'v>>> {
     args: Vec<Value<'v>>,
     by_index: bool,
     by_order: bool,
+    /// How many fields took the next argument so far.
+    next_auto: usize,
 }
 
 impl<'v, T: Iterator<Item = Value<'v>>> FormatArgs<'v, T> {
@@ -97,19 +98,26 @@ impl<'v, T: Iterator<Item = Value<'v>>> FormatArgs<'v, T> {
             args: Vec::new(),
             by_index: false,
             by_order: false,
+            next_auto: 0,
         }
     }
 
     fn next_ordered(&mut self) -> anyhow::Result<Value<'v>> {
         if self.by_index {
             Err(anyhow::anyhow!(
-                "Cannot mix manual field specification and automatic field numbering in format string",
+                "Cannot mix manual and automatic numbering of positional fields",
             ))
         } else {
             self.by_order = true;
             match self.iterator.next() {
-                None => Err(anyhow::anyhow!("Not enough parameters in format string")),
-                Some(x) => Ok(x),
+                None => Err(anyhow::anyhow!(
+                    "No replacement found for index {}",
+                    self.next_auto
+                )),
+                Some(x) => {
+                    self.next_auto += 1;
+                    Ok(x)
+                }
             }
         }
     }
@@ -117,7 +125,7 @@ impl<'v, T: Iterator<Item = Value<'v>>> FormatArgs<'v, T> {
     fn by_index(&mut self, index: usize) -> anyhow::Result<Value<'v>> {
         if self.by_order {
             Err(anyhow::anyhow!(
-                "Cannot mix manual field specification and automatic field numbering in format string",
+                "Cannot mix manual and automatic numbering of positional fields",
             ))
         } else {
             if !self.by_index {
@@ -125,7 +133,7 @@ impl<'v, T: Iterator<Item = Value<'v>>> FormatArgs<'v, T> {
                 self.by_index = true;
             }
             match self.args.get(index) {
-                None => Err(ValueError::IndexOutOfBound(index as i32).into()),
+                None => Err(anyhow::anyhow!("No replacement found for index {index}")),
                 Some(v) => Ok(*v),
             }
         }
@@ -174,10 +182,10 @@ fn format_capture<'v, T: Iterator<Item = Value<'v>>>(
     if field.is_empty() {
         conv(args.next_ordered()?, result);
         Ok(())
-    } else if field.bytes().all(|c| c.is_ascii_digit()) {
-        let i = usize::from_str(field).map_err(|e| {
-            anyhow::anyhow!("Error parsing `{field}` as a format string index: {e}")
-        })?;
+    } else if let Ok(i) = i64::from_str(field) {
+        // A negative index is one Bazel looks for, and does not find.
+        let i = usize::try_from(i)
+            .map_err(|_| anyhow::anyhow!("No replacement found for index {field}"))?;
         conv(args.by_index(i)?, result);
         Ok(())
     } else {
@@ -191,7 +199,7 @@ fn format_capture<'v, T: Iterator<Item = Value<'v>>>(
             ));
         }
         match kwargs.get_str(field) {
-            None => Err(ValueError::KeyNotFound(field.to_owned()).into()),
+            None => Err(anyhow::anyhow!("Missing argument '{field}'")),
             Some(v) => {
                 conv(v, result);
                 Ok(())

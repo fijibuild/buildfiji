@@ -178,12 +178,7 @@ pub(crate) fn dict_methods(registry: &mut MethodsBuilder) {
                 Some(v) => Ok(v),
                 None => {
                     mem::drop(me);
-                    Err(anyhow::anyhow!(
-                        "Key `{}` not found in dictionary `{}`",
-                        key.to_repr(),
-                        this.to_repr()
-                    )
-                    .into())
+                    Err(anyhow::anyhow!("KeyError: {}", key.to_repr()).into())
                 }
             },
         }

@@ -86,19 +86,21 @@ pub(crate) fn register_int(globals: &mut GlobalsBuilder) {
         heap: Heap<'v>,
     ) -> starlark::Result<ValueOfUnchecked<'v, StarlarkInt>> {
         let Some(a) = a else {
-            return Ok(ValueOfUnchecked::new(heap.alloc(0)));
+            return Err(anyhow::anyhow!("int() missing 1 required positional argument: x").into());
         };
         let num_or_bool = match a.typed {
             Either::Left(num_or_bool) => num_or_bool,
             Either::Right(s) => {
-                let base = base.unwrap_or(0);
+                let base = base.unwrap_or(10);
                 if base == 1 || base < 0 || base > 36 {
-                    return Err(anyhow::anyhow!(
-                        "{} is not a valid base, int() base must be >= 2 and <= 36",
-                        base
-                    )
-                    .into());
+                    return Err(
+                        anyhow::anyhow!("invalid base {} (want 2 <= base <= 36)", base).into(),
+                    );
                 }
+                if s.is_empty() {
+                    return Err(anyhow::anyhow!("empty string").into());
+                }
+                let original = s;
                 let (negate, s) = {
                     match s.chars().next() {
                         Some('+') => (false, s.get(1..).unwrap()),
@@ -106,11 +108,29 @@ pub(crate) fn register_int(globals: &mut GlobalsBuilder) {
                         _ => (false, s),
                     }
                 };
+                if s.is_empty() {
+                    return Err(anyhow::anyhow!(
+                        "invalid base-{} literal: {:?}",
+                        if base == 0 { 10 } else { base },
+                        original
+                    )
+                    .into());
+                }
                 let base = if base == 0 {
                     match s.get(0..2) {
                         Some("0b") | Some("0B") => 2,
                         Some("0o") | Some("0O") => 8,
                         Some("0x") | Some("0X") => 16,
+                        // A decimal does not start with a 0.
+                        Some(zero)
+                            if zero.starts_with('0') && zero.as_bytes()[1].is_ascii_digit() =>
+                        {
+                            return Err(anyhow::anyhow!(
+                                "cannot infer base when string begins with a 0: {:?}",
+                                original
+                            )
+                            .into());
+                        }
                         _ => 10,
                     }
                 } else {
@@ -142,7 +162,12 @@ pub(crate) fn register_int(globals: &mut GlobalsBuilder) {
                 };
                 // We already handled the sign above, so we are not trying to parse another sign.
                 if s.starts_with('-') || s.starts_with('+') {
-                    return Err(anyhow::anyhow!("Cannot parse `{}` as an integer", s,).into());
+                    return Err(anyhow::anyhow!(
+                        "invalid base-{} literal: {:?}",
+                        if base == 0 { 10 } else { base },
+                        original
+                    )
+                    .into());
                 }
 
                 let x = StarlarkInt::from_str_radix(s, base).map_err(|e| {
@@ -153,12 +178,8 @@ pub(crate) fn register_int(globals: &mut GlobalsBuilder) {
             }
         };
 
-        if let Some(base) = base {
-            return Err(anyhow::anyhow!(
-                "int() cannot convert non-string with explicit base '{}'",
-                base
-            )
-            .into());
+        if base.is_some() {
+            return Err(anyhow::anyhow!("can't convert non-string with explicit base").into());
         }
 
         match num_or_bool {

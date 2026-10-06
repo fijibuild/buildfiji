@@ -7,27 +7,7 @@ use crate::test_support::{replay, run_files};
 
 /// Probes whose answer is the Starlark runtime's generic wording, which
 /// belongs to buildfiji-v32.
-const GENERIC: &[&str] = &[
-    "has no field or method",
-    "has no operator",
-    "unsupported binary operation",
-    "unsupported comparison",
-    "unhashable type",
-    "cannot set .",
-    "is not callable",
-    "in call to len()",
-    "in call to list()",
-    "in call to hash()",
-    "duplicate keyword argument",
-    "positional argument may not follow keyword argument",
-    "print() got unexpected keyword argument",
-    "unsupported unary operation",
-    "invalid slice operand",
-    "argument after **",
-    "keywords must be strings",
-    // What a Starlark function says about the arguments it was given.
-    "lambda() ",
-];
+const GENERIC: &[&str] = &["'P' value has no field or method"];
 
 /// Probes that need something no bead has built yet, or differ in the
 /// crate.

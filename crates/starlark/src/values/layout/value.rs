@@ -946,7 +946,9 @@ impl<'v> Value<'v> {
     /// Plan is to make this return a data type at some point in the future, possibly
     /// move on to `StarlarkValue` and include data from members.
     pub fn describe(self, name: &str) -> String {
-        if self.get_type() == FUNCTION_TYPE {
+        if self.get_type() == FUNCTION_TYPE
+            || self.get_type() == crate::values::function::BUILTIN_FUNCTION_TYPE
+        {
             format!("def {}: pass", self.to_repr().replace(" = ...", " = None"))
         } else {
             format!("# {} = {}", name, self.to_repr())

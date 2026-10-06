@@ -98,7 +98,7 @@ enum EvaluatorError {
     TopFrameNotDef,
     #[error("Coverage not enabled")]
     CoverageNotEnabled,
-    #[error("Local variable `{0}` referenced before assignment")]
+    #[error("local variable '{0}' is referenced before assignment")]
     LocalVariableReferencedBeforeAssignment(String),
     #[error("Max callstack size is already set")]
     CallstackSizeAlreadySet,

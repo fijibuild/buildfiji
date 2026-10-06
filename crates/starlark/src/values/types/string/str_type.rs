@@ -336,14 +336,22 @@ impl<'v> StarlarkValue<'v> for StarlarkStr {
         }
 
         #[inline(always)]
-        fn start_stop_to_none_or(v: Option<Value>) -> crate::Result<NoneOr<i32>> {
+        fn start_stop_to_none_or(v: Option<Value>, what: &str) -> crate::Result<NoneOr<i32>> {
             match v {
                 None => Ok(NoneOr::None),
-                Some(v) => Ok(NoneOr::Other(i32::unpack_value_err(v)?)),
+                Some(v) => Ok(NoneOr::Other(i32::unpack_value_err(v).map_err(|_| {
+                    crate::Error::new_native(anyhow::anyhow!(
+                        "got {} for {what} index, want int",
+                        v.get_type()
+                    ))
+                })?)),
             }
         }
 
-        let (start, stop) = (start_stop_to_none_or(start)?, start_stop_to_none_or(stop)?);
+        let (start, stop) = (
+            start_stop_to_none_or(start, "start")?,
+            start_stop_to_none_or(stop, "stop")?,
+        );
 
         match fast_string::convert_str_indices(self, start.into_option(), stop.into_option()) {
             Some(StrIndices { haystack, .. }) => Ok(heap.alloc_str(haystack).to_value()),

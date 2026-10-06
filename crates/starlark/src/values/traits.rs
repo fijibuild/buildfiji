@@ -402,7 +402,9 @@ pub trait StarlarkValue<'v>:
     /// Return an [`Err`] if there is no hash for this value (e.g. list).
     /// Must be stable between frozen and non-frozen values.
     fn write_hash(&self, hasher: &mut StarlarkHasher) -> crate::Result<()> {
-        if Self::TYPE == FUNCTION_TYPE {
+        if Self::TYPE == FUNCTION_TYPE
+            || Self::TYPE == crate::values::function::BUILTIN_FUNCTION_TYPE
+        {
             // The Starlark spec says values of type "function" must be hashable.
             // We could return the address of the function, but that changes
             // with frozen/non-frozen which breaks freeze for Dict.

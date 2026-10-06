@@ -371,7 +371,10 @@ fn check_fields<'v>(value: Value<'v>, heap: Heap<'v>) -> starlark::Result<()> {
 
 /// The types Bazel calls callable that a `.bzl` can have to give as `init`.
 fn is_callable(value: Value<'_>) -> bool {
-    matches!(value.get_type(), "function" | "Provider" | "RawConstructor")
+    matches!(
+        value.get_type(),
+        "function" | "builtin_function_or_method" | "Provider" | "RawConstructor"
+    )
 }
 
 fn check_init<'v>(value: Value<'v>, _heap: Heap<'v>) -> starlark::Result<()> {

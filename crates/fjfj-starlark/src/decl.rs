@@ -114,7 +114,7 @@ pub(crate) fn is_function(v: Value<'_>) -> bool {
 fn is_callable(v: Value<'_>) -> bool {
     matches!(
         v.get_type(),
-        "function" | "Provider" | "RawConstructor" | "rule"
+        "function" | "builtin_function_or_method" | "Provider" | "RawConstructor" | "rule"
     )
 }
 pub(crate) fn is_dict(v: Value<'_>) -> bool {

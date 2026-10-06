@@ -669,6 +669,11 @@ where
         self.def_info.name.as_str().to_owned()
     }
 
+    fn collect_repr(&self, collector: &mut String) {
+        // As Bazel prints a function (fjfj).
+        collector.push_str(&format!("<function {}>", self.def_info.name.as_str()));
+    }
+
     fn invoke(
         &self,
         me: Value<'v>,

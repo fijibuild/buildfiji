@@ -29,7 +29,6 @@ use crate::values::AllocValue;
 use crate::values::FrozenStringValue;
 use crate::values::Heap;
 use crate::values::Value;
-use crate::values::ValueError;
 use crate::values::ValueLike;
 use crate::values::list::AllocList;
 use crate::values::tuple::UnpackTuple;
@@ -190,16 +189,17 @@ pub(crate) fn register_other(builder: &mut GlobalsBuilder) {
     #[starlark(speculative_exec_safe)]
     fn getattr<'v>(
         #[starlark(require = pos)] a: Value<'v>,
-        #[starlark(require = pos)] attr: &str,
+        #[starlark(require = pos)] name: &str,
         #[starlark(require = pos)] default: Option<Value<'v>>,
         heap: Heap<'v>,
     ) -> starlark::Result<Value<'v>> {
+        let attr = name;
         // TODO(nga): this doesn't cache string hash, so it is suboptimal.
         match a.get_attr(attr, heap)? {
             Some(v) => Ok(v),
             None => match default {
                 Some(x) => Ok(x),
-                None => ValueError::unsupported_owned(a.get_type(), &format!(".{attr}"), None),
+                None => Err(crate::eval::compiler::expr::no_attr_error(a, attr)),
             },
         }
     }
@@ -235,7 +235,7 @@ pub(crate) fn register_other(builder: &mut GlobalsBuilder) {
     /// # "#);
     /// ```
     #[starlark(speculative_exec_safe)]
-    fn hash(#[starlark(require = pos)] a: &str) -> anyhow::Result<i32> {
+    fn hash(#[starlark(require = pos)] value: &str) -> anyhow::Result<i32> {
         // From the starlark spec:
         // > the hash function for strings is the same as that implemented by java.lang.String.hashCode,
         // > a simple polynomial accumulator over the UTF-16 transcoding of the string:
@@ -247,7 +247,7 @@ pub(crate) fn register_other(builder: &mut GlobalsBuilder) {
         #[allow(clippy::never_loop)]
         'ascii: loop {
             let mut hash = 0i32;
-            for &b in a.as_bytes() {
+            for &b in value.as_bytes() {
                 if b > 0x7f {
                     break 'ascii;
                 }
@@ -256,7 +256,7 @@ pub(crate) fn register_other(builder: &mut GlobalsBuilder) {
             return Ok(hash);
         }
 
-        Ok(a.encode_utf16().fold(0i32, |hash: i32, c: u16| {
+        Ok(value.encode_utf16().fold(0i32, |hash: i32, c: u16| {
             31i32.wrapping_mul(hash).wrapping_add(c as i32)
         }))
     }

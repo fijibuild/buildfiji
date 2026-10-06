@@ -160,7 +160,7 @@ pub(crate) fn list_methods(builder: &mut MethodsBuilder) {
                 }
             }
         }
-        Err(anyhow::anyhow!("Element '{}' not found in '{}'", needle, this).into())
+        Err(anyhow::anyhow!("item {} not found in list", needle.to_repr()).into())
     }
 
     /// [list.insert](
@@ -222,10 +222,15 @@ pub(crate) fn list_methods(builder: &mut MethodsBuilder) {
         #[starlark(require = pos)] index: Option<i32>,
     ) -> anyhow::Result<Value<'v>> {
         let this = ListData::from_value_mut(this)?;
-        let index = index.unwrap_or_else(|| (this.len() as i32) - 1);
+        let given = index.unwrap_or(-1);
+        let index = if given < 0 {
+            given.saturating_add(this.len() as i32)
+        } else {
+            given
+        };
         if index < 0 || index >= this.len() as i32 {
             return Err(ValueError::SequenceIndex {
-                index,
+                index: given,
                 len: this.len(),
             }
             .into());
@@ -280,9 +285,8 @@ pub(crate) fn list_methods(builder: &mut MethodsBuilder) {
                 Some(i) => i,
                 None => {
                     return Err(anyhow::anyhow!(
-                        "Element '{}' not found in list '{}'",
-                        needle,
-                        this
+                        "item {} not found in list",
+                        needle.to_repr()
                     ));
                 }
             }

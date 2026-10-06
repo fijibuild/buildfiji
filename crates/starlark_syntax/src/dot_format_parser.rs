@@ -135,13 +135,15 @@ impl<'a> FormatParser<'a> {
                                     self.view.eat(2);
                                     return Ok(Some(FormatToken::Escape(EscapeCurlyBrace::Open)));
                                 }
-                                break;
+                                return Err(anyhow::anyhow!(
+                                    "Nested replacement fields are not supported"
+                                ));
                             }
                             _ => i += 1,
                         }
                     }
                     return Err(anyhow::anyhow!(
-                        "Unmatched '{{' in format string `{}`",
+                        "Found '{{' without matching '}}' in format string `{}`",
                         self.view.original()
                     ));
                 }
@@ -152,7 +154,7 @@ impl<'a> FormatParser<'a> {
                         return Ok(Some(FormatToken::Escape(EscapeCurlyBrace::Close)));
                     }
                     return Err(anyhow::anyhow!(
-                        "Standalone '}}' in format string `{}`",
+                        "Found '}}' without matching '{{' in format string `{}`",
                         self.view.original()
                     ));
                 }
@@ -267,6 +269,9 @@ mod tests {
         let s = "}foo";
         let mut parser = FormatParser::new(s);
         let error_msg = parser.next().unwrap_err().to_string();
-        assert_eq!(error_msg, "Standalone '}' in format string `}foo`");
+        assert_eq!(
+            error_msg,
+            "Found '}' without matching '{' in format string `}foo`"
+        );
     }
 }

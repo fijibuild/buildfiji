@@ -44,6 +44,7 @@ enum ArgsStage {
 impl<'a, P: AstPayload> CallArgsUnpack<'a, P> {
     pub fn unpack(args: &'a CallArgsP<P>, codemap: &CodeMap) -> Result<Self, EvalException> {
         let err = |span, msg: &str| Err(EvalException::parser_error(msg, span, codemap));
+        // Bazel words these as it does (fjfj).
 
         let args = &args.args;
 
@@ -57,17 +58,27 @@ impl<'a, P: AstPayload> CallArgsUnpack<'a, P> {
             match &arg.node {
                 ArgumentP::Positional(_) => {
                     if stage != ArgsStage::Positional {
-                        return err(arg.span, "positional argument after non positional");
+                        return err(
+                            arg.span,
+                            if stage == ArgsStage::Named {
+                                "positional argument may not follow keyword argument"
+                            } else {
+                                "positional argument may not follow *args or **kwargs"
+                            },
+                        );
                     } else {
                         num_pos += 1;
                     }
                 }
                 ArgumentP::Named(n, _) => {
                     if stage > ArgsStage::Named {
-                        return err(arg.span, "named argument after *args or **kwargs");
+                        return err(
+                            arg.span,
+                            &format!("keyword argument {n} may not follow **kwargs", n = n.node),
+                        );
                     } else if !named_args.insert(&n.node) {
                         // Check the names are distinct
-                        return err(n.span, "repeated named argument");
+                        return err(n.span, &format!("duplicate keyword argument: {}", n.node));
                     } else {
                         stage = ArgsStage::Named;
                         num_named += 1;

@@ -8,23 +8,9 @@ use starlark::environment::Module;
 use starlark::eval::Evaluator;
 use std::cell::RefCell;
 
-/// Probes whose answer is the Starlark runtime's wording, not the depset's:
-/// how iterating, indexing, `hash()`, attribute lookup and a method's arity
-/// fail, and how a builtin prints. They belong to buildfiji-v32, and
-/// `depset([len])` (a builtin function is "mutable" to Bazel) to
-/// buildfiji-ahp.
-const RUNTIME_WORDING: &[&str] = &[
-    "[x for x in a]",
-    "hash(a)",
-    "a[0]",
-    "to_list(1)",
-    "to_list(x=1)",
-    ".foo",
-    ".to_list().to_list()",
-    "print(a.to_list)",
-    "print(depset)",
-    "depset([len",
-];
+/// Probes that are known differences: `depset([len])` (a builtin function is
+/// "mutable" to Bazel) belongs to buildfiji-ahp.
+const RUNTIME_WORDING: &[&str] = &["depset([len"];
 
 fn known_difference(src: &str) -> bool {
     RUNTIME_WORDING.iter().any(|marker| src.contains(marker))

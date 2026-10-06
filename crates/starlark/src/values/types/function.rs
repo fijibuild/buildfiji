@@ -67,6 +67,9 @@ enum FunctionError {
 /// Return value of `type(any function)`.
 pub const FUNCTION_TYPE: &str = "function";
 
+/// The type of a native function or method, which Bazel names this way (fjfj).
+pub const BUILTIN_FUNCTION_TYPE: &str = "builtin_function_or_method";
+
 #[derive(Debug, Allocative, Clone, Copy, Dupe, pagable::Pagable)]
 #[doc(hidden)]
 pub enum SpecialBuiltinFunction {
@@ -143,8 +146,17 @@ impl<'v> AllocValue<'v> for NativeFunction {
 }
 
 /// Define the function type
-#[starlark_value(type = FUNCTION_TYPE)]
+#[starlark_value(type = BUILTIN_FUNCTION_TYPE)]
 impl<'v> StarlarkValue<'v> for NativeFunction {
+    fn collect_repr(&self, collector: &mut String) {
+        // As Bazel prints a built-in function (fjfj).
+        collector.push_str(&format!("<built-in function {}>", self.name));
+    }
+
+    fn name_for_call_stack(&self, _me: Value<'v>) -> String {
+        self.name.clone()
+    }
+
     fn invoke(
         &self,
         _me: Value<'v>,
@@ -373,11 +385,24 @@ impl<'v, V: ValueLike<'v>> BoundMethodGen<V> {
     }
 }
 
-#[starlark_value(type = FUNCTION_TYPE)]
+#[starlark_value(type = BUILTIN_FUNCTION_TYPE)]
 impl<'v, V: ValueLike<'v>> StarlarkValue<'v> for BoundMethodGen<V>
 where
     Self: ProvidesStaticType<'v>,
 {
+    fn collect_repr(&self, collector: &mut String) {
+        // As Bazel prints a built-in method (fjfj).
+        collector.push_str(&format!(
+            "<built-in method {} of {} value>",
+            self.method.name,
+            self.this.to_value().get_type()
+        ));
+    }
+
+    fn name_for_call_stack(&self, _me: Value<'v>) -> String {
+        self.method.name.clone()
+    }
+
     fn invoke(
         &self,
         _me: Value<'v>,

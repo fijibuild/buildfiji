@@ -345,8 +345,10 @@ impl StmtsCompiled {
 #[derive(Debug, Error)]
 pub(crate) enum AssignError {
     // Incorrect number of value to unpack (expected, got)
-    #[error("Unpacked {1} values but expected {0}")]
+    #[error("too {} values to unpack (got {}, want {})", if .1 < .0 { "few" } else { "many" }, .1, .0)]
     IncorrectNumberOfValueToUnpack(i32, i32),
+    #[error("got '{0}' in sequence assignment (want {1}-element sequence)")]
+    NotASequence(String, usize),
 }
 
 #[derive(Clone, Debug, VisitSpanMut, starlark_derive::StarlarkPagable)]

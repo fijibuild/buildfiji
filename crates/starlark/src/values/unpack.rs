@@ -287,6 +287,14 @@ fn bazel_type_name(ty: &Ty) -> String {
     // A parameter that takes `None` for its default is a plain `string` to
     // Bazel, so `None` is only named when it is all there is.
     let text = ty.to_string();
+    // The one Bazel spells out: what `int()` takes.
+    {
+        let mut parts: Vec<&str> = text.split(" | ").collect();
+        parts.sort_unstable();
+        if parts == ["bool", "float", "int", "str"] {
+            return "string, bool, int, or float".to_owned();
+        }
+    }
     let parts: Vec<&str> = text.split(" | ").filter(|part| *part != "None").collect();
     let parts = if parts.is_empty() {
         vec!["None"]

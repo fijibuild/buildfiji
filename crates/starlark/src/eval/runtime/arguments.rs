@@ -38,6 +38,7 @@ use crate::hint::unlikely;
 use crate::values::Heap;
 use crate::values::StringValue;
 use crate::values::Value;
+use crate::values::ValueError;
 use crate::values::ValueLike;
 use crate::values::dict::Dict;
 use crate::values::dict::DictRef;
@@ -57,6 +58,15 @@ pub(crate) enum FunctionError {
         names: Vec<String>,
         function: String,
     },
+    /// What a native function says of an extra positional argument (fjfj).
+    #[error("{function}() got unexpected positional argument{}", if *count == 1 { "" } else { "s" })]
+    NativeExtraPositional { function: String, count: usize },
+    /// What a native function says of an unknown keyword (fjfj).
+    #[error("{function}() got unexpected keyword argument{} {}", if names.len() == 1 { "" } else { "s" }, names.iter().map(|n| format!("'{n}'")).collect::<Vec<_>>().join(", "))]
+    NativeExtraNamed {
+        function: String,
+        names: Vec<String>,
+    },
     #[error("{function}() got multiple values for parameter '{name}'")]
     MultipleValues { function: String, name: String },
     #[error("{function}() missing {} required {kind} argument{}: {}", names.len(), if names.len() == 1 { "" } else { "s" }, names.join(", "))]
@@ -69,12 +79,12 @@ pub(crate) enum FunctionError {
     MissingCount { function: String, count: usize },
     #[error("Argument `{name}` occurs more than once")]
     RepeatedArg { name: String },
-    #[error("The argument provided for *args is not an identifier")]
-    ArgsValueIsNotString,
+    #[error("keywords must be strings, not {0}")]
+    ArgsValueIsNotString(String),
     #[error("The argument provided for *args is not iterable")]
     ArgsArrayIsNotIterable,
-    #[error("The argument provided for **kwargs is not a dictionary")]
-    KwArgsIsNotDict,
+    #[error("argument after ** must be a dict, not {0}")]
+    KwArgsIsNotDict(String),
     #[error("Wrong number of positional arguments, expected {}, got {got}",
         if min == max {min.to_string()} else {format!("between {min} and {max}")})]
     WrongNumberOfArgs { min: usize, max: usize, got: usize },
@@ -87,11 +97,31 @@ pub(crate) fn named_native_error(error: crate::Error, function: &str) -> crate::
     let (Function(inner) | Native(inner) | Value(inner) | Other(inner)) = error.kind() else {
         return error;
     };
-    let named = if let Some(&FunctionError::WrongNumberOfArgs { min, max, got }) =
+    let named = if let Some(FunctionError::ExtraPositionalArg {
+        accepted: 0, got, ..
+    }) = inner.downcast_ref::<FunctionError>()
+    {
+        Some(crate::Error::from(FunctionError::NativeExtraPositional {
+            function: function.to_owned(),
+            count: *got,
+        }))
+    } else if let Some(FunctionError::ExtraNamedArg { names, .. }) =
+        inner.downcast_ref::<FunctionError>()
+    {
+        Some(crate::Error::from(FunctionError::NativeExtraNamed {
+            function: function.to_owned(),
+            names: names.clone(),
+        }))
+    } else if let Some(&FunctionError::WrongNumberOfArgs { min, max, got }) =
         inner.downcast_ref::<FunctionError>()
     {
         let function = function.to_owned();
-        Some(if got > max {
+        Some(if got > max && max == 0 {
+            FunctionError::NativeExtraPositional {
+                function,
+                count: got,
+            }
+        } else if got > max {
             FunctionError::ExtraPositionalArg {
                 accepted: max,
                 got,
@@ -104,6 +134,29 @@ pub(crate) fn named_native_error(error: crate::Error, function: &str) -> crate::
             }
         })
         .map(crate::Error::from)
+    } else if let Some(ValueError::OperationNotSupported { op, typ }) =
+        inner.downcast_ref::<ValueError>()
+    {
+        // `len(x)` and the functions that iterate their argument say which
+        // parameter was of the wrong type.
+        let (param, want) = match (function, op.as_str()) {
+            ("len", "len()") => ("x", "iterable or string"),
+            ("list" | "tuple", "(iter)") => ("x", "iterable"),
+            ("sorted", "(iter)") => ("iterable", "iterable"),
+            ("all" | "any", "(iter)") => ("elements", "iterable"),
+            ("reversed", "(iter)") => ("sequence", "iterable"),
+            ("enumerate", "(iter)") => ("list", "iterable"),
+            ("extend", "(iter)") => ("items", "iterable"),
+            _ => ("", ""),
+        };
+        (!param.is_empty()).then(|| {
+            crate::Error::new_value(ParameterType {
+                function: Some(function.to_owned()),
+                param: param.to_owned(),
+                want: want.to_owned(),
+                actual: typ.clone(),
+            })
+        })
     } else {
         inner
             .downcast_ref::<ParameterType>()
@@ -114,6 +167,18 @@ pub(crate) fn named_native_error(error: crate::Error, function: &str) -> crate::
             .map(crate::Error::new_value)
     };
     named.unwrap_or(error)
+}
+
+/// The type of the first key of `kwargs` that is not a string.
+fn first_non_string_key(kwargs: Option<Value>) -> String {
+    kwargs
+        .and_then(DictRef::from_value)
+        .and_then(|dict| {
+            dict.iter()
+                .map(|(k, _)| k)
+                .find(|k| StringValue::new(*k).is_none())
+        })
+        .map_or_else(String::new, |k| k.get_type().to_owned())
 }
 
 /// How Bazel words too many positional arguments (fjfj).
@@ -357,7 +422,10 @@ impl<'v, 'a> Arguments<'v, 'a> {
                 if self.0.names().names().is_empty() {
                     match kwargs.downcast_ref_key_string() {
                         Some(kwargs) => Ok(kwargs.clone()),
-                        None => Err(FunctionError::ArgsValueIsNotString.into()),
+                        None => Err(FunctionError::ArgsValueIsNotString(first_non_string_key(
+                            self.0.kwargs,
+                        ))
+                        .into()),
                     }
                 } else {
                     // We have to insert the names before the kwargs since the iteration order is observable
@@ -429,7 +497,7 @@ impl<'v, 'a> Arguments<'v, 'a> {
         match self.0.kwargs {
             None => Ok(None),
             Some(kwargs) => match DictRef::from_value(kwargs) {
-                None => Err(FunctionError::KwArgsIsNotDict.into()),
+                None => Err(FunctionError::KwArgsIsNotDict(kwargs.get_type().to_owned()).into()),
                 Some(x) => Ok(Some(x)),
             },
         }
@@ -439,7 +507,7 @@ impl<'v, 'a> Arguments<'v, 'a> {
     #[inline(always)]
     pub(crate) fn unpack_kwargs_key_as_value(k: Value<'v>) -> crate::Result<StringValue<'v>> {
         match StringValue::new(k) {
-            None => Err(FunctionError::ArgsValueIsNotString.into()),
+            None => Err(FunctionError::ArgsValueIsNotString(k.get_type().to_owned()).into()),
             Some(k) => Ok(k),
         }
     }

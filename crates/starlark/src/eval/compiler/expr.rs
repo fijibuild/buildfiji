@@ -70,7 +70,6 @@ use crate::values::FrozenValueTyped;
 use crate::values::Heap;
 use crate::values::StarlarkValue;
 use crate::values::Value;
-use crate::values::ValueError;
 use crate::values::ValueLike;
 use crate::values::bool::StarlarkBool;
 use crate::values::function::BoundMethodGen;
@@ -1021,7 +1020,7 @@ impl ExprCompiled {
 
 #[derive(Debug, Clone, Error)]
 pub(crate) enum EvalError {
-    #[error("Dictionary key repeated for `{0}`")]
+    #[error("dictionary expression has duplicate key: {0}")]
     DuplicateDictionaryKey(String),
 }
 
@@ -1111,8 +1110,23 @@ impl<P: AstPayload> CompilerExprUtil<P> for ExprP<P> {
 #[cold]
 #[inline(never)]
 fn get_attr_no_attr_error<'v>(x: Value<'v>, attribute: &Symbol) -> crate::Error {
-    // Bazel does not guess what was meant.
-    ValueError::NoAttr(x.get_type().to_owned(), attribute.as_str().to_owned()).into()
+    no_attr_error(x, attribute.as_str())
+}
+
+/// The error for `x.attribute` when `x` has none, worded as Bazel does and
+/// not guessing what was meant (fjfj).
+#[cold]
+#[inline(never)]
+pub(crate) fn no_attr_error<'v>(x: Value<'v>, attribute: &str) -> crate::Error {
+    let typ = x.get_type();
+    let mut text = format!("'{typ}' value has no field or method '{attribute}'");
+    // A struct lists what it has.
+    if typ == "struct" {
+        let mut names: Vec<_> = x.dir_attr().iter().map(|s| s.as_str().to_owned()).collect();
+        names.sort();
+        text.push_str(&format!("\nAvailable attributes: {}", names.join(", ")));
+    }
+    crate::Error::new_kind(crate::ErrorKind::Value(anyhow::anyhow!(text)))
 }
 
 pub(crate) enum MemberOrValue<'v, 'a> {

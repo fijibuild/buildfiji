@@ -238,7 +238,12 @@ where
         let l = match i32::unpack_value(other) {
             Ok(Some(l)) => l,
             Ok(None) => return None,
-            Err(e) => return Some(Err(e)),
+            Err(_) => {
+                return Some(Err(crate::Error::new_native(anyhow::anyhow!(
+                    "got {} for repeat, want value in signed 32-bit range",
+                    other.to_repr()
+                ))));
+            }
         };
         if i64::from(l.max(0)) * self.content().len() as i64 > i64::from(i32::MAX) {
             return Some(Err(crate::Error::new_native(anyhow::anyhow!(

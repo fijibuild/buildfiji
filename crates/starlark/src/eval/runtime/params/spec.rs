@@ -756,7 +756,12 @@ impl<'v> ParametersSpec<Value<'v>> {
                 Some(y) => {
                     for (k, v) in y.iter_hashed() {
                         match StringValue::new(*k.key()) {
-                            None => return Err(FunctionError::ArgsValueIsNotString.into()),
+                            None => {
+                                return Err(FunctionError::ArgsValueIsNotString(
+                                    k.key().get_type().to_owned(),
+                                )
+                                .into());
+                            }
                             Some(s) => {
                                 let repeat = match self
                                     .names
@@ -781,7 +786,11 @@ impl<'v> ParametersSpec<Value<'v>> {
                         }
                     }
                 }
-                None => return Err(FunctionError::KwArgsIsNotDict.into()),
+                None => {
+                    return Err(
+                        FunctionError::KwArgsIsNotDict(param_kwargs.get_type().to_owned()).into(),
+                    );
+                }
             }
         }
 

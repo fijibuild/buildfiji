@@ -293,14 +293,24 @@ impl InstrNoFlowImpl for InstrUnpackImpl {
         (source, target): &(BcSlotIn, FrozenAnyArray<BcSlotOut>),
     ) -> crate::Result<()> {
         let v = frame.get_bc_slot(*source);
-        let nvl = v.length()?;
+        let not_a_sequence = || {
+            crate::Error::new_other(AssignError::NotASequence(
+                v.get_type().to_owned(),
+                target.len(),
+            ))
+        };
+        let nvl = if v.unpack_str().is_some() {
+            return Err(not_a_sequence());
+        } else {
+            v.length().map_err(|_| not_a_sequence())?
+        };
         if nvl != target.len() as i32 {
             return Err(crate::Error::new_other(
                 AssignError::IncorrectNumberOfValueToUnpack(target.len() as i32, nvl),
             ));
         }
         let mut i = 0;
-        for item in v.iterate(eval.heap())? {
+        for item in v.iterate(eval.heap()).map_err(|_| not_a_sequence())? {
             if i >= target.len() {
                 return Err(internal_error!(
                     "iterate() produced more items than length() reported (expected {}, got at least {})",

@@ -9,12 +9,7 @@ use crate::test_support::{replay, replay_in};
 
 /// Probes whose answer is the Starlark runtime's generic wording, which
 /// belongs to buildfiji-v32.
-const GENERIC: &[&str] = &[
-    "has no field or method",
-    "unsupported binary operation",
-    "cannot set .name field",
-    "in call to len()",
-];
+const GENERIC: &[&str] = &[];
 
 /// Probes with a known difference: `.name()` calls the attribute as if it
 /// were a method (buildfiji-v32), and `%s` and an unnumbered `{}` format a

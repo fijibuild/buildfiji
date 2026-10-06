@@ -181,7 +181,7 @@ impl StarlarkFloat {
 
     pub(crate) fn floor_div_impl(a: f64, b: f64) -> anyhow::Result<f64> {
         if b == 0.0 {
-            Err(ValueError::DivisionByZero.into())
+            Err(anyhow::anyhow!("integer division by zero"))
         } else {
             Ok((a / b).floor())
         }
@@ -189,7 +189,7 @@ impl StarlarkFloat {
 
     pub(crate) fn percent_impl(a: f64, b: f64) -> anyhow::Result<f64> {
         if b == 0.0 {
-            Err(ValueError::DivisionByZero.into())
+            Err(anyhow::anyhow!("floating-point modulo by zero"))
         } else {
             let r = a % b;
             if r == 0.0 {

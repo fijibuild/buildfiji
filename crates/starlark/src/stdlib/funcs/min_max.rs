@@ -32,6 +32,18 @@ fn min_max_iter<'v>(
     // Select min on true, max on false.
     min: bool,
 ) -> crate::Result<Value<'v>> {
+    if let Some(key) = key {
+        if !key.is_none() && !key.vtable().starlark_value.HAS_invoke {
+            return Err(crate::Error::new_value(
+                crate::values::unpack::ParameterType {
+                    function: Some(if min { "min" } else { "max" }.to_owned()),
+                    param: "key".to_owned(),
+                    want: "callable or NoneType".to_owned(),
+                    actual: key.get_type().to_owned(),
+                },
+            ));
+        }
+    }
     let mut max = match it.next() {
         Some(x) => x,
         None => {

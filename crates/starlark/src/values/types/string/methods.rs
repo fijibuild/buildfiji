@@ -725,9 +725,7 @@ pub(crate) fn string_methods(builder: &mut MethodsBuilder) {
         heap: Heap<'v>,
     ) -> anyhow::Result<(StringValue<'v>, StringValue<'v>, StringValue<'v>)> {
         if needle.is_empty() {
-            return Err(anyhow::anyhow!(
-                "Empty separator cannot be used for partitioning"
-            ));
+            return Err(anyhow::anyhow!("empty separator"));
         }
         if let Some(offset) = this.find(needle.as_str()) {
             let offset2 = offset + needle.len();
@@ -893,9 +891,7 @@ pub(crate) fn string_methods(builder: &mut MethodsBuilder) {
         heap: Heap<'v>,
     ) -> anyhow::Result<(StringValue<'v>, StringValue<'v>, StringValue<'v>)> {
         if needle.is_empty() {
-            return Err(anyhow::anyhow!(
-                "Empty separator cannot be used for partitioning"
-            ));
+            return Err(anyhow::anyhow!("empty separator"));
         }
         if let Some(offset) = this.rfind(needle.as_str()) {
             let offset2 = offset + needle.len();

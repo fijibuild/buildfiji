@@ -4,65 +4,24 @@
 # buildfiji-tg2: in-place set operators, and the wording of the set errors
 set.star:1
 
-# buildfiji-v32, left after the patches to the crate (third_party/starlark): the
-# wording of the index errors (list.star:1) and of the json ones (json.star:1)
-list.star:1
-json.star:1
-
 # buildfiji-exk: the harness has no freeze() or mutablestruct
 dict.star:1
 fields.star:1
 function.star:84
 
-# buildfiji-v32: the crate's wording of errors and of a few reprs (the 'unsupported binary operation: ...', type-error, format and index messages Bazel words its own way)
-all_any.star:1
-comprehension.star:1
+# buildfiji-ahp: a builtin function is unhashable to Bazel
 dict.star:50
+
+# buildfiji-rkw5: floats and ints (repr digits, shifts, 32-bit range errors)
 float.star:1
-function.star:32
-function.star:60
-function.star:147
-function.star:173
 int.star:1
-int_constructor.star:1
-list_mutation.star:44
-list_mutation.star:57
-list_slices.star:1
-loop.star:1
-loop.star:15
-loop.star:17
-loop.star:19
-loop.star:23
-loop.star:33
-loop.star:37
-loop.star:39
-loop.star:41
-loop.star:43
-loop.star:52
-loop.star:54
-loop.star:56
-loop.star:141
-loop.star:143
-loop.star:145
-loop.star:147
-loop.star:149
-min_max.star:1
 range.star:1
-reversed.star:1
+
+# buildfiji-5alc: recursion, sorted of dicts, replace with a negative count, excessive extend
+function.star:147
 sorted.star:1
-string_format.star:57
-string_format.star:59
-string_format.star:61
-string_format.star:63
-string_format.star:65
-string_format.star:67
-string_format.star:73
-string_format.star:75
-string_format.star:77
-string_format.star:79
-string_format.star:87
-string_format.star:89
 string_misc.star:1
-string_partition.star:1
-string_slice_index.star:1
-tuple.star:1
+list_mutation.star:44
+
+# buildfiji-mpiv: json errors
+json.star:1

@@ -183,7 +183,7 @@ where
             (true, Some(name)) => self
                 .get(name)
                 .ok_or_else(|| fatal(format!("key {name:?} not found in OutputGroupInfo"))),
-            _ => Err(fatal("type 'struct' is not indexable")),
+            _ => starlark::values::ValueError::unsupported_with(self, "[]", index),
         }
     }
 

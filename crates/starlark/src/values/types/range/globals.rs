@@ -71,9 +71,7 @@ pub(crate) fn register_range(globals: &mut GlobalsBuilder) {
         let step = match NonZeroI32::new(step) {
             Some(step) => step,
             None => {
-                return Err(anyhow::anyhow!(
-                    "Third argument of range (step) cannot be zero"
-                ));
+                return Err(anyhow::anyhow!("step cannot be 0"));
             }
         };
         Ok(Range::new(start, stop, step))

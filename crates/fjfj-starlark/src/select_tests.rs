@@ -9,20 +9,8 @@ use crate::test_support::{replay, replay_build};
 /// Probes whose answer is the Starlark runtime's generic wording, which
 /// belongs to buildfiji-v32.
 const GENERIC: &[&str] = &[
-    "has no field or method",
-    "has no operator",
-    "unsupported binary operation",
-    "unsupported comparison",
-    "unhashable type",
-    "in call to len()",
-    "in call to list()",
-    "in call to hash()",
-    "in call to sorted()",
-    "in call to depset()",
-    "is not iterable",
-    "str() accepts no more than",
-    "dictionary expression has duplicate key",
     "no native function or rule",
+    "unsupported binary operation",
     "not found in view",
 ];
 

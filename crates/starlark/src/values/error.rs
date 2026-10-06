@@ -71,7 +71,21 @@ fn unary_message(op: &str, typ: &str) -> String {
     match op {
         "-" | "+" | "~" => format!("unsupported unary operation: {op}{typ}"),
         "(iter)" => format!("type '{typ}' is not iterable"),
+        "len()" => format!(
+            "in call to len(), parameter 'x' got value of type '{typ}', want 'iterable or string'"
+        ),
         "call()" => format!("'{typ}' object is not callable"),
+        "[::]" => format!("invalid slice operand: {typ}"),
+        _ if op.starts_with("format(%") && op.ends_with(')') => {
+            format!(
+                "got {typ} for '{}' format, want int or float",
+                &op[7..op.len() - 1]
+            )
+        }
+        _ if op.starts_with('.') && op.ends_with('=') => {
+            format!("cannot set {} field of {typ} value", &op[..op.len() - 1])
+        }
+        _ if op.starts_with('.') => format!("'{typ}' value has no field or method '{}'", &op[1..]),
         _ => format!("Operation `{op}` not supported on type `{typ}`"),
     }
 }
