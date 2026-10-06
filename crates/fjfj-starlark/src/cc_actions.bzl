@@ -177,9 +177,8 @@ def get_link_args(*, feature_configuration, action_name, build_variables, parame
     line = _get_memory_inefficient_command_line(feature_configuration, action_name, build_variables)
     args.add_all([a for a in line if a != "@LINKER_PARAM_FILE_PLACEHOLDER"])
     if parameter_file_type != None:
-        # Whether it is written is the Args': the command line is split when it
-        # would be too long, which fjfj does not measure yet.
-        args.use_param_file("@%s", use_always = False)
+        # Bazel writes it for every link and archive that may split its command line.
+        args.use_param_file("@%s", use_always = True)
         args.set_param_file_format("multiline" if parameter_file_type == "UNQUOTED" else "shell")
     return args
 
