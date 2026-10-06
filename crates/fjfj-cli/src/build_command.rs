@@ -218,6 +218,8 @@ pub(crate) struct Report {
     pub strategy: &'static str,
     pub elapsed: Duration,
     pub execution: Duration,
+    /// The longest chain of actions that ran, by the time each took.
+    pub critical_path: Duration,
 }
 
 impl Report {
@@ -240,6 +242,7 @@ impl Report {
             strategy: "linux-sandbox",
             elapsed: Duration::ZERO,
             execution: Duration::ZERO,
+            critical_path: Duration::ZERO,
         }
     }
 
@@ -596,6 +599,7 @@ pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> R
     ));
     report.execution = execution_started.elapsed();
     report.outputs = std::mem::take(&mut *collector.outputs.lock().unwrap());
+    report.critical_path = outcome.critical_path;
     report.spawned = outcome.spawned;
     report.internal = outcome.ran.saturating_sub(outcome.spawned);
     report.cache_hits = outcome.cached;
@@ -861,7 +865,7 @@ pub(crate) fn print(
     eprintln!(
         "INFO: Elapsed time: {:.3}s, Critical Path: {:.2}s",
         report.elapsed.as_secs_f64(),
-        report.execution.as_secs_f64()
+        report.critical_path.as_secs_f64()
     );
     // Bazel's summary: `N processes: H action cache hit, I internal, S linux-sandbox.`
     let processes = report.spawned + report.internal;

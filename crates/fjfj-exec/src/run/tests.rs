@@ -703,6 +703,34 @@ async fn the_closure_counts_what_the_requested_outputs_need_and_no_more() {
 }
 
 #[tokio::test]
+async fn the_critical_path_is_the_longest_chain_not_the_time_of_all_of_them() {
+    let (_dir, layout) = layout();
+    let (a, b, c) = (out("a"), out("b"), out("c"));
+    let actions = vec![
+        shell(
+            &format!("sleep 0.3; echo a > {}", a.exec_path()),
+            vec![],
+            vec![a.clone()],
+        ),
+        shell(
+            &format!("sleep 0.3; echo b > {}", b.exec_path()),
+            vec![a.clone()],
+            vec![b.clone()],
+        ),
+        // Alongside the chain, not part of it.
+        shell(
+            &format!("sleep 0.3; echo c > {}", c.exec_path()),
+            vec![],
+            vec![c.clone()],
+        ),
+    ];
+    let outcome = run(&layout, actions, &[b, c], false).await;
+    let sum: std::time::Duration = outcome.durations.iter().map(|(_, d)| *d).sum();
+    assert!(outcome.critical_path >= std::time::Duration::from_millis(600));
+    assert!(outcome.critical_path < sum);
+}
+
+#[tokio::test]
 async fn a_parameter_file_write_is_not_counted_as_an_action() {
     let (_dir, layout) = layout();
     let (params, b) = (out("p"), out("b"));

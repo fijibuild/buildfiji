@@ -114,6 +114,9 @@ pub struct Failure {
 pub struct Outcome {
     /// Actions the requested outputs need: what makes them, and what that reads.
     pub closure: usize,
+    /// The longest chain of actions that ran, by the time each took: what a
+    /// build could not have gone faster than, however many jobs it had.
+    pub critical_path: std::time::Duration,
     /// Actions that ran a command.
     pub spawned: usize,
     /// Actions of any kind that ran.
@@ -219,17 +222,28 @@ pub async fn execute(
     wanted.sort_unstable();
     wanted.dedup();
     let closure = closure_size(&scheduler.actions, &scheduler.by_output, &wanted);
+    let roots = wanted.clone();
     join_all(wanted.into_iter().map(|id| scheduler.run(id))).await;
     let _ = scheduler.cache.save();
     let _ = remove(&layout.output_base.join("sandbox"));
+    let durations = std::mem::take(&mut *scheduler.durations.lock().unwrap());
+    let cached_outputs = std::mem::take(&mut *scheduler.cached_outputs.lock().unwrap());
+    let critical_path = critical_path(
+        &scheduler.actions,
+        &scheduler.by_output,
+        &roots,
+        &durations,
+        &cached_outputs,
+    );
     Outcome {
         closure,
+        critical_path,
         spawned: scheduler.spawned.load(Ordering::Relaxed),
         ran: scheduler.ran.load(Ordering::Relaxed),
         cached: scheduler.cached.load(Ordering::Relaxed),
         failures: std::mem::take(&mut *scheduler.failures.lock().unwrap()),
-        durations: std::mem::take(&mut *scheduler.durations.lock().unwrap()),
-        cached_outputs: std::mem::take(&mut *scheduler.cached_outputs.lock().unwrap()),
+        durations,
+        cached_outputs,
     }
 }
 
@@ -261,6 +275,68 @@ fn closure_size(
         );
     }
     count
+}
+
+/// The longest chain, from the actions that make what was requested back
+/// through what they read, of the time each action that ran took. An action
+/// that did not run took no time.
+fn critical_path(
+    actions: &[Arc<Action>],
+    by_output: &HashMap<Artifact, usize>,
+    roots: &[usize],
+    durations: &[(String, std::time::Duration)],
+    cached_outputs: &[String],
+) -> std::time::Duration {
+    let cached: std::collections::HashSet<&str> =
+        cached_outputs.iter().map(String::as_str).collect();
+    let took: HashMap<&str, std::time::Duration> = durations
+        .iter()
+        .filter(|(path, _)| !cached.contains(path.as_str()))
+        .map(|(path, d)| (path.as_str(), *d))
+        .collect();
+    let own = |id: usize| {
+        actions[id]
+            .outputs
+            .first()
+            .and_then(|first| took.get(first.exec_path().as_str()).copied())
+            .unwrap_or_default()
+    };
+    let makers = |id: usize| {
+        actions[id]
+            .inputs
+            .iter()
+            .filter_map(|i| by_output.get(i).copied())
+            .collect::<Vec<_>>()
+    };
+    // Post-order over the closure, so a chain is known once what it reads is.
+    let mut chain: Vec<Option<std::time::Duration>> = vec![None; actions.len()];
+    let mut stack: Vec<(usize, bool)> = roots.iter().map(|&r| (r, false)).collect();
+    while let Some((id, visited)) = stack.pop() {
+        if chain[id].is_some() {
+            continue;
+        }
+        if visited {
+            let behind = makers(id)
+                .into_iter()
+                .filter_map(|m| chain[m])
+                .max()
+                .unwrap_or_default();
+            chain[id] = Some(own(id) + behind);
+        } else {
+            stack.push((id, true));
+            stack.extend(
+                makers(id)
+                    .into_iter()
+                    .filter(|&m| chain[m].is_none())
+                    .map(|m| (m, false)),
+            );
+        }
+    }
+    roots
+        .iter()
+        .filter_map(|&r| chain[r])
+        .max()
+        .unwrap_or_default()
 }
 
 /// What an action not run before is expected to take, in microseconds: by
