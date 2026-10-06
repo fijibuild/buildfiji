@@ -870,6 +870,10 @@ async fn build_main(
             });
         }
     }
+    if run_mode && targets.targets.is_empty() && !targets.failures.is_empty() {
+        eprintln!("WARNING: No targets found to run. Will continue anyway");
+        eprintln!();
+    }
     let Some(report) = loaded.report else {
         return Err(CliError::Build(anyhow::anyhow!(
             "command succeeded, but there were errors parsing the target pattern"
@@ -896,7 +900,12 @@ async fn build_main(
         !targets.failures.is_empty(),
     );
     if !succeeded {
-        return Err(CliError::Reported);
+        // `run` says so after the build has said why.
+        return Err(if run_mode {
+            CliError::Build(anyhow::anyhow!("Build failed. Not running target"))
+        } else {
+            CliError::Reported
+        });
     }
     Ok(Built {
         report,
