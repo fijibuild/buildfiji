@@ -448,12 +448,17 @@ pub(crate) async fn resolve_toolchains(
     if platforms.is_empty() {
         platforms.push((None, key.configuration.constraints.clone()));
     }
-    let mut missing: Vec<Label> = types.iter().map(|(t, _)| t.clone()).collect();
+    // The platforms the target may run on, and the types some of them serve.
+    let mut candidates: Vec<(Option<Label>, std::collections::BTreeSet<Label>)> = Vec::new();
     for (platform_label, platform) in platforms {
         let held = crate::constraints::with_defaults_for(ctx, &platform, exec).await?;
-        if !exec.iter().all(|c| held.contains(c)) {
-            continue;
+        if exec.iter().all(|c| held.contains(c)) {
+            candidates.push((platform_label, platform));
         }
+    }
+    let tried: Vec<Label> = candidates.iter().filter_map(|(l, _)| l.clone()).collect();
+    let mut served: std::collections::BTreeSet<Label> = std::collections::BTreeSet::new();
+    for (platform_label, platform) in candidates {
         let mut toolchains: Vec<(Label, Option<DepInfo>)> = Vec::new();
         let mut unmet: Vec<Label> = Vec::new();
         let mut toolchain_keys: Vec<ConfiguredTargetKey> = Vec::new();
@@ -474,6 +479,7 @@ pub(crate) async fn resolve_toolchains(
                     let done = ctx.get(implementation.clone()).await?;
                     toolchains.push((toolchain_type.clone(), Some(dep_info(&done, false))));
                     toolchain_keys.push(implementation);
+                    served.insert(toolchain_type.clone());
                 }
                 None if *mandatory => unmet.push(toolchain_type.clone()),
                 None => toolchains.push((toolchain_type.clone(), None)),
@@ -482,7 +488,19 @@ pub(crate) async fn resolve_toolchains(
         if unmet.is_empty() {
             return Ok((toolchains, toolchain_keys, platform_label));
         }
-        missing = unmet;
     }
-    Err(Error::msg(crate::toolchain::no_match(key, &missing)))
+    // The types Bazel names are those no candidate platform has a toolchain
+    // for; when each has one, it is the platforms that do not agree.
+    let without: Vec<Label> = types
+        .iter()
+        .filter(|(t, mandatory)| *mandatory && !served.contains(t))
+        .map(|(t, _)| t.clone())
+        .collect();
+    if without.is_empty() {
+        let all: Vec<Label> = types.iter().map(|(t, _)| t.clone()).collect();
+        return Err(Error::msg(crate::toolchain::no_execution_platform(
+            key, &all, &tried,
+        )));
+    }
+    Err(Error::msg(crate::toolchain::no_match(key, &without)))
 }

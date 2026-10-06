@@ -317,26 +317,14 @@ pub(crate) async fn resolve(
         };
         let exec_held =
             crate::constraints::with_defaults_for(ctx, exec, &decl.exec_compatible_with).await?;
+        let exec_met = has(&decl.exec_compatible_with, &exec_held);
         let target_held = crate::constraints::with_defaults_for(
             ctx,
             &config.constraints,
             &decl.target_compatible_with,
         )
         .await?;
-        if !has(&decl.exec_compatible_with, &exec_held)
-            || !has(&decl.target_compatible_with, &target_held)
-        {
-            if std::env::var_os("FJFJ_TOOLCHAIN_DEBUG").is_some() {
-                eprintln!(
-                    "toolchain {} of {} rejected: constraints {:?} / {:?} not met by exec {:?} / target {:?}",
-                    expand_label_text(label),
-                    expand_label_text(toolchain_type),
-                    decl.exec_compatible_with,
-                    decl.target_compatible_with,
-                    exec,
-                    config.constraints
-                );
-            }
+        if !exec_met || !has(&decl.target_compatible_with, &target_held) {
             continue;
         }
         let mut settings_match = true;
@@ -374,11 +362,42 @@ pub(crate) fn no_match(key: &ConfiguredTargetKey, types: &[Label]) -> String {
         .iter()
         .map(expand_label_text)
         .collect::<Vec<_>>()
-        .join(",");
+        .join("|");
     format!(
         "While resolving toolchains for target {} ({}): No matching toolchains found for types:{list}\nTo debug, rerun with --toolchain_resolution_debug='{debug}'\nFor more information on platforms or toolchains see https://bazel.build/concepts/platforms-intro.",
         expand_label_text(&key.label),
         configuration_checksum(&key.configuration)
+    )
+}
+
+/// Bazel's words for types that each have a toolchain for the target
+/// platform, though no execution platform has them all.
+pub(crate) fn no_execution_platform(
+    key: &ConfiguredTargetKey,
+    types: &[Label],
+    platforms: &[Label],
+) -> String {
+    let words = |labels: &[Label]| {
+        labels
+            .iter()
+            .map(expand_label_text)
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let target = match key
+        .configuration
+        .settings
+        .get("//command_line_option:platforms")
+    {
+        Some(fjfj_graph::SettingValue::List(items)) if !items.is_empty() => items[0].clone(),
+        _ => "@@platforms//host:host".to_owned(),
+    };
+    format!(
+        "While resolving toolchains for target {} ({}): Unable to find an execution platform for toolchains [{}] and target platform {target} from available execution platforms [{}]",
+        expand_label_text(&key.label),
+        configuration_checksum(&key.configuration),
+        words(types),
+        words(platforms)
     )
 }
 

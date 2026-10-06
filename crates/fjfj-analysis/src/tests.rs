@@ -710,6 +710,81 @@ r(name = "action", bad = "action")
     }
 }
 
+/// Probed with `bazel build` of the same files: a type with no toolchain for
+/// the target platform is the one named; types that each have one, but not
+/// on the same execution platform, are told apart.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_failed_resolution_says_which_it_is() {
+    let (_dir, repos) = workspace(&[
+        ("MODULE.bazel", ""),
+        (
+            "defs.bzl",
+            r#"
+def _tc_impl(ctx):
+    return [platform_common.ToolchainInfo()]
+my_toolchain = rule(implementation = _tc_impl)
+def _impl(ctx):
+    return []
+both = rule(implementation = _impl, toolchains = ["//:ty", config_common.toolchain_type("//:opt", mandatory = False), "//:tt"])
+lacking = rule(implementation = _impl, toolchains = ["//:tz", "//:ty", "//:tt", "//:nosuch"])
+"#,
+        ),
+        (
+            "BUILD.bazel",
+            r#"
+load(":defs.bzl", "my_toolchain", "both", "lacking")
+constraint_setting(name = "cs")
+constraint_value(name = "c1", constraint_setting = ":cs")
+constraint_value(name = "c2", constraint_setting = ":cs")
+platform(name = "ex1", constraint_values = [":c1"])
+platform(name = "ex2", constraint_values = [":c2"])
+toolchain_type(name = "tt")
+toolchain_type(name = "ty")
+toolchain_type(name = "tz")
+toolchain_type(name = "opt")
+toolchain_type(name = "nosuch")
+my_toolchain(name = "impl")
+toolchain(name = "tc_tt", toolchain_type = ":tt", toolchain = ":impl", exec_compatible_with = [":c2"])
+toolchain(name = "tc_ty", toolchain_type = ":ty", toolchain = ":impl", exec_compatible_with = [":c1"])
+both(name = "b")
+lacking(name = "l")
+"#,
+        ),
+    ]);
+    let toolchains = vec![
+        (String::new(), "//:tc_tt".to_owned()),
+        (String::new(), "//:tc_ty".to_owned()),
+    ];
+    let platforms = vec![
+        (String::new(), "//:ex1".to_owned()),
+        (String::new(), "//:ex2".to_owned()),
+    ];
+    let both = analyse_on(
+        &repos,
+        "//:b",
+        config(),
+        toolchains.clone(),
+        platforms.clone(),
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        both.contains(
+            "Unable to find an execution platform for toolchains [//:ty, //:opt, //:tt] and target platform @@platforms//host:host from available execution platforms [//:ex1, //:ex2]"
+        ),
+        "{both}"
+    );
+    let lacking = analyse_on(&repos, "//:l", config(), toolchains, platforms)
+        .await
+        .unwrap_err();
+    assert!(
+        lacking.contains(
+            "No matching toolchains found for types:\n  //:tz\n  //:nosuch\nTo debug, rerun with --toolchain_resolution_debug='//:tz|//:nosuch'"
+        ),
+        "{lacking}"
+    );
+}
+
 /// Bazel picks the execution platform among the registered ones: the first
 /// that meets the target's `exec_compatible_with` and has a toolchain of each
 /// mandatory type whose `exec_compatible_with` it meets.
