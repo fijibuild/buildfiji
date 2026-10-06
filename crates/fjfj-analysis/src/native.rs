@@ -193,6 +193,8 @@ async fn forward(
     target.files = actual.files.clone();
     target.executable = actual.executable.clone();
     target.runfiles = actual.runfiles.clone();
+    // The tree of its runfiles, for what runs it as a tool.
+    target.extra_outputs = actual.extra_outputs.clone();
     target.providers = actual.providers.clone();
     target.config_matching = actual.config_matching.clone();
     target.deps.push(k);

@@ -717,7 +717,7 @@ use = rule(implementation = _use, attrs = {"t": attr.label(cfg = "exec", executa
         ),
         (
             "BUILD.bazel",
-            "load(':defs.bzl', 'tool', 'use')\ntool(name = 'tool')\nuse(name = 'u')\ngenrule(name = 'g', outs = ['g.txt'], tools = [':tool'], cmd = '$(location :tool) > $@')\n",
+            "load(':defs.bzl', 'tool', 'use')\ntool(name = 'tool')\nuse(name = 'u')\ngenrule(name = 'g', outs = ['g.txt'], tools = [':tool'], cmd = '$(location :tool) > $@')\nalias(name = 'tool_alias', actual = ':tool')\ngenrule(name = 'ga', outs = ['ga.txt'], tools = [':tool_alias'], cmd = '$(location :tool_alias) > $@')\n",
         ),
     ]);
     let u = analyse(&repos, "//:u").await.unwrap();
@@ -738,6 +738,13 @@ use = rule(implementation = _use, attrs = {"t": attr.label(cfg = "exec", executa
     );
     // An executable tool brings its runfiles tree, as `bazel aquery` showed.
     let inputs: Vec<String> = g.actions[0].inputs.iter().map(|a| a.exec_path()).collect();
+    assert!(
+        inputs.contains(&"bazel-out/k8-opt-exec/bin/tool.sh.runfiles".to_owned()),
+        "{inputs:?}"
+    );
+    // And so does one named through an alias.
+    let ga = analyse(&repos, "//:ga").await.unwrap();
+    let inputs: Vec<String> = ga.actions[0].inputs.iter().map(|a| a.exec_path()).collect();
     assert!(
         inputs.contains(&"bazel-out/k8-opt-exec/bin/tool.sh.runfiles".to_owned()),
         "{inputs:?}"
