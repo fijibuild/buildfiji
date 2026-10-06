@@ -880,17 +880,12 @@ async fn build_main(
         targets.targets.len(),
         build_show_result,
         diagnostics.keep_going,
-        &layout,
         diagnostics.verbose_failures,
         build_options_test_output,
+        !targets.failures.is_empty(),
     );
     if !succeeded {
         return Err(CliError::Reported);
-    }
-    if !targets.failures.is_empty() {
-        return Err(CliError::Build(anyhow::anyhow!(
-            "command succeeded, but there were errors parsing the target pattern"
-        )));
     }
     Ok(Built {
         report,

@@ -1085,10 +1085,11 @@ pub(crate) fn print(
     requested: usize,
     show_result: usize,
     keep_going: bool,
-    layout: &Layout,
     verbose_failures: bool,
     test_output: Option<fjfj_bazel_compat::test_flags::TestOutput>,
+    pattern_errors: bool,
 ) -> bool {
+    let layout = &report.layout;
     for text in &report.printed {
         eprintln!(
             "{}",
@@ -1102,7 +1103,9 @@ pub(crate) fn print(
     // What the platform cannot build and what failed to analyse were
     // analysed as well.
     let analysed = report.results.len() + report.skipped.len() + report.failed_roots.len();
-    if (report.analysis_errors.is_empty() && !incompatible) || keep_going {
+    if ((report.analysis_errors.is_empty() && !incompatible) || keep_going)
+        && !(pattern_errors && analysed == 0)
+    {
         let what = if analysed == 1 {
             let only = report
                 .results
@@ -1173,10 +1176,10 @@ pub(crate) fn print(
             label_text(label)
         );
     }
-    let ok = report.succeeded();
+    let ok = report.succeeded() && !pattern_errors;
     if ok || keep_going {
         let built: Vec<&TargetResult> = report.results.iter().filter(|r| r.built).collect();
-        if !ok {
+        if !report.succeeded() {
             eprintln!(
                 "INFO: Build succeeded for only {} of {} top-level targets",
                 built.len(),
@@ -1185,6 +1188,7 @@ pub(crate) fn print(
         }
         let tests = report.tests.len();
         let found = match (requested - tests.min(requested), tests) {
+            (_, 0) if test_output.is_some() && requested == 0 => "0 test targets".to_owned(),
             (_, 0) => plural(requested, "target", "targets"),
             (0, t) => plural(t, "test target", "test targets"),
             (n, t) => format!(
@@ -1198,6 +1202,7 @@ pub(crate) fn print(
             eprintln!("Use --verbose_failures to see the command lines of failed build steps.");
             eprintln!("ERROR: command succeeded, but not all targets were analyzed");
         }
+
         // `--show_result=1`: say where the result is when there is one target.
         if analysed <= show_result {
             for result in &built {
@@ -1214,6 +1219,9 @@ pub(crate) fn print(
                 }
             }
         }
+    }
+    if pattern_errors {
+        eprintln!("ERROR: command succeeded, but there were errors parsing the target pattern");
     }
     eprintln!(
         "INFO: Elapsed time: {:.3}s, Critical Path: {:.2}s",
@@ -1264,6 +1272,9 @@ pub(crate) fn print(
         );
     } else {
         eprintln!("ERROR: Build did NOT complete successfully");
+        if test_output.is_some() && report.tests.is_empty() && report.succeeded() {
+            eprintln!("ERROR: No test targets were found, yet testing was requested");
+        }
     }
     // What was built is tested, and the summary says so whatever else failed.
     if test_output.is_some() && !report.tests.is_empty() {
