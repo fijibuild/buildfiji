@@ -214,8 +214,22 @@ pub async fn execute(
     }
 }
 
-/// What an action not run before is expected to take, in microseconds.
+/// What an action not run before is expected to take, in microseconds: by
+/// mnemonic, from what a cold build of this repository showed; actions that
+/// run no command are near enough free.
 const GUESS_US: u64 = 1_000_000;
+
+fn guess_us(action: &Action) -> u64 {
+    if !matches!(action.kind, ActionKind::Spawn { .. }) {
+        return 10_000;
+    }
+    match action.mnemonic.as_str() {
+        "Rustc" => 4 * GUESS_US,
+        "CppCompile" | "CargoBuildScriptRun" | "CppLink" => 3 * GUESS_US,
+        "Clippy" | "Rustfmt" => 2 * GUESS_US,
+        _ => GUESS_US,
+    }
+}
 
 /// For each action, how long the longest chain of actions that starts at it
 /// is expected to take: its own time, as the last build had it or a guess,
@@ -232,7 +246,7 @@ fn ranks(
         .map(|a| {
             cache
                 .duration(a)
-                .map_or(GUESS_US, |d| d.as_micros().max(1) as u64)
+                .map_or_else(|| guess_us(a), |d| d.as_micros().max(1) as u64)
         })
         .collect();
     let mut readers: Vec<Vec<usize>> = vec![Vec::new(); actions.len()];

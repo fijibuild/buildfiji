@@ -614,3 +614,21 @@ fn an_action_that_others_wait_for_ranks_above_one_nothing_waits_for() {
     assert_eq!(ranks[2], GUESS_US);
     assert_eq!(ranks[3], GUESS_US);
 }
+
+#[test]
+fn a_compile_outranks_a_symlink_at_the_same_depth_before_any_build_has_timed_them() {
+    let (compiled, linked) = (out("compiled"), out("linked"));
+    let mut compile = shell("true", vec![], vec![compiled]);
+    compile.mnemonic = "Rustc".into();
+    let mut link = shell("true", vec![], vec![linked]);
+    link.mnemonic = "Symlink".into();
+    link.kind = ActionKind::Symlink {
+        target: "elsewhere".into(),
+    };
+    let actions = vec![compile, link];
+    let by_output = HashMap::new();
+    let dir = tempfile::tempdir().unwrap();
+    let cache = ActionCache::load(dir.path().join("cache.json"));
+    let ranks = ranks(&actions, &by_output, &cache);
+    assert!(ranks[0] > ranks[1], "{ranks:?}");
+}
