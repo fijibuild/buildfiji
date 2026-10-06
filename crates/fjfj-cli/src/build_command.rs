@@ -980,6 +980,13 @@ pub(crate) fn label_name(label: &Label) -> String {
     label_text(label)
 }
 
+/// The end of a command that stopped before building anything.
+pub(crate) fn print_nothing_built(elapsed: Duration) {
+    eprintln!("INFO: Elapsed time: {:.3}s", elapsed.as_secs_f64());
+    eprintln!("INFO: 0 processes.");
+    eprintln!("ERROR: Build did NOT complete successfully");
+}
+
 /// A file as the console names it: `bazel-bin/pkg/f` for a derived one.
 pub(crate) fn shown_path(
     prefix: &str,

@@ -26,6 +26,8 @@ pub enum ExitCode {
     TestsFailed = 3,
     /// Build succeeded, but `test` found no tests to run.
     NoTestsFound = 4,
+    /// `run` could not write its `--script_path` script, or start the program.
+    RunFailure = 6,
     /// `query` succeeded only partially.
     PartialAnalysisFailure = 7,
     /// Build interrupted (e.g. client Ctrl-C) but shut down in an orderly

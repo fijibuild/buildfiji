@@ -27,6 +27,7 @@ pub mod flag_registry;
 pub mod misc_flags;
 pub mod output_filter;
 pub mod remote_flags;
+pub mod run_flags;
 pub mod test_flags;
 pub mod workspace_status;
 pub mod workspace_status_flags;

@@ -15,7 +15,7 @@ use fjfj_bazel_compat::exit_code::{ExitCode, messages};
 use fjfj_bazel_compat::{
     Cli, Command, bes_flags, build_flags, bzlmod_flags, canonicalize_flags, clap_flags,
     console_flags, diagnostics_flags, execution_log_flags, flag_alias, misc_flags, output_filter,
-    remote_flags, test_flags, workspace_status_flags,
+    remote_flags, run_flags, test_flags, workspace_status_flags,
 };
 use fjfj_bzlmod::attrs::AttrValue;
 use fjfj_bzlmod::discovery::RegistrySource;
@@ -75,6 +75,9 @@ pub enum CliError {
     /// The requested command ran but didn't succeed.
     #[error("{0}")]
     Build(anyhow::Error),
+    /// `run` could not write its script: Bazel exits 6.
+    #[error("{0}")]
+    RunFailure(anyhow::Error),
     /// A query could not be evaluated: Bazel exits 7.
     #[error("{0}")]
     Query(anyhow::Error),
@@ -111,6 +114,7 @@ impl CliError {
             // Bazel gives a partial query result the code it gives failed tests.
             CliError::TestsFailed | CliError::QueryIncomplete => ExitCode::TestsFailed,
             CliError::NoTests => ExitCode::NoTestsFound,
+            CliError::RunFailure(_) => ExitCode::RunFailure,
             CliError::Fetch(_) => ExitCode::Interrupted,
             CliError::Query(_) => ExitCode::PartialAnalysisFailure,
             CliError::Internal(_) => ExitCode::InternalError,
@@ -124,6 +128,7 @@ impl CliError {
             CliError::CommandLine(e)
             | CliError::Build(e)
             | CliError::Query(e)
+            | CliError::RunFailure(e)
             | CliError::Fetch(e) => messages::error(e),
             CliError::Internal(e) => messages::fatal(e),
             CliError::Reported
@@ -587,6 +592,8 @@ pub(crate) struct Built {
     pub(crate) options: build_command::Options,
     /// `run`: what followed the target, for the program.
     pub(crate) program_args: Vec<String>,
+    /// `run`: `--run_under` and `--script_path`.
+    pub(crate) run_flags: run_flags::RunFlags,
 }
 
 /// `fjfj build`, and the building half of `run` and `test`. `args` are flags
@@ -596,6 +603,7 @@ async fn build_main(
     command: &'static str,
     run_mode: bool,
 ) -> Result<Built, CliError> {
+    let started = std::time::Instant::now();
     // The flags the rc files give the command come first, so the command
     // line overrides them.
     let rc = rc_flags(command)?;
@@ -630,7 +638,10 @@ async fn build_main(
     // ever reaching `TargetPattern::from_str`, whose "pattern
     // must start with // or @" error is misleading for a flag
     // typo.
-    let implemented = build_family_implemented();
+    let mut implemented = build_family_implemented();
+    if command == "run" {
+        implemented.extend(run_flags::IMPLEMENTED);
+    }
     clap_flags::validate(&rest, command, &implemented)
         .map_err(|e| CliError::CommandLine(anyhow::Error::from(e)))?;
     let (build_flags, rest) = build_flags::extract(&rest, command);
@@ -643,6 +654,8 @@ async fn build_main(
     } else {
         (None, rest)
     };
+    let (run_flags, rest) = run_flags::extract(&rest, command)
+        .map_err(|e| CliError::CommandLine(anyhow::anyhow!(e)))?;
     let (diagnostics, rest) = diagnostics_flags::extract(&rest, command);
     let (workspace_status, rest) = workspace_status_flags::extract(&rest, command);
     let (misc, rest) = misc_flags::extract(&rest, command);
@@ -758,7 +771,14 @@ async fn build_main(
     // `run` takes the first target and gives the rest to the program.
     let (texts, program_args): (Vec<String>, Vec<String>) = if run_mode {
         let mut all = rest.iter().chain(after_marker).cloned();
-        (all.next().into_iter().collect(), all.collect())
+        let mut texts: Vec<String> = all.next().into_iter().collect();
+        // A `--run_under` target is built, and analysed, with the one run.
+        if let Some(run_flags::RunUnder::Target { label, .. }) = &run_flags.run_under
+            && !texts.contains(label)
+        {
+            texts.push(label.clone());
+        }
+        (texts, all.collect())
     } else {
         (
             rest.iter().chain(after_marker).cloned().collect(),
@@ -828,15 +848,25 @@ async fn build_main(
         )));
     }
     if !targets.failures.is_empty() {
-        eprintln!("WARNING: Target pattern parsing failed.");
+        // `test` says it only when it goes on.
+        if command != "test" || diagnostics.keep_going {
+            eprintln!("WARNING: Target pattern parsing failed.");
+        }
         for failure in &targets.failures {
             eprintln!("ERROR: Skipping '{}': {}", failure.pattern, failure.message);
         }
         if !diagnostics.keep_going {
-            return Err(CliError::Build(anyhow::anyhow!(
-                "{}",
-                targets.failures[0].message
-            )));
+            // The message is said twice, as Bazel does: once for the
+            // pattern, once for the build.
+            eprintln!("ERROR: {}", targets.failures[0].message);
+            build_command::print_nothing_built(started.elapsed());
+            return Err(match command {
+                "build" => CliError::Reported,
+                "run" => CliError::Build(anyhow::anyhow!("Build failed. Not running target")),
+                _ => CliError::Build(anyhow::anyhow!(
+                    "Couldn't start the build. Unable to run tests"
+                )),
+            });
         }
     }
     let Some(report) = loaded.report else {
@@ -867,6 +897,7 @@ async fn build_main(
         layout,
         options: build_options,
         program_args,
+        run_flags,
     })
 }
 
