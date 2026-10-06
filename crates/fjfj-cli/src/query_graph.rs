@@ -85,6 +85,32 @@ impl QueryGraph {
         self.repos.package(&label.repo, &label.package)
     }
 
+    /// The package of a target asked for by name: one with errors has no
+    /// target to find, and the errors were said already.
+    fn package_of_target(&self, label: &Label) -> Result<Arc<Package>, String> {
+        use fjfj_loading::{PackageSource, Purpose};
+        match self
+            .repos
+            .package_for(&label.repo, &label.package, Purpose::Target)
+        {
+            Err(message) if message.ends_with("' contains errors") => {
+                let build = self
+                    .repos
+                    .lookup(&label.repo)?
+                    .build_file(&label.package)
+                    .map_err(|e| e.to_string())?;
+                Err(format!(
+                    "no such target '{}': target '{}' not declared in package '{}' defined by {}",
+                    self.display(label),
+                    label.name,
+                    label.package,
+                    build.display()
+                ))
+            }
+            found => found,
+        }
+    }
+
     fn schema(&self, class: &str, defined_in: Option<&Label>) -> Result<Arc<RuleSchema>, String> {
         match defined_in {
             None => native_rule(class)
@@ -1040,7 +1066,7 @@ impl Graph for QueryGraph {
         if let Some(done) = self.nodes.lock().unwrap().get(label) {
             return Ok(done.clone());
         }
-        let package = self.package(label)?;
+        let package = self.package_of_target(label)?;
         let lookup = self.repos.lookup(&label.repo)?;
         let node = match package.target(&label.name) {
             Some(target) => match &target.kind {
@@ -2557,6 +2583,40 @@ mr = rule(
         assert!(
             ev.eval(&fjfj_query::parse("//:b + //nopkg:x").unwrap())
                 .is_err()
+        );
+    }
+
+    #[test]
+    fn a_dependency_in_a_missing_package_fails_deps_or_is_skipped_by_keep_going() {
+        let (_dir, repos) = workspace_of(&[
+            ("MODULE.bazel", ""),
+            ("BUILD", "filegroup(name='a', srcs=['//nopkg:x'])\n"),
+        ]);
+        let graph = QueryGraph::new(repos);
+        let expr = fjfj_query::parse("deps(//:a)").unwrap();
+        let ev = Evaluator::new(&graph, Options::default());
+        let error = ev.eval(&expr).unwrap_err();
+        // Each error says in what directories the BUILD file was not found.
+        let lines: Vec<&str> = error.lines().filter(|l| !l.starts_with(" - ")).collect();
+        assert_eq!(lines.len(), 2, "{error}");
+        assert!(lines[0].contains("BUILD:1:10: no such package 'nopkg':"));
+        assert!(lines[1].starts_with(
+            "ERROR: Evaluation of query \"deps(//:a)\" failed: preloading transitive closure failed: no such package 'nopkg':"
+        ));
+        let options = Options {
+            keep_going: true,
+            ..Options::default()
+        };
+        let ev = Evaluator::new(&graph, options);
+        let set = ev.eval(&expr).unwrap();
+        assert_eq!(set.len(), 1);
+        let skipped = ev.skipped();
+        assert_eq!(skipped.len(), 3, "{skipped:?}");
+        assert_eq!(skipped[0], skipped[1]);
+        assert!(skipped[0].contains("BUILD:1:10: no such package 'nopkg':"));
+        assert_eq!(
+            skipped[2],
+            "ERROR: Evaluation of query \"deps(//:a)\" failed: errors were encountered while computing transitive closure"
         );
     }
 }

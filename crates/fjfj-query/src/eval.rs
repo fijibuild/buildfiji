@@ -297,7 +297,8 @@ impl<'g> Evaluator<'g> {
         match call.function {
             Function::Deps => {
                 let roots = self.expr_arg(call, 0, env)?;
-                self.deps(&roots, Self::depth_arg(call, 1))
+                let text = crate::ast::Expr::Call(call.clone()).to_string();
+                self.deps_in(&roots, Self::depth_arg(call, 1), Some(&text))
             }
             Function::RDeps => {
                 let universe = self.expr_arg(call, 0, env)?;
@@ -499,22 +500,68 @@ impl<'g> Evaluator<'g> {
 
     /// `roots` and what they depend on, within `depth` edges if given.
     pub fn deps(&self, roots: &Set, depth: Option<usize>) -> Result<Set, String> {
+        self.deps_in(roots, depth, None)
+    }
+
+    /// [`Evaluator::deps`] for the call written `text`, which a dependency
+    /// that cannot be loaded is reported against: its error with the place of
+    /// the rule that names it, twice, and that the closure failed, which
+    /// `--keep_going` skips the dependency after.
+    fn deps_in(
+        &self,
+        roots: &Set,
+        depth: Option<usize>,
+        text: Option<&str>,
+    ) -> Result<Set, String> {
         let mut seen: Set = roots.clone();
         let mut frontier: Vec<Label> = roots.iter().cloned().collect();
         let mut level = 0;
+        let mut failed = false;
+        // What named each label first.
+        let mut named_by: BTreeMap<Label, Label> = BTreeMap::new();
         while !frontier.is_empty() && depth.is_none_or(|d| level < d) {
             self.preload(&frontier);
             let mut next = Vec::new();
             for label in &frontier {
-                let node = self.node(label)?;
+                let node = match self.node(label) {
+                    Ok(node) => node,
+                    Err(e) => {
+                        let (Some(text), Some(by)) = (text, named_by.get(label)) else {
+                            return Err(e);
+                        };
+                        let place = self.node(by)?.location.clone();
+                        // A target that is not there says who needs it.
+                        let said = match e.starts_with("no such target ") {
+                            true => format!("{e} and referenced by '{}'", self.graph.display(by)),
+                            false => e.clone(),
+                        };
+                        if !self.options.keep_going {
+                            return Err(format!(
+                                "{place}: {said}\nERROR: Evaluation of query \"{text}\" failed: preloading transitive closure failed: {e}"
+                            ));
+                        }
+                        let mut skipped = self.skipped.lock().unwrap();
+                        skipped.push(format!("ERROR: {place}: {said}"));
+                        skipped.push(format!("ERROR: {place}: {said}"));
+                        failed = true;
+                        seen.remove(label);
+                        continue;
+                    }
+                };
                 for edge in self.edges(&node) {
                     if seen.insert(edge.to.clone()) {
+                        named_by.insert(edge.to.clone(), label.clone());
                         next.push(edge.to);
                     }
                 }
             }
             frontier = next;
             level += 1;
+        }
+        if let (true, Some(text)) = (failed, text) {
+            self.skipped.lock().unwrap().push(format!(
+                "ERROR: Evaluation of query \"{text}\" failed: errors were encountered while computing transitive closure"
+            ));
         }
         Ok(seen)
     }
