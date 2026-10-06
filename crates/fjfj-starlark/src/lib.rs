@@ -8,6 +8,56 @@
 mod analysis;
 mod args;
 mod attr;
+/// What `print` shows: `<file>:<line>:<column>: <text>`, the call site first as
+/// Bazel's `DEBUG:` line has it. The file is as the parser was told its name.
+pub fn print_line(location: Option<&starlark::codemap::FileSpan>, text: &str) -> String {
+    match location {
+        Some(at) => {
+            let begin = at.resolve_span().begin;
+            // Bazel locates a call at its opening parenthesis.
+            let paren = at.source_span().chars().take_while(|&c| c != '(').count();
+            format!(
+                "{}:{}:{}: {text}",
+                at.filename(),
+                begin.line + 1,
+                begin.column + 1 + paren
+            )
+        }
+        None => text.to_owned(),
+    }
+}
+
+/// `text` without the `<file>:<line>:<column>: ` that [`print_line`] put before it.
+pub fn without_site(text: &str) -> &str {
+    let mut from = 0;
+    while let Some(at) = text[from..].find(": ") {
+        let end = from + at;
+        let mut parts = text[..end].rsplitn(3, ':');
+        let (column, line, file) = (parts.next(), parts.next(), parts.next());
+        if let (Some(c), Some(l), Some(f)) = (column, line, file)
+            && !f.is_empty()
+            && !c.is_empty()
+            && !l.is_empty()
+            && c.bytes().chain(l.bytes()).all(|b| b.is_ascii_digit())
+        {
+            return &text[end + 2..];
+        }
+        from = end + 2;
+    }
+    text
+}
+
+/// What was printed, without the call sites, for tests that compare the text.
+pub trait WithoutSites {
+    fn without_sites(&self) -> Vec<String>;
+}
+
+impl WithoutSites for [String] {
+    fn without_sites(&self) -> Vec<String> {
+        self.iter().map(|t| without_site(t).to_owned()).collect()
+    }
+}
+
 #[cfg(test)]
 mod attr_matrix;
 #[cfg(test)]

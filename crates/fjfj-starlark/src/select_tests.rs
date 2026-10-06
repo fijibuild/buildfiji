@@ -2,6 +2,7 @@
 //! `select_matrix` are what Bazel printed and reported for the same code, and
 //! the tests here are what a table cannot say.
 
+use crate::WithoutSites;
 use crate::select_matrix::{SELECT_BUILD_CASES, SELECT_CASES};
 use crate::test_support::{replay, replay_build};
 
@@ -243,7 +244,9 @@ fn a_select_is_never_hashable_iterable_or_empty() {
 #[test]
 fn a_select_is_a_global_of_a_build_file_and_a_bzl_and_not_a_native() {
     assert_eq!(
-        run_build("r = 1", r#"print(select({"a": 1}))"#).printed,
+        run_build("r = 1", r#"print(select({"a": 1}))"#)
+            .printed
+            .without_sites(),
         [r#"select({"a": 1})"#]
     );
     let native = crate::test_support::run("print(native.select)").unwrap_err();

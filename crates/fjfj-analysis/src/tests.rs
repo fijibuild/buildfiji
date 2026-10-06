@@ -5,6 +5,7 @@ use crate::{ConfiguredTarget, ConfiguredTargetKey, Env, engine};
 use fjfj_bzlmod::eval::{EvalOptions, eval_module_file};
 use fjfj_graph::{ActionKind, Configuration, Label};
 use fjfj_repo::{Options, Repos};
+use fjfj_starlark::WithoutSites;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -606,7 +607,7 @@ r(name = "t")
     let t = analyse_registering(&repos, "//:t", on_linux.clone(), registered.clone())
         .await
         .unwrap();
-    assert_eq!(t.printed, ["toolchain: linux None"]);
+    assert_eq!(t.printed.without_sites(), ["toolchain: linux None"]);
     // None registered, or none that fits: Bazel's words.
     let error = analyse_registering(&repos, "//:t", on_linux, Vec::new())
         .await
@@ -675,7 +676,11 @@ r(name = "wants_nothing_there", exec_compatible_with = [":os"])
     };
     // The first platform that has a toolchain is the one.
     assert_eq!(
-        on("//:any", platforms.clone()).await.unwrap().printed,
+        on("//:any", platforms.clone())
+            .await
+            .unwrap()
+            .printed
+            .without_sites(),
         ["toolchain: windows"]
     );
     // The target's own constraints rule platforms out.
@@ -683,7 +688,8 @@ r(name = "wants_nothing_there", exec_compatible_with = [":os"])
         on("//:wants_linux", platforms.clone())
             .await
             .unwrap()
-            .printed,
+            .printed
+            .without_sites(),
         ["toolchain: linux"]
     );
     // No platform has them, or there is none: no toolchain matches.
@@ -839,7 +845,7 @@ filegroup(name = "user", srcs = [":flag"])
     let t = analyse_registering(&repos, "//:t", config(), registered)
         .await
         .unwrap();
-    assert_eq!(t.printed, ["toolchain: via alias"]);
+    assert_eq!(t.printed.without_sites(), ["toolchain: via alias"]);
     let user = analyse(&repos, "//:user").await.unwrap();
     assert_eq!(paths(&user.files), ["a.txt"]);
     let mut set = config();

@@ -2,6 +2,7 @@
 //! `macros_matrix` are what Bazel printed and reported for the same code,
 //! and the tests here are what a table cannot say.
 
+use crate::WithoutSites;
 use crate::macros_matrix::{MACRO_BUILD_CASES, MACRO_CASES};
 use crate::test_support::{replay, replay_build};
 
@@ -90,7 +91,7 @@ fn a_macro_runs_once_and_returns_none() {
         "print(r(name = 'a'))\nprint(sorted(existing_rules().keys()))",
     );
     assert!(out.fatal.is_none() && out.events.is_empty(), "{out:?}");
-    assert_eq!(out.printed, ["None", r#"["a_g"]"#]);
+    assert_eq!(out.printed.without_sites(), ["None", r#"["a_g"]"#]);
 }
 
 #[test]
@@ -103,7 +104,7 @@ fn a_finalizer_runs_after_the_file_and_sees_the_rules_before_it() {
     );
     assert!(out.fatal.is_none() && out.events.is_empty(), "{out:?}");
     assert_eq!(
-        out.printed,
+        out.printed.without_sites(),
         ["file done", r#"fin f1 ["a_g"]"#, r#"fin f2 ["a_g"]"#]
     );
     let package = out.package.expect("the package");

@@ -184,14 +184,48 @@ pub(crate) fn default_output_base(workspace_root: &Path) -> PathBuf {
     output_user_root().join(&hex::encode(digest)[..32])
 }
 
-/// Prints what extensions and rules `print` as Bazel does, to stderr.
-struct Printer;
+/// Prints what extensions and rules `print` as Bazel does, to stderr, with the
+/// file of its call site as a path.
+struct Printer {
+    workspace_root: PathBuf,
+    external: PathBuf,
+}
+
+impl Printer {
+    fn of(repos: &Repos) -> Printer {
+        Printer {
+            workspace_root: repos.workspace_root().to_owned(),
+            external: repos.output_base().join("external"),
+        }
+    }
+}
 
 impl starlark::PrintHandler for Printer {
     fn println(&self, text: &str) -> starlark::Result<()> {
-        eprintln!("DEBUG: {text}");
+        eprintln!("{}", debug_line(text, &self.workspace_root, &self.external));
         Ok(())
     }
+}
+
+/// `DEBUG: <path>:<line>:<column>: <text>`, from what `print_line` made:
+/// `@@<repo>//<package>:<file>:<line>:<column>: <text>` names the file by
+/// its label, and a path is where that file is.
+pub(crate) fn debug_line(text: &str, workspace_root: &Path, external: &Path) -> String {
+    let located = text.strip_prefix("@@").and_then(|rest| {
+        let (repo, rest) = rest.split_once("//")?;
+        let (package, rest) = rest.split_once(':')?;
+        let (file, rest) = rest.split_once(':')?;
+        let root = if repo.is_empty() {
+            workspace_root.to_owned()
+        } else {
+            external.join(repo)
+        };
+        Some(format!(
+            "{}:{rest}",
+            root.join(package).join(file).display()
+        ))
+    });
+    format!("DEBUG: {}", located.as_deref().unwrap_or(text))
 }
 
 /// Resolve the module graph, make the repositories asked for, and write the
@@ -372,6 +406,7 @@ pub(crate) fn begin(
 }
 
 fn print_warnings(repos: &Repos) {
+    repos.flush_prints(&Printer::of(repos));
     for warning in repos.warnings() {
         eprintln!("WARNING: {warning}");
     }
@@ -404,13 +439,14 @@ pub(crate) fn finish(resolved: Resolved, repos: &Repos) -> Result<Resolution, Cl
 /// What `fetch` makes: `--all`, or each `--repo`.
 fn fetch_repos(flags: &FetchFlags, repos: &mut Repos) -> Result<(), CliError> {
     let failed = |message: String| CliError::Fetch(anyhow::anyhow!(message));
+    let printer = Printer::of(repos);
     if flags.all {
         repos
-            .run_extensions(Some(&Printer))
+            .run_extensions(Some(&printer))
             .map_err(|e| failed(e.message))?;
         for repo in repos.all_repos() {
             repos
-                .fetch(&repo, Some(&Printer))
+                .fetch(&repo, Some(&printer))
                 .map_err(|e| failed(e.message))?;
         }
         return Ok(());
@@ -428,7 +464,7 @@ fn fetch_repos(flags: &FetchFlags, repos: &mut Repos) -> Result<(), CliError> {
             }
         };
         repos
-            .fetch(&canonical, Some(&Printer))
+            .fetch(&canonical, Some(&printer))
             .map_err(|e| failed(e.message))?;
     }
     Ok(())
@@ -440,4 +476,24 @@ pub(crate) struct Resolved {
     pub session: Option<Arc<LockSession>>,
     pub existing: Option<String>,
     pub lock_path: PathBuf,
+}
+
+#[cfg(test)]
+mod print_tests {
+    use super::debug_line;
+    use std::path::Path;
+
+    #[test]
+    fn a_print_site_becomes_the_path_of_its_file() {
+        let (ws, ext) = (Path::new("ws"), Path::new("ob/external"));
+        assert_eq!(
+            debug_line("@@//a/b:defs.bzl:3:5: hi", ws, ext),
+            "DEBUG: ws/a/b/defs.bzl:3:5: hi"
+        );
+        assert_eq!(
+            debug_line("@@rules_x+//:BUILD.bazel:1:1: x: y", ws, ext),
+            "DEBUG: ob/external/rules_x+/BUILD.bazel:1:1: x: y"
+        );
+        assert_eq!(debug_line("no site", ws, ext), "DEBUG: no site");
+    }
 }

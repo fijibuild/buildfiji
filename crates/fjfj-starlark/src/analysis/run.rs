@@ -167,6 +167,14 @@ impl starlark::PrintHandler for Printed {
         self.0.lock().unwrap().push(text.to_owned());
         Ok(())
     }
+
+    fn println_at(
+        &self,
+        location: Option<&starlark::codemap::FileSpan>,
+        text: &str,
+    ) -> starlark::Result<()> {
+        self.println(&crate::print_line(location, text))
+    }
 }
 
 /// Run the rule's `implementation`.

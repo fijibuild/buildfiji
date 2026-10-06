@@ -39,9 +39,11 @@ struct Capture(RefCell<Vec<String>>);
 
 impl starlark::PrintHandler for Capture {
     fn println(&self, text: &str) -> starlark::Result<()> {
-        self.0
-            .borrow_mut()
-            .push(text.trim_end_matches('\n').to_owned());
+        self.0.borrow_mut().push(
+            fjfj_starlark::without_site(text)
+                .trim_end_matches('\n')
+                .to_owned(),
+        );
         Ok(())
     }
 }

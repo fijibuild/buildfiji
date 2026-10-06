@@ -801,7 +801,10 @@ pub(crate) fn print(
     test_output: Option<fjfj_bazel_compat::test_flags::TestOutput>,
 ) -> bool {
     for text in &report.printed {
-        eprintln!("DEBUG: {text}");
+        eprintln!(
+            "{}",
+            crate::fetch_command::debug_line(text, &layout.workspace, &layout.external())
+        );
     }
     for (label, message) in &report.analysis_errors {
         eprintln!("ERROR: {message}");

@@ -1,6 +1,7 @@
 //! The loader (buildfiji-mum.19): what it says of a load, as Bazel 9.2.0 does,
 //! and that it evaluates each file once from any number of threads.
 
+use crate::WithoutSites;
 use crate::{BuildFileError, BzlLoader, RepoMappings};
 use fjfj_loading::PackageLookup;
 use std::collections::HashMap;
@@ -25,7 +26,7 @@ fn workspace(files: &[(&str, &str)], check_visibility: bool) -> (tempfile::TempD
 fn load(loader: &BzlLoader, package: &str) -> Result<Vec<String>, String> {
     loader
         .load_package("", package)
-        .map(|out| out.printed)
+        .map(|out| out.printed.without_sites())
         .map_err(|e| match e {
             BuildFileError::Eval(e) => format!("{e:#}"),
             BuildFileError::Package { events, .. } => events.join("\n"),

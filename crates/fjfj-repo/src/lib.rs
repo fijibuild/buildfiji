@@ -177,12 +177,25 @@ struct Inner {
 /// What was printed, kept for whoever asked for the work: an extension may
 /// run because a file was loaded, far from the call that has a print handler.
 #[derive(Default)]
-struct Prints(Mutex<Vec<String>>);
+struct Prints(
+    Mutex<Vec<String>>,
+    /// The packages whose BUILD files printed already: one is read again for
+    /// each phase that wants it, and prints once.
+    Mutex<std::collections::HashSet<(String, String)>>,
+);
 
 impl PrintHandler for Prints {
     fn println(&self, text: &str) -> starlark::Result<()> {
         self.0.lock().unwrap().push(text.to_owned());
         Ok(())
+    }
+
+    fn println_at(
+        &self,
+        location: Option<&starlark::codemap::FileSpan>,
+        text: &str,
+    ) -> starlark::Result<()> {
+        self.println(&fjfj_starlark::print_line(location, text))
     }
 }
 
@@ -496,6 +509,17 @@ impl Repos {
         state.generated.get(name).map(|g| g.extension.clone())
     }
 
+    /// Hand `print` what BUILD files, extensions and rules have printed since
+    /// the last call.
+    pub fn flush_prints(&self, print: &dyn PrintHandler) {
+        self.inner.prints.hand_on(Some(print));
+    }
+
+    /// Where the repositories are made, under `external`.
+    pub fn output_base(&self) -> &Path {
+        &self.inner.options.output_base
+    }
+
     /// The directory of the main repository.
     pub fn workspace_root(&self) -> &Path {
         &self.inner.options.workspace_root
@@ -523,7 +547,21 @@ impl fjfj_loading::PackageSource for Repos {
     ) -> Result<Arc<fjfj_graph::package::Package>, String> {
         self.loader()
             .load_package(repo, package)
-            .map(|loaded| Arc::new(loaded.package))
+            .map(|loaded| {
+                let mut prints = self.inner.prints.0.lock().unwrap();
+                prints.extend(self.loader().take_prints());
+                if self
+                    .inner
+                    .prints
+                    .1
+                    .lock()
+                    .unwrap()
+                    .insert((repo.to_owned(), package.to_owned()))
+                {
+                    prints.extend(loaded.printed);
+                }
+                Arc::new(loaded.package)
+            })
             .map_err(|e| e.to_string())
     }
 }

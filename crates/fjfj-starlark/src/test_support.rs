@@ -1,5 +1,6 @@
 //! Shared by the tests that replay Bazel 9.2.0 probes.
 
+use crate::WithoutSites;
 use crate::{BuildFile, BuildFileError, BzlFile, RepoMappings, bzl_globals, evaluate_bzl};
 use fjfj_graph::Label;
 use starlark::environment::FrozenModule;
@@ -233,7 +234,7 @@ pub(crate) fn run_build(bzl: &str, build: &str) -> BuildOutcome {
     });
     match out {
         Ok(out) => BuildOutcome {
-            printed: out.printed,
+            printed: out.printed.without_sites(),
             package: Some(out.package),
             ..Default::default()
         },
@@ -242,7 +243,7 @@ pub(crate) fn run_build(bzl: &str, build: &str) -> BuildOutcome {
             ..Default::default()
         },
         Err(BuildFileError::Package { events, printed }) => BuildOutcome {
-            printed,
+            printed: printed.without_sites(),
             events,
             ..Default::default()
         },

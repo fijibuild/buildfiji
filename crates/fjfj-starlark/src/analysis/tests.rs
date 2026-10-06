@@ -2,6 +2,7 @@
 //! same rules (Bazel 9.2.0).
 
 use super::*;
+use crate::WithoutSites;
 use crate::test_support::module_in;
 use fjfj_graph::rule::AttrValue;
 use fjfj_graph::{ActionKind, Artifact, Configuration, Label};
@@ -229,7 +230,7 @@ r = rule(implementation = _impl, attrs = {"srcs": attr.label_list(allow_files = 
     // Verbatim from `bazel build` of the same rule (the `owner` and `root`
     // object reprs aside).
     assert_eq!(
-        out.printed,
+        out.printed.without_sites(),
         [
             "path=bazel-out/k8-fastbuild/bin/sub/x.tar.gz short=sub/x.tar.gz base=x.tar.gz dir=bazel-out/k8-fastbuild/bin/sub ext=gz src=False dirp=False root=bazel-out/k8-fastbuild/bin repr=<generated file sub/x.tar.gz> type=File",
             "path=bazel-out/k8-fastbuild/bin/noext short=noext base=noext dir=bazel-out/k8-fastbuild/bin ext= src=False dirp=False root=bazel-out/k8-fastbuild/bin repr=<generated file noext> type=File",
@@ -283,7 +284,7 @@ r = rule(implementation = _impl, attrs = {"deps": attr.label_list()})
         vec![dep],
     ))
     .unwrap();
-    assert_eq!(second.printed, ["[42, 1]"]);
+    assert_eq!(second.printed.without_sites(), ["[42, 1]"]);
 }
 
 #[test]
@@ -425,7 +426,7 @@ r = rule(
 "#;
     let req = request(src, "r", Vec::new(), Vec::new());
     assert_eq!(
-        run_rule(&req).unwrap().printed,
+        run_rule(&req).unwrap().printed.without_sites(),
         ["fastbuild None macos 10.12"]
     );
     let defaults = computed_defaults(
@@ -476,7 +477,10 @@ r = rule(
 )
 "#;
     let out = run_rule(&request(src, "r", Vec::new(), Vec::new())).unwrap();
-    assert_eq!(out.printed, ["k8-fastbuild False : False", "None [] None"]);
+    assert_eq!(
+        out.printed.without_sites(),
+        ["k8-fastbuild False : False", "None [] None"]
+    );
     let [_, expand] = &out.actions[..] else {
         panic!("{:?}", out.actions)
     };
@@ -504,7 +508,7 @@ r = rule(implementation = _impl, fragments = ["cpp"])
         .options
         .insert("copt".into(), "-O2 -g".into());
     assert_eq!(
-        run_rule(&req).unwrap().printed,
+        run_rule(&req).unwrap().printed.without_sites(),
         [
             "[\"-O2\", \"-g\"] [] [] [] DEFAULT False",
             "True True False fastbuild False"
@@ -571,7 +575,7 @@ r = rule(implementation = _impl)
 "#;
     let out = run_rule(&request(src, "r", Vec::new(), Vec::new())).unwrap();
     assert_eq!(
-        out.printed,
+        out.printed.without_sites(),
         [
             r#"["base", "c++-compile"]"#,
             // base implies dep, and the c++-compile action config implies env.
@@ -619,7 +623,7 @@ r = rule(implementation = _impl, subrules = [sub])
         providers: Vec::new(),
     };
     let out = run_rule(&request(src, "r", Vec::new(), vec![helper])).unwrap();
-    assert_eq!(out.printed, ["t 7 h None", "ok"]);
+    assert_eq!(out.printed.without_sites(), ["t 7 h None", "ok"]);
 }
 
 /// Names and actions of the C++ internals: categories name their files by the
@@ -677,7 +681,7 @@ r = rule(implementation = _impl, attrs = {"src": attr.label(allow_single_file = 
     let attrs = vec![("src".to_owned(), AttrValue::Label(label("", "a.cc")))];
     let out = run_rule(&request(src, "r", attrs, vec![src_file])).unwrap();
     assert_eq!(
-        out.printed,
+        out.printed.without_sites(),
         [
             "d/foo.pic.o",
             "x.lib",
@@ -735,7 +739,7 @@ r = rule(implementation = _impl, attrs = {"tool": attr.label(executable = True, 
     let attrs = vec![("tool".to_owned(), AttrValue::Label(label("", "tool")))];
     let out = run_rule(&request(src, "r", attrs, vec![tool])).unwrap();
     assert_eq!(
-        out.printed,
+        out.printed.without_sites(),
         [
             format!("True False {BIN}/out"),
             "tool tool.runfiles_manifest".to_owned()

@@ -2,6 +2,7 @@
 //! tables in `decl_matrix` are what Bazel printed and reported for the same
 //! code, and the tests here are what a table cannot say.
 
+use crate::WithoutSites;
 use crate::decl_matrix::{DECL_BUILD_CASES, DECL_CASES};
 use crate::test_support::{replay, replay_build};
 
@@ -146,5 +147,5 @@ fn a_build_setting_adds_its_default_and_help() {
         "r(name = 'a', build_setting_default = 'x', z = 1)\nprint(existing_rule('a')['build_setting_default'], existing_rule('a')['help'])",
     );
     assert!(out.fatal.is_none() && out.events.is_empty(), "{out:?}");
-    assert_eq!(out.printed, [r#"x "#]);
+    assert_eq!(out.printed.without_sites(), [r#"x "#]);
 }

@@ -345,6 +345,24 @@ impl starlark::PrintHandler for BuildContext<'_> {
         self.printed.borrow_mut().push(text.to_owned());
         Ok(())
     }
+
+    fn println_at(
+        &self,
+        location: Option<&starlark::codemap::FileSpan>,
+        text: &str,
+    ) -> starlark::Result<()> {
+        // A BUILD file is named by its path in its package; a canonical name
+        // says which repository it is in.
+        let line = crate::print_line(location, text);
+        match location {
+            Some(at) if !at.filename().starts_with("@@") => {
+                let file = at.filename().rsplit('/').next().unwrap_or_default();
+                let rest = &line[at.filename().len()..];
+                self.println(&format!("@@{}//{}:{file}{rest}", self.repo, self.package))
+            }
+            _ => self.println(&line),
+        }
+    }
 }
 
 impl BuildContext<'_> {
@@ -1079,6 +1097,7 @@ fn package_string(value: Value<'_>, noun: &str) -> starlark::Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::WithoutSites;
     use crate::label::{BzlFile, evaluate_bzl};
     use fjfj_graph::package::TargetKind;
     use fjfj_graph::rule::AttrValue;
@@ -1216,8 +1235,21 @@ mod tests {
         load_in(dir.path(), "", bzl, build)
     }
 
+    /// Bazel 9.2.0 shows `DEBUG: <file>:<line>:<column>: text` with the column
+    /// of the call's opening parenthesis; the file is named by its label here.
+    #[test]
+    fn a_print_names_its_call_site() {
+        let out = load("x = 1\ny = [print(\"hi\", x)]").unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(out.printed, ["@@//:BUILD.bazel:2:11: hi 1"]);
+        assert_eq!(crate::without_site(&out.printed[0]), "hi 1");
+        assert_eq!(crate::without_site("a: b"), "a: b");
+    }
+
     fn printed(build: &str) -> Vec<String> {
-        load(build).unwrap_or_else(|e| panic!("{e}")).printed
+        load(build)
+            .unwrap_or_else(|e| panic!("{e}"))
+            .printed
+            .without_sites()
     }
 
     /// The message of the fatal error, or of the events joined by newlines.
@@ -1353,7 +1385,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            out.printed,
+            out.printed.without_sites(),
             [
                 r#" @ ["a"]"#.to_owned(),
                 r#"["f1.txt", "fa.txt"] """#.to_owned()
@@ -1391,7 +1423,7 @@ mod tests {
             "print(repr(package_name()), repr(repository_name()), repr(repo_name()))",
         )
         .unwrap();
-        assert_eq!(out.printed, [r#""sub" "@" """#]);
+        assert_eq!(out.printed.without_sites(), [r#""sub" "@" """#]);
     }
 
     /// Probed on Bazel 9.2.0: `licenses()` is a BUILD-file function only, takes
@@ -2012,7 +2044,7 @@ mod tests {
         })
         .unwrap();
         assert_eq!(
-            out.printed,
+            out.printed.without_sites(),
             [
                 r#"(":x", "//q:y", "@@[unknown repo '' requested from @@dep+]//m:z", "@@[unknown repo 'r' requested from @@dep+]//s:t") "@dep+" "dep+""#
             ]
@@ -2031,7 +2063,7 @@ mod tests {
             &[(":m.bzl", source)],
             "load(\":m.bzl\", \"mac\")\nmac()",
         )
-        .map(|out| out.printed)
+        .map(|out| out.printed.without_sites())
         .map_err(|e| e.to_string())
     }
 
@@ -2159,7 +2191,7 @@ print(L == M, h(":a") == f(":a"), repr(h("//q")))"#,
         )
         .unwrap();
         assert_eq!(
-            out.printed,
+            out.printed.without_sites(),
             [
                 "@@dep+//sub:a @@dep+//b:c @@[unknown repo 'mydep' requested from @@dep+ (did you mean 'dep'?)]//b:c @@dep+//sub:x @@dep+//sub:y",
                 r#"True True Label("@@dep+//q:q")"#,

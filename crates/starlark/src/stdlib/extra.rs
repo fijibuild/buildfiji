@@ -23,6 +23,8 @@ use starlark_derive::starlark_module;
 use crate as starlark;
 use crate::environment::GlobalsBuilder;
 use crate::eval::Evaluator;
+use starlark_syntax::codemap::FileSpan;
+
 use crate::values::StringValue;
 use crate::values::Value;
 use crate::values::ValueOfUnchecked;
@@ -119,6 +121,13 @@ impl fmt::Display for PrintWrapper<'_, '_> {
 pub trait PrintHandler {
     /// If this function returns error, evaluation fails with this error.
     fn println(&self, text: &str) -> crate::Result<()>;
+
+    /// `println` for a `print` at `location`, the call site, when it is known.
+    /// A handler that shows where text came from overrides this.
+    fn println_at(&self, location: Option<&FileSpan>, text: &str) -> crate::Result<()> {
+        let _ = location;
+        self.println(text)
+    }
 }
 
 pub(crate) struct StderrPrintHandler;
@@ -139,8 +148,11 @@ pub fn print(builder: &mut GlobalsBuilder) {
     ) -> starlark::Result<NoneType> {
         // In practice most users should want to put the print somewhere else, but this does for now
         // Unfortunately, we can't use PrintWrapper because strings to_str() and Display are different.
-        eval.print_handler
-            .println(&args.items.iter().map(|x| x.to_str()).join(" "))?;
+        let location = eval.call_stack_top_location();
+        eval.print_handler.println_at(
+            location.as_ref(),
+            &args.items.iter().map(|x| x.to_str()).join(" "),
+        )?;
         Ok(NoneType)
     }
 }

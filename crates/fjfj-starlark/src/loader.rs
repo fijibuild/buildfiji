@@ -105,6 +105,26 @@ pub struct BzlLoader {
     /// The same for a file loaded from a BUILD file, which Bazel also folds
     /// its builtins' digest into.
     build_digests: Mutex<HashMap<(String, String, String), [u8; 32]>>,
+    /// What the files evaluated so far printed, until [`Self::take_prints`].
+    prints: Mutex<Vec<String>>,
+}
+
+/// Collects what a `.bzl` file prints at its top level.
+struct Collect<'a>(&'a Mutex<Vec<String>>);
+
+impl starlark::PrintHandler for Collect<'_> {
+    fn println(&self, text: &str) -> starlark::Result<()> {
+        self.0.lock().unwrap().push(text.to_owned());
+        Ok(())
+    }
+
+    fn println_at(
+        &self,
+        location: Option<&starlark::codemap::FileSpan>,
+        text: &str,
+    ) -> starlark::Result<()> {
+        self.println(&crate::print_line(location, text))
+    }
 }
 
 /// The digest of Bazel 9.2.0's bundled builtins (`@_builtins`): the
@@ -175,6 +195,7 @@ impl BzlLoader {
             evaluations: AtomicUsize::new(0),
             digests: Mutex::new(HashMap::new()),
             build_digests: Mutex::new(HashMap::new()),
+            prints: Mutex::new(Vec::new()),
         }
     }
 
@@ -209,6 +230,12 @@ impl BzlLoader {
     pub fn build_digest(&self, file: &Label) -> Option<[u8; 32]> {
         let key = (file.repo.clone(), file.package.clone(), file.name.clone());
         self.build_digests.lock().unwrap().get(&key).copied()
+    }
+
+    /// What `.bzl` files have printed since the last call, as
+    /// [`print_line`](crate::print_line) shows it.
+    pub fn take_prints(&self) -> Vec<String> {
+        std::mem::take(&mut *self.prints.lock().unwrap())
     }
 
     /// Evaluate the BUILD file of `package` in `repo`: what `fjfj build`
@@ -459,7 +486,7 @@ impl BzlLoader {
             globals: &self.globals,
             mappings: &self.repos.mappings(),
             loader: &loader,
-            print: None,
+            print: Some(&Collect(&self.prints)),
         });
         if module.is_ok() {
             let mut hasher = sha2::Sha256::new();
