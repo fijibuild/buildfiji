@@ -276,6 +276,8 @@ pub(crate) struct Report {
     pub analysis_errors: Vec<(Label, String)>,
     /// Targets named outright that the platform cannot build, and why.
     pub incompatible_errors: Vec<(Label, String)>,
+    /// The targets asked for whose analysis failed.
+    pub failed_roots: Vec<Label>,
     /// Targets of the request left unbuilt as the platform cannot build them:
     /// they were analysed, and are not among the results.
     pub skipped: Vec<Label>,
@@ -310,6 +312,7 @@ impl Report {
             results: Vec::new(),
             analysis_errors: Vec::new(),
             incompatible_errors: Vec::new(),
+            failed_roots: Vec::new(),
             skipped: Vec::new(),
             analysis_sites: BTreeMap::new(),
             failures: Vec::new(),
@@ -450,7 +453,10 @@ async fn analyse(
     for (label, root, applied) in pipelines {
         match root {
             Ok(done) => roots.push((label.clone(), done)),
-            Err(e) => report.analysis_errors.push((label.clone(), e)),
+            Err(e) => {
+                report.failed_roots.push(label.clone());
+                report.analysis_errors.push((label.clone(), e));
+            }
         }
         for result in applied {
             match result {
@@ -1080,15 +1086,17 @@ pub(crate) fn print(
         eprintln!("{line}");
     }
     let incompatible = !report.incompatible_errors.is_empty();
-    // What the platform cannot build was analysed as well.
-    let analysed = report.results.len() + report.skipped.len();
+    // What the platform cannot build and what failed to analyse were
+    // analysed as well.
+    let analysed = report.results.len() + report.skipped.len() + report.failed_roots.len();
     if (report.analysis_errors.is_empty() && !incompatible) || keep_going {
         let what = if analysed == 1 {
             let only = report
                 .results
                 .first()
                 .map(|r| &r.label)
-                .or(report.skipped.first());
+                .or(report.skipped.first())
+                .or(report.failed_roots.first());
             only.map(|label| format!("target {}", label_text(label)))
                 .unwrap_or_default()
         } else {
