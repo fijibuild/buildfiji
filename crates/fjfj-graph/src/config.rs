@@ -115,9 +115,11 @@ pub struct Configuration {
     /// by `--//pkg:flag=value` or a transition: the label of the setting
     /// (`//pkg:flag`), or `//command_line_option:name`.
     pub settings: BTreeMap<String, SettingValue>,
-    /// The settings a Starlark transition changed. They name the output
-    /// directory (`k8-fastbuild-ST-<hash>`).
-    pub affected: BTreeSet<String>,
+    /// The settings a Starlark transition changed, with the value each had
+    /// before the first of them did. They name the output directory
+    /// (`k8-fastbuild-ST-<hash>`); one set back to its original value is no
+    /// longer among them.
+    pub affected: BTreeMap<String, SettingValue>,
 }
 
 /// The `@platforms` constraint values of the machine fjfj runs on, as
@@ -176,7 +178,7 @@ impl Default for Configuration {
             test_args: Vec::new(),
             exec: false,
             settings: BTreeMap::new(),
-            affected: BTreeSet::new(),
+            affected: BTreeMap::new(),
         }
     }
 }
@@ -294,7 +296,7 @@ impl Configuration {
     fn transition_hash(&self) -> Option<String> {
         let mut digest = Sha256::new();
         let mut any = false;
-        for name in &self.affected {
+        for name in self.affected.keys() {
             let Some(value) = self.settings.get(name) else {
                 continue;
             };
@@ -380,19 +382,26 @@ mod tests {
         config
             .settings
             .insert("//:flag".into(), SettingValue::Str("on".into()));
-        config.affected.insert("//:flag".into());
+        config
+            .affected
+            .insert("//:flag".into(), SettingValue::Str("off".into()));
         assert_eq!(config.mnemonic(), "k8-fastbuild-ST-c59cc04586de");
         config
             .settings
             .insert("//:flag2".into(), SettingValue::Str("x".into()));
-        config.affected.insert("//:flag2".into());
+        config
+            .affected
+            .insert("//:flag2".into(), SettingValue::Str("".into()));
         assert_eq!(config.mnemonic(), "k8-fastbuild-ST-92296e9f19db");
         let mut copt = Configuration::default();
         copt.settings.insert(
             format!("{COMMAND_LINE_OPTION}copt"),
             SettingValue::List(vec!["-O2".into()]),
         );
-        copt.affected.insert(format!("{COMMAND_LINE_OPTION}copt"));
+        copt.affected.insert(
+            format!("{COMMAND_LINE_OPTION}copt"),
+            SettingValue::List(vec![]),
+        );
         assert_eq!(copt.mnemonic(), "k8-fastbuild-ST-bf371aea6388");
     }
 
@@ -443,7 +452,7 @@ mod tests {
             test_args: Vec::new(),
             exec: true,
             settings: BTreeMap::new(),
-            affected: BTreeSet::new(),
+            affected: BTreeMap::new(),
         };
         assert_eq!(config.mnemonic(), "k8-opt-exec");
         assert_eq!(CompilationMode::parse("dbg"), Some(CompilationMode::Dbg));

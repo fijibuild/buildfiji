@@ -221,9 +221,26 @@ async fn write(
     value: SettingValue,
     repo: &str,
 ) -> Result<(), Error> {
-    if read(ctx, configuration, name, repo).await? == value {
+    let before = read(ctx, configuration, name, repo).await?;
+    if before == value {
         return Ok(());
     }
+    // A setting is among those a transition changed until it is set back to
+    // what it was before the first of them did.
+    let original = configuration
+        .affected
+        .get(name)
+        .cloned()
+        .unwrap_or_else(|| before.clone());
+    let note = |configuration: &mut Configuration, value: &SettingValue| {
+        if *value == original {
+            configuration.affected.remove(name);
+        } else {
+            configuration
+                .affected
+                .insert(name.to_owned(), original.clone());
+        }
+    };
     if let Some(option) = name.strip_prefix(COMMAND_LINE_OPTION) {
         match (option, &value) {
             ("compilation_mode", SettingValue::Str(mode)) => {
@@ -252,8 +269,10 @@ async fn write(
             let label = setting_label(text, "")?;
             let constraints = crate::platform_constraints_in(ctx, &label).await?;
             configuration.constraints = constraints;
-            configuration.settings.insert(name.to_owned(), value);
-            configuration.affected.insert(name.to_owned());
+            configuration
+                .settings
+                .insert(name.to_owned(), value.clone());
+            note(configuration, &value);
             return Ok(());
         }
         if native_default(option).is_none() {
@@ -261,17 +280,25 @@ async fn write(
                 "transitions on --{option} are not supported yet (buildfiji-136.6)"
             )));
         }
-        configuration.settings.insert(name.to_owned(), value);
-        configuration.affected.insert(name.to_owned());
+        if native_default(option).as_ref() == Some(&value) {
+            configuration.settings.remove(name);
+        } else {
+            configuration
+                .settings
+                .insert(name.to_owned(), value.clone());
+        }
+        note(configuration, &value);
         return Ok(());
     }
     let default = user_default(ctx, &setting_label(name, repo)?).await?.1;
     if value == default {
         configuration.settings.remove(name);
     } else {
-        configuration.settings.insert(name.to_owned(), value);
+        configuration
+            .settings
+            .insert(name.to_owned(), value.clone());
     }
-    configuration.affected.insert(name.to_owned());
+    note(configuration, &value);
     Ok(())
 }
 

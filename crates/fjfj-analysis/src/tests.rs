@@ -1444,6 +1444,62 @@ top = rule(implementation = _top, attrs = {"dep": attr.label(cfg = opt)})
     );
 }
 
+/// A setting a transition sets back to what it was before the first of them
+/// changed it is no longer among the settings that name the output directory.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_setting_set_back_to_its_original_value_leaves_the_output_directory_name() {
+    let (_dir, repos) = workspace(&[
+        ("MODULE.bazel", ""),
+        (
+            "defs.bzl",
+            r#"
+COPT = "//command_line_option:copt"
+CXX = "//command_line_option:cxxopt"
+def _leaf(ctx):
+    out = ctx.actions.declare_file(ctx.label.name)
+    ctx.actions.write(out, "x")
+    return [DefaultInfo(files = depset([out]))]
+leaf = rule(implementation = _leaf)
+def _set(settings, attr):
+    return {COPT: ["-q"], CXX: ["-w"]}
+def _reset(settings, attr):
+    return {COPT: [], CXX: ["-w"]}
+def _reset_all(settings, attr):
+    return {COPT: [], CXX: []}
+def _show(ctx):
+    print([f.path for f in ctx.attr.dep[0][DefaultInfo].files.to_list()])
+    return [DefaultInfo(files = depset(ctx.files.dep))]
+outs = [COPT, CXX]
+top = rule(_show, attrs = {"dep": attr.label(cfg = transition(implementation = _set, inputs = [], outputs = outs))})
+mid = rule(_show, attrs = {"dep": attr.label(cfg = transition(implementation = _reset, inputs = [], outputs = outs))})
+none = rule(_show, attrs = {"dep": attr.label(cfg = transition(implementation = _reset_all, inputs = [], outputs = outs))})
+"#,
+        ),
+        (
+            "BUILD.bazel",
+            "load(':defs.bzl', 'leaf', 'top', 'mid', 'none')\nleaf(name = 'leaf')\nmid(name = 'm', dep = ':leaf')\ntop(name = 't', dep = ':m')\nnone(name = 'n', dep = ':leaf')\ntop(name = 'u', dep = ':n')\n",
+        ),
+    ]);
+    // `-q` is reset and `-w` is not: only `-w` names the directory, so it is
+    // the one `m` gives its dependency without `-q` ever having been set.
+    let m = analyse(&repos, "//:m").await.unwrap();
+    let t = analyse(&repos, "//:t").await.unwrap();
+    let only_w = &m.printed.without_sites()[0];
+    let after_reset = &t.printed.without_sites()[0];
+    assert!(only_w.contains("-ST-"), "{only_w}");
+    assert_eq!(only_w, after_reset);
+    // Everything back to what it was: no ST at all.
+    let u = analyse(&repos, "//:u").await.unwrap();
+    assert!(
+        u.printed
+            .without_sites()
+            .iter()
+            .any(|line| line == r#"["bazel-out/k8-fastbuild/bin/leaf"]"#),
+        "{:?}",
+        u.printed.without_sites()
+    );
+}
+
 /// A transition that returns an empty dict changes nothing; one that returns
 /// some of its outputs and not all of them says which it left out.
 #[tokio::test(flavor = "multi_thread")]
