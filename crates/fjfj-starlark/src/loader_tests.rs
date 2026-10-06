@@ -28,7 +28,7 @@ fn load(loader: &BzlLoader, package: &str) -> Result<Vec<String>, String> {
         .load_package("", package)
         .map(|out| out.printed.without_sites())
         .map_err(|e| match e {
-            BuildFileError::Eval(e) => format!("{e:#}"),
+            BuildFileError::Eval(e, _) => format!("{e:#}"),
             // What Bazel reports before it says the load failed is part of it.
             BuildFileError::Load(reason) | BuildFileError::Absent(reason) => {
                 let mut said = loader.take_events();

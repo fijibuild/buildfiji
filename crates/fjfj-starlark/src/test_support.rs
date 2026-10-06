@@ -238,7 +238,7 @@ pub(crate) fn run_build(bzl: &str, build: &str) -> BuildOutcome {
             package: Some(out.package),
             ..Default::default()
         },
-        Err(BuildFileError::Eval(e)) => BuildOutcome {
+        Err(BuildFileError::Eval(e, _)) => BuildOutcome {
             fatal: Some(format!("{e:#}")),
             ..Default::default()
         },

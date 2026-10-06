@@ -27,6 +27,43 @@ pub fn print_line(location: Option<&starlark::codemap::FileSpan>, text: &str) ->
     }
 }
 
+/// `DEBUG: <path>:<line>:<column>: <text>`, from what `print_line` made:
+/// `@@<repo>//<package>:<file>:<line>:<column>: <text>` names the file by
+/// its label, and `path_of` says where that file is.
+pub fn debug_line_with(text: &str, path_of: &dyn Fn(&str) -> String) -> String {
+    let located = text.strip_prefix("@@").and_then(|rest| {
+        let (repo, rest) = rest.split_once("//")?;
+        let (package, rest) = rest.split_once(':')?;
+        let (file, rest) = rest.split_once(':')?;
+        Some(format!(
+            "{}:{rest}",
+            path_of(&format!("@@{repo}//{package}:{file}"))
+        ))
+    });
+    format!("DEBUG: {}", located.as_deref().unwrap_or(text))
+}
+
+/// [`debug_line_with`], for files in the workspace or under `external`.
+pub fn debug_line(
+    text: &str,
+    workspace_root: &std::path::Path,
+    external: &std::path::Path,
+) -> String {
+    debug_line_with(text, &|label| {
+        let located = label.strip_prefix("@@").and_then(|rest| {
+            let (repo, rest) = rest.split_once("//")?;
+            let (package, file) = rest.split_once(':')?;
+            let root = if repo.is_empty() {
+                workspace_root.to_owned()
+            } else {
+                external.join(repo)
+            };
+            Some(root.join(package).join(file).display().to_string())
+        });
+        located.unwrap_or_else(|| label.to_owned())
+    })
+}
+
 /// `text` without the `<file>:<line>:<column>: ` that [`print_line`] put before it.
 pub fn without_site(text: &str) -> &str {
     let mut from = 0;

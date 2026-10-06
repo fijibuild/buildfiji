@@ -227,21 +227,7 @@ pub(crate) fn file_path(name: &str, workspace_root: &Path, external: &Path) -> S
 /// `@@<repo>//<package>:<file>:<line>:<column>: <text>` names the file by
 /// its label, and a path is where that file is.
 pub(crate) fn debug_line(text: &str, workspace_root: &Path, external: &Path) -> String {
-    let located = text.strip_prefix("@@").and_then(|rest| {
-        let (repo, rest) = rest.split_once("//")?;
-        let (package, rest) = rest.split_once(':')?;
-        let (file, rest) = rest.split_once(':')?;
-        let root = if repo.is_empty() {
-            workspace_root.to_owned()
-        } else {
-            external.join(repo)
-        };
-        Some(format!(
-            "{}:{rest}",
-            root.join(package).join(file).display()
-        ))
-    });
-    format!("DEBUG: {}", located.as_deref().unwrap_or(text))
+    fjfj_starlark::debug_line(text, workspace_root, external)
 }
 
 /// Resolve the module graph, make the repositories asked for, and write the
@@ -422,10 +408,16 @@ pub(crate) fn begin(
 }
 
 fn print_warnings(repos: &Repos) {
-    for event in repos.take_events() {
-        eprintln!("ERROR: {event}");
-    }
+    // What earlier packages printed happened before the failure.
     repos.flush_prints(&Printer::of(repos));
+    for event in repos.take_events() {
+        // A print before the error is a line of its own.
+        if event.starts_with("DEBUG: ") {
+            eprintln!("{event}");
+        } else {
+            eprintln!("ERROR: {event}");
+        }
+    }
     for warning in repos.warnings() {
         eprintln!("WARNING: {warning}");
     }

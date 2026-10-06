@@ -236,6 +236,18 @@ impl BzlLoader {
         self.build_digests.lock().unwrap().get(&key).copied()
     }
 
+    /// What `.bzl` files have printed so far becomes `DEBUG:` events, which
+    /// come before the error that follows them.
+    pub fn said_prints(&self) {
+        let printed = self.take_prints();
+        let mut events = self.events.lock().unwrap();
+        events.extend(
+            printed
+                .iter()
+                .map(|text| crate::debug_line_with(text, &|name| self.path_of("", name))),
+        );
+    }
+
     /// What `.bzl` files have printed since the last call, as
     /// [`print_line`](crate::print_line) shows it.
     pub fn take_prints(&self) -> Vec<String> {
@@ -322,10 +334,13 @@ impl BzlLoader {
         })
         .map_err(|e| match e {
             // The traceback names its files as the parser was told.
-            BuildFileError::Eval(text) => BuildFileError::Eval(anyhow::anyhow!(
-                "{}",
-                crate::absolute_files(&format!("{text:#}"), &|name| self.path_of(repo, name))
-            )),
+            BuildFileError::Eval(text, printed) => BuildFileError::Eval(
+                anyhow::anyhow!(
+                    "{}",
+                    crate::absolute_files(&format!("{text:#}"), &|name| self.path_of(repo, name))
+                ),
+                printed,
+            ),
             BuildFileError::Package { events, printed } => {
                 let here = format!("{path}:");
                 let absolute = build.to_string_lossy();
@@ -600,6 +615,7 @@ impl BzlLoader {
                 let text = crate::absolute_files(&crate::traceback(&e), &|name| {
                     self.path_of(&file.repo, name)
                 });
+                self.said_prints();
                 self.events.lock().unwrap().push(text);
                 format!("initialization of module '{}' failed", module_name(file))
             }

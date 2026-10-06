@@ -66,7 +66,11 @@ pub struct BuildFileOutput {
 pub enum BuildFileError {
     /// The file did not parse, or a fatal error stopped it.
     #[error("{0:#}")]
-    Eval(anyhow::Error),
+    Eval(
+        anyhow::Error,
+        /// What `print()` wrote before it stopped.
+        Vec<String>,
+    ),
     /// The package has no BUILD file to evaluate, or it cannot be read: the
     /// whole error.
     #[error("{0}")]
@@ -282,7 +286,20 @@ fn failure(error: starlark::Error) -> BuildFileError {
                 printed: Vec::new(),
             }
         }
-        None => BuildFileError::Eval(anyhow::anyhow!("{}", crate::traceback(&error))),
+        None => BuildFileError::Eval(anyhow::anyhow!("{}", crate::traceback(&error)), Vec::new()),
+    }
+}
+
+/// [`failure`], with what the file printed before it stopped.
+fn failure_after(ctx: &BuildContext<'_>, error: starlark::Error) -> BuildFileError {
+    let said = ctx.printed.borrow().clone();
+    match failure(error) {
+        BuildFileError::Eval(text, _) => BuildFileError::Eval(text, said),
+        BuildFileError::Package { events, .. } => BuildFileError::Package {
+            events,
+            printed: said,
+        },
+        other => other,
     }
 }
 
@@ -321,9 +338,10 @@ pub fn evaluate_build_file(input: &BuildFile<'_>) -> Result<BuildFileOutput, Bui
         eval.extra = Some(&ctx);
         eval.set_loader(input.loader);
         eval.set_print_handler(&ctx);
-        eval.eval_module(ast, &globals).map_err(failure)?;
+        let stopped = |error| failure_after(&ctx, error);
+        eval.eval_module(ast, &globals).map_err(stopped)?;
         // Finalizers run when everything else has.
-        run_finalizers(&ctx, &mut eval).map_err(failure)
+        run_finalizers(&ctx, &mut eval).map_err(stopped)
     })?;
     let BuildContext { state, printed, .. } = ctx;
     let mut state = state.into_inner();
@@ -1285,7 +1303,7 @@ mod tests {
     fn failure(build: &str) -> String {
         match load(build) {
             Ok(_) => panic!("accepted:\n{build}"),
-            Err(BuildFileError::Eval(e)) => format!("{e:#}"),
+            Err(BuildFileError::Eval(e, _)) => format!("{e:#}"),
             Err(BuildFileError::Load(reason) | BuildFileError::Absent(reason)) => reason,
             Err(BuildFileError::Package { events, .. }) => events.join("\n"),
         }
@@ -1294,7 +1312,7 @@ mod tests {
     fn events(build: &str) -> Vec<String> {
         match load(build) {
             Err(BuildFileError::Package { events, .. }) => events,
-            Err(BuildFileError::Eval(e)) => panic!("fatal: {e:#}"),
+            Err(BuildFileError::Eval(e, _)) => panic!("fatal: {e:#}"),
             Err(BuildFileError::Load(reason) | BuildFileError::Absent(reason)) => {
                 panic!("load failed: {reason}")
             }
@@ -1495,7 +1513,7 @@ mod tests {
             ]
         );
         let fatal = |build: &str| match load(build) {
-            Err(BuildFileError::Eval(e)) => format!("{e:#}"),
+            Err(BuildFileError::Eval(e, _)) => format!("{e:#}"),
             other => panic!("{other:?}"),
         };
         assert!(
@@ -2243,7 +2261,7 @@ print(L == M, h(":a") == f(":a"), repr(h("//q")))"#,
     #[test]
     fn a_load_error_is_not_swallowed() {
         let err = load("load(\":missing.bzl\", \"x\")").unwrap_err();
-        assert!(matches!(err, BuildFileError::Eval(_)));
+        assert!(matches!(err, BuildFileError::Eval(..)));
     }
 
     #[test]

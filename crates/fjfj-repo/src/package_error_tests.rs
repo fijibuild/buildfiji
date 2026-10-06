@@ -96,6 +96,36 @@ const ROWS: &[Row] = &[
         events: &["{ws}/n/l.bzl:2:10: name 'z' is not defined"],
         error: "while parsing '//n:all': error loading package 'n': compilation of module 'n/l.bzl' failed",
     },
+    // What a BUILD file printed before it failed is shown first, as a DEBUG
+    // line, and what a .bzl it loads printed before that.
+    Row {
+        files: &[
+            (
+                "d/BUILD",
+                "load('//d:l.bzl', 'x')\nprint('a')\ny = [1][3]\nprint('b')\n",
+            ),
+            ("d/l.bzl", "print('in bzl')\nx = 1\n"),
+        ],
+        events: &[
+            "DEBUG: {ws}/d/l.bzl:1:6: in bzl",
+            "DEBUG: {ws}/d/BUILD:2:6: a",
+            "Traceback (most recent call last):\n\tFile \"{ws}/d/BUILD\", line 3, column 8, in <toplevel>\n\t\ty = [1][3]\nError: index out of range (index is 3, but sequence has 1 elements)",
+            "package contains errors: d: Traceback (most recent call last):\n\tFile \"{ws}/d/BUILD\", line 3, column 8, in <toplevel>\n\t\ty = [1][3]\nError: index out of range (index is 3, but sequence has 1 elements)",
+        ],
+        error: "Error evaluating '//d:all': error loading package 'd': Package 'd' contains errors",
+    },
+    // A .bzl that prints and then fails.
+    Row {
+        files: &[
+            ("f/BUILD", "load('//f:l.bzl', 'x')\n"),
+            ("f/l.bzl", "print('before')\nfail('after')\n"),
+        ],
+        events: &[
+            "DEBUG: {ws}/f/l.bzl:1:6: before",
+            "Traceback (most recent call last):\n\tFile \"{ws}/f/l.bzl\", line 2, column 5, in <toplevel>\n\t\tfail('after')\nError in fail: after",
+        ],
+        error: "while parsing '//f:all': error loading package 'f': initialization of module 'f/l.bzl' failed",
+    },
     // A rule the BUILD file calls wrongly: an event at the call.
     Row {
         files: &[(

@@ -610,7 +610,34 @@ impl Repos {
             format!("@@{repo}//{package}")
         };
         let mut events = self.inner.events.lock().unwrap();
+        // What the files printed before the error comes first, as Bazel
+        // shows it, and once for the package.
+        self.loader().said_prints();
         events.extend(self.loader().take_events());
+        let mut debug = |printed: &[String]| {
+            if self
+                .inner
+                .prints
+                .1
+                .lock()
+                .unwrap()
+                .insert((repo.to_owned(), package.to_owned()))
+            {
+                for text in printed {
+                    events
+                        .queue
+                        .push(fjfj_starlark::debug_line_with(text, &|name| {
+                            self.loader().path_of("", name)
+                        }));
+                }
+            }
+        };
+        match &error {
+            BuildFileError::Eval(_, printed) | BuildFileError::Package { printed, .. } => {
+                debug(printed)
+            }
+            _ => debug(&[]),
+        }
         let contains_errors = |events: &mut Events, first: &str| {
             // The first event again, without the place it was at.
             let message = first
@@ -630,7 +657,7 @@ impl Repos {
             BuildFileError::Load(reason) => {
                 format!("error loading package '{name}': {reason}")
             }
-            BuildFileError::Eval(text) => {
+            BuildFileError::Eval(text, _) => {
                 let text = format!("{text:#}");
                 events.push(text.clone());
                 contains_errors(&mut events, &text)
@@ -646,7 +673,8 @@ impl Repos {
     }
 
     /// The errors packages loaded so far had, each to be shown as an
-    /// `ERROR:` line, in the order they happened.
+    /// `ERROR:` line, in the order they happened. A `DEBUG: ` one is what a
+    /// file printed before the error after it, and is shown as it is.
     pub fn take_events(&self) -> Vec<String> {
         let mut events = self.inner.events.lock().unwrap();
         events.extend(self.loader().take_events());
