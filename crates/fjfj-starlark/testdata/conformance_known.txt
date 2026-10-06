@@ -18,7 +18,6 @@ function.star:84
 all_any.star:1
 comprehension.star:1
 dict.star:50
-fields.star:55
 float.star:1
 function.star:32
 function.star:60
@@ -26,8 +25,6 @@ function.star:147
 function.star:173
 int.star:1
 int_constructor.star:1
-list_mutation.star:1
-list_mutation.star:30
 list_mutation.star:44
 list_mutation.star:57
 list_slices.star:1

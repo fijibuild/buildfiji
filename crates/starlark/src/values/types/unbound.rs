@@ -81,7 +81,10 @@ impl UnboundValue {
             self.to_frozen_value().to_value(),
             Some(span),
             |eval| match self {
-                UnboundValue::Method(m) => m.function.invoke(eval, this, args),
+                UnboundValue::Method(m) => m
+                    .function
+                    .invoke(eval, this, args)
+                    .map_err(|e| crate::eval::runtime::arguments::named_native_error(e, &m.name)),
                 UnboundValue::Attr(a) => a.invoke(this, eval.heap()),
             },
         )

@@ -784,7 +784,14 @@ where
                 //   We use `slots` only in `collect_inline`,
                 //   which does not have access to `eval` thus cannot access the frame indirectly.
                 let slots = unsafe { eval.current_frame.locals_mut() };
-                self.parameters.collect_inline(args, slots, eval.heap())?;
+                // Bazel places a call that does not fit at the `def` (fjfj).
+                self.parameters
+                    .collect_inline(args, slots, eval.heap())
+                    .map_err(|mut e| {
+                        let at = self.def_info.signature_span;
+                        e.set_span(at.span(), at.file().as_ref());
+                        e
+                    })?;
                 self.invoke_raw(me, eval)
             },
         )

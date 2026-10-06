@@ -286,14 +286,22 @@ impl<'v> StarlarkValue<'v> for StarlarkStr {
         let i = i32::unpack_param(index)?;
         if i >= 0 {
             match fast_string::at(self, CharIndex(i as usize)) {
-                None => Err(ValueError::IndexOutOfBound(i).into()),
+                None => Err(ValueError::SequenceIndex {
+                    index: i,
+                    len: fast_string::len(self).0,
+                }
+                .into()),
                 Some(c) => Ok(heap.alloc(c)),
             }
         } else {
             let len_chars = fast_string::len(self);
             let ind = CharIndex((-i) as usize); // Index from the end, minimum of 1
             if ind > len_chars {
-                Err(ValueError::IndexOutOfBound(i).into())
+                Err(ValueError::SequenceIndex {
+                    index: i,
+                    len: len_chars.0,
+                }
+                .into())
             } else if len_chars.0 == self.len() {
                 // We are a 7bit ASCII string, so take the fast-path
                 Ok(heap.alloc(self.as_bytes()[(len_chars - ind).0] as char))

@@ -226,15 +226,12 @@ pub trait UnpackValue<'v>: Sized + StarlarkTypeRepr {
     fn unpack_named_param(value: Value<'v>, param_name: &str) -> crate::Result<Self> {
         #[cold]
         fn error<'v>(value: Value<'v>, param_name: &str, ty: fn() -> Ty) -> crate::Error {
-            #[derive(thiserror::Error, Debug)]
-            #[error("Type of parameter `{0}` doesn't match, expected `{1}`, actual `{2}`")]
-            struct IncorrectParameterTypeNamedWithExpected(String, Ty, String);
-
-            crate::Error::new_value(IncorrectParameterTypeNamedWithExpected(
-                param_name.to_owned(),
-                ty(),
-                value.to_string_for_type_error(),
-            ))
+            crate::Error::new_value(ParameterType {
+                function: None,
+                param: param_name.to_owned(),
+                want: bazel_type_name(&ty()),
+                actual: value.get_type().to_owned(),
+            })
         }
 
         Self::unpack_value(value)
@@ -272,4 +269,42 @@ impl<'v, TLeft: UnpackValue<'v>, TRight: UnpackValue<'v>> UnpackValue<'v>
                 .map(Self::Right)),
         }
     }
+}
+
+/// A parameter of the wrong type, worded as Bazel does (fjfj).
+#[derive(thiserror::Error, Debug, Clone)]
+#[error("{}parameter '{param}' got value of type '{actual}', want '{want}'", function.as_ref().map_or(String::new(), |f| format!("in call to {f}(), ")))]
+pub(crate) struct ParameterType {
+    /// The native function, once the call is known.
+    pub(crate) function: Option<String>,
+    pub(crate) param: String,
+    pub(crate) want: String,
+    pub(crate) actual: String,
+}
+
+/// A type as Bazel names it in `want '...'`: `string`, `NoneType`, `A or B`.
+fn bazel_type_name(ty: &Ty) -> String {
+    // A parameter that takes `None` for its default is a plain `string` to
+    // Bazel, so `None` is only named when it is all there is.
+    let text = ty.to_string();
+    let parts: Vec<&str> = text.split(" | ").filter(|part| *part != "None").collect();
+    let parts = if parts.is_empty() {
+        vec!["None"]
+    } else {
+        parts
+    };
+    parts
+        .into_iter()
+        .map(|part| {
+            let part = part.split('[').next().unwrap_or(part);
+            match part {
+                "str" => "string",
+                "None" => "NoneType",
+                "Value" => "object",
+                other => other,
+            }
+            .to_owned()
+        })
+        .collect::<Vec<_>>()
+        .join(" or ")
 }

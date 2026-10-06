@@ -57,6 +57,8 @@ impl BcNativeFunction {
         args: &Arguments<'v, '_>,
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> crate::Result<Value<'v>> {
-        self.imp.invoke(eval, args)
+        self.imp.invoke(eval, args).map_err(|e| {
+            crate::eval::runtime::arguments::named_native_error(e, &self.fun.as_ref().name)
+        })
     }
 }

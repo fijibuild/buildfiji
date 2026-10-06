@@ -42,16 +42,31 @@ use crate::values::ValueLike;
 use crate::values::dict::Dict;
 use crate::values::dict::DictRef;
 use crate::values::iter::StarlarkIterator;
+use crate::values::unpack::ParameterType;
 
 #[derive(Debug, Clone, Error)]
 pub(crate) enum FunctionError {
-    #[error("Found {count} extra positional argument(s) for call to {function}")]
-    ExtraPositionalArg { count: usize, function: String },
-    #[error("Found `{}` extra named parameter(s) for call to {function}", .names.join("` `"))]
+    #[error("{}", extra_positional(*accepted, *got, function))]
+    ExtraPositionalArg {
+        accepted: usize,
+        got: usize,
+        function: String,
+    },
+    #[error("{function}() got unexpected keyword argument{}: {}", if names.len() == 1 { "" } else { "s" }, .names.join(", "))]
     ExtraNamedArg {
         names: Vec<String>,
         function: String,
     },
+    #[error("{function}() got multiple values for parameter '{name}'")]
+    MultipleValues { function: String, name: String },
+    #[error("{function}() missing {} required {kind} argument{}: {}", names.len(), if names.len() == 1 { "" } else { "s" }, names.join(", "))]
+    Missing {
+        function: String,
+        kind: &'static str,
+        names: Vec<String>,
+    },
+    #[error("{function}() missing {count} required positional argument{}", if *count == 1 { "" } else { "s" })]
+    MissingCount { function: String, count: usize },
     #[error("Argument `{name}` occurs more than once")]
     RepeatedArg { name: String },
     #[error("The argument provided for *args is not an identifier")]
@@ -63,6 +78,54 @@ pub(crate) enum FunctionError {
     #[error("Wrong number of positional arguments, expected {}, got {got}",
         if min == max {min.to_string()} else {format!("between {min} and {max}")})]
     WrongNumberOfArgs { min: usize, max: usize, got: usize },
+}
+
+/// `error` of the native function `function`, worded as Bazel does when the
+/// call itself was wrong (fjfj).
+pub(crate) fn named_native_error(error: crate::Error, function: &str) -> crate::Error {
+    use crate::ErrorKind::*;
+    let (Function(inner) | Native(inner) | Value(inner) | Other(inner)) = error.kind() else {
+        return error;
+    };
+    let named = if let Some(&FunctionError::WrongNumberOfArgs { min, max, got }) =
+        inner.downcast_ref::<FunctionError>()
+    {
+        let function = function.to_owned();
+        Some(if got > max {
+            FunctionError::ExtraPositionalArg {
+                accepted: max,
+                got,
+                function,
+            }
+        } else {
+            FunctionError::MissingCount {
+                function,
+                count: min - got,
+            }
+        })
+        .map(crate::Error::from)
+    } else {
+        inner
+            .downcast_ref::<ParameterType>()
+            .map(|found| ParameterType {
+                function: Some(function.to_owned()),
+                ..found.clone()
+            })
+            .map(crate::Error::new_value)
+    };
+    named.unwrap_or(error)
+}
+
+/// How Bazel words too many positional arguments (fjfj).
+fn extra_positional(accepted: usize, got: usize, function: &str) -> String {
+    if accepted == 0 {
+        format!("{function}() does not accept positional arguments, but got {got}")
+    } else {
+        format!(
+            "{function}() accepts no more than {accepted} positional argument{} but got {got}",
+            if accepted == 1 { "" } else { "s" }
+        )
+    }
 }
 
 impl From<FunctionError> for crate::Error {

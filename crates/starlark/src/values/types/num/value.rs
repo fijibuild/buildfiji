@@ -34,7 +34,7 @@ use crate::values::types::int::int_or_big::StarlarkIntRef;
 
 #[derive(Debug, thiserror::Error)]
 enum NumError {
-    #[error("float division by zero: {0} / {1}")]
+    #[error("floating-point division by zero")]
     DivisionByZero(Num, Num),
 }
 

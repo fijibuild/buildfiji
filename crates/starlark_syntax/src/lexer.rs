@@ -55,7 +55,7 @@ pub enum LexemeError {
     IntParse(String),
     #[error("Comment span is computed incorrectly (internal error)")]
     CommentSpanComputedIncorrectly,
-    #[error("Cannot parse `{0}` as an integer in base {1}")]
+    #[error("invalid base-{1} literal: \"{0}\"")]
     CannotParse(String, u32),
     #[error("Parse error: f-string expression is missing closing `}}`")]
     UnfinishedFStringExpression,

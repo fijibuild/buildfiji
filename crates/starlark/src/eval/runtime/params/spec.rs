@@ -27,7 +27,6 @@ use starlark_derive::StarlarkPagable;
 use starlark_derive::Trace;
 use starlark_map::Hashed;
 use starlark_map::small_map::SmallMap;
-use starlark_syntax::function_error;
 use starlark_syntax::other_error;
 use starlark_syntax::syntax::def::DefParamIndices;
 
@@ -406,6 +405,15 @@ impl<V> ParametersSpec<V> {
         )
     }
 
+    /// The function's own name, as Bazel says it in an error: `f` for `//a:b.bzl.f` (fjfj).
+    fn short_name(&self) -> String {
+        self.function_name
+            .rsplit('.')
+            .next()
+            .unwrap_or(&self.function_name)
+            .to_owned()
+    }
+
     /// Produce an approximate signature for the function, combining the name and arguments.
     pub fn signature(&self) -> String {
         let mut collector = String::new();
@@ -735,7 +743,8 @@ impl<'v> ParametersSpec<Value<'v>> {
 
         // Check if the named arguments clashed with the positional arguments
         if unlikely(next_position > lowest_name) {
-            return Err(FunctionError::RepeatedArg {
+            return Err(FunctionError::MultipleValues {
+                function: self.short_name(),
                 name: self.param_names[lowest_name].clone(),
             }
             .into());
@@ -762,7 +771,8 @@ impl<'v> ParametersSpec<Value<'v>> {
                                     }
                                 };
                                 if unlikely(repeat) {
-                                    return Err(FunctionError::RepeatedArg {
+                                    return Err(FunctionError::MultipleValues {
+                                        function: self.short_name(),
                                         name: s.as_str().to_owned(),
                                     }
                                     .into());
@@ -775,9 +785,31 @@ impl<'v> ParametersSpec<Value<'v>> {
             }
         }
 
+        // Bazel reports too many positional arguments first, then an unexpected
+        // keyword, then what is missing (fjfj).
+        if self.indices.args.is_none() && unlikely(!star_args.is_empty()) {
+            return Err(FunctionError::ExtraPositionalArg {
+                accepted: self.indices.num_positional as usize,
+                got: self.indices.num_positional as usize + star_args.len(),
+                function: self.short_name(),
+            }
+            .into());
+        }
+        if self.indices.kwargs.is_none() {
+            if let Some(kwargs) = &kwargs.kwargs {
+                return Err(FunctionError::ExtraNamedArg {
+                    names: kwargs.keys().map(|x| x.as_str().to_owned()).collect(),
+                    function: self.short_name(),
+                }
+                .into());
+            }
+        }
+
         // We have moved parameters into all the relevant slots, so need to finalise things.
         // We need to set default values and error if any required values are missing
         let kinds = &*self.param_kinds;
+        let mut missing_positional = Vec::new();
+        let mut missing_named = Vec::new();
         // This code is very hot, and setting up iterators was a noticeable bottleneck.
         for index in next_position..kinds.len() {
             // The number of locals must be at least the number of parameters, see `collect`
@@ -791,20 +823,11 @@ impl<'v> ParametersSpec<Value<'v>> {
             }
             match def {
                 ParameterKind::Required => {
-                    let function_name = &self.function_name;
-                    let param_name = &self.param_names[index];
-                    if index < self.indices.num_positional_only as usize {
-                        return Err(function_error!(
-                            "Missing positional-only parameter `{param_name}` for call to `{function_name}`",
-                        ));
-                    } else if index >= self.indices.num_positional as usize {
-                        return Err(function_error!(
-                            "Missing named-only parameter `{param_name}` for call to `{function_name}`",
-                        ));
+                    // Bazel names every one that is missing.
+                    if index >= self.indices.num_positional as usize {
+                        missing_named.push(self.param_names[index].clone());
                     } else {
-                        return Err(function_error!(
-                            "Missing parameter `{param_name}` for call to `{function_name}`"
-                        ));
+                        missing_positional.push(self.param_names[index].clone());
                     }
                 }
                 ParameterKind::Defaulted(x) => {
@@ -813,28 +836,25 @@ impl<'v> ParametersSpec<Value<'v>> {
                 _ => {}
             }
         }
-
-        // Now set the kwargs/args slots, if they are requested, and fail it they are absent but used
-        // Note that we deliberately give warnings about missing parameters _before_ giving warnings
-        // about unexpected extra parameters, so if a user misspells an argument they get a better error.
-        if let Some(args_pos) = self.indices.args {
-            slots[args_pos as usize] = Some(heap.alloc_tuple(&star_args));
-        } else if unlikely(!star_args.is_empty()) {
-            return Err(FunctionError::ExtraPositionalArg {
-                count: star_args.len(),
-                function: self.signature(),
+        for (kind, names) in [
+            ("positional", missing_positional),
+            ("keyword-only", missing_named),
+        ] {
+            if !names.is_empty() {
+                return Err(FunctionError::Missing {
+                    function: self.short_name(),
+                    kind,
+                    names,
+                }
+                .into());
             }
-            .into());
         }
 
+        if let Some(args_pos) = self.indices.args {
+            slots[args_pos as usize] = Some(heap.alloc_tuple(&star_args));
+        }
         if let Some(kwargs_pos) = self.indices.kwargs {
             slots[kwargs_pos as usize] = Some(kwargs.alloc(heap));
-        } else if let Some(kwargs) = kwargs.kwargs {
-            return Err(FunctionError::ExtraNamedArg {
-                names: kwargs.keys().map(|x| x.as_str().to_owned()).collect(),
-                function: self.signature(),
-            }
-            .into());
         }
         Ok(())
     }

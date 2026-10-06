@@ -46,7 +46,7 @@ const I32_MIN_HEX: &str = "-80000000";
 /// Operator `%` format or evaluation errors
 #[derive(Clone, Dupe, Debug, Error)]
 enum StringInterpolationError {
-    #[error("Too many arguments for format string")]
+    #[error("not all arguments converted during string formatting")]
     TooManyParameters,
     #[error("Not enough arguments for format string")]
     NotEnoughParameters,

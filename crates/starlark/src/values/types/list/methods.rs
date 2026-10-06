@@ -224,7 +224,11 @@ pub(crate) fn list_methods(builder: &mut MethodsBuilder) {
         let this = ListData::from_value_mut(this)?;
         let index = index.unwrap_or_else(|| (this.len() as i32) - 1);
         if index < 0 || index >= this.len() as i32 {
-            return Err(ValueError::IndexOutOfBound(index).into());
+            return Err(ValueError::SequenceIndex {
+                index,
+                len: this.len(),
+            }
+            .into());
         }
         Ok(this.remove(index as usize))
     }

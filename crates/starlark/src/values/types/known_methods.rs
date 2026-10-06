@@ -56,7 +56,9 @@ impl KnownMethod {
         args: &Arguments<'v, '_>,
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> crate::Result<Value<'v>> {
-        self.imp.invoke(eval, this, args)
+        self.imp
+            .invoke(eval, this, args)
+            .map_err(|e| crate::eval::runtime::arguments::named_native_error(e, &self.method.name))
     }
 }
 

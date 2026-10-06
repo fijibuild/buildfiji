@@ -51,9 +51,9 @@ use crate::values::types::int::inline_int::InlineInt;
 enum StarlarkIntError {
     #[error("Float `{0}` cannot be represented as exact integer")]
     CannotRepresentAsExact(f64),
-    #[error("Floor division by zero: {0} // {1}")]
+    #[error("integer division by zero")]
     FloorDivisionByZero(StarlarkInt, StarlarkInt),
-    #[error("Modulo by zero: {0} % {1}")]
+    #[error("integer modulo by zero")]
     ModuloByZero(StarlarkInt, StarlarkInt),
     #[error("Integer overflow computing left shift")]
     LeftShiftOverflow,

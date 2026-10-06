@@ -28,8 +28,8 @@ const ROWS: &[Row] = &[
     Row {
         files: &[("b/BUILD", "x = [1][3]\n")],
         events: &[
-            "Traceback (most recent call last):\n\tFile \"{ws}/b/BUILD\", line 1, column 5, in <toplevel>\n\t\tx = [1][3]\nError: Index `3` is out of bound",
-            "package contains errors: b: Traceback (most recent call last):\n\tFile \"{ws}/b/BUILD\", line 1, column 5, in <toplevel>\n\t\tx = [1][3]\nError: Index `3` is out of bound",
+            "Traceback (most recent call last):\n\tFile \"{ws}/b/BUILD\", line 1, column 8, in <toplevel>\n\t\tx = [1][3]\nError: index out of range (index is 3, but sequence has 1 elements)",
+            "package contains errors: b: Traceback (most recent call last):\n\tFile \"{ws}/b/BUILD\", line 1, column 8, in <toplevel>\n\t\tx = [1][3]\nError: index out of range (index is 3, but sequence has 1 elements)",
         ],
         error: "Error evaluating '//b:all': error loading package 'b': Package 'b' contains errors",
     },

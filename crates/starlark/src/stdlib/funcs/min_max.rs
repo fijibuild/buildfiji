@@ -35,10 +35,7 @@ fn min_max_iter<'v>(
     let mut max = match it.next() {
         Some(x) => x,
         None => {
-            return Err(anyhow::anyhow!(
-                "Argument is an empty iterable, max() expect a non empty iterable"
-            )
-            .into());
+            return Err(anyhow::anyhow!("expected at least one item").into());
         }
     };
     let update_max_ordering = if min {

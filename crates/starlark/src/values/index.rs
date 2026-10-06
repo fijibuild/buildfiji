@@ -59,7 +59,11 @@ pub(crate) fn convert_index(v: Value, len: i32) -> crate::Result<i32> {
         x
     };
     if i < 0 || i >= len {
-        Err(ValueError::IndexOutOfBound(i).into())
+        Err(ValueError::SequenceIndex {
+            index: x,
+            len: len as usize,
+        }
+        .into())
     } else {
         Ok(i)
     }
@@ -83,7 +87,7 @@ pub(crate) fn convert_slice_indices(
         Some(v) => i32::unpack_value_err(v)?,
     };
     match stride {
-        0 => Err(ValueError::IndexOutOfBound(0).into()),
+        0 => Err(ValueError::SliceStepZero.into()),
         stride => {
             let def_start = if stride < 0 { len - 1 } else { 0 };
             let def_end = if stride < 0 { -1 } else { len };

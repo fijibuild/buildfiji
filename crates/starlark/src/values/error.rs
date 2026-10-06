@@ -26,15 +26,15 @@ use crate::values::Value;
 #[derive(Debug, Error)]
 #[allow(missing_docs)] // Self-explanatory.
 pub enum ValueError {
-    #[error("Operation `{op}` not supported on type `{typ}`")]
+    #[error("{}", unary_message(op, typ))]
     OperationNotSupported { op: String, typ: String },
-    #[error("Operation `{op}` not supported for types `{left}` and `{right}`")]
+    #[error("{}", binary_message(op, left, right))]
     OperationNotSupportedBinary {
         op: String,
         left: String,
         right: String,
     },
-    #[error("Cannot divide by zero")]
+    #[error("floating-point division by zero")]
     DivisionByZero,
     #[error("Integer overflow")]
     IntegerOverflow,
@@ -50,16 +50,39 @@ pub enum ValueError {
     MissingRequired(String),
     #[error("Index `{0}` is out of bound")]
     IndexOutOfBound(i32),
-    #[error("Key `{0}` was not found")]
+    #[error("index out of range (index is {index}, but sequence has {len} elements)")]
+    SequenceIndex { index: i32, len: usize },
+    #[error("slice step cannot be zero")]
+    SliceStepZero,
+    #[error("key {0} not found in dictionary")]
     KeyNotFound(String),
     #[error("Immutable")]
     CannotMutateImmutableValue,
     #[error("This operation mutates an iterable for an iterator while iterating.")]
     MutationDuringIteration,
-    #[error("Object of type `{0}` has no attribute `{1}`")]
+    #[error("'{0}' value has no field or method '{1}'")]
     NoAttr(String, String),
-    #[error("Object of type `{0}` has no attribute `{1}`, did you mean `{2}`?")]
+    #[error("'{0}' value has no field or method '{1}', did you mean '{2}'?")]
     NoAttrDidYouMean(String, String, String),
+}
+
+/// How Bazel words an operation a type does not have (fjfj).
+fn unary_message(op: &str, typ: &str) -> String {
+    match op {
+        "-" | "+" | "~" => format!("unsupported unary operation: {op}{typ}"),
+        "(iter)" => format!("type '{typ}' is not iterable"),
+        "call()" => format!("'{typ}' object is not callable"),
+        _ => format!("Operation `{op}` not supported on type `{typ}`"),
+    }
+}
+
+/// How Bazel words a binary operation or a comparison two types do not have (fjfj).
+fn binary_message(op: &str, left: &str, right: &str) -> String {
+    match op {
+        "compare" => format!("unsupported comparison: {left} <=> {right}"),
+        "[]" => format!("type '{left}' has no operator []({right})"),
+        _ => format!("unsupported binary operation: {left} {op} {right}"),
+    }
 }
 
 impl From<ValueError> for crate::Error {
@@ -70,7 +93,7 @@ impl From<ValueError> for crate::Error {
 
 #[derive(Debug, Error)]
 pub(crate) enum ControlError {
-    #[error("Value of type `{0}` is not hashable")]
+    #[error("unhashable type: '{0}'")]
     NotHashableValue(String),
     #[error("Too many recursion levels")]
     TooManyRecursionLevel,

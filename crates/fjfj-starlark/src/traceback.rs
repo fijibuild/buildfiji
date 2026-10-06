@@ -17,6 +17,7 @@
 
 use starlark::ErrorKind;
 use starlark::codemap::FileSpan;
+use starlark::values::ValueError;
 
 /// A `load()` that could not be served, for the file that asked: Bazel says
 /// why in the error of the package, and names no place in the file.
@@ -64,7 +65,9 @@ pub fn traceback(error: &starlark::Error) -> String {
     let message = match error.kind() {
         ErrorKind::Fail(e) => format!("Error in fail: {}", e.to_string().trim_start()),
         _ => match native {
-            Some(frame) if !matches!(error.kind(), ErrorKind::Parser(_)) => {
+            Some(frame)
+                if !matches!(error.kind(), ErrorKind::Parser(_)) && !not_callable(error) =>
+            {
                 format!("Error in {}: {}", frame.name, plain(error))
             }
             _ => format!("Error: {}", plain(error)),
@@ -72,6 +75,18 @@ pub fn traceback(error: &starlark::Error) -> String {
     };
     text.push_str(&message);
     text
+}
+
+/// Whether the error is a call of a value that is not a function, which Bazel
+/// does not place in any function.
+fn not_callable(error: &starlark::Error) -> bool {
+    match error.kind() {
+        ErrorKind::Value(inner) => matches!(
+            inner.downcast_ref::<ValueError>(),
+            Some(ValueError::OperationNotSupported { op, .. }) if op == "call()"
+        ),
+        _ => false,
+    }
 }
 
 /// What the error says, with neither the location nor the call stack.
@@ -83,14 +98,8 @@ fn plain(error: &starlark::Error) -> String {
 /// One `File "<name>", line L, column C, in <function>` and the line.
 fn entry(text: &mut String, at: &FileSpan, function: &str) {
     let begin = at.resolve_span().begin;
-    // Bazel locates a call at its opening parenthesis.
-    let source = at.source_span();
-    let call = source.find('(').filter(|&paren| {
-        source[..paren]
-            .chars()
-            .all(|c| c.is_alphanumeric() || c == '_' || c == '.')
-    });
-    let column = begin.column + 1 + call.map_or(0, |paren| source[..paren].chars().count());
+    // The compiler begins the span of a call at its parenthesis, as Bazel does.
+    let column = begin.column + 1;
     text.push_str(&format!(
         "\tFile \"{}\", line {}, column {column}, in {function}\n\t\t{}\n",
         at.filename(),
@@ -147,12 +156,182 @@ mod tests {
         assert_eq!(lines[5], "Error in fail: boom");
     }
 
+    /// What Bazel 9.2.0 reports for a BUILD file of one statement, as probed:
+    /// the column where the failing operation is, and the words.
+    const PROBED: &[(&str, &str, &str)] = &[
+        (
+            "r = 1\n",
+            "x = 1 + \"a\"",
+            "column 7, in <toplevel>\n\t\tx = 1 + \"a\"\nError: unsupported binary operation: int + string",
+        ),
+        (
+            "r = 1\n",
+            "x = 1 in 2",
+            "column 7, in <toplevel>\n\t\tx = 1 in 2\nError: unsupported binary operation: int in int",
+        ),
+        (
+            "r = 1\n",
+            "x = [] - 1",
+            "column 8, in <toplevel>\n\t\tx = [] - 1\nError: unsupported binary operation: list - int",
+        ),
+        (
+            "r = 1\n",
+            "x = 1 < \"a\"",
+            "column 7, in <toplevel>\n\t\tx = 1 < \"a\"\nError: unsupported comparison: int <=> string",
+        ),
+        (
+            "r = 1\n",
+            "x = -\"a\"",
+            "column 5, in <toplevel>\n\t\tx = -\"a\"\nError: unsupported unary operation: -string",
+        ),
+        (
+            "r = 1\n",
+            "x = [1][3]",
+            "column 8, in <toplevel>\n\t\tx = [1][3]\nError: index out of range (index is 3, but sequence has 1 elements)",
+        ),
+        (
+            "r = 1\n",
+            "x = \"abc\"[5]",
+            "column 10, in <toplevel>\n\t\tx = \"abc\"[5]\nError: index out of range (index is 5, but sequence has 3 elements)",
+        ),
+        (
+            "r = 1\n",
+            "x = depset([])[0]",
+            "column 15, in <toplevel>\n\t\tx = depset([])[0]\nError: type 'depset' has no operator [](int)",
+        ),
+        (
+            "r = 1\n",
+            "x = {\"a\": 1}[\"b\"]",
+            "column 13, in <toplevel>\n\t\tx = {\"a\": 1}[\"b\"]\nError: key \"b\" not found in dictionary",
+        ),
+        (
+            "r = 1\n",
+            "x = \"a\".nope",
+            "column 8, in <toplevel>\n\t\tx = \"a\".nope\nError: 'string' value has no field or method 'nope'",
+        ),
+        (
+            "r = 1\n",
+            "x = [].foo",
+            "column 7, in <toplevel>\n\t\tx = [].foo\nError: 'list' value has no field or method 'foo'",
+        ),
+        (
+            "r = 1\n",
+            "x = depset([]).foo",
+            "column 15, in <toplevel>\n\t\tx = depset([]).foo\nError: 'depset' value has no field or method 'foo'",
+        ),
+        (
+            "r = 1\n",
+            "x = None.x",
+            "column 9, in <toplevel>\n\t\tx = None.x\nError: 'NoneType' value has no field or method 'x'",
+        ),
+        (
+            "r = 1\n",
+            "x = [x for x in 1]",
+            "column 17, in <toplevel>\n\t\tx = [x for x in 1]\nError: type 'int' is not iterable",
+        ),
+        (
+            "r = 1\n",
+            "x = \"a\" % (1, 2)",
+            "column 9, in <toplevel>\n\t\tx = \"a\" % (1, 2)\nError: not all arguments converted during string formatting",
+        ),
+        (
+            "r = 1\n",
+            "x = 1 // 0",
+            "column 7, in <toplevel>\n\t\tx = 1 // 0\nError: integer division by zero",
+        ),
+        (
+            "r = 1\n",
+            "x = 1 % 0",
+            "column 7, in <toplevel>\n\t\tx = 1 % 0\nError: integer modulo by zero",
+        ),
+        (
+            "r = 1\n",
+            "x = int(\"z\")",
+            "column 8, in <toplevel>\n\t\tx = int(\"z\")\nError in int: invalid base-10 literal: \"z\"",
+        ),
+        (
+            "r = 1\n",
+            "x = int(\"z\", 16)",
+            "column 8, in <toplevel>\n\t\tx = int(\"z\", 16)\nError in int: invalid base-16 literal: \"z\"",
+        ),
+        (
+            "r = 1\n",
+            "x = {}.get()",
+            "column 11, in <toplevel>\n\t\tx = {}.get()\nError in get: get() missing 1 required positional argument: key",
+        ),
+        (
+            "r = 1\n",
+            "x = [].append(1, 2)",
+            "column 14, in <toplevel>\n\t\tx = [].append(1, 2)\nError in append: append() accepts no more than 1 positional argument but got 2",
+        ),
+        (
+            "r = 1\n",
+            "x = str(1, 2)",
+            "column 8, in <toplevel>\n\t\tx = str(1, 2)\nError in str: str() accepts no more than 1 positional argument but got 2",
+        ),
+        (
+            "r = 1\n",
+            "x = \"abc\".split(1)",
+            "column 16, in <toplevel>\n\t\tx = \"abc\".split(1)\nError in split: in call to split(), parameter 'sep' got value of type 'int', want 'string'",
+        ),
+        (
+            "r = 1\n",
+            "x = max([])",
+            "column 8, in <toplevel>\n\t\tx = max([])\nError in max: expected at least one item",
+        ),
+    ];
+
+    /// A call that does not fit a `def` is reported at the `def`, in the callee.
+    const PROBED_CALLS: &[(&str, &str)] = &[
+        ("r(1)", "does not accept positional arguments, but got 1"),
+        ("r(a=1)", "got unexpected keyword argument: a"),
+        ("r(1, 2)", "does not accept positional arguments, but got 2"),
+    ];
+
+    /// `text` with the path of `u.bzl` as the bare name.
+    fn bare(text: &str) -> String {
+        text.lines()
+            .map(|line| match (line.find("File \""), line.find("u.bzl\"")) {
+                (Some(from), Some(to)) => format!("{}File \"{}", &line[..from], &line[to..]),
+                _ => line.to_owned(),
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
     #[test]
-    fn an_operator_error_is_not_a_call() {
-        let outcome = run_build("r = 1\n", "x = 1 + \"a\"\n");
-        let text = outcome.fatal.expect("fails");
-        assert!(text.contains("line 2, column"), "{text}");
-        assert!(text.ends_with("\n\t\tx = 1 + \"a\"\nError: Operation `+` not supported for types `int` and `string`"), "{text}");
+    fn a_runtime_error_is_worded_and_placed_as_bazel_does() {
+        let mut wrong = Vec::new();
+        for (bzl, build, want) in PROBED {
+            let text = run_build(bzl, build).fatal.expect("fails");
+            // The load line before it makes the statement's line 2.
+            let at = format!("line 2, {want}");
+            if !text.contains(&at) {
+                wrong.push(format!("{build}\n  want: {at}\n  got:  {text}"));
+            }
+        }
+        assert!(
+            wrong.is_empty(),
+            "{} differ:\n{}",
+            wrong.len(),
+            wrong.join("\n")
+        );
+    }
+
+    #[test]
+    fn a_call_that_does_not_fit_is_placed_at_the_def() {
+        for (build, words) in PROBED_CALLS {
+            let text = bare(&run_build("def r(): pass\n", build).fatal.expect("fails"));
+            let want = format!(
+                "\tFile \"u.bzl\", line 1, column 5, in r\n\t\tdef r(): pass\nError: r() {words}"
+            );
+            assert!(text.ends_with(&want), "{build}: {text}");
+        }
+        let text = bare(&run_build("def r(a): pass\n", "r()").fatal.expect("fails"));
+        assert!(
+            text.ends_with("Error: r() missing 1 required positional argument: a"),
+            "{text}"
+        );
     }
 
     #[test]

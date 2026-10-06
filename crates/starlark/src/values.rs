@@ -136,7 +136,7 @@ pub(crate) mod traits;
 pub mod type_repr;
 pub(crate) mod types;
 pub mod typing;
-mod unpack;
+pub(crate) mod unpack;
 mod unpack_and_discard;
 pub(crate) mod value_of;
 pub(crate) mod value_of_unchecked;

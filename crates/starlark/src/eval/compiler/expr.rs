@@ -35,10 +35,10 @@ use starlark_syntax::syntax::ast::StmtP;
 use thiserror::Error;
 
 use crate as starlark;
+use crate::codemap::Span;
 use crate::codemap::Spanned;
 use crate::collections::symbol::symbol::Symbol;
 use crate::environment::slots::ModuleSlotId;
-use crate::errors::did_you_mean::did_you_mean;
 use crate::eval::Arguments;
 use crate::eval::Evaluator;
 use crate::eval::compiler::Compiler;
@@ -1111,15 +1111,8 @@ impl<P: AstPayload> CompilerExprUtil<P> for ExprP<P> {
 #[cold]
 #[inline(never)]
 fn get_attr_no_attr_error<'v>(x: Value<'v>, attribute: &Symbol) -> crate::Error {
-    match did_you_mean(attribute.as_str(), x.dir_attr().iter().map(|s| s.as_str())) {
-        None => ValueError::NoAttr(x.get_type().to_owned(), attribute.as_str().to_owned()).into(),
-        Some(better) => ValueError::NoAttrDidYouMean(
-            x.get_type().to_owned(),
-            attribute.as_str().to_owned(),
-            better.to_owned(),
-        )
-        .into(),
-    }
+    // Bazel does not guess what was meant.
+    ValueError::NoAttr(x.get_type().to_owned(), attribute.as_str().to_owned()).into()
 }
 
 pub(crate) enum MemberOrValue<'v, 'a> {
@@ -1226,12 +1219,31 @@ impl<'v, 'a, 'e> Compiler<'v, 'a, 'e, '_> {
         OptCtx::new(self.eval, param_count)
     }
 
+    /// Where Bazel reports an error of `expr`: at the operator of a binary
+    /// operation, the `.` of an attribute, the `[` of an index and the `(` of
+    /// a call, which is where the span of an error begins (fjfj).
+    fn error_span(&self, expr: &CstExpr) -> Span {
+        let (after, token) = match &expr.node {
+            ExprP::Op(left, op, _) => (left.span.end(), op.to_string().trim().to_owned()),
+            ExprP::Dot(left, _) => (left.span.end(), ".".to_owned()),
+            ExprP::Call(left, _) => (left.span.end(), "(".to_owned()),
+            ExprP::Index(index) => (index.0.span.end(), "[".to_owned()),
+            ExprP::Index2(index) => (index.0.span.end(), "[".to_owned()),
+            _ => return expr.span,
+        };
+        let text = self.codemap.source_span(Span::new(after, expr.span.end()));
+        match text.find(&token) {
+            Some(at) => Span::new(after + at as u32, expr.span.end()),
+            None => expr.span,
+        }
+    }
+
     pub(crate) fn expr(
         &mut self,
         expr: &CstExpr,
     ) -> Result<IrSpanned<ExprCompiled>, CompilerInternalError> {
         // println!("compile {}", expr.node);
-        let span = FrameSpan::new(FrozenFileSpan::new(self.codemap, expr.span));
+        let span = FrameSpan::new(FrozenFileSpan::new(self.codemap, self.error_span(expr)));
         let expr = match &expr.node {
             ExprP::Identifier(ident) => self.expr_ident(ident),
             ExprP::Lambda(l) => {

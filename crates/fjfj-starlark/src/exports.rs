@@ -43,7 +43,10 @@ pub(crate) fn assigned_name(eval: &Evaluator<'_, '_, '_>) -> Option<String> {
     let line = at.file.find_line(begin);
     let start = at.file.line_span(line).begin();
     let text = at.file.source_line(line);
+    // The call's span begins at its parenthesis: leave out the callee before it.
     let prefix = text.get(..(begin.get() - start.get()) as usize)?;
+    let prefix =
+        prefix.trim_end_matches(|c: char| c.is_ascii_alphanumeric() || c == '_' || c == '.');
     let name = prefix.trim_end().strip_suffix('=')?.trim_end();
     let identifier = name
         .chars()

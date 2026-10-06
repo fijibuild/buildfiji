@@ -145,7 +145,9 @@ pub(crate) fn register_int(globals: &mut GlobalsBuilder) {
                     return Err(anyhow::anyhow!("Cannot parse `{}` as an integer", s,).into());
                 }
 
-                let x = StarlarkInt::from_str_radix(s, base)?;
+                let x = StarlarkInt::from_str_radix(s, base).map_err(|e| {
+                    crate::Error::new_native(anyhow::anyhow!("{}", e.without_diagnostic()))
+                })?;
                 let x = if negate { -x } else { x };
                 return Ok(ValueOfUnchecked::new(heap.alloc(x)));
             }
