@@ -169,8 +169,56 @@ fn encode<'v>(value: Value<'v>, heap: Heap<'v>) -> starlark::Result<String> {
     Ok(out)
 }
 
+/// How deep Bazel's encoder nests before it says so (about what its stack
+/// holds; it fails between 8000 and 9000 levels).
+const ENCODE_DEPTH: usize = 8192;
+/// And its decoder, which fails between 10000 and 20000.
+const DECODE_DEPTH: usize = 16384;
+const TOO_DEEP: &str = "nesting depth limit exceeded";
+
+/// A character as Bazel quotes it in a message: `"` and `\` and the
+/// controls escaped, the rest as it is.
+fn show(c: char) -> String {
+    match c {
+        '"' => "\\\"".to_owned(),
+        '\\' => "\\\\".to_owned(),
+        '\n' => "\\n".to_owned(),
+        '\r' => "\\r".to_owned(),
+        '\t' => "\\t".to_owned(),
+        c if c.is_control() => c.escape_default().to_string(),
+        c => c.to_string(),
+    }
+}
+
+thread_local! {
+    static ENCODING: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// The error of a value inside another, with where it is; a value that is
+/// too deep is said once.
+fn at(place: String, error: String) -> String {
+    if error == TOO_DEEP {
+        error
+    } else {
+        format!("{place}: {error}")
+    }
+}
+
 fn encode_into<'v>(value: Value<'v>, heap: Heap<'v>, out: &mut String) -> Result<(), String> {
-    // Nesting is as deep as the value; grow the stack rather than cap it.
+    let depth = ENCODING.with(|d| {
+        d.set(d.get() + 1);
+        d.get()
+    });
+    struct Leave;
+    impl Drop for Leave {
+        fn drop(&mut self) {
+            ENCODING.with(|d| d.set(d.get() - 1));
+        }
+    }
+    let _leave = Leave;
+    if depth > ENCODE_DEPTH {
+        return Err(TOO_DEEP.to_owned());
+    }
     stacker::maybe_grow(256 * 1024, 4 * 1024 * 1024, || {
         encode_value(value, heap, out)
     })
@@ -215,7 +263,7 @@ fn encode_value<'v>(value: Value<'v>, heap: Heap<'v>, out: &mut String) -> Resul
             }
             write_string(key, out);
             out.push(':');
-            encode_into(v, heap, out).map_err(|e| format!("in dict key \"{key}\": {e}"))?;
+            encode_into(v, heap, out).map_err(|e| at(format!("in dict key \"{key}\""), e))?;
         }
         out.push('}');
     } else if let Some(fields) = fields_of(value) {
@@ -226,7 +274,7 @@ fn encode_value<'v>(value: Value<'v>, heap: Heap<'v>, out: &mut String) -> Resul
             }
             write_string(name, out);
             out.push(':');
-            encode_into(v, heap, out).map_err(|e| format!("in struct field .{name}: {e}"))?;
+            encode_into(v, heap, out).map_err(|e| at(format!("in struct field .{name}"), e))?;
         }
         out.push('}');
     } else if matches!(value.get_type(), "list" | "tuple" | "range" | "set") {
@@ -236,7 +284,7 @@ fn encode_value<'v>(value: Value<'v>, heap: Heap<'v>, out: &mut String) -> Resul
             if i > 0 {
                 out.push(',');
             }
-            encode_into(v, heap, out).map_err(|e| format!("at list index {i}: {e}"))?;
+            encode_into(v, heap, out).map_err(|e| at(format!("at list index {i}"), e))?;
         }
         out.push(']');
     } else {
@@ -268,18 +316,25 @@ fn write_string(s: &str, out: &mut String) {
 struct Decoder<'a, 'v> {
     text: &'a str,
     at: usize,
+    depth: usize,
     heap: Heap<'v>,
 }
 
 fn decode<'v>(text: &str, heap: Heap<'v>) -> Result<Value<'v>, String> {
-    let mut d = Decoder { text, at: 0, heap };
+    let mut d = Decoder {
+        text,
+        at: 0,
+        depth: 0,
+        heap,
+    };
     d.skip_space();
     let value = d.value()?;
     d.skip_space();
     if let Some(c) = d.peek() {
         return Err(format!(
-            "at offset {}, unexpected character \"{c}\" after value",
-            d.at
+            "at offset {}, unexpected character \"{}\" after value",
+            d.at,
+            show(c)
         ));
     }
     Ok(value)
@@ -301,7 +356,14 @@ impl<'a, 'v> Decoder<'a, 'v> {
     }
 
     fn value(&mut self) -> Result<Value<'v>, String> {
-        stacker::maybe_grow(256 * 1024, 4 * 1024 * 1024, || self.value_here())
+        self.depth += 1;
+        let result = if self.depth > DECODE_DEPTH {
+            Err(TOO_DEEP.to_owned())
+        } else {
+            stacker::maybe_grow(256 * 1024, 4 * 1024 * 1024, || self.value_here())
+        };
+        self.depth -= 1;
+        result
     }
 
     fn value_here(&mut self) -> Result<Value<'v>, String> {
@@ -320,8 +382,9 @@ impl<'a, 'v> Decoder<'a, 'v> {
             'n' => self.literal("null", Value::new_none()),
             '-' | '0'..='9' => self.number(),
             c => Err(format!(
-                "at offset {}, unexpected character \"{c}\"",
-                self.at
+                "at offset {}, unexpected character \"{}\"",
+                self.at,
+                show(c)
             )),
         }
     }
@@ -420,6 +483,13 @@ impl<'a, 'v> Decoder<'a, 'v> {
                         let mut unit = 0u16;
                         for h in hex[..4].chars() {
                             let Some(digit) = h.to_digit(16) else {
+                                // The end of the string is the end of the escape.
+                                if h == '"' {
+                                    return Err(format!(
+                                        "at offset {}, incomplete \\uXXXX escape",
+                                        self.at
+                                    ));
+                                }
                                 return Err(format!(
                                     "at offset {}, invalid hex char \"{h}\" in \\uXXXX escape",
                                     self.at
@@ -468,8 +538,9 @@ impl<'a, 'v> Decoder<'a, 'v> {
                 }
                 Some(c) => {
                     return Err(format!(
-                        "at offset {}, got \"{c}\", want ',' or ']'",
-                        self.at
+                        "at offset {}, got \"{}\", want ',' or ']'",
+                        self.at,
+                        show(c)
                     ));
                 }
                 None => return Err(self.eof()),
@@ -501,8 +572,9 @@ impl<'a, 'v> Decoder<'a, 'v> {
                 Some(':') => self.at += 1,
                 Some(c) => {
                     return Err(format!(
-                        "at offset {}, after object key, got \"{c}\", want ':' ",
-                        self.at
+                        "at offset {}, after object key, got \"{}\", want ':' ",
+                        self.at,
+                        show(c)
                     ));
                 }
                 None => return Err(self.eof()),
@@ -523,8 +595,9 @@ impl<'a, 'v> Decoder<'a, 'v> {
                 }
                 Some(c) => {
                     return Err(format!(
-                        "at offset {}, in object, got \"{c}\", want ',' or '}}'",
-                        self.at
+                        "at offset {}, in object, got \"{}\", want ',' or '}}'",
+                        self.at,
+                        show(c)
                     ));
                 }
                 None => return Err(self.eof()),

@@ -15,5 +15,5 @@ dict.star:50
 # buildfiji-rkw5: an int too big to convert to a float is an error
 float.star:1
 
-# buildfiji-mpiv: json errors
+# buildfiji-b67: strings are UTF-8 bytes in Bazel (a slice of a character is invalid UTF-8)
 json.star:1
