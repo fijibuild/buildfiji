@@ -35,11 +35,12 @@
 //! repo's mapping would write it (`//a:b`, `@dep//a:b`) and not as `str`
 //! does. The crate's `print` calls `str`; see buildfiji-xq5.
 
+use crate::FileKind;
 use crate::args::{Wording, bind, fatal, positional_only};
 use crate::dialect::assigned_names;
+use crate::dialect::parse_checked;
 use crate::exports::export_all;
 use crate::native::BuildContext;
-use crate::{FileKind, parse};
 use allocative::Allocative;
 use fjfj_graph::label::validate_target_name;
 use fjfj_graph::rule::suggest;
@@ -356,8 +357,7 @@ fn evaluate_bzl_with(input: &BzlFile<'_>, builtins: bool) -> starlark::Result<Fr
     let _span = tracing::debug_span!("evaluate_bzl", file = %bzl_name(input.file)).entered();
     let ast = {
         let _span = tracing::debug_span!("parse", file = %bzl_name(input.file)).entered();
-        parse(&bzl_name(input.file), input.source, FileKind::Bzl)
-            .map_err(starlark::Error::new_other)?
+        parse_checked(&bzl_name(input.file), input.source, FileKind::Bzl)?
     };
     let env = BzlEval {
         mappings: input.mappings,

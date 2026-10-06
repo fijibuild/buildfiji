@@ -160,7 +160,7 @@ pub use repo_ctx::{
 };
 pub use repo_download::{Downloader, HttpRequest};
 pub use structs::{FrozenStruct, Struct, StructGen};
-pub use syntax_event::syntax_event;
+pub use syntax_event::{contains_event, syntax_event};
 pub use traceback::{LoadFailed, absolute_files, traceback};
 
 pub use starlark::environment::FrozenModule;

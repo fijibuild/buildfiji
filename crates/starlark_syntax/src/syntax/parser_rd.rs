@@ -883,6 +883,9 @@ impl<'a, I: Iterator<Item = Lexeme>> ParserRd<'a, I> {
                 Some(Token::Dot) => {
                     let l = lhs.span.begin().get() as usize;
                     self.consume(&Token::Dot);
+                    if !matches!(self.peek(), Some(Token::Identifier(_))) {
+                        return Err(self.error_expected("identifier after dot"));
+                    }
                     let ident = self.parse_identifier_string()?;
                     let r = self.last_end;
                     lhs = Expr::Dot(Box::new(lhs), ident).ast(l, r);
@@ -1103,9 +1106,21 @@ impl<'a, I: Iterator<Item = Lexeme>> ParserRd<'a, I> {
 
         // Regular list
         let mut items = vec![first];
+        // After the first element a list can also become a comprehension,
+        // and Bazel says so.
+        if self.peek() != Some(&Token::Comma) {
+            self.expect_closing(&Token::ClosingSquare, "',', 'for' or ']'")?;
+            let r = self.last_end;
+            return Ok(Expr::List(items).ast(l, r));
+        }
         while self.eat(&Token::Comma) {
             if self.peek() == Some(&Token::ClosingSquare) {
                 break;
+            }
+            // Bazel's list parser stops at the end of the file after a comma
+            // and wants the bracket.
+            if matches!(self.peek(), None | Some(Token::Newline)) {
+                return Err(self.error_expected(&format!("{}", Token::ClosingSquare)));
             }
             items.push(self.parse_test()?);
         }
@@ -1421,6 +1436,9 @@ impl<'a, I: Iterator<Item = Lexeme>> ParserRd<'a, I> {
                 Some(Token::Dot) => {
                     let l = lhs.span.begin().get() as usize;
                     self.advance();
+                    if !matches!(self.peek(), Some(Token::Identifier(_))) {
+                        return Err(self.error_expected("identifier after dot"));
+                    }
                     let ident = self.parse_identifier_string()?;
                     let r = self.last_end;
                     lhs = Expr::Dot(Box::new(lhs), ident).ast(l, r);

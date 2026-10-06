@@ -582,21 +582,37 @@ impl BzlLoader {
         module.map_err(|e| match crate::LoadFailed::of(&e) {
             // A file this one loads failed, and said so.
             Some(load) => load.0.clone(),
+            // A file that does not parse, or uses a name it does not define,
+            // is not run: its events are one line each.
+            None if e.span().is_some()
+                && matches!(
+                    e.kind(),
+                    starlark::ErrorKind::Parser(_) | starlark::ErrorKind::Scope(_)
+                ) =>
+            {
+                let shown = path.display().to_string();
+                let mut events = self.events.lock().unwrap();
+                events.push(crate::syntax_event(&shown, &e));
+                events.extend(crate::contains_event(&shown, &source, &e));
+                format!("compilation of module '{}' failed", module_name(file))
+            }
             None => {
                 let text = crate::absolute_files(&crate::traceback(&e), &|name| {
                     self.path_of(&file.repo, name)
                 });
                 self.events.lock().unwrap().push(text);
-                format!(
-                    "initialization of module '{}' failed",
-                    if file.package.is_empty() {
-                        file.name.clone()
-                    } else {
-                        format!("{}/{}", file.package, file.name)
-                    }
-                )
+                format!("initialization of module '{}' failed", module_name(file))
             }
         })
+    }
+}
+
+/// How Bazel names a module in "initialization of module ... failed".
+fn module_name(file: &Label) -> String {
+    if file.package.is_empty() {
+        file.name.clone()
+    } else {
+        format!("{}/{}", file.package, file.name)
     }
 }
 

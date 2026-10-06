@@ -16,6 +16,144 @@ pub fn syntax_event(file: &str, error: &starlark::Error) -> String {
     format!("{file}:{line}:{column}: {}", message(error))
 }
 
+/// The second event Bazel prints for a `.bzl` that does not parse,
+/// `<file>:<line>:<column>: contains syntax errors`, if it prints one.
+///
+/// Bazel's parser recovers from a bad expression by putting an error
+/// expression in its place, and the resolver reports that. The error
+/// expression starts at the failing token, unless the token is inside a list,
+/// a dict or a parenthesis that is not a call or an index: those fail whole,
+/// and the event is at the start of the outermost one.
+pub fn contains_event(file: &str, source: &str, error: &starlark::Error) -> Option<String> {
+    if matches!(error.kind(), ErrorKind::Scope(_)) {
+        return None;
+    }
+    let message = message(error);
+    let wanted = message.split_once(": expected ")?.1;
+    let end_of_file = error.span().is_none_or(|at| {
+        at.span.begin().get() == 0 && at.span.end().get() == 0 && !source.is_empty()
+    });
+    let offset = match error.span() {
+        Some(at) if !end_of_file => at.span.begin().get() as usize,
+        _ => source.len(),
+    };
+    let chain = literal_chain(source, offset);
+    let start = match wanted {
+        "expression" => chain.map(|c| c.start).or(Some(offset)),
+        "]" | "}" | ":" | "',', 'for' or ']'" | "']', 'for' or 'if'" | "'}', 'for' or 'if'" => {
+            chain.map(|c| c.start)
+        }
+        ")" => chain.filter(|c| c.top_is_plain_paren).map(|c| c.start),
+        _ => None,
+    }?;
+    let (line, column) = line_column(source, start);
+    Some(format!("{file}:{line}:{column}: contains syntax errors"))
+}
+
+/// The line and column (from 1) of the byte `offset` of `source`.
+fn line_column(source: &str, offset: usize) -> (usize, usize) {
+    let before = &source[..offset.min(source.len())];
+    let line = before.matches('\n').count() + 1;
+    let column = before.rsplit('\n').next().map_or(0, |l| l.chars().count()) + 1;
+    (line, column)
+}
+
+/// The brackets open at an error that fail whole.
+struct Chain {
+    /// Where the outermost starts.
+    start: usize,
+    /// Whether the innermost is a parenthesis with no comma in it, which is
+    /// not a tuple.
+    top_is_plain_paren: bool,
+}
+
+/// Where the outermost of the brackets that are open at `upto`, and are not
+/// a call or an index, and have no call or index inside them, starts.
+fn literal_chain(source: &str, upto: usize) -> Option<Chain> {
+    // (is a literal, where it starts, has a comma directly inside)
+    let mut open: Vec<(bool, usize, bool, u8)> = Vec::new();
+    let bytes = source.as_bytes();
+    let mut value_before = false;
+    let mut i = 0;
+    while i < bytes.len() && i < upto {
+        let c = bytes[i];
+        match c {
+            b'#' => {
+                while i < bytes.len() && bytes[i] != b'\n' {
+                    i += 1;
+                }
+                continue;
+            }
+            b'"' | b'\'' => {
+                let triple = bytes[i..].starts_with(&[c, c, c]);
+                i += if triple { 3 } else { 1 };
+                while i < bytes.len() {
+                    if bytes[i] == b'\\' {
+                        i += 2;
+                    } else if triple && bytes[i..].starts_with(&[c, c, c]) {
+                        i += 3;
+                        break;
+                    } else if !triple && (bytes[i] == c || bytes[i] == b'\n') {
+                        i += 1;
+                        break;
+                    } else {
+                        i += 1;
+                    }
+                }
+                value_before = true;
+                continue;
+            }
+            b'(' | b'[' | b'{' => {
+                open.push((c == b'{' || !value_before, i, false, c));
+                value_before = false;
+            }
+            b')' | b']' | b'}' => {
+                open.pop();
+                value_before = true;
+            }
+            c if c.is_ascii_alphanumeric() || c == b'_' => {
+                let start = i;
+                while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
+                    i += 1;
+                }
+                let word = &source[start..i];
+                value_before = !matches!(
+                    word,
+                    "in" | "not"
+                        | "and"
+                        | "or"
+                        | "if"
+                        | "else"
+                        | "for"
+                        | "return"
+                        | "lambda"
+                        | "load"
+                );
+                continue;
+            }
+            b',' => {
+                if let Some(top) = open.last_mut() {
+                    top.2 = true;
+                }
+                value_before = false;
+            }
+            c if c.is_ascii_whitespace() => {}
+            _ => value_before = false,
+        }
+        i += 1;
+    }
+    let run = open
+        .iter()
+        .rev()
+        .take_while(|(literal, ..)| *literal)
+        .last()?;
+    let top = open.last()?;
+    Some(Chain {
+        start: run.1,
+        top_is_plain_paren: top.3 == b'(' && !top.2,
+    })
+}
+
 /// The line and column (from 1) of the error; an error at the end of the
 /// file is on the line after its last newline.
 fn place(error: &starlark::Error) -> (usize, usize) {
@@ -73,6 +211,9 @@ fn parse_message(text: &str) -> String {
     if text.contains("Python-style generator expressions") {
         return "syntax error at 'for': Starlark does not support Python-style generator expressions".to_owned();
     }
+    if let Some(c) = between(text, "Parse error: invalid input `", "`") {
+        return format!("invalid character: '{c}'");
+    }
     if text.contains("unfinished string literal") {
         return "unclosed string literal".to_owned();
     }
@@ -120,7 +261,7 @@ fn wanted_token(wanted: &str) -> String {
         "new line" => "newline".to_owned(),
         "expression" => "expression".to_owned(),
         // What can follow a comprehension: the list is Bazel's, quotes and all.
-        "']', 'for' or 'if'" | "'}', 'for' or 'if'" => wanted.to_owned(),
+        "']', 'for' or 'if'" | "'}', 'for' or 'if'" | "',', 'for' or ']'" => wanted.to_owned(),
         other => quoted(other).unwrap_or(other).to_owned(),
     }
 }
@@ -221,6 +362,15 @@ mod tests {
             "x = f(i for i in 1 2)\n",
             "BUILD:1:9: syntax error at 'for': Starlark does not support Python-style generator expressions",
         ),
+        (
+            "x = [1 2]\n",
+            "BUILD:1:8: syntax error at '2': expected ',', 'for' or ']'",
+        ),
+        (
+            "x = a.\n",
+            "BUILD:1:7: syntax error at 'newline': expected identifier after dot",
+        ),
+        ("x = $\n", "BUILD:1:5: invalid character: '$'"),
         ("f(a=1, a=2)\n", "BUILD:1:8: duplicate keyword argument: a"),
         (
             "print(a=1, 2)\n",

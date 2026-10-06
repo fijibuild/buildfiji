@@ -74,6 +74,28 @@ const ROWS: &[Row] = &[
         ],
         error: "while parsing '//e:all': error loading package 'e': initialization of module 'e/l.bzl' failed",
     },
+    // A .bzl that does not parse: its syntax error, the recovery's event at
+    // the start of the bracket that failed, and a compile failure.
+    Row {
+        files: &[
+            ("p/BUILD", "load('//p:l.bzl', 'x')\n"),
+            ("p/l.bzl", "y = 1\nx = (\n"),
+        ],
+        events: &[
+            "{ws}/p/l.bzl:3:1: syntax error at 'newline': expected expression",
+            "{ws}/p/l.bzl:2:5: contains syntax errors",
+        ],
+        error: "while parsing '//p:all': error loading package 'p': compilation of module 'p/l.bzl' failed",
+    },
+    // A .bzl with a name that is not defined is not run either.
+    Row {
+        files: &[
+            ("n/BUILD", "load('//n:l.bzl', 'x')\n"),
+            ("n/l.bzl", "def f():\n  return z\nx = 1\n"),
+        ],
+        events: &["{ws}/n/l.bzl:2:10: name 'z' is not defined"],
+        error: "while parsing '//n:all': error loading package 'n': compilation of module 'n/l.bzl' failed",
+    },
     // A rule the BUILD file calls wrongly: an event at the call.
     Row {
         files: &[(
