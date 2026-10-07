@@ -172,6 +172,22 @@ const ROWS: &[Row] = &[
         ],
         error: "while parsing '//u:all': error loading package 'u': compilation of module 'u/l.bzl' failed",
     },
+    // The resolver runs on what the parser recovered of a .bzl: its names
+    // are reported after the syntax errors, in a def after the bad one.
+    Row {
+        files: &[
+            ("w/BUILD", "load('//w:l.bzl', 'x')\n"),
+            (
+                "w/l.bzl",
+                "def a():\n  return 2 ** 3\ndef b():\n  return chr\n",
+            ),
+        ],
+        events: &[
+            "{ws}/w/l.bzl:2:12: syntax error at '**': expected newline",
+            "{ws}/w/l.bzl:4:10: name 'chr' is not defined",
+        ],
+        error: "while parsing '//w:all': error loading package 'w': compilation of module 'w/l.bzl' failed",
+    },
     Row {
         files: &[
             ("v/BUILD", "load('//v:l.bzl', 'x')\n"),

@@ -1036,7 +1036,8 @@ impl<'a, I: Iterator<Item = Lexeme>> ParserRd<'a, I> {
                                 .to_owned(),
                         ));
                     }
-                    self.expect(&Token::ClosingRound)?;
+                    // Bazel says what it wanted after an argument: a comma.
+                    self.expect_closing(&Token::ClosingRound, ",")?;
                     let r = self.last_end;
                     lhs = Expr::check_call(lhs, args, &mut self.state).ast(l, r);
                 }
@@ -1587,7 +1588,8 @@ impl<'a, I: Iterator<Item = Lexeme>> ParserRd<'a, I> {
                     let l = lhs.span.begin().get() as usize;
                     self.advance();
                     let args = self.parse_comma_separated_args()?;
-                    self.expect(&Token::ClosingRound)?;
+                    // Bazel says what it wanted after an argument: a comma.
+                    self.expect_closing(&Token::ClosingRound, ",")?;
                     let r = self.last_end;
                     lhs = Expr::check_call(lhs, args, &mut self.state).ast(l, r);
                 }

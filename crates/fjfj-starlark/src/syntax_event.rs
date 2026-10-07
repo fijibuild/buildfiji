@@ -254,6 +254,10 @@ fn token(found: &str) -> String {
     match found {
         "new line" => "newline".to_owned(),
         "end of file" => "newline".to_owned(),
+        // A string is named by its literal, which already has its quotes.
+        other if other.starts_with("string literal ") => {
+            other["string literal ".len()..].to_owned()
+        }
         other => quoted(other).unwrap_or(other).to_owned(),
     }
 }
@@ -377,6 +381,12 @@ mod tests {
             "x = a.\n",
             "BUILD:1:7: syntax error at 'newline': expected identifier after dot",
         ),
+        ("f(1 2)\n", "BUILD:1:5: syntax error at '2': expected ,"),
+        ("f(a=1 2)\n", "BUILD:1:7: syntax error at '2': expected ,"),
+        (
+            "x = \"a\" \"b\"\n",
+            "BUILD:1:9: Implicit string concatenation is forbidden, use the + operator",
+        ),
         ("x = $\n", "BUILD:1:5: invalid character: '$'"),
         ("f(a=1, a=2)\n", "BUILD:1:8: duplicate keyword argument: a"),
         (
@@ -384,6 +394,26 @@ mod tests {
             "BUILD:1:12: positional argument may not follow keyword argument",
         ),
     ];
+
+    /// A string after a string is the concatenation event, and then the
+    /// syntax error with the token as written (a single-quoted string is
+    /// named with double quotes).
+    #[test]
+    fn a_string_after_a_string_is_two_events() {
+        let parsed = crate::dialect::parse_all("BUILD", "x = \"a\" 'b'\n", FileKind::Build);
+        let events: Vec<String> = parsed
+            .syntax
+            .iter()
+            .map(|e| syntax_event("BUILD", e))
+            .collect();
+        assert_eq!(
+            events,
+            [
+                "BUILD:1:9: Implicit string concatenation is forbidden, use the + operator",
+                "BUILD:1:9: syntax error at '\"b\"': expected newline",
+            ]
+        );
+    }
 
     #[test]
     fn a_syntax_error_is_the_event_bazel_prints() {

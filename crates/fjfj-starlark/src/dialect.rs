@@ -112,6 +112,7 @@ pub fn parse_all(path: &str, src: &str, kind: FileKind) -> Parsed {
         AstModule::parse_all(path, src.to_owned(), &kind.dialect());
     syntax.extend(string_escape_errors(&ast));
     syntax.sort_by_key(offset);
+    syntax = implicit_concatenations(&ast, src, syntax);
     if syntax.is_empty() && resolution.is_empty() && kind == FileKind::Bzl {
         resolution.extend(check_bzl_top_level(&ast).err());
     }
@@ -120,6 +121,36 @@ pub fn parse_all(path: &str, src: &str, kind: FileKind) -> Parsed {
         syntax,
         resolution,
     }
+}
+
+/// A string literal that follows another one is Bazel's "Implicit string
+/// concatenation" error, which it reports before the syntax error at the same
+/// place.
+fn implicit_concatenations(
+    ast: &AstModule,
+    src: &str,
+    syntax: Vec<starlark::Error>,
+) -> Vec<starlark::Error> {
+    let mut all = Vec::with_capacity(syntax.len());
+    for error in syntax {
+        let at = error.span().map(|at| at.span);
+        let found_string = error
+            .without_diagnostic()
+            .to_string()
+            .contains("unexpected string literal");
+        if let (true, Some(span)) = (found_string, at) {
+            let before = src[..span.begin().get() as usize].trim_end_matches([' ', '\t']);
+            if before.ends_with(['"', '\'']) {
+                all.push(error_at(
+                    ast,
+                    span,
+                    "Implicit string concatenation is forbidden, use the + operator".to_owned(),
+                ));
+            }
+        }
+        all.push(error);
+    }
+    all
 }
 
 /// Where an error is, as a byte offset.

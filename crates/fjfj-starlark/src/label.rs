@@ -400,6 +400,13 @@ fn evaluate_bzl_with(input: &BzlFile<'_>, builtins: bool) -> starlark::Result<Fr
             return Err(starlark::Error::new_other(StaticErrors(errors)));
         }
         if !errors.is_empty() {
+            // Bazel's resolver also runs on the tree the parser recovered.
+            errors.extend(bzl_scope_errors(
+                parsed.ast,
+                parsed.resolution,
+                input,
+                builtins,
+            ));
             return Err(starlark::Error::new_other(StaticErrors(errors)));
         }
         parsed.ast
