@@ -109,9 +109,20 @@ impl<'v> Freeze for Provider<'v> {
     }
 }
 
+/// The built-in providers that Bazel declares in Starlark, and so prints as
+/// `<provider>`.
+const PRINTS_AS_PROVIDER: [&str; 2] = ["_Objc", "_XcodeVersionConfig"];
+
 impl<V> fmt::Display for ProviderGen<V> {
+    /// A provider Bazel implements natively prints as a function of its name;
+    /// one a `.bzl` made as `<provider>`.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "<provider>")
+        match (&self.file, self.name.get()) {
+            (None, Some(name)) if !PRINTS_AS_PROVIDER.contains(&name.as_str()) => {
+                write!(f, "<function {}>", name.trim_start_matches('_'))
+            }
+            _ => write!(f, "<provider>"),
+        }
     }
 }
 

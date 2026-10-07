@@ -2157,3 +2157,27 @@ r = rule(implementation = _impl)
         assert!(err.contains(text), "{call}: wanted `{text}` in\n{err}");
     }
 }
+
+/// Probed on Bazel 9.2.0: a provider Bazel implements natively prints as a
+/// function of its name, one a `.bzl` makes (and a few of Bazel's own) as
+/// `<provider>`, and `apple_common.XcodeProperties` is None.
+#[test]
+fn native_providers_print_as_functions() {
+    let src = r#"
+Mine = provider()
+def _impl(ctx):
+    fail("|".join([
+        str(DefaultInfo),
+        str(testing.ExecutionInfo),
+        str(platform_common.ToolchainInfo),
+        str(Mine),
+        str(apple_common.Objc),
+        str(apple_common.XcodeVersionConfig),
+        str(apple_common.XcodeProperties),
+    ]))
+r = rule(implementation = _impl)
+"#;
+    let err = run_rule(&request(src, "r", Vec::new(), Vec::new())).unwrap_err();
+    let want = "<function DefaultInfo>|<function ExecutionInfo>|<function ToolchainInfo>|<provider>|<provider>|<provider>|None";
+    assert!(err.contains(want), "wanted `{want}` in\n{err}");
+}

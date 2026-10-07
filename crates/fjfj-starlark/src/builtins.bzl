@@ -287,7 +287,6 @@ _ExecutionInfo, _raw_execution_info = provider(
 )
 _TestEnvironment = lambda *args, **kwargs: _raw_run_environment_info(**_run_environment_fields("TestEnvironment", args, kwargs))
 _Objc = provider(doc = "Objective-C information.")
-_XcodeProperties = provider(doc = "Xcode properties.")
 def _xcode_version_config_init(
         ios_sdk_version,
         ios_minimum_os_version,
@@ -413,7 +412,7 @@ _APPLE_PLATFORM_TYPE = struct(
 
 apple_common = struct(
     Objc = _Objc,
-    XcodeProperties = _XcodeProperties,
+    XcodeProperties = None,
     XcodeVersionConfig = _XcodeVersionConfig,
     apple_host_system_env = _unavailable("apple_common.apple_host_system_env", "buildfiji-136.15"),
     apple_toolchain = lambda: struct(developer_dir = _unavailable("apple_common.apple_toolchain().developer_dir", "buildfiji-136.15"), platform_developer_framework_dir = _unavailable("apple_common.apple_toolchain().platform_developer_framework_dir", "buildfiji-136.15"), sdk_dir = _unavailable("apple_common.apple_toolchain().sdk_dir", "buildfiji-136.15")),
