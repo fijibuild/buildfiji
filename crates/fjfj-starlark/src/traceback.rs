@@ -69,10 +69,16 @@ pub fn traceback(error: &starlark::Error) -> String {
     // A builtins function that refuses a private-API caller is a native
     // function in Bazel: the traceback ends at the call of it, and the error
     // names it.
+    // The builtins stand in for a native function of Bazel's and say its name.
+    let named_by_error = match all.as_slice() {
+        [.., _, check] if check.name == "fjfj_native_error" => native_error_name(error),
+        _ => None,
+    };
     let refusal = match all.as_slice() {
         [.., wrapper, check] if check.name == "fjfj_check_private_api" => {
             Some(wrapper.name.as_str())
         }
+        [.., _, check] if check.name == "fjfj_native_error" => named_by_error.as_deref(),
         _ => None,
     };
     let frames = &all[..all.len() - if refusal.is_some() { 2 } else { 0 }];
@@ -102,7 +108,10 @@ pub fn traceback(error: &starlark::Error) -> String {
     }
     let message = match (error.kind(), refusal) {
         (ErrorKind::Fail(e), _) => format!("Error in fail: {}", e.to_string().trim_start()),
-        (_, Some(name)) => format!("Error in {name}: {}", plain(error)),
+        (_, Some(name)) => format!(
+            "Error in {name}: {}",
+            native_error_message(&plain(error)).unwrap_or_else(|| plain(error))
+        ),
         _ => match native {
             Some(frame)
                 if !matches!(error.kind(), ErrorKind::Parser(_))
@@ -214,6 +223,18 @@ fn not_callable(error: &starlark::Error) -> bool {
         ),
         _ => false,
     }
+}
+
+/// The function a `fjfj_native_error` names, and what it says.
+fn native_error_name(error: &starlark::Error) -> Option<String> {
+    let text = plain(error);
+    let rest = text.strip_prefix('\u{1}')?;
+    Some(rest.split('\u{1}').next()?.to_owned())
+}
+
+fn native_error_message(text: &str) -> Option<String> {
+    let rest = text.strip_prefix('\u{1}')?;
+    Some(rest.split_once('\u{1}')?.1.to_owned())
 }
 
 /// Whether the error was found in the arguments of a call, before the function

@@ -14,7 +14,7 @@
 
 use super::ctx::CtxState;
 use super::file::{FileValue, alloc_file, artifact_of};
-use crate::args::{Wording, bind, describe, fatal, param, sequence};
+use crate::args::{Wording, bind, fatal, param, sequence};
 use crate::depset::{depset_to_list, is_depset, nested_of};
 use allocative::Allocative;
 use fjfj_graph::{Action, ActionKind, Artifact, NestedSet};
@@ -68,53 +68,95 @@ fn state<'v>(this: Value<'v>) -> &'v Arc<CtxState> {
     &this.downcast_ref::<ActionsValue>().expect("actions").state
 }
 
-/// The files of a list, tuple or depset argument.
+/// What Bazel says of a parameter of the wrong type.
+fn wrong_type(function: &str, name: &str, value: Value<'_>, want: &str) -> starlark::Error {
+    fatal(format!(
+        "in call to {function}(), parameter '{name}' got value of type '{}', want '{want}'",
+        value.get_type()
+    ))
+}
+
+/// The parameter `name` of `function`, which `unpack` reads, or the error for
+/// a value of the wrong type (`want` names the types it takes).
+fn unpacked<'v, T>(
+    function: &str,
+    name: &str,
+    value: Option<Value<'v>>,
+    want: &str,
+    unpack: impl Fn(Value<'v>) -> Option<T>,
+) -> starlark::Result<T> {
+    let value = value.expect("a required parameter");
+    unpack(value).ok_or_else(|| wrong_type(function, name, value, want))
+}
+
+/// The files of a list, tuple or depset argument, and the errors Bazel gives
+/// for what is not one.
 fn files_of<'v>(
     eval: &Evaluator<'v, '_, '_>,
     function: &str,
     name: &str,
     value: Value<'v>,
 ) -> starlark::Result<Vec<Artifact>> {
-    let items: Vec<Value<'v>> = if is_depset(value) {
-        depset_to_list(value).expect("a depset")?
+    let _ = eval;
+    let tools = name == "tools";
+    let (items, from_depset): (Vec<Value<'v>>, bool) = if is_depset(value) {
+        (depset_to_list(value).expect("a depset")?, true)
     } else if let Some(items) = sequence(value) {
-        items
+        (items, false)
     } else if value.is_none() {
-        Vec::new()
+        (Vec::new(), false)
     } else {
         return Err(fatal(format!(
-            "in call to {function}(), parameter '{name}' got value of type '{}', want 'sequence or depset'",
-            value.get_type()
+            "in call to {function}(), parameter '{name}' got value of type '{}', want '{}'",
+            value.get_type(),
+            if name == "outputs" {
+                "sequence"
+            } else {
+                "sequence or depset"
+            }
         )));
     };
-    let _ = eval;
     let mut out = Vec::with_capacity(items.len());
-    for item in items {
+    for (index, item) in items.into_iter().enumerate() {
         if let Some(artifact) = artifact_of(item) {
             out.push(artifact);
-        } else if let Some(files) = files_to_run_inputs(item) {
+        } else if tools && let Some(files) = files_to_run_inputs(item) {
             out.extend(files);
-        } else if is_depset(item) {
+        } else if tools && is_depset(item) {
             // `tools = [files_to_run, a_depset]`.
             for element in depset_to_list(item).expect("a depset")? {
                 match artifact_of(element) {
                     Some(artifact) => out.push(artifact),
-                    None => {
-                        return Err(fatal(format!(
-                            "expected value of type 'File' for element of {name}, but got {}",
-                            describe(element)
-                        )));
-                    }
+                    None => return Err(not_a_file(name, index, element, true, false)),
                 }
             }
+        } else if let Some(files) = files_to_run_inputs(item).filter(|_| !tools) {
+            out.extend(files);
         } else {
-            return Err(fatal(format!(
-                "expected value of type 'File' for element of {name}, but got {}",
-                describe(item)
-            )));
+            return Err(not_a_file(name, index, item, tools, from_depset));
         }
     }
     Ok(out)
+}
+
+/// What Bazel says of an element of `name` that is not a file.
+fn not_a_file(
+    name: &str,
+    index: usize,
+    element: Value<'_>,
+    tools: bool,
+    from_depset: bool,
+) -> starlark::Error {
+    let found = element.get_type();
+    fatal(if tools {
+        format!(
+            "expected value of type 'File, FilesToRunProvider or Depset of Files' for a member of parameter 'tools' but got {found} instead"
+        )
+    } else if from_depset {
+        format!("for '{name}', got a depset of '{found}', expected a depset of 'File'")
+    } else {
+        format!("at index {index} of {name}, got element of type {found}, want File")
+    })
 }
 
 /// `files` without repeats, in order.
@@ -175,7 +217,9 @@ fn string_dict(
             }
             _ => {
                 return Err(fatal(format!(
-                    "in call to {function}(), parameter '{name}' got an entry that is not a string to string"
+                    "got dict<{}, {}> for '{name}', want dict<string, string>",
+                    k.get_type(),
+                    v.get_type()
                 )));
             }
         }
@@ -326,16 +370,11 @@ fn declare<'v>(
         args,
         eval,
     )?;
-    let filename = bound[0].and_then(|v| v.unpack_str()).ok_or_else(|| {
-        fatal(format!(
-            "in call to {function}(), parameter 'filename' got value of type that is not 'string'"
-        ))
-    })?;
+    let filename = unpacked(function, "filename", bound[0], "string", |v| v.unpack_str())?;
     let mut artifact = match bound[1].filter(|v| !v.is_none()) {
         Some(sibling) => {
-            let sibling = artifact_of(sibling).ok_or_else(|| {
-                    fatal(format!("in call to {function}(), parameter 'sibling' got value of type that is not 'File'"))
-                })?;
+            let sibling = artifact_of(sibling)
+                .ok_or_else(|| wrong_type(function, "sibling", sibling, "File or NoneType"))?;
             let path = match sibling.path.rsplit_once('/') {
                 Some((dir, _)) => format!("{dir}/{filename}"),
                 None => filename.to_owned(),
@@ -431,13 +470,13 @@ fn actions_members(builder: &mut MethodsBuilder) {
             args,
             eval,
         )?;
-        let filename = bound[0]
-            .and_then(|v| v.unpack_str())
-            .ok_or_else(|| fatal("in call to declare_directory(), parameter 'filename' got value of type that is not 'string'"))?;
+        let filename = unpacked("declare_directory", "filename", bound[0], "string", |v| {
+            v.unpack_str()
+        })?;
         let mut artifact = match bound[1].filter(|v| !v.is_none()) {
             Some(sibling) => {
                 let sibling = artifact_of(sibling).ok_or_else(|| {
-                    fatal("in call to declare_directory(), parameter 'sibling' got value of type that is not 'File'")
+                    wrong_type("declare_directory", "sibling", sibling, "File or NoneType")
                 })?;
                 s.derived_next_to(&sibling, filename)
             }
@@ -502,11 +541,9 @@ fn actions_members(builder: &mut MethodsBuilder) {
             args,
             eval,
         )?;
-        let output = bound[0].and_then(artifact_of).ok_or_else(|| {
-            fatal("in call to write(), parameter 'output' got value of type that is not 'File'")
-        })?;
-        let content = bound[1].and_then(|v| v.unpack_str()).ok_or_else(|| {
-            fatal("ctx.actions.write: content must be a string (Args is not supported yet)")
+        let output = unpacked("write", "output", bound[0], "File", artifact_of)?;
+        let content = unpacked("write", "content", bound[1], "string or Args", |v| {
+            v.unpack_str()
         })?;
         let executable = flag("write", "is_executable", bound[2])?;
         let message = if executable {
@@ -567,16 +604,37 @@ fn actions_members(builder: &mut MethodsBuilder) {
             args,
             eval,
         )?;
-        let output = bound[0].and_then(artifact_of).ok_or_else(|| {
-            fatal("in call to symlink(), parameter 'output' got value of type that is not 'File'")
-        })?;
-        let Some(target) = bound[1].filter(|v| !v.is_none()).and_then(artifact_of) else {
+        let output = unpacked("symlink", "output", bound[0], "File", artifact_of)?;
+        let file = bound[1].filter(|v| !v.is_none());
+        let path = bound[2].filter(|v| !v.is_none());
+        if let Some(file) = file
+            && artifact_of(file).is_none()
+        {
+            return Err(wrong_type(
+                "symlink",
+                "target_file",
+                file,
+                "File or NoneType",
+            ));
+        }
+        if let Some(path) = path
+            && path.unpack_str().is_none()
+        {
+            return Err(wrong_type(
+                "symlink",
+                "target_path",
+                path,
+                "string or NoneType",
+            ));
+        }
+        if file.is_some() == path.is_some() {
+            return Err(fatal(
+                "Exactly one of \"target_file\" or \"target_path\" is required",
+            ));
+        }
+        let Some(target) = file.and_then(artifact_of) else {
             // `target_path`: the link says exactly that, with no input.
-            let Some(path) = bound[2].and_then(|v| v.unpack_str()) else {
-                return Err(fatal(
-                    "ctx.actions.symlink: needs target_file or target_path",
-                ));
-            };
+            let path = path.and_then(|v| v.unpack_str()).expect("one of the two");
             s.register(
                 "UnresolvedSymlink",
                 Some(format!("Creating symlink {}", basename(&output))),
@@ -620,19 +678,15 @@ fn actions_members(builder: &mut MethodsBuilder) {
             &[
                 param("template", false, true),
                 param("output", false, true),
-                param("substitutions", false, true),
+                param("substitutions", false, false),
                 param("is_executable", false, false),
                 param("computed_substitutions", false, false),
             ],
             args,
             eval,
         )?;
-        let template = bound[0]
-            .and_then(artifact_of)
-            .ok_or_else(|| fatal("in call to expand_template(), parameter 'template' got value of type that is not 'File'"))?;
-        let output = bound[1]
-            .and_then(artifact_of)
-            .ok_or_else(|| fatal("in call to expand_template(), parameter 'output' got value of type that is not 'File'"))?;
+        let template = unpacked("expand_template", "template", bound[0], "File", artifact_of)?;
+        let output = unpacked("expand_template", "output", bound[1], "File", artifact_of)?;
         let mut substitutions: BTreeMap<String, String> =
             string_dict("expand_template", "substitutions", bound[2])?;
         // Substitutions computed from lists (`template_dict()`).
@@ -684,14 +738,10 @@ fn transform_status_file<'v>(
         args,
         eval,
     )?;
-    let template = bound[1].and_then(artifact_of).ok_or_else(|| {
-        fatal(format!(
-            "in call to {function}(), parameter 'template' got value of type that is not 'File'"
-        ))
+    let template = unpacked(function, "template", bound[1], "File", artifact_of)?;
+    let name = unpacked(function, "output_file_name", bound[2], "string", |v| {
+        v.unpack_str()
     })?;
-    let name = bound[2]
-        .and_then(|v| v.unpack_str())
-        .ok_or_else(|| fatal(format!("in call to {function}(), parameter 'output_file_name' got value of type that is not 'string'")))?;
     let heap = eval.heap();
     let status = heap.alloc(AllocDict(
         status.iter().map(|(k, v)| (heap.alloc(*k), heap.alloc(*v))),
@@ -769,7 +819,7 @@ fn spawn<'v>(
     }
     let outputs = files_of(eval, function, "outputs", bound[0].expect("required"))?;
     if outputs.is_empty() {
-        return Err(fatal(format!("{function}() requires at least one output")));
+        return Err(fatal("param 'outputs' may not be empty"));
     }
     let mut inputs = match bound[1] {
         Some(v) => files_of(eval, function, "inputs", v)?,
@@ -895,8 +945,8 @@ fn spawn<'v>(
                 }
             } else {
                 return Err(fatal(format!(
-                    "ctx.actions.{function}: arguments must be strings or Files (Args is not supported yet), got {}",
-                    describe(item)
+                    "expected list of strings or ctx.actions.args() for arguments instead of {}",
+                    item.get_type()
                 )));
             }
         }
@@ -920,7 +970,7 @@ fn spawn<'v>(
                     .to_owned()
             } else {
                 format!(
-                    "in call to run_shell(), parameter 'command' got value of type '{}', want 'string'",
+                    "in call to run_shell(), parameter 'command' got value of type '{}', want 'string or sequence'",
                     last.get_type()
                 )
             })
@@ -953,7 +1003,7 @@ fn spawn<'v>(
             path.to_owned()
         } else {
             return Err(fatal(format!(
-                "in call to run(), parameter 'executable' got value of type '{}', want 'File or string or FilesToRunProvider'",
+                "in call to run(), parameter 'executable' got value of type '{}', want 'File, string, or FilesToRunProvider'",
                 last.get_type()
             )));
         };

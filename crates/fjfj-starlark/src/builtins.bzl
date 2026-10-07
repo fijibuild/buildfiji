@@ -32,9 +32,40 @@ load(
     _get_tool_for_action = "get_tool_for_action",
 )
 
-DefaultInfo = provider(
+# `DefaultInfo(...)` as Bazel's constructor takes it (probed on 9.2.0): the
+# errors name `DefaultInfo`, as the native function does.
+def _default_info_init(*args, **kwargs):
+    if args:
+        fjfj_native_error("DefaultInfo", "DefaultInfo() got unexpected positional argument")
+    known = {
+        "files": "depset",
+        "runfiles": "runfiles",
+        "data_runfiles": "runfiles",
+        "default_runfiles": "runfiles",
+        "executable": "File",
+    }
+    unknown = [k for k in kwargs if k not in known]
+    if unknown:
+        fjfj_native_error("DefaultInfo", "DefaultInfo() got unexpected keyword argument%s %s" % (
+            "s" if len(unknown) > 1 else "",
+            ", ".join(["'%s'" % k for k in unknown]),
+        ) if len(unknown) > 1 else "DefaultInfo() got unexpected keyword argument '%s'" % unknown[0])
+    fields = {}
+    for name, want in known.items():
+        value = kwargs.get(name)
+        if value == None:
+            continue
+        if type(value) != want:
+            fjfj_native_error("DefaultInfo", "in call to DefaultInfo(), parameter '%s' got value of type '%s', want '%s or NoneType'" % (name, type(value), want))
+        fields[name] = value
+    if "runfiles" in fields and ("data_runfiles" in fields or "default_runfiles" in fields):
+        fjfj_native_error("DefaultInfo", "Cannot specify the provider 'runfiles' together with 'data_runfiles' or 'default_runfiles'")
+    return fields
+
+DefaultInfo, _raw_default_info = provider(
     doc = "The default providers of a target.",
     fields = ["files", "runfiles", "data_runfiles", "default_runfiles", "executable"],
+    init = _default_info_init,
 )
 
 RunEnvironmentInfo = provider(
@@ -47,8 +78,22 @@ PackageSpecificationInfo = provider(
     fields = [],
 )
 
-OutputGroupInfo = provider(
+# `OutputGroupInfo(group = depset_of_files, ...)`: each group is a depset of
+# files, as Bazel's constructor checks.
+def _output_group_info_init(*args, **kwargs):
+    if args:
+        fjfj_native_error("OutputGroupInfo", "OutputGroupInfo() got unexpected positional argument")
+    for name, value in kwargs.items():
+        if type(value) != "depset":
+            fjfj_native_error("OutputGroupInfo", "for output group '%s', got %s, want a depset of File" % (name, type(value)))
+        element = fjfj_depset_item_type(value)
+        if element != None and element != "File":
+            fjfj_native_error("OutputGroupInfo", "for 'output group '%s'', got a depset of '%s', expected a depset of 'File'" % (name, element))
+    return kwargs
+
+OutputGroupInfo, _raw_output_group_info = provider(
     doc = "The output groups of a target.",
+    init = _output_group_info_init,
 )
 
 AnalysisFailureInfo = provider(

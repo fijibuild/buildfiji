@@ -548,6 +548,12 @@ pub fn is_depset(value: Value<'_>) -> bool {
     layout_of(value).is_some()
 }
 
+/// The type of the elements of a depset, `None` if it is empty or `value` is
+/// not one.
+pub(crate) fn item_type_of(value: Value<'_>) -> Option<&'static str> {
+    layout_of(value).and_then(|d| d.item_type())
+}
+
 /// The elements of a depset value in `to_list` order, or `None` if `value`
 /// is not one.
 pub fn depset_to_list<'v>(value: Value<'v>) -> Option<starlark::Result<Vec<Value<'v>>>> {

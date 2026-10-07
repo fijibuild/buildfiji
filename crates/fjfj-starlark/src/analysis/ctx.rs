@@ -887,8 +887,22 @@ fn ctx_members(builder: &mut MethodsBuilder) {
                 }
             }
         }
-        let flag = |i: usize| bound[i].and_then(|v| v.unpack_bool()).unwrap_or(false);
-        if flag(2) || flag(3) {
+        let flag_value = |i: usize, name: &str| -> starlark::Result<bool> {
+            match bound[i] {
+                None => Ok(false),
+                Some(v) => v.unpack_bool().ok_or_else(|| {
+                    fatal(format!(
+                        "in call to runfiles(), parameter '{name}' got value of type '{}', want 'bool'",
+                        v.get_type()
+                    ))
+                }),
+            }
+        };
+        let (collect_data, collect_default) = (
+            flag_value(2, "collect_data")?,
+            flag_value(3, "collect_default")?,
+        );
+        if collect_data || collect_default {
             // The files and runfiles of what the rule reads in srcs, deps and data.
             for (name, value) in &s.attrs {
                 if !matches!(name.as_str(), "srcs" | "deps" | "data") {
@@ -913,19 +927,30 @@ fn ctx_members(builder: &mut MethodsBuilder) {
             }
         }
         let entries = |i: usize| -> starlark::Result<Vec<(String, Artifact)>> {
-            let Some(dict) = bound[i].and_then(starlark::values::dict::DictRef::from_value) else {
+            let name = if i == 4 { "symlinks" } else { "root_symlinks" };
+            let Some(value) = bound[i].filter(|v| !v.is_none()) else {
                 return Ok(Vec::new());
             };
+            let Some(dict) = starlark::values::dict::DictRef::from_value(value) else {
+                if crate::depset::is_depset(value) {
+                    return Ok(Vec::new());
+                }
+                return Err(fatal(format!(
+                    "in call to runfiles(), parameter '{name}' got value of type '{}', want 'dict or depset'",
+                    value.get_type()
+                )));
+            };
             dict.iter()
-                .map(|(k, v)| {
-                    Ok((
-                        k.unpack_str()
-                            .ok_or_else(|| fatal("runfiles symlink paths must be strings"))?
-                            .to_owned(),
-                        super::file::artifact_of(v)
-                            .ok_or_else(|| fatal("runfiles symlink targets must be Files"))?,
-                    ))
-                })
+                .map(
+                    |(k, v)| match (k.unpack_str(), super::file::artifact_of(v)) {
+                        (Some(path), Some(target)) => Ok((path.to_owned(), target)),
+                        _ => Err(fatal(format!(
+                            "got dict<{}, {}> for '{name}', want dict<string, File>",
+                            k.get_type(),
+                            v.get_type()
+                        ))),
+                    },
+                )
                 .collect()
         };
         // After what `collect_data` and `collect_default` gathered, not in place of it.

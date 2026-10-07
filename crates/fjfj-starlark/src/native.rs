@@ -355,6 +355,25 @@ fn may_use_private_api(file: &str) -> bool {
 /// What the builtins (and nothing else) use.
 #[starlark_module]
 fn internal_globals(builder: &mut GlobalsBuilder) {
+    /// An error of a native function of Bazel's that the builtins stand in for:
+    /// the traceback ends at the call of the function that called this, and
+    /// the error names `function`.
+    fn fjfj_native_error<'v>(
+        #[starlark(require = pos)] function: &str,
+        #[starlark(require = pos)] message: &str,
+    ) -> starlark::Result<NoneType> {
+        Err(fatal(format!("\u{1}{function}\u{1}{message}")))
+    }
+
+    /// The type of the elements of a depset, `None` if it is empty.
+    fn fjfj_depset_item_type<'v>(
+        #[starlark(require = pos)] depset: Value<'v>,
+    ) -> starlark::Result<starlark::values::none::NoneOr<String>> {
+        Ok(starlark::values::none::NoneOr::from_option(
+            crate::depset::item_type_of(depset).map(str::to_owned),
+        ))
+    }
+
     /// Bazel's `checkPrivateAccess`: fail unless the file that called the
     /// function calling this may use the private API. `feature` is the name a
     /// member of a configuration fragment gives in the message.

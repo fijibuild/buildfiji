@@ -93,20 +93,25 @@ fn runfiles_members(builder: &mut MethodsBuilder) {
     /// `runfiles.merge_all(others)`.
     fn merge_all<'v>(
         this: Value<'v>,
-        others: Value<'v>,
+        other: Value<'v>,
         heap: Heap<'v>,
     ) -> starlark::Result<Value<'v>> {
         let a = runfiles(this);
         let mut merged = a.runfiles.clone();
-        let items = if is_depset(others) {
-            depset_to_list(others).expect("a depset")?
+        let items = if is_depset(other) {
+            depset_to_list(other).expect("a depset")?
         } else {
-            crate::args::sequence(others).unwrap_or_default()
+            crate::args::sequence(other).ok_or_else(|| {
+                fatal(format!(
+                    "in call to merge_all(), parameter 'other' got value of type '{}', want 'sequence'",
+                    other.get_type()
+                ))
+            })?
         };
-        for item in items {
+        for (index, item) in items.into_iter().enumerate() {
             let b = item.downcast_ref::<RunfilesValue>().ok_or_else(|| {
                 fatal(format!(
-                    "expected value of type 'runfiles' for element of others, but got {}",
+                    "at index {index} of param, got element of type {}, want runfiles",
                     item.get_type()
                 ))
             })?;
@@ -131,21 +136,42 @@ pub(crate) fn alloc_runfiles<'v>(heap: Heap<'v>, runfiles: Runfiles, owner: Labe
     heap.alloc(RunfilesValue { runfiles, owner })
 }
 
-/// The files of a list or depset of `File`s.
+/// The files of the `files` of `ctx.runfiles`, a sequence of `File`s, or of its
+/// `transitive_files`, a depset of them, with Bazel's errors for what is not.
 pub(crate) fn files_in(value: Value<'_>, what: &str) -> starlark::Result<Vec<Artifact>> {
-    let items = if is_depset(value) {
+    let depset = what == "transitive_files";
+    let items = if depset {
+        if !is_depset(value) {
+            return Err(fatal(format!(
+                "in call to runfiles(), parameter '{what}' got value of type '{}', want 'depset or NoneType'",
+                value.get_type()
+            )));
+        }
         depset_to_list(value).expect("a depset")?
     } else {
-        crate::args::sequence(value).unwrap_or_default()
+        crate::args::sequence(value).ok_or_else(|| {
+            fatal(format!(
+                "in call to runfiles(), parameter '{what}' got value of type '{}', want 'sequence'",
+                value.get_type()
+            ))
+        })?
     };
     items
         .into_iter()
-        .map(|item| {
+        .enumerate()
+        .map(|(index, item)| {
             artifact_of(item).ok_or_else(|| {
-                fatal(format!(
-                    "expected value of type 'File' for {what}, but got {}",
-                    crate::args::describe(item)
-                ))
+                fatal(if depset {
+                    format!(
+                        "for '{what}', got a depset of '{}', expected a depset of 'File'",
+                        item.get_type()
+                    )
+                } else {
+                    format!(
+                        "at index {index} of {what}, got element of type {}, want File",
+                        item.get_type()
+                    )
+                })
             })
         })
         .collect()

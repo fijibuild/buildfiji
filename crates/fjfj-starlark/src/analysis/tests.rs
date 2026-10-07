@@ -420,7 +420,7 @@ def _impl2(ctx):
 r2 = rule(implementation = _impl2)
 "#;
     let e = run_rule(&request(src, "r", Vec::new(), Vec::new())).unwrap_err();
-    assert!(e.contains("requires at least one output"), "{e}");
+    assert!(e.contains("param 'outputs' may not be empty"), "{e}");
     let e = run_rule(&request(src, "r2", Vec::new(), Vec::new())).unwrap_err();
     assert!(e.contains("nope"), "{e}");
 }
