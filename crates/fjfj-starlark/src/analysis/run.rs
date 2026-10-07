@@ -582,12 +582,11 @@ fn read_default_info(
             })?);
         }
     }
-    let executable = field("executable")
+    let executable = field("$executable")
         .filter(|v| !v.is_none())
         .and_then(artifact_of);
-    // `default_runfiles`, or the older `runfiles` that means the same.
     let mut runfiles = fjfj_graph::Runfiles::default();
-    for name in ["runfiles", "default_runfiles"] {
+    for name in ["default_runfiles"] {
         if let Some(found) = field(name)
             .filter(|v| !v.is_none())
             .and_then(super::runfiles::runfiles_of)

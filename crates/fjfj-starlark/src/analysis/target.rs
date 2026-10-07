@@ -5,7 +5,7 @@ use crate::args::fatal;
 use crate::depset::{Order, new_depset};
 use crate::label::StarlarkLabel;
 use crate::provider::same_provider;
-use crate::structs::{new_instance, new_struct, provider_of};
+use crate::structs::{new_instance, provider_of};
 use allocative::Allocative;
 use fjfj_graph::{Artifact, Label};
 use starlark::environment::{Methods, MethodsBuilder, MethodsStatic};
@@ -54,6 +54,89 @@ pub struct DepInfo {
     /// Whether its configuration builds the runfiles tree (`--build_runfile_links`),
     /// which puts `files_to_run.runfiles_manifest` inside the tree.
     pub build_runfile_links: bool,
+}
+
+/// `DefaultInfo.files_to_run`: the executable of a target, and the manifests of
+/// its runfiles tree if it has one.
+#[derive(Debug, ProvidesStaticType, NoSerialize, Allocative)]
+pub(crate) struct FilesToRunValue {
+    #[allocative(skip)]
+    pub(crate) executable: Option<Artifact>,
+    #[allocative(skip)]
+    pub(crate) repo_mapping_manifest: Option<Artifact>,
+    #[allocative(skip)]
+    pub(crate) runfiles_manifest: Option<Artifact>,
+    #[allocative(skip)]
+    owner: Label,
+}
+
+starlark_simple_value!(FilesToRunValue);
+
+impl FilesToRunValue {
+    fn file<'v>(&self, heap: Heap<'v>, artifact: &Option<Artifact>) -> Value<'v> {
+        artifact.as_ref().map_or_else(Value::new_none, |a| {
+            alloc_file(heap, a.clone(), self.owner.clone())
+        })
+    }
+}
+
+impl fmt::Display for FilesToRunValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let show = |a: &Option<Artifact>| {
+            a.as_ref().map_or_else(
+                || "None".to_owned(),
+                |a| {
+                    super::file::FileValue {
+                        artifact: a.clone(),
+                        owner: self.owner.clone(),
+                    }
+                    .to_string()
+                },
+            )
+        };
+        write!(
+            f,
+            "FilesToRunProvider(executable = {}, repo_mapping_manifest = {}, runfiles_manifest = {})",
+            show(&self.executable),
+            show(&self.repo_mapping_manifest),
+            show(&self.runfiles_manifest)
+        )
+    }
+}
+
+#[starlark_value(type = "FilesToRunProvider")]
+impl<'v> StarlarkValue<'v> for FilesToRunValue {
+    fn get_methods() -> Option<&'static Methods> {
+        static RES: MethodsStatic = MethodsStatic::new("FilesToRunProvider", files_to_run_members);
+        Some(RES.methods())
+    }
+}
+
+#[starlark_module]
+fn files_to_run_members(builder: &mut MethodsBuilder) {
+    #[starlark(attribute)]
+    fn executable<'v>(this: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
+        let me = this
+            .downcast_ref::<FilesToRunValue>()
+            .expect("files_to_run");
+        Ok(me.file(heap, &me.executable))
+    }
+
+    #[starlark(attribute)]
+    fn repo_mapping_manifest<'v>(this: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
+        let me = this
+            .downcast_ref::<FilesToRunValue>()
+            .expect("files_to_run");
+        Ok(me.file(heap, &me.repo_mapping_manifest))
+    }
+
+    #[starlark(attribute)]
+    fn runfiles_manifest<'v>(this: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
+        let me = this
+            .downcast_ref::<FilesToRunValue>()
+            .expect("files_to_run");
+        Ok(me.file(heap, &me.runfiles_manifest))
+    }
 }
 
 #[derive(ProvidesStaticType, NoSerialize, Allocative)]
@@ -132,36 +215,23 @@ pub(crate) fn default_info<'v>(
     // What `files_to_run` says of an executable: it and its runfiles tree.
     let files_to_run = {
         let sibling = |suffix: &str| {
-            executable
-                .filter(|_| has_runfiles_tree)
-                .map_or_else(Value::new_none, |e| {
-                    alloc_file(
-                        heap,
-                        Artifact {
-                            root: e.root.clone(),
-                            path: format!("{}{suffix}", e.path),
-                            tree: false,
-                            symlink: false,
-                        },
-                        owner.clone(),
-                    )
-                })
+            executable.filter(|_| has_runfiles_tree).map(|e| Artifact {
+                root: e.root.clone(),
+                path: format!("{}{suffix}", e.path),
+                tree: false,
+                symlink: false,
+            })
         };
-        new_struct(
-            heap,
-            vec![
-                ("executable".to_owned(), exe),
-                ("repo_mapping_manifest".to_owned(), sibling(".repo_mapping")),
-                (
-                    "runfiles_manifest".to_owned(),
-                    sibling(if build_runfile_links {
-                        ".runfiles/MANIFEST"
-                    } else {
-                        ".runfiles_manifest"
-                    }),
-                ),
-            ],
-        )
+        heap.alloc(FilesToRunValue {
+            executable: executable.cloned(),
+            repo_mapping_manifest: sibling(".repo_mapping"),
+            runfiles_manifest: sibling(if build_runfile_links {
+                ".runfiles/MANIFEST"
+            } else {
+                ".runfiles_manifest"
+            }),
+            owner: owner.clone(),
+        })
     };
     let runfiles = super::runfiles::alloc_runfiles(heap, runfiles.clone(), owner.clone());
     new_instance(
@@ -169,8 +239,7 @@ pub(crate) fn default_info<'v>(
         provider,
         vec![
             ("files".to_owned(), depset),
-            ("runfiles".to_owned(), runfiles),
-            ("executable".to_owned(), exe),
+            ("$executable".to_owned(), exe),
             ("data_runfiles".to_owned(), runfiles),
             ("default_runfiles".to_owned(), runfiles),
             ("files_to_run".to_owned(), files_to_run),

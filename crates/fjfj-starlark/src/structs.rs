@@ -79,17 +79,44 @@ impl<'v, V: ValueLike<'v>> StructGen<V> {
     }
 }
 
-impl<V> fmt::Display for StructGen<V>
+/// A field a rule cannot name: Rust keeps state in it, as `$executable` of
+/// a `DefaultInfo`. It is not listed and does not print.
+fn hidden(name: &str) -> bool {
+    name.starts_with('$')
+}
+
+impl<'v, V> fmt::Display for StructGen<V>
 where
-    V: fmt::Display,
+    V: ValueLike<'v> + fmt::Display,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Bazel prints what a `DefaultInfo` holds of runfiles and of files to
+        // run as the Java objects they are.
+        let default_info =
+            instance_of(self.provider.first().map(|p| p.to_value())) == "DefaultInfo";
         write!(f, "struct(")?;
-        for (i, (name, value)) in self.names.iter().zip(&self.values).enumerate() {
-            if i > 0 {
+        let mut first = true;
+        for (name, value) in self.names.iter().zip(&self.values) {
+            if hidden(name) {
+                continue;
+            }
+            if !first {
                 write!(f, ", ")?;
             }
-            write!(f, "{name} = {value}")?;
+            first = false;
+            let java = default_info
+                .then(|| match value.to_value().get_type() {
+                    "runfiles" => Some("com.google.devtools.build.lib.analysis.Runfiles"),
+                    "FilesToRunProvider" => Some(
+                        "com.google.devtools.build.lib.analysis.FilesToRunProvider$FullFilesToRunProvider",
+                    ),
+                    _ => None,
+                })
+                .flatten();
+            match java {
+                Some(class) => write!(f, "{name} = <unknown object {class}>")?,
+                None => write!(f, "{name} = {value}")?,
+            }
         }
         write!(f, ")")
     }
@@ -157,22 +184,22 @@ where
     Self: ProvidesStaticType<'v>,
 {
     fn get_attr(&self, attribute: &str, _heap: Heap<'v>) -> Option<Value<'v>> {
-        self.get(attribute)
+        self.get(attribute).filter(|_| !hidden(attribute))
     }
 
     fn has_attr(&self, attribute: &str, _heap: Heap<'v>) -> bool {
-        self.get(attribute).is_some()
+        !hidden(attribute) && self.get(attribute).is_some()
     }
 
     fn dir_attr(&self) -> Vec<String> {
-        self.names.clone()
+        self.names.iter().filter(|n| !hidden(n)).cloned().collect()
     }
 
     /// An instance of a provider is named by it in an error, and lists
     /// what it has.
     fn no_attr_message(&self, attribute: &str) -> Option<String> {
         let provider = self.provider.first()?.to_value();
-        let mut names = self.names.clone();
+        let mut names: Vec<String> = self.names.iter().filter(|n| !hidden(n)).cloned().collect();
         names.sort();
         Some(format!(
             "'{}' value has no field or method '{attribute}'\nAvailable attributes: {}",

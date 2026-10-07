@@ -174,16 +174,12 @@ fn unique(files: &[Artifact]) -> Vec<Artifact> {
 /// the executable and its runfiles tree, which stands for the manifest, the
 /// repository mapping and the files they name.
 fn files_to_run_inputs(value: Value<'_>) -> Option<Vec<Artifact>> {
-    let fields = crate::structs::fields_of(value)?;
-    let field = |name: &str| fields.iter().find(|(n, _)| *n == name).map(|(_, v)| *v);
-    field("runfiles_manifest")?;
-    field("repo_mapping_manifest")?;
+    let ftr = value.downcast_ref::<super::target::FilesToRunValue>()?;
     let mut out = Vec::new();
-    let exe = field("executable").and_then(artifact_of);
-    out.extend(exe.clone());
+    out.extend(ftr.executable.clone());
     // A plain file has no runfiles tree.
-    if let Some(exe) = exe
-        && field("runfiles_manifest").and_then(artifact_of).is_some()
+    if let Some(exe) = &ftr.executable
+        && ftr.runfiles_manifest.is_some()
     {
         out.push(Artifact {
             root: exe.root.clone(),

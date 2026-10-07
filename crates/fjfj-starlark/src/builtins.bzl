@@ -50,21 +50,29 @@ def _default_info_init(*args, **kwargs):
             "s" if len(unknown) > 1 else "",
             ", ".join(["'%s'" % k for k in unknown]),
         ) if len(unknown) > 1 else "DefaultInfo() got unexpected keyword argument '%s'" % unknown[0])
-    fields = {}
+    given = {}
     for name, want in known.items():
         value = kwargs.get(name)
         if value == None:
             continue
         if type(value) != want:
             fjfj_native_error("DefaultInfo", "in call to DefaultInfo(), parameter '%s' got value of type '%s', want '%s or NoneType'" % (name, type(value), want))
-        fields[name] = value
-    if "runfiles" in fields and ("data_runfiles" in fields or "default_runfiles" in fields):
+        given[name] = value
+    if "runfiles" in given and ("data_runfiles" in given or "default_runfiles" in given):
         fjfj_native_error("DefaultInfo", "Cannot specify the provider 'runfiles' together with 'data_runfiles' or 'default_runfiles'")
-    return fields
+    # What an instance shows is Bazel's four members, None when not given;
+    # the executable is kept under a name no code can write.
+    return {
+        "files": given.get("files"),
+        "files_to_run": None,
+        "data_runfiles": given.get("data_runfiles"),
+        "default_runfiles": given.get("runfiles", given.get("default_runfiles")),
+        "$executable": given.get("executable"),
+    }
 
 DefaultInfo, _raw_default_info = provider(
     doc = "The default providers of a target.",
-    fields = ["files", "runfiles", "data_runfiles", "default_runfiles", "executable"],
+    fields = ["files", "files_to_run", "data_runfiles", "default_runfiles", "$executable"],
     init = _default_info_init,
 )
 

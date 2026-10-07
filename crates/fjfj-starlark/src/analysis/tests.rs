@@ -2031,3 +2031,27 @@ r = rule(implementation = _impl, outputs = {"o": "%{name}.txt"})
     .join("|");
     assert!(err.contains(&want), "wanted `{want}` in\n{err}");
 }
+
+/// Probed on Bazel 9.2.0: a `DefaultInfo` has four members, None when not
+/// given, and a dependency's shows its runfiles and files to run as Java
+/// objects; `files_to_run` is a `FilesToRunProvider`.
+#[test]
+fn default_info_prints_and_lists_its_four_members() {
+    let src = r#"
+def _impl(ctx):
+    exe = ctx.actions.declare_file("e")
+    ctx.actions.write(exe, "x", is_executable = True)
+    d = DefaultInfo(executable = exe, runfiles = ctx.runfiles(files = [exe]))
+    fail("|".join([str(DefaultInfo(files = depset([exe]))), str(dir(d)), str(d.files_to_run), hasattr(d, "executable") and "has" or "none"]))
+r = rule(implementation = _impl)
+"#;
+    let err = run_rule(&request(src, "r", Vec::new(), Vec::new())).unwrap_err();
+    let want = [
+        "struct(data_runfiles = None, default_runfiles = None, files = depset([<generated file e>]), files_to_run = None)",
+        r#"["data_runfiles", "default_runfiles", "files", "files_to_run"]"#,
+        "None",
+        "none",
+    ]
+    .join("|");
+    assert!(err.contains(&want), "wanted `{want}` in\n{err}");
+}
