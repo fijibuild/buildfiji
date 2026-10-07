@@ -119,12 +119,14 @@ pub(crate) fn configuration_from(
     }
     let option = |name: &str| format!("{}{name}", fjfj_graph::config::COMMAND_LINE_OPTION);
     for (name, on) in &flags.switches {
-        if *on {
+        // Most of them are off until asked for; these start on.
+        let default = matches!(name.as_str(), "enable_runfiles" | "build_runfile_links");
+        if *on == default {
+            configuration.settings.remove(&option(name));
+        } else {
             configuration
                 .settings
-                .insert(option(name), fjfj_graph::SettingValue::Bool(true));
-        } else {
-            configuration.settings.remove(&option(name));
+                .insert(option(name), fjfj_graph::SettingValue::Bool(*on));
         }
     }
     if let Some(strip) = &flags.strip {

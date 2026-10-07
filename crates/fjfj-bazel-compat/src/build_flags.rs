@@ -27,6 +27,9 @@ pub const IMPLEMENTED: &[&str] = &[
     "skip_incompatible_explicit_targets",
     "experimental_platform_in_output_dir",
     "experimental_override_platform_cpu_name",
+    "enable_runfiles",
+    "build_runfile_links",
+    "legacy_external_runfiles",
     "strip",
     "stamp",
     "collect_code_coverage",
@@ -60,7 +63,15 @@ pub const IMPLEMENTED: &[&str] = &[
 ];
 
 /// The boolean flags that reach the configuration, with their negations.
-const SWITCHES: &[&str] = &["stamp", "collect_code_coverage", "force_pic", "save_temps"];
+const SWITCHES: &[&str] = &[
+    "stamp",
+    "collect_code_coverage",
+    "force_pic",
+    "save_temps",
+    "enable_runfiles",
+    "build_runfile_links",
+    "legacy_external_runfiles",
+];
 
 /// The flags that are lists of options, kept in `options` joined by a space
 /// in the order given.

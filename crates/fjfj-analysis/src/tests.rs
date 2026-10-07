@@ -2308,3 +2308,79 @@ use = rule(implementation = _use, attrs = {"dep": attr.label()})
     let u = analyse(&repos, "//:u").await.unwrap();
     assert_eq!(u.printed.without_sites(), ["used: [True, False]"]);
 }
+
+/// Probed on Bazel 9.2.0: `--nobuild_runfile_links` registers no `SymlinkTree`
+/// and the `RunfilesTree` reads the manifest in its place; `--noenable_runfiles`
+/// registers the same actions but the tree links nothing.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_runfiles_flags_change_the_actions_of_the_tree_as_bazel_does() {
+    let (_dir, repos) = workspace(&[
+        ("MODULE.bazel", ""),
+        (
+            "defs.bzl",
+            r#"
+def _impl(ctx):
+    exe = ctx.actions.declare_file(ctx.label.name)
+    ctx.actions.write(exe, "", is_executable = True)
+    return [DefaultInfo(executable = exe, runfiles = ctx.runfiles(files = ctx.files.data))]
+my_bin = rule(implementation = _impl, executable = True, attrs = {"data": attr.label_list(allow_files = True)})
+"#,
+        ),
+        (
+            "pkg/BUILD.bazel",
+            "load('//:defs.bzl', 'my_bin')\nexports_files(['data.txt'])\nmy_bin(name = 'bin', data = ['data.txt'])\n",
+        ),
+        ("BUILD.bazel", ""),
+        ("pkg/data.txt", "d"),
+    ]);
+    let with = |name: &str, on: bool| {
+        let mut config = config();
+        config.settings.insert(
+            format!("//command_line_option:{name}"),
+            fjfj_graph::SettingValue::Bool(on),
+        );
+        config
+    };
+    let mnemonics = |t: &crate::ConfiguredTarget| -> Vec<String> {
+        t.actions.iter().map(|a| a.mnemonic.clone()).collect()
+    };
+    let default = analyse(&repos, "//pkg:bin").await.unwrap();
+    assert_eq!(
+        mnemonics(&default),
+        [
+            "FileWrite",
+            "RepoMappingManifest",
+            "SourceSymlinkManifest",
+            "SymlinkTree",
+            "RunfilesTree"
+        ]
+    );
+    let no_links = analyse_in(&repos, "//pkg:bin", with("build_runfile_links", false))
+        .await
+        .unwrap();
+    assert_eq!(
+        mnemonics(&no_links),
+        [
+            "FileWrite",
+            "RepoMappingManifest",
+            "SourceSymlinkManifest",
+            "RunfilesTree"
+        ]
+    );
+    let tree = no_links.actions.last().unwrap();
+    assert!(
+        tree.inputs
+            .iter()
+            .any(|a| a.exec_path().ends_with("bin.runfiles_manifest")),
+        "{:?}",
+        tree.inputs
+    );
+    let disabled = analyse_in(&repos, "//pkg:bin", with("enable_runfiles", false))
+        .await
+        .unwrap();
+    assert_eq!(mnemonics(&disabled), mnemonics(&default));
+    let ActionKind::SymlinkTree { links, .. } = &disabled.actions[3].kind else {
+        panic!()
+    };
+    assert!(!links);
+}

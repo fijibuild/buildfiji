@@ -750,6 +750,8 @@ impl Scheduler {
                 repo_mapping,
                 entries,
                 empty_files,
+                links,
+                main_repo,
             } => {
                 let mapping_at = execroot.join(repo_mapping);
                 // Not what an earlier run left: it may have linked more.
@@ -758,6 +760,19 @@ impl Scheduler {
                     .map_err(|e| fail(format!("cannot remove {}: {e}", tree.display())))?;
                 std::fs::create_dir_all(&tree)
                     .map_err(|e| fail(format!("cannot create {}: {e}", tree.display())))?;
+                // Without links the tree is its manifest and the main
+                // repository's empty directory.
+                let (entries, empty_files): (&[_], &[_]) = if *links {
+                    (entries, empty_files)
+                } else {
+                    std::fs::create_dir_all(tree.join(main_repo)).map_err(|e| {
+                        fail(format!(
+                            "cannot create {}: {e}",
+                            tree.join(main_repo).display()
+                        ))
+                    })?;
+                    (&[], &[])
+                };
                 for (path, artifact) in entries {
                     let link = tree.join(path);
                     if let Some(parent) = link.parent() {
@@ -790,8 +805,10 @@ impl Scheduler {
                         tree.display()
                     ))
                 })?;
-                std::os::unix::fs::symlink(&mapping_at, tree.join("_repo_mapping"))
-                    .map_err(|e| fail(format!("cannot link in {}: {e}", tree.display())))?;
+                if *links {
+                    std::os::unix::fs::symlink(&mapping_at, tree.join("_repo_mapping"))
+                        .map_err(|e| fail(format!("cannot link in {}: {e}", tree.display())))?;
+                }
             }
             ActionKind::SourceManifest {
                 repo_mapping,
@@ -1000,6 +1017,11 @@ impl Scheduler {
 
     /// Every output exists, and is protected as Bazel protects it.
     fn outputs_made(&self, action: &Action) -> Result<(), Box<Failure>> {
+        // The tree it stands for is the `SymlinkTree`'s, and is not made at
+        // all under `--nobuild_runfile_links`.
+        if matches!(action.kind, ActionKind::RunfilesTree) {
+            return Ok(());
+        }
         let fail = |message: String| Box::new(failure(action, message));
         let execroot = self.layout.execroot();
         for out in &action.outputs {

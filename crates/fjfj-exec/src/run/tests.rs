@@ -841,6 +841,8 @@ fn runfiles(data: &Artifact) -> (Vec<Action>, Artifact) {
                 repo_mapping: mapping.exec_path(),
                 entries: vec![("_main/data".into(), data.clone())],
                 empty_files: vec!["_main/z.py".into()],
+                links: true,
+                main_repo: "_main".into(),
             },
             vec![manifest],
             vec![tree_manifest.clone()],

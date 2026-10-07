@@ -164,6 +164,19 @@ pub(crate) fn register(
         tree: false,
         symlink: false,
     };
+    // `--noenable_runfiles` makes no links; `--nobuild_runfile_links` makes no
+    // tree at all, so what the tree stands for reads the manifest instead.
+    let flag = |name: &str, default: bool| match target.configuration.settings.get(&format!(
+        "{}{name}",
+        fjfj_graph::config::COMMAND_LINE_OPTION
+    )) {
+        Some(fjfj_graph::SettingValue::Bool(on)) => *on,
+        _ => default,
+    };
+    let (links, build_links) = (
+        flag("enable_runfiles", true),
+        flag("build_runfile_links", true),
+    );
     let label = fjfj_graph::expand::label_text(&target.label);
     let made = |mnemonic: &str,
                 message: String,
@@ -183,9 +196,13 @@ pub(crate) fn register(
         exec_group: None,
     };
     let mut linked: Vec<Artifact> = entries.iter().map(|(_, a)| a.clone()).collect();
-    linked.push(tree_manifest.clone());
+    linked.push(if build_links {
+        tree_manifest.clone()
+    } else {
+        manifest.clone()
+    });
     linked.push(repo_mapping.clone());
-    let actions = [
+    let mut actions = vec![
         made(
             "RepoMappingManifest",
             format!("Writing repo mapping manifest for {label}"),
@@ -215,6 +232,8 @@ pub(crate) fn register(
                 repo_mapping: repo_mapping.exec_path(),
                 entries: entries.clone(),
                 empty_files,
+                links,
+                main_repo: main_name.to_owned(),
             },
             vec![manifest.clone()],
             vec![tree_manifest],
@@ -227,6 +246,9 @@ pub(crate) fn register(
             vec![dir.clone()],
         ),
     ];
+    if !build_links {
+        actions.remove(2);
+    }
     target.actions.extend(actions);
     target.extra_outputs = vec![dir, manifest, repo_mapping];
 }

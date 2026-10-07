@@ -36,6 +36,12 @@ pub enum ActionKind {
         entries: Vec<(String, Artifact)>,
         /// Paths under `dir` of empty regular files.
         empty_files: Vec<String>,
+        /// Make the links and the files. Under `--noenable_runfiles` the tree
+        /// is its `MANIFEST` and an empty directory of the main repository,
+        /// which is this name.
+        links: bool,
+        /// The name of the main repository's directory, `_main`.
+        main_repo: String,
     },
     /// Write the manifest of a runfiles tree (`SourceSymlinkManifest`): a line
     /// to each link, as the `MANIFEST` of the tree has it.
@@ -139,9 +145,13 @@ impl Action {
                 repo_mapping,
                 entries,
                 empty_files,
+                links,
+                main_repo,
             } => {
                 field(b"runfiles");
                 field(dir.as_bytes());
+                field(&[u8::from(*links)]);
+                field(main_repo.as_bytes());
                 field(repo_mapping.as_bytes());
                 for (path, artifact) in entries {
                     field(path.as_bytes());
