@@ -65,7 +65,17 @@ impl StaticErrors {
 /// `error` as a traceback, ending in `Error in <function>: <message>` when a
 /// function the file called failed and `Error: <message>` otherwise.
 pub fn traceback(error: &starlark::Error) -> String {
-    let frames = &error.call_stack().frames;
+    let all = &error.call_stack().frames;
+    // A builtins function that refuses a private-API caller is a native
+    // function in Bazel: the traceback ends at the call of it, and the error
+    // names it.
+    let refusal = match all.as_slice() {
+        [.., wrapper, check] if check.name == "fjfj_check_private_api" => {
+            Some(wrapper.name.as_str())
+        }
+        _ => None,
+    };
+    let frames = &all[..all.len() - if refusal.is_some() { 2 } else { 0 }];
     let mut text = String::from("Traceback (most recent call last):\n");
     let mut function = "<toplevel>";
     for frame in frames {
@@ -85,12 +95,14 @@ pub fn traceback(error: &starlark::Error) -> String {
             == error.span().map(FileSpan::resolve_span)
     });
     if native.is_none()
+        && refusal.is_none()
         && let Some(at) = error.span()
     {
         entry(&mut text, at, function);
     }
-    let message = match error.kind() {
-        ErrorKind::Fail(e) => format!("Error in fail: {}", e.to_string().trim_start()),
+    let message = match (error.kind(), refusal) {
+        (ErrorKind::Fail(e), _) => format!("Error in fail: {}", e.to_string().trim_start()),
+        (_, Some(name)) => format!("Error in {name}: {}", plain(error)),
         _ => match native {
             Some(frame)
                 if !matches!(error.kind(), ErrorKind::Parser(_)) && !not_callable(error) =>

@@ -831,7 +831,12 @@ r = rule(
     attrs = {"_xcode": attr.label(default = configuration_field("apple", "xcode_config_label"))},
 )
 "#;
-    let req = request(src, "r", Vec::new(), Vec::new());
+    let req = request_in(
+        module_in("rules_cc+", "", src).unwrap(),
+        "r",
+        Vec::new(),
+        Vec::new(),
+    );
     assert_eq!(
         run_rule(&req).unwrap().printed.without_sites(),
         ["fastbuild None macos 10.12"]
@@ -910,7 +915,12 @@ def _impl(ctx):
     return []
 r = rule(implementation = _impl, fragments = ["cpp"])
 "#;
-    let mut req = request(src, "r", Vec::new(), Vec::new());
+    let mut req = request_in(
+        module_in("rules_cc+", "", src).unwrap(),
+        "r",
+        Vec::new(),
+        Vec::new(),
+    );
     req.configuration
         .options
         .insert("copt".into(), "-O2 -g".into());
@@ -919,6 +929,89 @@ r = rule(implementation = _impl, fragments = ["cpp"])
         [
             "[\"-O2\", \"-g\"] [] [] [] DEFAULT False",
             "True True False fastbuild False"
+        ]
+    );
+}
+
+/// Probed on Bazel 9.2.0: the members of the cpp fragment behind its
+/// private-API allowlist fail for a file of the main repo or of a repo that is
+/// not on the list (rules_java, rules_python, ...), which rules_cc, rules_apple,
+/// rules_android, protobuf and rules_shell are; three name the feature.
+#[test]
+fn private_members_of_the_cpp_fragment_fail_for_files_that_are_not_allowlisted() {
+    let src = r#"
+def _impl(ctx):
+    cpp = ctx.fragments.cpp
+    print(cpp.copts, cpp.dynamic_mode())
+    print(getattr(cpp, ctx.attr.member)())
+    return []
+r = rule(implementation = _impl, fragments = ["cpp"], attrs = {"member": attr.string()})
+"#;
+    let run = |repo: &str, member: &str| {
+        let module = module_in(repo, "", src).unwrap();
+        run_rule(&request_in(
+            module,
+            "r",
+            vec![("member".to_owned(), AttrValue::String(member.to_owned()))],
+            Vec::new(),
+        ))
+    };
+    for repo in [
+        "rules_cc+",
+        "rules_apple+",
+        "rules_android+",
+        "protobuf+",
+        "rules_shell+",
+    ] {
+        run(repo, "compilation_mode").unwrap_or_else(|e| panic!("{repo}: {e}"));
+    }
+    for (repo, member, file, feature) in [
+        ("", "compilation_mode", "//:t.bzl", ""),
+        ("rules_java+", "grte_top", "@@rules_java+//:t.bzl", ""),
+        ("rules_python+", "save_temps", "@@rules_python+//:t.bzl", ""),
+        (
+            "",
+            "force_pic",
+            "//:t.bzl",
+            " (feature 'force_pic' in CppConfiguration)",
+        ),
+        (
+            "",
+            "fdo_instrument",
+            "//:t.bzl",
+            " (feature 'fdo_instrument' in CppConfiguration)",
+        ),
+        (
+            "",
+            "generate_llvm_lcov",
+            "//:t.bzl",
+            " (feature 'generate_llvm_lcov' in CppConfiguration)",
+        ),
+    ] {
+        let err = run(repo, member).unwrap_err();
+        let want = format!("Error in {member}: file '{file}' cannot use private API{feature}");
+        assert!(err.lines().any(|line| line == want), "{member}: {err}");
+    }
+}
+
+/// `ctx.fragments.apple` has what Bazel 9.2.0's has: `apple_cpus` as a struct
+/// of the flags' default cpus and `apple_platform_type`.
+#[test]
+fn the_apple_fragment_has_the_cpus_and_the_platform_type() {
+    let src = r#"
+def _impl(ctx):
+    apple = ctx.fragments.apple
+    print(apple.apple_platform_type, apple.apple_cpus)
+    return []
+r = rule(implementation = _impl, fragments = ["apple"])
+"#;
+    assert_eq!(
+        run_rule(&request(src, "r", Vec::new(), Vec::new()))
+            .unwrap()
+            .printed
+            .without_sites(),
+        [
+            r#"macos struct(apple_split_cpu = "", catalyst_cpus = ("x86_64",), ios_multi_cpus = ("x86_64",), macos_cpus = ("x86_64",), tvos_cpus = ("x86_64",), visionos_cpus = ("sim_arm64",), watchos_cpus = ("x86_64",))"#
         ]
     );
 }

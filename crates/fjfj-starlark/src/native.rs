@@ -301,9 +301,67 @@ pub fn bzl_globals() -> Globals {
         .build()
 }
 
+/// The repos whose files may use the members Bazel 9.2.0 hides behind its
+/// private-API allowlist, probed one repo at a time (rules_java, rules_python,
+/// rules_go, rules_rust and the main repo are refused).
+const PRIVATE_API_REPOS: [&str; 5] = [
+    "rules_cc",
+    "rules_apple",
+    "rules_android",
+    "protobuf",
+    "rules_shell",
+];
+
+/// Whether the file named `file` by a frame may use the private API: the
+/// builtins overlay, `@bazel_tools`, or a repo of the allowlist.
+fn may_use_private_api(file: &str) -> bool {
+    if file.starts_with("@_builtins") || file.starts_with("@@_builtins") {
+        return true;
+    }
+    let Some(repo) = file.strip_prefix("@@").and_then(|r| r.split("//").next()) else {
+        return false;
+    };
+    repo == "bazel_tools"
+        || PRIVATE_API_REPOS.iter().any(|allowed| {
+            repo.strip_prefix(allowed)
+                .is_some_and(|rest| rest.starts_with('+'))
+        })
+}
+
 /// What the builtins (and nothing else) use.
 #[starlark_module]
 fn internal_globals(builder: &mut GlobalsBuilder) {
+    /// Bazel's `checkPrivateAccess`: fail unless the file that called the
+    /// function calling this may use the private API. `feature` is the name a
+    /// member of a configuration fragment gives in the message.
+    fn fjfj_check_private_api<'v>(
+        #[starlark(require = pos)] feature: Option<&str>,
+        eval: &mut Evaluator<'v, '_, '_>,
+    ) -> starlark::Result<NoneType> {
+        let frames = eval.call_stack().frames;
+        let Some(file) = frames
+            .iter()
+            .rev()
+            .nth(1)
+            .and_then(|frame| frame.location.as_ref())
+            .map(|span| span.resolve().file)
+        else {
+            return Ok(NoneType);
+        };
+        if may_use_private_api(&file) {
+            return Ok(NoneType);
+        }
+        // Bazel writes a main repo label without its `@@`.
+        let label = file
+            .strip_prefix("@@")
+            .filter(|l| l.starts_with("//"))
+            .unwrap_or(&file);
+        let at = feature.map_or(String::new(), |f| {
+            format!(" (feature '{f}' in CppConfiguration)")
+        });
+        Err(fatal(format!("file '{label}' cannot use private API{at}")))
+    }
+
     /// Bazel's `Starlark.freeze`: a list that nothing can change any more, which
     /// is then hashable, so that a struct or provider holding it can be a depset
     /// element or a dict key.

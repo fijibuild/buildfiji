@@ -465,6 +465,17 @@ def _make_fragments(options):
         include_xcode_exec_requirements = False,
         single_arch_platform = macos,
         single_arch_cpu = "x86_64",
+        apple_platform_type = "macos",
+        # The defaults of the flags, as probed on a Linux host.
+        apple_cpus = struct(
+            apple_split_cpu = "",
+            catalyst_cpus = ("x86_64",),
+            ios_multi_cpus = ("x86_64",),
+            macos_cpus = ("x86_64",),
+            tvos_cpus = ("x86_64",),
+            visionos_cpus = ("sim_arm64",),
+            watchos_cpus = ("x86_64",),
+        ),
     )
     mode = options["compilation_mode"]
 
@@ -472,57 +483,196 @@ def _make_fragments(options):
     def words(name):
         return options[name].split(" ") if options[name] else []
 
+    # Bazel hides these members behind its private-API allowlist: they fail for
+    # a file that is not on it (buildfiji-136.25). Each is a def of its own
+    # because the error names the function that was called.
+    def build_test_dwp():
+        fjfj_check_private_api()
+        return False
+
+    def compilation_mode():
+        fjfj_check_private_api()
+        return mode
+
+    def cs_fdo_instrument():
+        fjfj_check_private_api()
+        return None
+
+    def cs_fdo_path():
+        fjfj_check_private_api()
+        return None
+
+    def disable_nocopts():
+        fjfj_check_private_api()
+        return True
+
+    def experimental_cc_implementation_deps():
+        fjfj_check_private_api()
+        return False
+
+    def experimental_cpp_modules():
+        fjfj_check_private_api()
+        return False
+
+    def experimental_link_static_libraries_once():
+        fjfj_check_private_api()
+        return False
+
+    def fdo_instrument():
+        fjfj_check_private_api("fdo_instrument")
+        return None
+
+    def fdo_path():
+        fjfj_check_private_api()
+        return None
+
+    def fission_active_for_current_compilation_mode():
+        fjfj_check_private_api()
+        return bool(options["fission"])
+
+    def force_pic():
+        fjfj_check_private_api("force_pic")
+        return bool(options["force_pic"])
+
+    def generate_llvm_lcov():
+        fjfj_check_private_api("generate_llvm_lcov")
+        return False
+
+    def grte_top():
+        fjfj_check_private_api()
+        return None
+
+    def include_scanning():
+        fjfj_check_private_api()
+        return False
+
+    def incompatible_remove_legacy_whole_archive():
+        fjfj_check_private_api()
+        return True
+
+    def incompatible_use_specific_tool_files():
+        fjfj_check_private_api()
+        return True
+
+    def interface_shared_objects():
+        fjfj_check_private_api()
+        return True
+
+    def legacy_whole_archive():
+        fjfj_check_private_api()
+        return True
+
+    def lto_index_options():
+        fjfj_check_private_api()
+        return []
+
+    def objc_enable_binary_stripping():
+        fjfj_check_private_api()
+        return False
+
+    def objc_should_generate_dotd_files():
+        fjfj_check_private_api()
+        return True
+
+    def process_headers_in_dependencies():
+        fjfj_check_private_api()
+        return False
+
+    def propeller_optimize_absolute_cc_profile():
+        fjfj_check_private_api()
+        return None
+
+    def propeller_optimize_absolute_ld_profile():
+        fjfj_check_private_api()
+        return None
+
+    def proto_profile():
+        fjfj_check_private_api()
+        return False
+
+    def save_feature_state():
+        fjfj_check_private_api()
+        return False
+
+    def save_temps():
+        fjfj_check_private_api()
+        return bool(options["save_temps"])
+
+    def share_native_deps():
+        fjfj_check_private_api()
+        return True
+
+    def should_generate_dotd_files():
+        fjfj_check_private_api()
+        return True
+
+    def should_strip_binaries():
+        # --strip=sometimes strips in fastbuild.
+        fjfj_check_private_api()
+        return options["strip"] == "always" or (options["strip"] != "never" and mode == "fastbuild")
+
+    def start_end_lib():
+        fjfj_check_private_api()
+        return True
+
+    def strip_opts():
+        fjfj_check_private_api()
+        return []
+
+    def use_llvm_coverage_map_format():
+        fjfj_check_private_api()
+        return False
+
     cpp = struct(
         # Members Bazel hides behind an allowlist have the value of their flag's
         # default; the others were probed on Bazel 9.2.0.
         apple_generate_dsym = False,
-        build_test_dwp = lambda: False,
-        compilation_mode = lambda: mode,
+        build_test_dwp = build_test_dwp,
+        compilation_mode = compilation_mode,
         conlyopts = words("conlyopt"),
         copts = words("copt"),
-        cs_fdo_instrument = lambda: None,
-        cs_fdo_path = lambda: None,
+        cs_fdo_instrument = cs_fdo_instrument,
+        cs_fdo_path = cs_fdo_path,
         custom_malloc = None,
         cxxopts = words("cxxopt"),
-        disable_nocopts = lambda: True,
+        disable_nocopts = disable_nocopts,
         do_not_use_macos_set_install_name = False,
         dynamic_mode = lambda: "DEFAULT",
-        experimental_cc_implementation_deps = lambda: False,
-        experimental_cpp_modules = lambda: False,
-        experimental_link_static_libraries_once = lambda: False,
-        fdo_instrument = lambda: None,
-        fdo_path = lambda: None,
-        fission_active_for_current_compilation_mode = lambda: bool(options["fission"]),
-        force_pic = lambda: bool(options["force_pic"]),
-        generate_llvm_lcov = lambda: False,
-        grte_top = lambda: None,
-        include_scanning = lambda: False,
-        incompatible_remove_legacy_whole_archive = lambda: True,
-        incompatible_use_specific_tool_files = lambda: True,
-        interface_shared_objects = lambda: True,
-        legacy_whole_archive = lambda: True,
+        experimental_cc_implementation_deps = experimental_cc_implementation_deps,
+        experimental_cpp_modules = experimental_cpp_modules,
+        experimental_link_static_libraries_once = experimental_link_static_libraries_once,
+        fdo_instrument = fdo_instrument,
+        fdo_path = fdo_path,
+        fission_active_for_current_compilation_mode = fission_active_for_current_compilation_mode,
+        force_pic = force_pic,
+        generate_llvm_lcov = generate_llvm_lcov,
+        grte_top = grte_top,
+        include_scanning = include_scanning,
+        incompatible_remove_legacy_whole_archive = incompatible_remove_legacy_whole_archive,
+        incompatible_use_specific_tool_files = incompatible_use_specific_tool_files,
+        interface_shared_objects = interface_shared_objects,
+        legacy_whole_archive = legacy_whole_archive,
         linkopts = words("linkopt"),
         lto_backend_options = [],
-        lto_index_options = lambda: [],
+        lto_index_options = lto_index_options,
         minimum_os_version = lambda: None,
-        objc_enable_binary_stripping = lambda: False,
+        objc_enable_binary_stripping = objc_enable_binary_stripping,
         objc_generate_linkmap = False,
-        objc_should_generate_dotd_files = lambda: True,
+        objc_should_generate_dotd_files = objc_should_generate_dotd_files,
         objc_should_strip_binary = False,
         objccopts = [],
-        process_headers_in_dependencies = lambda: False,
-        propeller_optimize_absolute_cc_profile = lambda: None,
-        propeller_optimize_absolute_ld_profile = lambda: None,
-        proto_profile = lambda: False,
-        save_feature_state = lambda: False,
-        save_temps = lambda: bool(options["save_temps"]),
-        share_native_deps = lambda: True,
-        should_generate_dotd_files = lambda: True,
-        # --strip=sometimes strips in fastbuild.
-        should_strip_binaries = lambda: options["strip"] == "always" or (options["strip"] != "never" and mode == "fastbuild"),
-        start_end_lib = lambda: True,
-        strip_opts = lambda: [],
-        use_llvm_coverage_map_format = lambda: False,
+        process_headers_in_dependencies = process_headers_in_dependencies,
+        propeller_optimize_absolute_cc_profile = propeller_optimize_absolute_cc_profile,
+        propeller_optimize_absolute_ld_profile = propeller_optimize_absolute_ld_profile,
+        proto_profile = proto_profile,
+        save_feature_state = save_feature_state,
+        save_temps = save_temps,
+        share_native_deps = share_native_deps,
+        should_generate_dotd_files = should_generate_dotd_files,
+        should_strip_binaries = should_strip_binaries,
+        start_end_lib = start_end_lib,
+        strip_opts = strip_opts,
+        use_llvm_coverage_map_format = use_llvm_coverage_map_format,
         _dont_enable_host_nonhost = True,
         _fdo_prefetch_hints_label = None,
     )
