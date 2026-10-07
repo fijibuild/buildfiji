@@ -219,7 +219,38 @@ pub fn absolute_files(text: &str, path_of: &dyn Fn(&str) -> String) -> String {
         }
     }
     out.push_str(rest);
-    out
+    // A line that starts with a place, as `@@//pkg:f.bzl:3:5: message` does.
+    out.split('\n')
+        .map(|line| match place_of(line) {
+            Some((name, tail)) => format!("{}{tail}", path_of(name)),
+            None => line.to_owned(),
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// The file a line starts with and the rest of it, from its `:line:column: `,
+/// if the line starts with the name of a file of a repository.
+fn place_of(line: &str) -> Option<(&str, &str)> {
+    if !line.starts_with("@@") {
+        return None;
+    }
+    let mut at = 0;
+    while let Some(found) = line[at..].find(':') {
+        let colon = at + found;
+        let rest = &line[colon + 1..];
+        let digits = |text: &str| text.chars().take_while(char::is_ascii_digit).count();
+        let (line_digits, column) = (digits(rest), rest.get(digits(rest)..)?);
+        if line_digits > 0
+            && let Some(column) = column.strip_prefix(':')
+            && digits(column) > 0
+            && column[digits(column)..].starts_with(": ")
+        {
+            return Some((&line[..colon], &line[colon..]));
+        }
+        at = colon + 1;
+    }
+    None
 }
 
 #[cfg(test)]

@@ -766,6 +766,7 @@ fn a_tree_among_the_values_of_args_is_expanded_when_the_action_runs() {
     let src = r#"
 def _impl(ctx):
     d = ctx.actions.declare_directory("d")
+    ctx.actions.run_shell(outputs = [d], command = "mkdir -p " + d.path)
     kept = ctx.actions.args()
     kept.add_all("--keep", [d], expand_directories = False)
     a = ctx.actions.args()
@@ -786,7 +787,8 @@ r = rule(implementation = _impl)
         .iter()
         .filter(|a| matches!(a.kind, ActionKind::Spawn { .. }))
         .collect();
-    let ActionKind::Spawn { argv, lazy, .. } = &spawns[0].kind else {
+    // The first makes the tree.
+    let ActionKind::Spawn { argv, lazy, .. } = &spawns[1].kind else {
         panic!()
     };
     let dir = format!("{BIN}/d");
@@ -883,7 +885,7 @@ r = rule(implementation = _impl)
 fn a_map_each_over_a_tree_that_expands_is_refused_until_it_can_be_made_to_work() {
     let src = |call: &str| {
         format!(
-            "def _f(x):\n    return x.basename\n\ndef _impl(ctx):\n    d = ctx.actions.declare_directory('d')\n    a = ctx.actions.args()\n    {call}\n    ctx.actions.run_shell(outputs = [ctx.actions.declare_file('o')], inputs = [d], command = 'true', arguments = [a])\n    return []\nr = rule(implementation = _impl)\n"
+            "def _f(x):\n    return x.basename\n\ndef _impl(ctx):\n    d = ctx.actions.declare_directory('d')\n    ctx.actions.run_shell(outputs = [d], command = 'true')\n    a = ctx.actions.args()\n    {call}\n    ctx.actions.run_shell(outputs = [ctx.actions.declare_file('o')], inputs = [d], command = 'true', arguments = [a])\n    return []\nr = rule(implementation = _impl)\n"
         )
     };
     let err = run_rule(&request(
@@ -1405,6 +1407,29 @@ r = rule(implementation = _impl, attrs = {"src": attr.label(allow_single_file = 
     );
 }
 
+/// Probed on Bazel 9.2.0: every file a rule declares has an action that makes
+/// it, whether the rule returns it or not, and the error lists those that do
+/// not by path in the output directory, in order, after the place of the
+/// implementation.
+#[test]
+fn a_declared_file_that_no_action_makes_fails_the_rule() {
+    let src = r#"
+def _impl(ctx):
+    a = ctx.actions.declare_file("a")
+    ctx.actions.declare_file("sub/b")
+    ctx.actions.declare_directory("z")
+    ctx.actions.write(ctx.actions.declare_file("made"), "x")
+    ctx.actions.run_shell(outputs = [ctx.actions.declare_file("o")], inputs = [a], command = "true")
+    return []
+r = rule(implementation = _impl)
+"#;
+    let err = run_rule(&request(src, "r", Vec::new(), Vec::new())).unwrap_err();
+    assert_eq!(
+        err,
+        "\n@@//:t.bzl:2:5: The following files have no generating action:\na\nsub/b\nz"
+    );
+}
+
 /// A tree artifact is a directory (`declare_directory`), and an executable's
 /// `files_to_run` brings its runfiles tree to an action that uses it.
 #[test]
@@ -1413,6 +1438,7 @@ fn directories_are_declared_and_files_to_run_is_a_tool() {
 def _impl(ctx):
     out = ctx.actions.declare_directory("out")
     plain = ctx.actions.declare_file("plain")
+    ctx.actions.write(plain, "")
     print(out.is_directory, plain.is_directory, out.path)
     tool = ctx.attr.tool[DefaultInfo].files_to_run
     print(tool.executable.basename, tool.runfiles_manifest.basename)
@@ -1439,7 +1465,7 @@ r = rule(implementation = _impl, attrs = {"tool": attr.label(executable = True, 
             "tool tool.runfiles_manifest".to_owned()
         ]
     );
-    let [run] = &out.actions[..] else {
+    let [_write, run] = &out.actions[..] else {
         panic!("{:?}", out.actions)
     };
     assert!(run.outputs[0].tree);

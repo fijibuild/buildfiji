@@ -412,6 +412,42 @@ pub(super) fn execute<'a>(
             return Err(format!("{ATTRIBUTE_ERRORS}{}", errors.join("\n")));
         }
         drop(errors);
+        // Every file the rule declared has an action that makes it, used or not.
+        let made: BTreeSet<String> = state
+            .actions
+            .lock()
+            .unwrap()
+            .iter()
+            .flat_map(|a| a.outputs.iter().map(|o| o.exec_path()))
+            .collect();
+        let bin = format!("{}/", state.configuration.bin_dir());
+        let missing: Vec<String> = state
+            .declared
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|path| !made.contains(*path))
+            .map(|path| path.strip_prefix(&bin).unwrap_or(path).to_owned())
+            .collect();
+        if !missing.is_empty() {
+            let at = starlark::eval::definition_span(implementation)
+                .map(|span| {
+                    let at = span.resolve();
+                    format!(
+                        "{}:{}:{}: ",
+                        at.file,
+                        at.span.begin.line + 1,
+                        at.span.begin.column + 1
+                    )
+                })
+                .unwrap_or_default();
+            let mut missing = missing;
+            missing.sort();
+            return Err(format!(
+                "\n{at}The following files have no generating action:\n{}",
+                missing.join("\n")
+            ));
+        }
         let mut default_files: Option<Vec<Artifact>> = None;
         let mut executable = None;
         let mut runfiles = fjfj_graph::Runfiles::default();
