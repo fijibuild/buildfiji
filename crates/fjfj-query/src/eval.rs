@@ -863,27 +863,88 @@ impl<'g> Evaluator<'g> {
             return Ok(());
         };
         if class == "test_suite" {
-            let listed = node.attrs.iter().find(|a| a.name == "tests");
-            match listed {
-                Some(tests) if !tests.labels.is_empty() => {
-                    for l in &tests.labels {
-                        self.tests_of(l, seen, out)?;
-                    }
-                }
-                _ => {
-                    for sibling in self.graph.siblings(label)? {
-                        if sibling == *label {
-                            continue;
-                        }
-                        if let NodeKind::Rule { test: true, .. } = self.node(&sibling)?.kind {
-                            out.insert(sibling);
-                        }
-                    }
+            // What `query tests()` makes of a suite; a member that is no test
+            // and a cycle are left out, not refused.
+            let suites = QuerySuites { eval: self };
+            if let Ok(found) = fjfj_graph::suite::expand(&suites, label, false) {
+                for l in found {
+                    out.insert(l);
                 }
             }
         } else if *test {
             out.insert(label.clone());
         }
         Ok(())
+    }
+}
+
+/// The tests of a graph, for [`fjfj_graph::suite`].
+struct QuerySuites<'a, 'g> {
+    eval: &'a Evaluator<'g>,
+}
+
+impl QuerySuites<'_, '_> {
+    fn strings(node: &Node, name: &str) -> Vec<String> {
+        match node.attrs.iter().find(|a| a.name == name).map(|a| &a.value) {
+            Some(fjfj_graph::rule::AttrValue::StringList(items)) => items.clone(),
+            _ => Vec::new(),
+        }
+    }
+
+    fn test_of(node: &Node) -> fjfj_graph::suite::SuiteTest {
+        let size = match node
+            .attrs
+            .iter()
+            .find(|a| a.name == "size")
+            .map(|a| &a.value)
+        {
+            Some(fjfj_graph::rule::AttrValue::String(size)) if !size.is_empty() => size.clone(),
+            _ => "medium".to_owned(),
+        };
+        fjfj_graph::suite::SuiteTest {
+            tags: Self::strings(node, "tags"),
+            size,
+        }
+    }
+}
+
+impl fjfj_graph::suite::Suites for QuerySuites<'_, '_> {
+    fn member(&self, label: &Label) -> Result<fjfj_graph::suite::Member, String> {
+        use fjfj_graph::suite::Member;
+        let Ok(node) = self.eval.node(label) else {
+            return Ok(Member::Other);
+        };
+        let NodeKind::Rule { class, test, .. } = &node.kind else {
+            return Ok(Member::Other);
+        };
+        Ok(if class == "test_suite" {
+            Member::Suite {
+                tests: node
+                    .attrs
+                    .iter()
+                    .find(|a| a.name == "tests")
+                    .map(|a| a.labels.clone())
+                    .unwrap_or_default(),
+                tags: Self::strings(&node, "tags"),
+            }
+        } else if *test {
+            Member::Test(Self::test_of(&node))
+        } else {
+            Member::Other
+        })
+    }
+
+    fn package_tests(
+        &self,
+        label: &Label,
+    ) -> Result<Vec<(Label, fjfj_graph::suite::SuiteTest)>, String> {
+        let mut out = Vec::new();
+        for sibling in self.eval.graph.siblings(label)? {
+            let node = self.eval.node(&sibling)?;
+            if matches!(node.kind, NodeKind::Rule { test: true, .. }) {
+                out.push((sibling, Self::test_of(&node)));
+            }
+        }
+        Ok(out)
     }
 }

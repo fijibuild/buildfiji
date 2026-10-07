@@ -19,6 +19,7 @@ pub mod parse;
 pub mod pattern;
 pub mod rule;
 pub mod schema;
+pub mod suite;
 pub mod test_info;
 pub mod visibility;
 
