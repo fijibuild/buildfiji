@@ -2224,3 +2224,21 @@ r = rule(implementation = _impl)
     let want = "<function target_apple_env from @@_builtins//:common/objc/apple_env.bzl>|function|<function lambda from @@_builtins//:common/objc/apple_common.bzl>|<provider>|Provider|FeatureFlagInfo|1.2";
     assert!(err.contains(want), "wanted `{want}` in\n{err}");
 }
+
+/// Probed on Bazel 9.2.0: strings have no `codepoints`.
+#[test]
+fn strings_have_no_codepoints() {
+    let src = r#"
+def _impl(ctx):
+    fail("%s|%s" % ("codepoints" in dir(""), "elems" in dir("")))
+r = rule(implementation = _impl)
+"#;
+    let err = run_rule(&request(src, "r", Vec::new(), Vec::new())).unwrap_err();
+    assert!(err.contains("False|True"), "{err}");
+    let src = "def _impl(ctx):\n    \"x\".codepoints()\nr = rule(implementation = _impl)\n";
+    let err = run_rule(&request(src, "r", Vec::new(), Vec::new())).unwrap_err();
+    assert!(
+        err.contains("'string' value has no field or method 'codepoints'"),
+        "{err}"
+    );
+}

@@ -174,32 +174,6 @@ pub(crate) fn string_methods(builder: &mut MethodsBuilder) {
         Ok(result)
     }
 
-    /// [string.codepoints](
-    /// https://github.com/bazelbuild/starlark/blob/master/spec.md#string·codepoints
-    /// ): returns an iterable of the unicode codepoint of a string.
-    ///
-    /// `S.codepoints()` returns an iterable value containing the
-    /// sequence of integer Unicode code points encoded by the string S.
-    /// Each invalid code within the string is treated as if it encodes the
-    /// Unicode replacement character, U+FFFD.
-    ///
-    /// By returning an iterable, not a list, the cost of decoding the string
-    /// is deferred until actually needed; apply `list(...)` to the result to
-    /// materialize the entire sequence.
-    ///
-    /// ```
-    /// # starlark::assert::all_true(r#"
-    /// list("Hello, 世界".codepoints()) == [72, 101, 108, 108, 111, 44, 32, 19990, 30028]
-    /// # "#);
-    /// ```
-    fn codepoints<'v>(
-        this: StringValue<'v>,
-        heap: Heap<'v>,
-    ) -> anyhow::Result<ValueOfUnchecked<'v, UnpackList<i32>>> {
-        let points: Vec<i32> = this.chars().map(|c| c as i32).collect();
-        Ok(heap.alloc_typed_unchecked(AllocList(points)).cast())
-    }
-
     /// [string.count](
     /// https://github.com/bazelbuild/starlark/blob/master/spec.md#string·count
     /// ): count the number of occurrences of a string in another string.
@@ -1348,7 +1322,6 @@ mod tests {
     #[test]
     fn test_opaque_iterator() {
         assert::is_true("type('foo'.elems()) != type([])");
-        assert::is_true("type('foo'.codepoints()) != type([])");
     }
 
     #[test]
