@@ -1592,6 +1592,15 @@ impl Progress for Collector {
     }
 }
 
+/// `INFO: Analyzed target //:a (1 packages loaded, 1 target configured).`:
+/// Bazel says "packages loaded" for one package too.
+fn analyzed_line(what: &str, packages: usize, configured: usize) -> String {
+    format!(
+        "INFO: Analyzed {what} ({packages} packages loaded, {}).",
+        plural(configured, "target configured", "targets configured")
+    )
+}
+
 fn plural(n: usize, one: &str, many: &str) -> String {
     format!("{n} {}", if n == 1 { one } else { many })
 }
@@ -1728,9 +1737,8 @@ pub(crate) fn print(
             plural(analysed, "target", "targets")
         };
         eprintln!(
-            "INFO: Analyzed {what} ({}, {}).",
-            plural(report.packages, "package loaded", "packages loaded"),
-            plural(report.configured, "target configured", "targets configured"),
+            "{}",
+            analyzed_line(&what, report.packages, report.configured)
         );
         for warning in &report.source_file_warnings {
             eprintln!("{warning}");
@@ -2158,6 +2166,20 @@ pub(crate) fn absolute(layout: &Layout, repo: &str, location: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    /// Probed on Bazel 9.2.0: one package is still "1 packages loaded".
+    #[test]
+    fn the_analyzed_line_never_says_one_package() {
+        use super::*;
+        assert_eq!(
+            analyzed_line("target //:a", 1, 1),
+            "INFO: Analyzed target //:a (1 packages loaded, 1 target configured)."
+        );
+        assert_eq!(
+            analyzed_line("2 targets", 5, 7),
+            "INFO: Analyzed 2 targets (5 packages loaded, 7 targets configured)."
+        );
+    }
+
     /// Probed on Bazel 9.2.0 (buildfiji-xqeg, buildfiji-mum.29): a root that
     /// failed itself is warned of alone, one that failed because of what it
     /// reads says so, and so does a target of a package in error.
