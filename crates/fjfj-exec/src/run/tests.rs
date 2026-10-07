@@ -227,6 +227,44 @@ async fn write_file_and_symlink_actions_make_their_outputs() {
     assert_eq!(outcome.spawned, 0);
 }
 
+/// Probed on Bazel 9.2.0: a link asked to be executable needs an executable
+/// target.
+#[tokio::test]
+async fn an_executable_symlink_to_a_file_that_is_not_executable_fails() {
+    let (_dir, layout) = layout();
+    std::fs::write(layout.workspace.join("in.txt"), "data").unwrap();
+    layout.prepare().unwrap();
+    let (src, l) = (Artifact::source("", "", "in.txt"), out("l.txt"));
+    let actions = vec![Action {
+        owner: Label {
+            repo: String::new(),
+            package: String::new(),
+            name: "t".into(),
+        },
+        owner_kind: "x".into(),
+        location: String::new(),
+        configuration: "k8-fastbuild".into(),
+        mnemonic: "ExecutableSymlink".into(),
+        progress_message: None,
+        kind: ActionKind::Symlink {
+            target: src.exec_path(),
+        },
+        inputs: vec![src.clone()],
+        input_set: None,
+        outputs: vec![l.clone()],
+        exec_group: None,
+    }];
+    let outcome = run(&layout, actions, std::slice::from_ref(&l), false).await;
+    assert_eq!(outcome.failures.len(), 1, "{:?}", outcome.failures);
+    assert_eq!(
+        outcome.failures[0].message,
+        format!(
+            "failed to create symbolic link '{}': file 'in.txt' is not executable",
+            l.exec_path()
+        )
+    );
+}
+
 #[tokio::test]
 async fn an_action_whose_inputs_and_outputs_are_unchanged_does_not_run_again() {
     let (_dir, layout) = layout();

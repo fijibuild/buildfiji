@@ -802,6 +802,19 @@ impl Scheduler {
             ActionKind::RunfilesTree => {}
             ActionKind::Symlink { target } => {
                 let at = execroot.join(action.outputs[0].exec_path());
+                // A link that is to be executable needs a target that is.
+                if action.mnemonic == "ExecutableSymlink" {
+                    use std::os::unix::fs::PermissionsExt;
+                    let mode = std::fs::metadata(execroot.join(target))
+                        .map(|m| m.permissions().mode())
+                        .unwrap_or(0);
+                    if mode & 0o111 == 0 {
+                        return Err(fail(format!(
+                            "failed to create symbolic link '{}': file '{target}' is not executable",
+                            action.outputs[0].exec_path()
+                        )));
+                    }
+                }
                 std::os::unix::fs::symlink(execroot.join(target), &at)
                     .map_err(|e| fail(format!("cannot link {}: {e}", at.display())))?;
             }
