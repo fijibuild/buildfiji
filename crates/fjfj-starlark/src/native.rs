@@ -118,11 +118,17 @@ pub(crate) fn module_globals(builder: &mut GlobalsBuilder) {
     builder.set("proto", ProtoModule);
 }
 
+/// The language's global functions as Bazel 9.2.0 has them: the standard ones
+/// and `print`, without `bytes`, `chr` and `ord`, which it does not define.
+pub(crate) fn bazel_standard() -> GlobalsBuilder {
+    GlobalsBuilder::extended_by(&[LibraryExtension::Print]).without(&["bytes", "chr", "ord"])
+}
+
 /// The globals of a BUILD file: the standard ones, `print`, and the native
 /// functions.
 pub fn build_globals() -> Globals {
     crate::label::install_print_format();
-    GlobalsBuilder::extended_by(&[LibraryExtension::Print])
+    bazel_standard()
         .with(native_functions)
         .with(generated_native_rules)
         .with(build_only_functions)
@@ -266,7 +272,7 @@ fn build_only_functions(builder: &mut GlobalsBuilder) {
 /// The globals of the code `cquery --output=starlark` runs: the language, and
 /// `providers` and `build_options` of a target.
 pub(crate) fn format_globals() -> Globals {
-    GlobalsBuilder::extended_by(&[LibraryExtension::Print])
+    bazel_standard()
         .with(depset_globals)
         .with(label_globals)
         .with(struct_globals)
@@ -279,7 +285,7 @@ pub(crate) fn format_globals() -> Globals {
 /// `native`.
 pub fn bzl_globals() -> Globals {
     crate::label::install_print_format();
-    let mut builder = GlobalsBuilder::extended_by(&[LibraryExtension::Print]);
+    let mut builder = bazel_standard();
     builder.namespace_with_missing("native", "no native function or rule '{}'", |native| {
         native_functions(native);
         generated_native_rules(native);

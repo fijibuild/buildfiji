@@ -338,6 +338,14 @@ impl GlobalsBuilder {
         self
     }
 
+    /// A fluent API for leaving out standard functions a dialect does not have.
+    pub fn without(mut self, names: &[&str]) -> Self {
+        for name in names {
+            self.variables.remove(name);
+        }
+        self
+    }
+
     /// A fluent API for modifying [`GlobalsBuilder`] using [`namespace`](GlobalsBuilder::namespace).
     pub fn with_namespace(mut self, name: &str, f: impl Fn(&mut GlobalsBuilder)) -> Self {
         self.namespace(name, f);

@@ -19,7 +19,7 @@ use crate::FileKind;
 use crate::args::{Wording, bind, describe, fatal, param, positional_only, sequence};
 use crate::dialect::{parse_all, scope_errors};
 use crate::syntax_event;
-use starlark::environment::{Globals, GlobalsBuilder, LibraryExtension, Module};
+use starlark::environment::{Globals, GlobalsBuilder, Module};
 use starlark::eval::{Arguments, Evaluator};
 use starlark::starlark_module;
 use starlark::values::none::NoneType;
@@ -136,9 +136,7 @@ pub fn evaluate_repo_file(
 }
 
 fn repo_globals() -> Globals {
-    GlobalsBuilder::extended_by(&[LibraryExtension::Print])
-        .with(repo_functions)
-        .build()
+    crate::native::bazel_standard().with(repo_functions).build()
 }
 
 #[derive(Default)]

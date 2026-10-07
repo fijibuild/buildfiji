@@ -84,6 +84,14 @@ impl<T> SymbolMap<T> {
         }
     }
 
+    pub(crate) fn remove(&mut self, key: &str) -> Option<T> {
+        let s = Symbol::new(key);
+        match self.0.find_entry(s.hash(), |x| s == x.0) {
+            Ok(entry) => Some(entry.remove().0.1),
+            Err(_) => None,
+        }
+    }
+
     #[inline]
     pub(crate) fn get(&self, key: &Symbol) -> Option<&T> {
         self.0.find(key.hash(), |x| key == &x.0).map(|x| &x.1)

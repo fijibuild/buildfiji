@@ -30,7 +30,6 @@ use crate::eval::Arguments;
 use crate::eval::Evaluator;
 use crate::values::Heap;
 use crate::values::StringValue;
-use crate::values::UnpackValue;
 use crate::values::Value;
 use crate::values::ValueOfUnchecked;
 use crate::values::list::AllocList;

@@ -2242,3 +2242,13 @@ r = rule(implementation = _impl)
         "{err}"
     );
 }
+
+/// Probed on Bazel 9.2.0: `bytes`, `chr` and `ord` are not defined.
+#[test]
+fn bytes_chr_and_ord_are_not_globals() {
+    for name in ["bytes", "chr", "ord"] {
+        let src = format!("def f():\n    return {name}\nx = f\n");
+        let err = module_in("", "", &src).expect_err("a name that is not defined");
+        assert!(err.contains(&format!("`{name}` not found")), "{err}");
+    }
+}
