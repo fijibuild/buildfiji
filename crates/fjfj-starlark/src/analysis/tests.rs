@@ -2086,3 +2086,29 @@ r = rule(implementation = _impl)
     let err = run_rule(&request(src, "r", Vec::new(), Vec::new())).unwrap_err();
     assert!(err.contains("got 7 1"), "{err}");
 }
+
+/// Probed on Bazel 9.2.0: an instance of a provider Bazel implements natively
+/// has the provider's name as its type; one of a provider a `.bzl` made is a
+/// `struct`, whatever the provider is called.
+#[test]
+fn the_type_of_a_native_provider_instance_is_its_name() {
+    let src = r#"
+Mine = provider()
+OutputGroupInfo2 = provider()
+def _impl(ctx):
+    fail("|".join([
+        type(DefaultInfo()),
+        type(OutputGroupInfo()),
+        type(RunEnvironmentInfo()),
+        type(Mine()),
+        type(OutputGroupInfo2()),
+        type(struct()),
+        type(Mine),
+        type(1),
+    ]))
+r = rule(implementation = _impl)
+"#;
+    let err = run_rule(&request(src, "r", Vec::new(), Vec::new())).unwrap_err();
+    let want = "DefaultInfo|OutputGroupInfo|RunEnvironmentInfo|struct|struct|struct|Provider|int";
+    assert!(err.contains(want), "wanted `{want}` in\n{err}");
+}

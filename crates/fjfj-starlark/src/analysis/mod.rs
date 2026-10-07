@@ -94,7 +94,7 @@ mod fragments;
 mod native_providers;
 pub(crate) mod run;
 mod runfiles;
-mod target;
+pub(crate) mod target;
 
 use crate::label::RepoMappings;
 use fjfj_graph::Label;

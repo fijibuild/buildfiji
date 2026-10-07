@@ -337,4 +337,44 @@ impl<'v> StarlarkValue<'v> for StructConstructor {
 
 pub(crate) fn struct_globals(builder: &mut starlark::environment::GlobalsBuilder) {
     builder.set("struct", StructConstructor);
+    type_global(builder);
+}
+
+/// The builtin provider that is the type of an instance of itself in Bazel,
+/// and the type's name: the providers Bazel implements in Java say their own
+/// name, where an instance of a provider a `.bzl` made is a `struct`.
+const NATIVE_PROVIDER_TYPES: [(&str, &str); 11] = [
+    ("DefaultInfo", "DefaultInfo"),
+    ("OutputGroupInfo", "OutputGroupInfo"),
+    ("RunEnvironmentInfo", "RunEnvironmentInfo"),
+    ("InstrumentedFilesInfo", "InstrumentedFilesInfo"),
+    ("AnalysisTestResultInfo", "AnalysisTestResultInfo"),
+    ("AnalysisFailureInfo", "AnalysisFailureInfo"),
+    ("_ToolchainInfo", "ToolchainInfo"),
+    ("_FeatureFlagInfo", "FeatureFlagInfo"),
+    ("_ExecutionInfo", "ExecutionInfo"),
+    ("_TemplateVariableInfo", "TemplateVariableInfo"),
+    ("_PlatformInfo", "PlatformInfo"),
+];
+
+#[starlark::starlark_module]
+fn type_global(builder: &mut starlark::environment::GlobalsBuilder) {
+    /// `type(x)`: the name of the type of `x`; for an instance of a provider
+    /// Bazel implements natively, the provider's.
+    fn r#type<'v>(
+        #[starlark(require = pos)] a: Value<'v>,
+        heap: Heap<'v>,
+    ) -> starlark::Result<Value<'v>> {
+        if let Some(Some(provider)) = provider_of(a) {
+            for (builtin_name, type_name) in NATIVE_PROVIDER_TYPES {
+                if same_provider(
+                    crate::analysis::target::builtin(builtin_name),
+                    Some(provider),
+                ) {
+                    return Ok(heap.alloc(type_name));
+                }
+            }
+        }
+        Ok(a.get_type_value().to_value())
+    }
 }
