@@ -10,6 +10,7 @@ pub mod action;
 pub mod artifact;
 mod build_options;
 pub mod config;
+pub mod conflicts;
 pub mod expand;
 pub mod label;
 pub mod native_rules;

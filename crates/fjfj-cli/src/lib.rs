@@ -1430,6 +1430,11 @@ checks_test = rule(implementation = _checks, analysis_test = True, attrs = {"ok"
             "{:?}",
             first.analysis_errors
         );
+        assert!(
+            first.action_conflicts.is_empty(),
+            "{:?}",
+            first.action_conflicts
+        );
         let statuses: Vec<(String, TestStatus, bool)> = first
             .tests
             .iter()

@@ -491,6 +491,9 @@ pub(crate) struct Report {
     /// Where each of those stopped, for the targets that could be placed.
     pub analysis_sites: BTreeMap<Label, Site>,
     pub failures: Vec<Failure>,
+    /// Actions that cannot be in one build, found once every target was
+    /// analysed: nothing runs.
+    pub action_conflicts: Vec<String>,
     /// Every configured target analysis made, the roots and what they read.
     pub analysed: Vec<Arc<ConfiguredTarget>>,
     pub configured: usize,
@@ -518,6 +521,7 @@ impl Report {
             printed: Vec::new(),
             results: Vec::new(),
             analysis_errors: Vec::new(),
+            action_conflicts: Vec::new(),
             incompatible_errors: Vec::new(),
             configuration_checksum: String::new(),
             source_file_warnings: Vec::new(),
@@ -546,6 +550,7 @@ impl Report {
     pub fn succeeded(&self) -> bool {
         self.analysis_errors.is_empty()
             && self.incompatible_errors.is_empty()
+            && self.action_conflicts.is_empty()
             && self.failures.is_empty()
     }
 }
@@ -1104,6 +1109,12 @@ pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> R
             exec_group: None,
         });
     }
+    // Found with every target analysed, so before `--nobuild` stops there.
+    report.action_conflicts = fjfj_graph::conflicts::conflicts(&actions);
+    if !report.action_conflicts.is_empty() {
+        report.elapsed = started.elapsed();
+        return report;
+    }
     if !request.options.build {
         actions.clear();
         wanted.clear();
@@ -1471,6 +1482,17 @@ pub(crate) fn print(
     }
     if let Some(mode) = test_output {
         print_test_output(report, mode);
+    }
+    // Bazel says each twice: as the event, and again in the error that ends the build.
+    for message in &report.action_conflicts {
+        eprintln!("ERROR: {message}");
+        // Said of what two targets made.
+        let two_owners = !message.starts_with("file ")
+            || message.lines().nth(1).is_some_and(|l| l.contains(", "));
+        if two_owners && !verbose_failures {
+            eprintln!("Use --verbose_failures to see the command lines of failed build steps.");
+        }
+        eprintln!("ERROR: {message}");
     }
     let mut failed_owners: Vec<&str> = Vec::new();
     for failure in &report.failures {
