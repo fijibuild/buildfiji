@@ -370,6 +370,7 @@ async fn genrule(
             ],
             env: config.default_shell_env(),
             execution_requirements,
+            lazy: Vec::new(),
         },
         inputs,
         input_set: Some(input_set),

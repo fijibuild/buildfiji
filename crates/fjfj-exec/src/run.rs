@@ -722,6 +722,21 @@ impl Scheduler {
                     .map_err(|e| fail(format!("cannot write {}: {e}", at.display())))?;
                 let _ = executable;
             }
+            ActionKind::ParamFile {
+                items,
+                lazy,
+                format,
+            } => {
+                let words = fjfj_graph::command_line::expand_words(items, lazy, &|dir| {
+                    files_of_tree(&execroot, dir)
+                });
+                let at = execroot.join(action.outputs[0].exec_path());
+                std::fs::write(
+                    &at,
+                    fjfj_graph::command_line::param_file_contents(&words, *format),
+                )
+                .map_err(|e| fail(format!("cannot write {}: {e}", at.display())))?;
+            }
             ActionKind::WorkspaceStatus { stable, volatile } => {
                 for (out, contents) in action.outputs.iter().zip([stable, volatile]) {
                     let at = execroot.join(out.exec_path());
@@ -849,8 +864,19 @@ impl Scheduler {
                 argv,
                 env,
                 execution_requirements,
+                lazy,
             } => {
                 self.spawned.fetch_add(1, Ordering::Relaxed);
+                // The trees the command line reads exist now.
+                let expanded;
+                let argv = if lazy.is_empty() {
+                    argv
+                } else {
+                    expanded = fjfj_graph::command_line::expand_words(argv, lazy, &|dir| {
+                        files_of_tree(&execroot, dir)
+                    });
+                    &expanded
+                };
                 let Some((program, args)) = argv.split_first() else {
                     return Err(fail("the command is empty".to_owned()));
                 };
@@ -1203,3 +1229,31 @@ fn make_read_only(at: &Path, tree: bool) -> std::io::Result<()> {
 
 #[cfg(test)]
 mod tests;
+
+/// The files of the tree artifact at exec path `dir`, as exec paths in the order
+/// of their paths inside it: a directory is not one, a link to a file is.
+fn files_of_tree(execroot: &Path, dir: &str) -> Vec<String> {
+    fn walk(at: &Path, relative: &str, out: &mut Vec<String>) {
+        let Ok(entries) = std::fs::read_dir(at) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let relative = if relative.is_empty() {
+                name
+            } else {
+                format!("{relative}/{name}")
+            };
+            // What a link leads to decides, as for a file a rule made.
+            if std::fs::metadata(entry.path()).is_ok_and(|m| m.is_dir()) {
+                walk(&entry.path(), &relative, out);
+            } else {
+                out.push(relative);
+            }
+        }
+    }
+    let mut files = Vec::new();
+    walk(&execroot.join(dir), "", &mut files);
+    files.sort();
+    files.into_iter().map(|f| format!("{dir}/{f}")).collect()
+}

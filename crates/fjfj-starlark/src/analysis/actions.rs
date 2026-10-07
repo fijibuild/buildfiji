@@ -788,6 +788,8 @@ fn spawn<'v>(
         inputs.extend(tools);
     }
     let mut arguments: Vec<String> = Vec::new();
+    // The calls among them that wait for a tree.
+    let mut lazy: Vec<fjfj_graph::command_line::LazyArg> = Vec::new();
     let mut param_files = 0;
     // An `Args` that asked for a param file gets one when the command line is
     // too long for the system: each word and its separator count, the
@@ -818,7 +820,8 @@ fn spawn<'v>(
                     .state
                     .lock()
                     .unwrap()
-                    .items
+                    .words()
+                    .0
                     .iter()
                     .map(|a| a.len() + 1)
                     .sum()
@@ -851,25 +854,44 @@ fn spawn<'v>(
                             param_files
                         ));
                         param_files += 1;
+                        let (words, waiting) = state.words();
+                        // What waits for a tree reads it.
+                        let trees = state.trees();
                         s.register(
                             "ParameterFileWrite",
                             Some(format!("Writing file {}", basename(&file))),
-                            ActionKind::WriteFile {
-                                contents: super::args_object::param_file_contents(
-                                    &state.items,
-                                    param.format,
-                                )
-                                .into_bytes(),
-                                executable: false,
+                            if waiting.is_empty() {
+                                ActionKind::WriteFile {
+                                    contents: fjfj_graph::command_line::param_file_contents(
+                                        &words,
+                                        param.format,
+                                    )
+                                    .into_bytes(),
+                                    executable: false,
+                                }
+                            } else {
+                                ActionKind::ParamFile {
+                                    items: words,
+                                    lazy: waiting,
+                                    format: param.format,
+                                }
                             },
-                            Vec::new(),
+                            trees,
                             vec![file.clone()],
                         );
                         arguments.push(param.pattern.replacen("%s", &file.exec_path(), 1));
                         nested.push(Arc::new(NestedSet::of(vec![file.clone()])));
                         inputs.push(file);
                     }
-                    _ => arguments.extend(state.items.iter().cloned()),
+                    _ => {
+                        let (words, waiting) = state.words();
+                        let base = arguments.len();
+                        lazy.extend(waiting.into_iter().map(|mut call| {
+                            call.at += base;
+                            call
+                        }));
+                        arguments.extend(words);
+                    }
                 }
             } else {
                 return Err(fatal(format!(
@@ -906,6 +928,10 @@ fn spawn<'v>(
         let mut argv = vec![SHELL.to_owned(), "-c".to_owned(), command.to_owned()];
         if !arguments.is_empty() {
             argv.push(String::new());
+            // The arguments start after the empty `$0`.
+            for call in &mut lazy {
+                call.at += argv.len();
+            }
             argv.extend(arguments);
         }
         argv
@@ -932,6 +958,9 @@ fn spawn<'v>(
             )));
         };
         let mut argv = vec![executable];
+        for call in &mut lazy {
+            call.at += argv.len();
+        }
         argv.extend(arguments);
         argv
     };
@@ -943,6 +972,7 @@ fn spawn<'v>(
             argv,
             env,
             execution_requirements,
+            lazy,
         },
         inputs,
         Some(input_set),

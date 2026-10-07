@@ -36,6 +36,7 @@ fn shell(script: &str, inputs: Vec<Artifact>, outputs: Vec<Artifact>) -> Action 
             argv: vec!["/bin/bash".into(), "-c".into(), script.into()],
             env: BTreeMap::from([("PATH".into(), "/bin:/usr/bin".into())]),
             execution_requirements: BTreeMap::new(),
+            lazy: Vec::new(),
         },
         inputs,
         input_set: None,
@@ -317,6 +318,88 @@ async fn an_action_whose_inputs_and_outputs_are_unchanged_does_not_run_again() {
     )];
     let sixth = run(&layout, changed, std::slice::from_ref(&out), false).await;
     assert_eq!((sixth.ran, sixth.cached), (1, 0));
+}
+
+/// A command line that reads a tree artifact is made when the tree has been
+/// filled, one word for each file in it in the order of their paths, in the
+/// command and in a parameter file (buildfiji-136.37).
+#[tokio::test]
+async fn a_tree_among_the_arguments_is_its_files_when_the_action_runs() {
+    use fjfj_graph::command_line::{LazyArg, LazyCall, LazyItem, ParamFormat};
+    let (_dir, layout) = layout();
+    let mut tree = out("tree_d");
+    tree.tree = true;
+    let dir = tree.exec_path();
+    let fill = shell(
+        &format!("mkdir -p {dir}/x && echo a > {dir}/x/a && echo b > {dir}/b"),
+        vec![],
+        vec![tree.clone()],
+    );
+    let call = LazyCall::AddAll {
+        name: Some("--in".into()),
+        items: vec![LazyItem::Tree {
+            dir: dir.clone(),
+            format_each: Some("<%s>".into()),
+        }],
+        before_each: None,
+        omit_if_empty: true,
+        uniquify: false,
+        terminate_with: Some("END".into()),
+    };
+    let lazy = vec![LazyArg {
+        at: 4,
+        len: 3,
+        call: call.clone(),
+    }];
+    let (listed, params, from_params) = (out("listed.txt"), out("p.params"), out("from.txt"));
+    let mut list = shell(
+        &format!("for x; do echo \"[$x]\"; done > {}", listed.exec_path()),
+        vec![tree.clone()],
+        vec![listed.clone()],
+    );
+    if let ActionKind::Spawn { argv, lazy: l, .. } = &mut list.kind {
+        argv.extend(["--in", &format!("<{dir}>"), "END"].map(String::from));
+        *l = lazy.clone();
+    }
+    let mut write = shell("", vec![tree.clone()], vec![params.clone()]);
+    write.kind = ActionKind::ParamFile {
+        items: vec![
+            "--flag".into(),
+            "--in".into(),
+            format!("<{dir}>"),
+            "END".into(),
+        ],
+        lazy: vec![LazyArg {
+            at: 1,
+            len: 3,
+            call,
+        }],
+        format: ParamFormat::Multiline,
+    };
+    let read = shell(
+        &format!("cp {} {}", params.exec_path(), from_params.exec_path()),
+        vec![params.clone()],
+        vec![from_params.clone()],
+    );
+    let outcome = run(
+        &layout,
+        vec![fill, list, write, read],
+        &[listed.clone(), from_params.clone()],
+        false,
+    )
+    .await;
+    assert!(outcome.failures.is_empty(), "{:?}", outcome.failures);
+    let text =
+        |a: &Artifact| std::fs::read_to_string(layout.execroot().join(a.exec_path())).unwrap();
+    // `$0` is the first word after the script and is not listed.
+    assert_eq!(
+        text(&listed),
+        format!("[--in]\n[<{dir}/b>]\n[<{dir}/x/a>]\n[END]\n")
+    );
+    assert_eq!(
+        text(&from_params),
+        format!("--flag\n--in\n<{dir}/b>\n<{dir}/x/a>\nEND\n")
+    );
 }
 
 /// Probed on Bazel 9.2.0: an action that reads `volatile-status.txt` does not

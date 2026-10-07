@@ -437,6 +437,7 @@ fn text_one(out: &mut String, row: &Row<'_>, settings: Settings, layout: &Layout
             argv,
             env,
             execution_requirements,
+            ..
         } => {
             if !env.is_empty() {
                 let list: Vec<String> = env.iter().map(|(k, v)| format!("{k}={v}")).collect();
@@ -479,6 +480,17 @@ fn text_one(out: &mut String, row: &Row<'_>, settings: Settings, layout: &Layout
             out.push_str(&format!("  IsExecutable: {executable}\n"));
             if settings.file_write_contents {
                 out.push_str(&format!("  FileWriteContents: [{}]\n", base64(contents)));
+            }
+        }
+        ActionKind::ParamFile { items, format, .. } => {
+            // With the tree as one word, as for a command line.
+            out.push_str("  IsExecutable: false\n");
+            if settings.file_write_contents {
+                let contents = fjfj_graph::command_line::param_file_contents(items, *format);
+                out.push_str(&format!(
+                    "  FileWriteContents: [{}]\n",
+                    base64(contents.as_bytes())
+                ));
             }
         }
         ActionKind::Template {
@@ -931,6 +943,7 @@ impl Dump {
                 argv,
                 env,
                 execution_requirements,
+                ..
             } => {
                 if settings.commandline {
                     message = message.many(6, "arguments", argv.iter().cloned());
@@ -960,6 +973,15 @@ impl Dump {
                 }
                 if *executable {
                     message = message.one(19, "is_executable", true);
+                }
+            }
+            ActionKind::ParamFile { items, format, .. } => {
+                if settings.file_write_contents {
+                    message = message.text_field(
+                        17,
+                        "file_contents",
+                        fjfj_graph::command_line::param_file_contents(items, *format),
+                    );
                 }
             }
             ActionKind::Template {

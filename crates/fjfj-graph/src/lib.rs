@@ -9,6 +9,7 @@ use std::fmt;
 pub mod action;
 pub mod artifact;
 mod build_options;
+pub mod command_line;
 pub mod config;
 pub mod conflicts;
 pub mod expand;

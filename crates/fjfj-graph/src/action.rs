@@ -6,6 +6,7 @@
 
 use crate::Label;
 use crate::artifact::Artifact;
+use crate::command_line::{LazyArg, ParamFormat};
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
@@ -17,9 +18,21 @@ pub enum ActionKind {
         env: BTreeMap<String, String>,
         /// `execution_requirements` (`local`, `no-sandbox`, ...).
         execution_requirements: BTreeMap<String, String>,
+        /// The calls in `argv` that read a tree artifact: `argv` has the tree
+        /// as one word, as `aquery` shows it, and these say what it becomes
+        /// when the action runs.
+        lazy: Vec<LazyArg>,
     },
     /// Create a file with these contents.
     WriteFile { contents: Vec<u8>, executable: bool },
+    /// Create a parameter file for a command line that reads a tree artifact:
+    /// `items` has the tree as one word, as `aquery` shows it, and `lazy` says
+    /// what it becomes when the action runs.
+    ParamFile {
+        items: Vec<String>,
+        lazy: Vec<LazyArg>,
+        format: ParamFormat,
+    },
     /// Make the output a symlink to `target`, an exec path.
     Symlink { target: String },
     /// Make the output a symlink whose text is `target`, as written (a path
@@ -107,10 +120,15 @@ impl Action {
                 argv,
                 env,
                 execution_requirements,
+                lazy,
             } => {
                 field(b"spawn");
                 for arg in argv {
                     field(arg.as_bytes());
+                }
+                if !lazy.is_empty() {
+                    field(b"lazy");
+                    field(format!("{lazy:?}").as_bytes());
                 }
                 field(b"env");
                 for (k, v) in env {
@@ -130,6 +148,17 @@ impl Action {
                 field(b"write");
                 field(contents);
                 field(&[u8::from(*executable)]);
+            }
+            ActionKind::ParamFile {
+                items,
+                lazy,
+                format,
+            } => {
+                field(b"param-file");
+                for item in items {
+                    field(item.as_bytes());
+                }
+                field(format!("{lazy:?} {format:?}").as_bytes());
             }
             ActionKind::Symlink { target } => {
                 field(b"symlink");

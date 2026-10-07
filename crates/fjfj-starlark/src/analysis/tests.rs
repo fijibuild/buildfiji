@@ -757,6 +757,169 @@ r = rule(implementation = _impl)
     );
 }
 
+/// Probed on Bazel 9.2.0: a tree artifact among the values of `add_all` and
+/// `add_joined` is a word for each file in it when the action runs, and the
+/// tree itself in what `aquery` shows; `add` refuses one.
+#[test]
+fn a_tree_among_the_values_of_args_is_expanded_when_the_action_runs() {
+    use fjfj_graph::command_line::{LazyArg, LazyCall, LazyItem};
+    let src = r#"
+def _impl(ctx):
+    d = ctx.actions.declare_directory("d")
+    kept = ctx.actions.args()
+    kept.add_all("--keep", [d], expand_directories = False)
+    a = ctx.actions.args()
+    a.add_all("--name", [d, "x"], before_each = "-I", format_each = "<%s>", terminate_with = "END")
+    a.add_joined("--j", [d], join_with = ",", format_joined = "{%s}")
+    a.add_all("--plain", ["p"])
+    ctx.actions.run_shell(outputs = [ctx.actions.declare_file("o")], inputs = [d], command = "true", arguments = [kept, a])
+    p = ctx.actions.args()
+    p.add_all([d])
+    p.use_param_file("@%s", use_always = True)
+    ctx.actions.run_shell(outputs = [ctx.actions.declare_file("o2")], inputs = [d], command = "true", arguments = [p])
+    return []
+r = rule(implementation = _impl)
+"#;
+    let out = run_rule(&request(src, "r", Vec::new(), Vec::new())).unwrap();
+    let spawns: Vec<&fjfj_graph::Action> = out
+        .actions
+        .iter()
+        .filter(|a| matches!(a.kind, ActionKind::Spawn { .. }))
+        .collect();
+    let ActionKind::Spawn { argv, lazy, .. } = &spawns[0].kind else {
+        panic!()
+    };
+    let dir = format!("{BIN}/d");
+    // The tree is one word where Bazel's `aquery` has it.
+    let want: Vec<String> = [
+        "/bin/bash",
+        "-c",
+        "true",
+        "",
+        "--keep",
+        &dir,
+        "--name",
+        "-I",
+        &format!("<{dir}>"),
+        "-I",
+        "<x>",
+        "END",
+        "--j",
+        &format!("{{{dir}}}"),
+        "--plain",
+        "p",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect();
+    assert_eq!(argv, &want);
+    let tree = |format: Option<&str>| LazyItem::Tree {
+        dir: dir.clone(),
+        format_each: format.map(str::to_owned),
+    };
+    assert_eq!(
+        lazy,
+        &[
+            LazyArg {
+                at: 6,
+                len: 6,
+                call: LazyCall::AddAll {
+                    name: Some("--name".into()),
+                    items: vec![tree(Some("<%s>")), LazyItem::Text("<x>".into())],
+                    before_each: Some("-I".into()),
+                    omit_if_empty: true,
+                    uniquify: false,
+                    terminate_with: Some("END".into()),
+                }
+            },
+            LazyArg {
+                at: 12,
+                len: 2,
+                call: LazyCall::AddJoined {
+                    name: Some("--j".into()),
+                    items: vec![tree(None)],
+                    join_with: ",".into(),
+                    format_joined: Some("{%s}".into()),
+                    omit_if_empty: true,
+                    uniquify: false,
+                }
+            }
+        ]
+    );
+    // What it comes to once the tree holds `b` and `x/a`.
+    let files = |dir: &str| vec![format!("{dir}/b"), format!("{dir}/x/a")];
+    assert_eq!(
+        fjfj_graph::command_line::expand_words(argv, lazy, &files)[4..],
+        [
+            "--keep".to_owned(),
+            dir.clone(),
+            "--name".into(),
+            "-I".into(),
+            format!("<{dir}/b>"),
+            "-I".into(),
+            format!("<{dir}/x/a>"),
+            "-I".into(),
+            "<x>".into(),
+            "END".into(),
+            "--j".into(),
+            format!("{{{dir}/b,{dir}/x/a}}"),
+            "--plain".into(),
+            "p".into()
+        ]
+    );
+    // The parameter file reads the tree too, and is made when it exists.
+    let params = out
+        .actions
+        .iter()
+        .find(|a| matches!(a.kind, ActionKind::ParamFile { .. }))
+        .expect("a parameter file that waits for the tree");
+    assert_eq!(paths(&params.inputs), [dir]);
+}
+
+/// A `map_each` over a tree is called when the action runs in Bazel, which
+/// analysis cannot do (buildfiji-fcw9): it is refused unless it is to see the
+/// tree itself.
+#[test]
+fn a_map_each_over_a_tree_that_expands_is_refused_until_it_can_be_made_to_work() {
+    let src = |call: &str| {
+        format!(
+            "def _f(x):\n    return x.basename\n\ndef _impl(ctx):\n    d = ctx.actions.declare_directory('d')\n    a = ctx.actions.args()\n    {call}\n    ctx.actions.run_shell(outputs = [ctx.actions.declare_file('o')], inputs = [d], command = 'true', arguments = [a])\n    return []\nr = rule(implementation = _impl)\n"
+        )
+    };
+    let err = run_rule(&request(
+        &src("a.add_all([d], map_each = _f)"),
+        "r",
+        Vec::new(),
+        Vec::new(),
+    ))
+    .unwrap_err();
+    assert!(err.contains("buildfiji-fcw9"), "{err}");
+    let out = run_rule(&request(
+        &src("a.add_all([d], map_each = _f, expand_directories = False)"),
+        "r",
+        Vec::new(),
+        Vec::new(),
+    ))
+    .unwrap();
+    let ActionKind::Spawn { argv, lazy, .. } = &out.actions.last().unwrap().kind else {
+        panic!()
+    };
+    assert_eq!(argv.last().map(String::as_str), Some("d"));
+    assert!(lazy.is_empty());
+}
+
+/// `add` does not take a tree, which may be many values.
+#[test]
+fn add_refuses_a_tree_artifact() {
+    let src = "def _impl(ctx):\n    d = ctx.actions.declare_directory('d')\n    ctx.actions.args().add('--x', d)\n    return []\nr = rule(implementation = _impl)\n";
+    let err = run_rule(&request(src, "r", Vec::new(), Vec::new())).unwrap_err();
+    assert!(
+        err.lines().any(|l| l
+            == "Error in add: Cannot add directories to Args#add since they may expand to multiple values. Either use Args#add_all (if you want expansion) or args.add(directory.path) (if you do not)."),
+        "{err}"
+    );
+}
+
 /// Probed on Bazel 9.2.0: a `map_each` that is not a top-level def is
 /// refused, at the name of a def and at the `lambda` of a lambda, unless
 /// `allow_closure`; a builtin function is accepted.
@@ -1429,7 +1592,7 @@ r = rule(implementation = _impl, attrs = {
 
 #[test]
 fn a_parameter_file_quotes_what_bazels_shell_escaper_quotes() {
-    use super::args_object::{ParamFormat, param_file_contents};
+    use fjfj_graph::command_line::{ParamFormat, param_file_contents};
     // Bazel's safe set is [A-Za-z0-9] and "@%-_+:,./"; `=` is outside it.
     let items = ["a=b", "--flag=v", "plain-x_1.2/y:z,@%+", "", "it's"].map(String::from);
     assert_eq!(

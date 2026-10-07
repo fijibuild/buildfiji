@@ -284,6 +284,7 @@ pub(crate) async fn register(
             argv,
             env,
             execution_requirements: requirements,
+            lazy: Vec::new(),
         },
         inputs,
         input_set: None,

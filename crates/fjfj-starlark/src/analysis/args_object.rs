@@ -17,16 +17,8 @@ use starlark_derive::starlark_value;
 use std::fmt;
 use std::sync::Mutex;
 
-/// How a parameter file lists its arguments.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ParamFormat {
-    /// Each argument on a line, quoted as a shell would need.
-    Shell,
-    /// Each argument on a line, as it is.
-    Multiline,
-    /// `--flag=value` arguments split at the `=`, each half on a line.
-    FlagPerLine,
-}
+pub(crate) use fjfj_graph::command_line::ParamFormat;
+use fjfj_graph::command_line::{LazyCall, LazyItem, format_arg};
 
 #[derive(Debug, Clone)]
 pub(crate) struct ParamFile {
@@ -36,11 +28,66 @@ pub(crate) struct ParamFile {
     pub(crate) format: ParamFormat,
 }
 
+/// What one call of `add`, `add_all` or `add_joined` put on the command line.
+#[derive(Debug, Clone)]
+pub(crate) enum ArgItem {
+    Text(String),
+    /// A call that reads a tree artifact: the words it makes with the tree as
+    /// one word, which `aquery` shows, and the call to make them again when
+    /// the tree is known.
+    Lazy {
+        words: Vec<String>,
+        call: LazyCall,
+        /// The trees, which what reads the call has to wait for.
+        trees: Vec<fjfj_graph::Artifact>,
+    },
+}
+
 #[derive(Debug, Default)]
 pub(crate) struct ArgsState {
-    pub(crate) items: Vec<String>,
+    pub(crate) items: Vec<ArgItem>,
     pub(crate) param_file: Option<ParamFile>,
     pub(crate) format: Option<ParamFormat>,
+}
+
+impl ArgsState {
+    /// The words of the command line as `aquery` shows them, and the calls
+    /// among them that wait for a tree (their places in those words).
+    pub(crate) fn words(&self) -> (Vec<String>, Vec<fjfj_graph::command_line::LazyArg>) {
+        let mut words = Vec::new();
+        let mut lazy = Vec::new();
+        for item in &self.items {
+            match item {
+                ArgItem::Text(text) => words.push(text.clone()),
+                ArgItem::Lazy {
+                    words: made, call, ..
+                } => {
+                    lazy.push(fjfj_graph::command_line::LazyArg {
+                        at: words.len(),
+                        len: made.len(),
+                        call: call.clone(),
+                    });
+                    words.extend(made.iter().cloned());
+                }
+            }
+        }
+        (words, lazy)
+    }
+
+    /// The trees the calls wait for.
+    pub(crate) fn trees(&self) -> Vec<fjfj_graph::Artifact> {
+        self.items
+            .iter()
+            .flat_map(|item| match item {
+                ArgItem::Lazy { trees, .. } => trees.clone(),
+                ArgItem::Text(_) => Vec::new(),
+            })
+            .collect()
+    }
+
+    fn push_text(&mut self, text: String) {
+        self.items.push(ArgItem::Text(text));
+    }
 }
 
 #[derive(ProvidesStaticType, NoSerialize, Allocative)]
@@ -153,27 +200,6 @@ fn check_format(name: &str, pattern: &str) -> starlark::Result<()> {
     }
 }
 
-/// `pattern` with `%s` replaced, already checked by [`check_format`]; `%%` is
-/// a `%`.
-fn formatted(pattern: &str, text: &str) -> String {
-    let mut out = String::with_capacity(pattern.len() + text.len());
-    let mut chars = pattern.chars().peekable();
-    while let Some(c) = chars.next() {
-        match (c, chars.peek()) {
-            ('%', Some('s')) => {
-                chars.next();
-                out.push_str(text);
-            }
-            ('%', Some('%')) => {
-                chars.next();
-                out.push('%');
-            }
-            _ => out.push(c),
-        }
-    }
-    out
-}
-
 /// A name given before values: a string, or Bazel's error.
 fn arg_name(value: Option<Value<'_>>) -> starlark::Result<String> {
     let value = value.expect("bound");
@@ -218,18 +244,42 @@ fn string_opt(
     }
 }
 
-/// The items to add for `values`, through `map_each` and `format_each`.
-#[allow(clippy::too_many_arguments)]
-fn expand<'v>(
-    function: &str,
+/// A value of a call as it is put on the command line.
+struct Expanded {
+    /// The word `aquery` shows: for a tree, the tree itself.
+    word: String,
+    /// The tree that waits to be listed.
+    tree: Option<fjfj_graph::Artifact>,
+}
+
+/// What a call was given and what to do with it.
+struct Call<'a, 'v> {
+    function: &'a str,
     values: Value<'v>,
     named: bool,
     map_each: Option<Value<'v>>,
     allow_closure: bool,
-    format_each: Option<&str>,
+    format_each: Option<&'a str>,
     uniquify: bool,
+    /// Whether a tree artifact among the values is its files.
+    expand_directories: bool,
+}
+
+/// The items to add for `values`, through `map_each` and `format_each`.
+fn expand<'v>(
+    call: &Call<'_, 'v>,
     eval: &mut Evaluator<'v, '_, '_>,
-) -> starlark::Result<Vec<String>> {
+) -> starlark::Result<Vec<Expanded>> {
+    let Call {
+        function,
+        values,
+        named,
+        map_each,
+        allow_closure,
+        format_each,
+        uniquify,
+        expand_directories,
+    } = *call;
     let items: Vec<Value<'v>> = if is_depset(values) {
         depset_to_list(values).expect("a depset")?
     } else if let Some(items) = crate::args::sequence(values) {
@@ -249,7 +299,7 @@ fn expand<'v>(
             )
         }));
     };
-    let mut out: Vec<String> = Vec::new();
+    let mut out: Vec<Expanded> = Vec::new();
     if let Some(f) = map_each.filter(|f| !f.is_none())
         && !f.get_type().contains("function")
     {
@@ -272,6 +322,34 @@ fn expand<'v>(
         )));
     }
     for item in items {
+        // A function is called when the action runs in Bazel, for each file of
+        // the tree, which analysis cannot do.
+        if expand_directories
+            && map_each.is_some_and(|f| !f.is_none())
+            && artifact_of(item).is_some_and(|a| a.tree)
+        {
+            return Err(fatal(format!(
+                "{function}: a map_each over a tree artifact with expand_directories = True is not supported yet (buildfiji-fcw9); pass expand_directories = False or no map_each"
+            )));
+        }
+        // A tree waits for the action to run, unless a function is to see it.
+        if expand_directories
+            && map_each.is_none_or(|f| f.is_none())
+            && let Some(dir) = artifact_of(item).filter(|a| a.tree)
+        {
+            let path = dir.exec_path();
+            let word = match format_each {
+                Some(pattern) => format_arg(pattern, &path),
+                None => path,
+            };
+            if !uniquify || !out.iter().any(|e| e.word == word) {
+                out.push(Expanded {
+                    word,
+                    tree: Some(dir),
+                });
+            }
+            continue;
+        }
         let mut produced: Vec<String> = Vec::new();
         match map_each.filter(|f| !f.is_none()) {
             Some(f) => {
@@ -297,15 +375,34 @@ fn expand<'v>(
         }
         for text in produced {
             let text = match format_each {
-                Some(pattern) => formatted(pattern, &text),
+                Some(pattern) => format_arg(pattern, &text),
                 None => text,
             };
-            if !uniquify || !out.contains(&text) {
-                out.push(text);
+            if !uniquify || !out.iter().any(|e| e.word == text) {
+                out.push(Expanded {
+                    word: text,
+                    tree: None,
+                });
             }
         }
     }
     Ok(out)
+}
+
+/// The values of a call as the lazy call has them, if one of them is a tree.
+fn lazy_items(items: &[Expanded], format_each: Option<&str>) -> Option<Vec<LazyItem>> {
+    items.iter().any(|e| e.tree.is_some()).then(|| {
+        items
+            .iter()
+            .map(|e| match &e.tree {
+                Some(dir) => LazyItem::Tree {
+                    dir: dir.exec_path(),
+                    format_each: format_each.map(str::to_owned),
+                },
+                None => LazyItem::Text(e.word.clone()),
+            })
+            .collect()
+    })
 }
 
 #[starlark_module]
@@ -334,6 +431,11 @@ fn args_members(builder: &mut MethodsBuilder) {
         }
         // One value, which is not a collection: those are for `add_all`.
         let single = |value: Value<'v>| -> starlark::Result<String> {
+            if artifact_of(value).is_some_and(|a| a.tree) {
+                return Err(fatal(
+                    "Cannot add directories to Args#add since they may expand to multiple values. Either use Args#add_all (if you want expansion) or args.add(directory.path) (if you do not).",
+                ));
+            }
             if let Some(text) = text_of(value) {
                 return Ok(text);
             }
@@ -348,17 +450,17 @@ fn args_members(builder: &mut MethodsBuilder) {
         match bound[1] {
             None => {
                 let text = single(first)?;
-                state.items.push(match &format {
-                    Some(p) => formatted(p, &text),
+                state.push_text(match &format {
+                    Some(p) => format_arg(p, &text),
                     None => text,
                 });
             }
             Some(value) => {
                 let name = arg_name(Some(first))?;
-                state.items.push(name);
+                state.push_text(name);
                 let text = single(value)?;
-                state.items.push(match &format {
-                    Some(p) => formatted(p, &text),
+                state.push_text(match &format {
+                    Some(p) => format_arg(p, &text),
                     None => text,
                 });
             }
@@ -403,34 +505,48 @@ fn args_members(builder: &mut MethodsBuilder) {
         let before_each = string_opt("add_all", "before_each", bound[4])?;
         let omit_if_empty = flag("add_all", "omit_if_empty", bound[5], true)?;
         let uniquify = flag("add_all", "uniquify", bound[6], false)?;
-        flag("add_all", "expand_directories", bound[7], true)?;
+        let expand_directories = flag("add_all", "expand_directories", bound[7], true)?;
         let terminate_with = string_opt("add_all", "terminate_with", bound[8])?;
         let allow_closure = flag("add_all", "allow_closure", bound[9], false)?;
         let items = expand(
-            "add_all",
-            values,
-            name.is_some(),
-            bound[2],
-            allow_closure,
-            format_each.as_deref(),
-            uniquify,
+            &Call {
+                function: "add_all",
+                values,
+                named: name.is_some(),
+                map_each: bound[2],
+                allow_closure,
+                format_each: format_each.as_deref(),
+                uniquify,
+                expand_directories,
+            },
             eval,
         )?;
         if items.is_empty() && omit_if_empty {
             return Ok(this);
         }
+        let mut words: Vec<String> = name.iter().cloned().collect();
+        for item in &items {
+            words.extend(before_each.iter().cloned());
+            words.push(item.word.clone());
+        }
+        words.extend(terminate_with.iter().cloned());
         let mut state = args_of(this).state.lock().unwrap();
-        if let Some(name) = name {
-            state.items.push(name);
-        }
-        for item in items {
-            if let Some(before) = &before_each {
-                state.items.push(before.clone());
-            }
-            state.items.push(item);
-        }
-        if let Some(end) = terminate_with {
-            state.items.push(end);
+        let trees: Vec<fjfj_graph::Artifact> =
+            items.iter().filter_map(|e| e.tree.clone()).collect();
+        match lazy_items(&items, format_each.as_deref()) {
+            Some(items) => state.items.push(ArgItem::Lazy {
+                words,
+                trees,
+                call: LazyCall::AddAll {
+                    name,
+                    items,
+                    before_each,
+                    omit_if_empty,
+                    uniquify,
+                    terminate_with,
+                },
+            }),
+            None => state.items.extend(words.into_iter().map(ArgItem::Text)),
         }
         Ok(this)
     }
@@ -485,30 +601,52 @@ fn args_members(builder: &mut MethodsBuilder) {
         }
         let omit_if_empty = flag("add_joined", "omit_if_empty", bound[6], true)?;
         let uniquify = flag("add_joined", "uniquify", bound[7], false)?;
-        flag("add_joined", "expand_directories", bound[8], true)?;
+        let expand_directories = flag("add_joined", "expand_directories", bound[8], true)?;
         let allow_closure = flag("add_joined", "allow_closure", bound[9], false)?;
         let items = expand(
-            "add_joined",
-            values,
-            name.is_some(),
-            bound[3],
-            allow_closure,
-            format_each.as_deref(),
-            uniquify,
+            &Call {
+                function: "add_joined",
+                values,
+                named: name.is_some(),
+                map_each: bound[3],
+                allow_closure,
+                format_each: format_each.as_deref(),
+                uniquify,
+                expand_directories,
+            },
             eval,
         )?;
         if items.is_empty() && omit_if_empty {
             return Ok(this);
         }
-        let mut joined = items.join(&join_with);
-        if let Some(pattern) = format_joined {
-            joined = formatted(&pattern, &joined);
+        let mut joined = items
+            .iter()
+            .map(|e| e.word.as_str())
+            .collect::<Vec<_>>()
+            .join(&join_with);
+        if let Some(pattern) = &format_joined {
+            joined = format_arg(pattern, &joined);
         }
+        let mut words: Vec<String> = name.iter().cloned().collect();
+        words.push(joined);
         let mut state = args_of(this).state.lock().unwrap();
-        if let Some(name) = name {
-            state.items.push(name);
+        let trees: Vec<fjfj_graph::Artifact> =
+            items.iter().filter_map(|e| e.tree.clone()).collect();
+        match lazy_items(&items, format_each.as_deref()) {
+            Some(items) => state.items.push(ArgItem::Lazy {
+                words,
+                trees,
+                call: LazyCall::AddJoined {
+                    name,
+                    items,
+                    join_with,
+                    format_joined,
+                    omit_if_empty,
+                    uniquify,
+                },
+            }),
+            None => state.items.extend(words.into_iter().map(ArgItem::Text)),
         }
-        state.items.push(joined);
         Ok(this)
     }
 
@@ -574,51 +712,6 @@ fn args_members(builder: &mut MethodsBuilder) {
         }
         Ok(this)
     }
-}
-
-/// An argument as a shell reads it back, quoted only when it needs it.
-pub(crate) fn shell_quote(arg: &str) -> String {
-    let plain = !arg.is_empty()
-        && arg
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || "-_./:,+@%".contains(c));
-    if plain {
-        arg.to_owned()
-    } else {
-        format!("'{}'", arg.replace('\'', "'\\''"))
-    }
-}
-
-/// The text of a parameter file for `items`.
-pub(crate) fn param_file_contents(items: &[String], format: ParamFormat) -> String {
-    let mut out = String::new();
-    for item in items {
-        match format {
-            ParamFormat::Shell => {
-                out.push_str(&shell_quote(item));
-                out.push('\n');
-            }
-            ParamFormat::Multiline => {
-                out.push_str(item);
-                out.push('\n');
-            }
-            ParamFormat::FlagPerLine => {
-                match item
-                    .strip_prefix("--")
-                    .and_then(|rest| rest.split_once('='))
-                {
-                    Some((flag, value)) => {
-                        out.push_str(&format!("--{flag}\n{value}\n"));
-                    }
-                    None => {
-                        out.push_str(item);
-                        out.push('\n');
-                    }
-                }
-            }
-        }
-    }
-    out
 }
 
 /// The `Args` a value is, if it is one.
