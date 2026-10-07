@@ -503,29 +503,35 @@ fn spawn_strategy_names_pick_the_first_strategy_that_runs() {
     assert!(Strategy::parse("remote").is_err());
 }
 
+/// Four actions meet: each says it has started and waits, for as long as the
+/// machine takes, until all four have. Run one at a time the first would wait
+/// for the others and fail, so the test needs no clock to tell.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn independent_actions_run_at_once_up_to_jobs() {
     let (_dir, layout) = layout();
     let outs: Vec<Artifact> = (0..4).map(|i| out(&format!("s{i}.txt"))).collect();
     let actions = outs
         .iter()
-        .map(|o| {
+        .enumerate()
+        .map(|(i, o)| {
             shell(
-                &format!("sleep 1; echo > {}", o.exec_path()),
+                &format!(
+                    "mkdir -p meet && : > meet/{i}; for n in $(seq 600); do [ $(ls meet | wc -l) -ge 4 ] && exec echo > {out}; sleep 0.1; done; exit 1",
+                    out = o.exec_path()
+                ),
                 vec![],
                 vec![o.clone()],
             )
         })
         .collect();
-    let started = std::time::Instant::now();
-    let outcome = run(&layout, actions, &outs, false).await;
+    let options = Options {
+        jobs: 4,
+        strategy: Strategy::Local,
+        ..Options::default()
+    };
+    let outcome = execute(&layout, actions, &outs, &options, Arc::new(Quiet)).await;
     assert!(outcome.failures.is_empty(), "{:?}", outcome.failures);
     assert_eq!(outcome.ran, 4);
-    assert!(
-        started.elapsed() < std::time::Duration::from_millis(2500),
-        "four one-second actions took {:?}",
-        started.elapsed()
-    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
