@@ -342,6 +342,37 @@ pub(crate) struct Site {
     pub config: String,
 }
 
+/// What `--keep_going` says of the targets it goes on without: each is a
+/// warning, and a target that failed because of one it reads says so besides.
+fn keep_going_warnings(report: &Report) -> Vec<String> {
+    let mut lines = Vec::new();
+    for (label, _) in &report.analysis_errors {
+        if !report.failed_roots.contains(label) {
+            continue;
+        }
+        let because_of_dep = report
+            .analysis_sites
+            .get(label)
+            .is_some_and(|site| site.failing != *label);
+        lines.push(format!(
+            "WARNING: errors encountered while analyzing target '{}', it will not be built.{}",
+            label_text(label),
+            if because_of_dep {
+                "\nAnalysis failed"
+            } else {
+                ""
+            }
+        ));
+    }
+    for (label, message) in &report.incompatible_errors {
+        lines.push(format!(
+            "WARNING: errors encountered while analyzing target '{}', it will not be built.\n{message}",
+            label_text(label)
+        ));
+    }
+    lines
+}
+
 /// The target a message of analysis says it is about: the rule label in
 /// `in <what> rule <label>: <why>`, which is how Bazel starts the error of a
 /// rule, whichever target of the build that rule is the target of.
@@ -1662,11 +1693,8 @@ pub(crate) fn print(
         eprintln!("{text}");
     }
     if keep_going {
-        for (label, message) in &report.incompatible_errors {
-            eprintln!(
-                "WARNING: errors encountered while analyzing target '{}', it will not be built.\n{message}",
-                label_text(label)
-            );
+        for line in keep_going_warnings(report) {
+            eprintln!("{line}");
         }
     }
     for (what, text) in &report.outputs {
@@ -1779,9 +1807,11 @@ pub(crate) fn print(
             );
         }
         let tests = report.tests.len();
-        let found = match (requested - tests.min(requested), tests) {
-            (_, 0) if test_output.is_some() && requested == 0 => "0 test targets".to_owned(),
-            (_, 0) => plural(requested, "target", "targets"),
+        // The targets that failed to analyse are not among those found.
+        let found_count = requested.saturating_sub(report.failed_roots.len());
+        let found = match (found_count - tests.min(found_count), tests) {
+            (_, 0) if test_output.is_some() && found_count == 0 => "0 test targets".to_owned(),
+            (_, 0) => plural(found_count, "target", "targets"),
             (0, t) => plural(t, "test target", "test targets"),
             (n, t) => format!(
                 "{} and {}",
@@ -1793,12 +1823,10 @@ pub(crate) fn print(
         if keep_going && (incompatible || (!failed_owners.is_empty() && !verbose_failures)) {
             eprintln!("Use --verbose_failures to see the command lines of failed build steps.");
         }
-        if keep_going && incompatible {
-            eprintln!("ERROR: command succeeded, but not all targets were analyzed");
-        }
 
         // `--show_result=1`: say where the result is when there is one target.
-        if analysed - report.source_files.len().min(analysed) <= show_result {
+        let analysed_ok = analysed - report.failed_roots.len();
+        if analysed_ok - report.source_files.len().min(analysed_ok) <= show_result {
             for result in built
                 .iter()
                 .filter(|r| !report.source_files.contains(&r.label))
@@ -1815,6 +1843,11 @@ pub(crate) fn print(
                     eprintln!("  {file}");
                 }
             }
+        }
+        // Said last of what a build did, unless a loading error says it.
+        if keep_going && load_errors.is_none() && (incompatible || !report.failed_roots.is_empty())
+        {
+            eprintln!("ERROR: command succeeded, but not all targets were analyzed");
         }
     }
     if let Some((what, _)) = load_errors {
@@ -2076,6 +2109,45 @@ fn absolute(layout: &Layout, repo: &str, location: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    /// Probed on Bazel 9.2.0 (buildfiji-xqeg): a root that failed itself is
+    /// warned of alone, and one that failed because of what it reads says so.
+    #[test]
+    fn keep_going_warns_of_each_target_it_goes_on_without() {
+        use super::*;
+        let label = |name: &str| Label {
+            repo: String::new(),
+            package: String::new(),
+            name: name.to_owned(),
+        };
+        let mut report = Report::new(Layout {
+            workspace: std::path::PathBuf::new(),
+            output_base: std::path::PathBuf::new(),
+        });
+        report.failed_roots = vec![label("bad"), label("uses")];
+        report.analysis_errors = vec![
+            (label("bad"), "in r rule //:bad: boom".to_owned()),
+            (label("uses"), "in r rule //:bad: boom".to_owned()),
+        ];
+        for (root, failing) in [("bad", "bad"), ("uses", "bad")] {
+            report.analysis_sites.insert(
+                label(root),
+                Site {
+                    failing: label(failing),
+                    location: "BUILD:1:1".to_owned(),
+                    config: "abc".to_owned(),
+                },
+            );
+        }
+        let warn = "WARNING: errors encountered while analyzing target";
+        assert_eq!(
+            keep_going_warnings(&report),
+            [
+                format!("{warn} '//:bad', it will not be built."),
+                format!("{warn} '//:uses', it will not be built.\nAnalysis failed"),
+            ]
+        );
+    }
+
     /// Probed on Bazel 9.2.0.
     #[test]
     fn a_resource_flag_is_a_number_or_a_keyword_with_an_operation() {
