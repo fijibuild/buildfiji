@@ -52,7 +52,7 @@ pub enum Command {
     /// Fetches external repositories.
     Fetch(TargetArgs),
     /// Removes output tree.
-    Clean,
+    Clean(QueryArgs),
     /// Displays runtime info about the server.
     Info(QueryArgs),
     /// Prints version information.

@@ -125,6 +125,85 @@ impl Layout {
     }
 }
 
+/// What `clean` did that the command says.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Cleaned {
+    /// The tree is gone.
+    Removed,
+    /// The tree was renamed to this and is being deleted in the background.
+    Moved(PathBuf),
+}
+
+impl Layout {
+    /// `bazel clean`: the convenience links go, the action cache goes, and so
+    /// does the execroot, or with `expunge` the whole output base. With
+    /// `asynchronous` the tree is renamed (`<tree>_tmp_<unique>`) and deleted
+    /// by a process that outlives this one.
+    pub fn clean(
+        &self,
+        prefix: &str,
+        expunge: bool,
+        asynchronous: bool,
+        unique: &str,
+    ) -> io::Result<Cleaned> {
+        // Links that lead into the output base, which a build made.
+        if prefix != "/" {
+            let workspace_name = self.workspace.file_name().map_or_else(
+                || "workspace".to_owned(),
+                |n| n.to_string_lossy().into_owned(),
+            );
+            for name in [
+                "bin",
+                "out",
+                "testlogs",
+                "genfiles",
+                workspace_name.as_str(),
+            ] {
+                let at = self.workspace.join(format!("{prefix}{name}"));
+                if std::fs::read_link(&at).is_ok_and(|to| to.starts_with(&self.output_base)) {
+                    std::fs::remove_file(&at)?;
+                }
+            }
+        }
+        let cache = self.output_base.join("fjfj-action-cache.json");
+        match std::fs::remove_file(&cache) {
+            Err(e) if e.kind() != io::ErrorKind::NotFound => return Err(e),
+            _ => {}
+        }
+        let tree = if expunge {
+            self.output_base.clone()
+        } else {
+            self.output_base.join("execroot")
+        };
+        if !tree.exists() {
+            return Ok(Cleaned::Removed);
+        }
+        if !asynchronous {
+            if expunge {
+                crate::run::remove(&tree)?;
+            } else {
+                crate::run::remove(&tree.join(MAIN_REPO_DIR))?;
+            }
+            return Ok(Cleaned::Removed);
+        }
+        let mut moved = tree.clone().into_os_string();
+        moved.push(format!("_tmp_{unique}"));
+        let moved = PathBuf::from(moved);
+        std::fs::rename(&tree, &moved)?;
+        // A process of its own, which carries on after this one exits.
+        std::process::Command::new("sh")
+            .arg("-c")
+            .arg("chmod -R u+w \"$1\"; rm -rf \"$1\"")
+            .arg("fjfj-clean")
+            .arg(&moved)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()?;
+        Ok(Cleaned::Moved(moved))
+    }
+}
+
 /// `to` as a symlink to `from`, replacing a symlink that points elsewhere.
 /// `Ok(Err(why))` when something that is not a link is in the way.
 fn link(from: &Path, to: &Path) -> io::Result<Result<(), &'static str>> {
