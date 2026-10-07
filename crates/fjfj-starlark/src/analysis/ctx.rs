@@ -1086,6 +1086,7 @@ impl CtxState {
             target_cpu: target_cpu(&self.configuration.cpu),
             compilation_mode: self.configuration.compilation_mode.name(),
             defines: &defines,
+            toolchain_variables: &[],
             main_repo_name: &self.main_repo_name,
             context: LabelContext {
                 repo: &self.label.repo,

@@ -292,6 +292,13 @@ async fn genrule(
             files: t.files.to_vec(),
         })
         .collect();
+    // The Make variables of the targets in `toolchains`.
+    let toolchain_variables: Vec<Vec<(String, String)>> =
+        targets(ctx, key, labels(label, attrs, "toolchains")?)
+            .await?
+            .into_iter()
+            .map(|(_, t)| fjfj_starlark::template_variables_of(t.providers.clone()))
+            .collect();
     let expander = Expander {
         rule_class: "genrule",
         attribute: "cmd",
@@ -303,6 +310,7 @@ async fn genrule(
         target_cpu: target_cpu(&config.cpu),
         compilation_mode: config.compilation_mode.name(),
         defines: &config.defines,
+        toolchain_variables: &toolchain_variables,
         main_repo_name: &env.main_repo_name,
         context: LabelContext {
             repo: &label.repo,

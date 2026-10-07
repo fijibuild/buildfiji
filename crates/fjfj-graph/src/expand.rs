@@ -118,6 +118,9 @@ pub struct Expander<'a> {
     pub target_cpu: &'a str,
     pub compilation_mode: &'a str,
     pub defines: &'a BTreeMap<String, String>,
+    /// What the targets of the `toolchains` attribute give as Make variables,
+    /// in the order the attribute lists them: the first to name one wins.
+    pub toolchain_variables: &'a [Vec<(String, String)>],
     /// The runfiles name of the main repository, `_main`.
     pub main_repo_name: &'a str,
     /// Where relative labels in `$(location ...)` are read.
@@ -253,13 +256,29 @@ impl Expander<'_> {
                 _ => self.rule_dir(),
             },
             "RULEDIR" => self.rule_dir(),
-            "GENDIR" | "BINDIR" => self.bin_dir.to_owned(),
-            "TARGET_CPU" => self.target_cpu.to_owned(),
-            "COMPILATION_MODE" => self.compilation_mode.to_owned(),
-            other => match self.defines.get(other) {
-                Some(value) => value.clone(),
-                None => return Err(self.error(format!("$({other}) not defined"))),
-            },
+            // A `--define` is read before a toolchain's variable, and that
+            // before the configuration's own.
+            other => {
+                if let Some(value) = self.defines.get(other) {
+                    return Ok(value.clone());
+                }
+                let from_toolchain = self.toolchain_variables.iter().find_map(|variables| {
+                    variables
+                        .iter()
+                        .rev()
+                        .find(|(k, _)| k == other)
+                        .map(|(_, v)| v.clone())
+                });
+                if let Some(value) = from_toolchain {
+                    return Ok(value);
+                }
+                match other {
+                    "GENDIR" | "BINDIR" => self.bin_dir.to_owned(),
+                    "TARGET_CPU" => self.target_cpu.to_owned(),
+                    "COMPILATION_MODE" => self.compilation_mode.to_owned(),
+                    _ => return Err(self.error(format!("$({other}) not defined"))),
+                }
+            }
         })
     }
 
@@ -399,6 +418,7 @@ mod tests {
             target_cpu: "x86_64",
             compilation_mode: "fastbuild",
             defines: &defines,
+            toolchain_variables: &[],
             main_repo_name: "_main",
             context: LabelContext {
                 repo: "",

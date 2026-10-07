@@ -2223,3 +2223,54 @@ r = rule(implementation = _impl, attrs = {
     let t = analyse(&repos, "//:a").await.unwrap();
     assert_eq!(t.printed.without_sites(), ["types: Target Target"]);
 }
+
+/// Probed on Bazel 9.2.0: the `toolchains` of a genrule give Make variables,
+/// the first listed winning, after `--define` and before the configuration's
+/// own.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_genrule_reads_make_variables_from_its_toolchains() {
+    let (_dir, repos) = workspace(&[
+        ("MODULE.bazel", ""),
+        (
+            "defs.bzl",
+            r#"
+def _impl(ctx):
+    return [platform_common.TemplateVariableInfo({"FOO": ctx.attr.v, "COMPILATION_MODE": "tc_" + ctx.attr.v})]
+vars_rule = rule(implementation = _impl, attrs = {"v": attr.string()})
+"#,
+        ),
+        (
+            "BUILD.bazel",
+            r#"
+load(':defs.bzl', 'vars_rule')
+vars_rule(name = 'v1', v = 'one')
+vars_rule(name = 'v2', v = 'two')
+genrule(name = 'g', outs = ['g.txt'], toolchains = [':v1', ':v2'], cmd = 'echo $(FOO) $(COMPILATION_MODE) $(BINDIR)')
+"#,
+        ),
+    ]);
+    let command = |config: fjfj_graph::Configuration| {
+        let repos = &repos;
+        async move {
+            let g = analyse_in(repos, "//:g", config).await.unwrap();
+            let ActionKind::Spawn { argv, .. } = &g.actions[0].kind else {
+                panic!()
+            };
+            argv[2].clone()
+        }
+    };
+    assert!(
+        command(config())
+            .await
+            .ends_with("echo one tc_one bazel-out/k8-fastbuild/bin")
+    );
+    let mut defined = config();
+    defined
+        .defines
+        .insert("COMPILATION_MODE".into(), "zz".into());
+    assert!(
+        command(defined)
+            .await
+            .ends_with("echo one zz bazel-out/k8-fastbuild/bin")
+    );
+}

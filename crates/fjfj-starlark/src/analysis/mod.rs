@@ -111,7 +111,7 @@ pub use run::{
     ATTRIBUTE_ERRORS, DepEdge, RuleRequest, RuleResult, SplitBranches, error_events,
     labels_of_attrs, resolved_attrs, rule_schema, run_rule, split_printed, with_printed,
 };
-pub use target::{DepInfo, StoredProvider};
+pub use target::{DepInfo, StoredProvider, template_variables_of};
 pub use transition::{
     Edge, TRANSITION_ERROR, TransitionError, TransitionSpec, apply_transition,
     split_transition_error, transition_error, transition_error_for, transition_spec,

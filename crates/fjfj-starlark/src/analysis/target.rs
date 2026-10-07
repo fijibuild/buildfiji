@@ -238,6 +238,25 @@ pub(super) fn template_variables<'v>(info: &Arc<DepInfo>, heap: Heap<'v>) -> Vec
         .unwrap_or_default()
 }
 
+/// The Make variables the target that gave `providers` has, for a rule that
+/// reads them without a Starlark heap of its own (the native `genrule`).
+pub fn template_variables_of(providers: Vec<StoredProvider>) -> Vec<(String, String)> {
+    let info = Arc::new(DepInfo {
+        label: Label {
+            repo: String::new(),
+            package: String::new(),
+            name: String::new(),
+        },
+        rule_class: None,
+        generated: false,
+        files: Vec::new(),
+        executable: None,
+        runfiles: fjfj_graph::Runfiles::default(),
+        providers,
+    });
+    starlark::environment::Module::with_temp_heap(|module| template_variables(&info, module.heap()))
+}
+
 impl TargetValue {
     /// `providers(target)` of `cquery`: each provider the target gave, by
     /// name, `DefaultInfo` first.

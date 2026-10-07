@@ -180,6 +180,7 @@ pub(crate) async fn register(
             target_cpu: &config.cpu,
             compilation_mode: config.compilation_mode.name(),
             defines: &config.defines,
+            toolchain_variables: &[],
             main_repo_name: &env.main_repo_name,
             context: LabelContext {
                 repo: &label.repo,
