@@ -579,6 +579,79 @@ refuse = rule(implementation = _refuse)
     );
 }
 
+/// Probed on Bazel 9.2.0: what each wrong call of `Args` says.
+#[test]
+fn the_wrong_calls_of_args_say_what_bazel_says() {
+    let cases: [(&str, &str); 14] = [
+        (
+            "a.add_all('abc')",
+            "Error in add_all: expected value of type 'sequence or depset' for values, got 'string'",
+        ),
+        (
+            "a.add_all('--flag', 5)",
+            "Error in add_all: in call to add_all(), parameter 'values' got value of type 'int', want 'sequence or depset'",
+        ),
+        (
+            "a.add(['x'])",
+            "Error in add: Args.add() doesn't accept vectorized arguments. Please use Args.add_all() or Args.add_joined() instead.",
+        ),
+        (
+            "a.add(1, 2)",
+            "Error in add: expected value of type 'string' for arg name, got 'int'",
+        ),
+        (
+            "a.add('v', format = 'x')",
+            "Error in add: Invalid value for parameter \"format\": Expected string with a single \"%s\"",
+        ),
+        (
+            "a.add_all(['a'], format_each = '%s%s')",
+            "Error in add_all: Invalid value for parameter \"format_each\": Expected string with a single \"%s\"",
+        ),
+        (
+            "a.add_joined(['a'], join_with = ',', format_joined = 'x')",
+            "Error in add_joined: Invalid value for parameter \"format_joined\": Expected string with a single \"%s\"",
+        ),
+        (
+            "a.add_joined(['a'], join_with = 3)",
+            "Error in add_joined: in call to add_joined(), parameter 'join_with' got value of type 'int', want 'string'",
+        ),
+        (
+            "a.add_all(['a'], map_each = 'str')",
+            "Error in add_all: in call to add_all(), parameter 'map_each' got value of type 'string', want 'callable or NoneType'",
+        ),
+        (
+            "a.add_all(['a'], expand_directories = 'x')",
+            "Error in add_all: in call to add_all(), parameter 'expand_directories' got value of type 'string', want 'bool'",
+        ),
+        (
+            "a.use_param_file('nopercent')",
+            "Error in use_param_file: Invalid value for parameter \"param_file_arg\": Expected string with a single \"%s\", got \"nopercent\"",
+        ),
+        (
+            "a.use_param_file(3)",
+            "Error in use_param_file: in call to use_param_file(), parameter 'param_file_arg' got value of type 'int', want 'string'",
+        ),
+        (
+            "a.set_param_file_format('bogus')",
+            "Error in set_param_file_format: Invalid value for parameter \"format\": Expected one of \"shell\", \"multiline\", \"flag_per_line\"",
+        ),
+        (
+            "ctx.actions.declare_file('f').tree_relative_path",
+            "Error: tree_relative_path not allowed for files that are not tree artifact files.",
+        ),
+    ];
+    for (call, want) in cases {
+        let src = format!(
+            "def _impl(ctx):\n    a = ctx.actions.args()\n    {call}\n    return []\nr = rule(implementation = _impl)\n"
+        );
+        let err = run_rule(&request(&src, "r", Vec::new(), Vec::new())).unwrap_err();
+        assert!(
+            err.lines().any(|line| line == want),
+            "{call}: wanted `{want}` in\n{err}"
+        );
+    }
+}
+
 /// An `Args` that asked for a param file gets one when the command line is
 /// longer than 31744, each word counting its separator and the executable
 /// counting too. Probed on Bazel 9.2.0 at both sides of the limit.

@@ -181,6 +181,15 @@ fn file_members(builder: &mut MethodsBuilder) {
         Ok(file(this).artifact.tree)
     }
 
+    /// Only a file inside a directory output has one.
+    #[starlark(attribute)]
+    fn tree_relative_path<'v>(this: Value<'v>) -> starlark::Result<String> {
+        let _ = this;
+        Err(crate::args::fatal(
+            "tree_relative_path not allowed for files that are not tree artifact files.",
+        ))
+    }
+
     #[starlark(attribute)]
     fn is_symlink<'v>(this: Value<'v>) -> starlark::Result<bool> {
         Ok(file(this).artifact.symlink)

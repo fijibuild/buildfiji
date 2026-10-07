@@ -107,9 +107,9 @@ fn wrong(function: &str, value: Value<'_>) -> starlark::Error {
     ))
 }
 
-/// `pattern` with `%s` replaced; `%%` is a `%`.
-fn formatted(function: &str, pattern: &str, text: &str) -> starlark::Result<String> {
-    let mut out = String::with_capacity(pattern.len() + text.len());
+/// Whether `pattern` has one `%s` (`%%` is a `%`), else Bazel's error naming
+/// the parameter.
+fn check_format(name: &str, pattern: &str) -> starlark::Result<()> {
     let mut holes = 0;
     let mut chars = pattern.chars().peekable();
     while let Some(c) = chars.next() {
@@ -117,6 +117,31 @@ fn formatted(function: &str, pattern: &str, text: &str) -> starlark::Result<Stri
             ('%', Some('s')) => {
                 chars.next();
                 holes += 1;
+            }
+            ('%', Some('%')) => {
+                chars.next();
+            }
+            _ => {}
+        }
+    }
+    if holes == 1 {
+        Ok(())
+    } else {
+        Err(fatal(format!(
+            "Invalid value for parameter \"{name}\": Expected string with a single \"%s\""
+        )))
+    }
+}
+
+/// `pattern` with `%s` replaced, already checked by [`check_format`]; `%%` is
+/// a `%`.
+fn formatted(pattern: &str, text: &str) -> String {
+    let mut out = String::with_capacity(pattern.len() + text.len());
+    let mut chars = pattern.chars().peekable();
+    while let Some(c) = chars.next() {
+        match (c, chars.peek()) {
+            ('%', Some('s')) => {
+                chars.next();
                 out.push_str(text);
             }
             ('%', Some('%')) => {
@@ -126,12 +151,18 @@ fn formatted(function: &str, pattern: &str, text: &str) -> starlark::Result<Stri
             _ => out.push(c),
         }
     }
-    if holes != 1 {
-        return Err(fatal(format!(
-            "{function}: format '{pattern}' must contain exactly one '%s'"
-        )));
-    }
-    Ok(out)
+    out
+}
+
+/// A name given before values: a string, or Bazel's error.
+fn arg_name(value: Option<Value<'_>>) -> starlark::Result<String> {
+    let value = value.expect("bound");
+    value.unpack_str().map(str::to_owned).ok_or_else(|| {
+        fatal(format!(
+            "expected value of type 'string' for arg name, got '{}'",
+            value.get_type()
+        ))
+    })
 }
 
 fn flag(
@@ -172,6 +203,7 @@ fn string_opt(
 fn expand<'v>(
     function: &str,
     values: Value<'v>,
+    named: bool,
     map_each: Option<Value<'v>>,
     format_each: Option<&str>,
     uniquify: bool,
@@ -182,12 +214,29 @@ fn expand<'v>(
     } else if let Some(items) = crate::args::sequence(values) {
         items
     } else {
-        return Err(fatal(format!(
-            "in call to {function}(), parameter 'values' got value of type '{}', want 'sequence or depset'",
-            values.get_type()
-        )));
+        // Given after a name it is a parameter of its own, which Starlark
+        // checks; alone it is the first parameter, which the method checks.
+        return Err(fatal(if named {
+            format!(
+                "in call to {function}(), parameter 'values' got value of type '{}', want 'sequence or depset'",
+                values.get_type()
+            )
+        } else {
+            format!(
+                "expected value of type 'sequence or depset' for values, got '{}'",
+                values.get_type()
+            )
+        }));
     };
     let mut out: Vec<String> = Vec::new();
+    if let Some(f) = map_each.filter(|f| !f.is_none())
+        && !f.get_type().contains("function")
+    {
+        return Err(fatal(format!(
+            "in call to {function}(), parameter 'map_each' got value of type '{}', want 'callable or NoneType'",
+            f.get_type()
+        )));
+    }
     for item in items {
         let mut produced: Vec<String> = Vec::new();
         match map_each.filter(|f| !f.is_none()) {
@@ -210,7 +259,7 @@ fn expand<'v>(
         }
         for text in produced {
             let text = match format_each {
-                Some(pattern) => formatted(function, pattern, &text)?,
+                Some(pattern) => formatted(pattern, &text),
                 None => text,
             };
             if !uniquify || !out.contains(&text) {
@@ -242,23 +291,36 @@ fn args_members(builder: &mut MethodsBuilder) {
         )?;
         let first = bound[0].expect("required");
         let format = string_opt("add", "format", bound[2])?;
+        if let Some(pattern) = &format {
+            check_format("format", pattern)?;
+        }
+        // One value, which is not a collection: those are for `add_all`.
+        let single = |value: Value<'v>| -> starlark::Result<String> {
+            if let Some(text) = text_of(value) {
+                return Ok(text);
+            }
+            if is_depset(value) || crate::args::sequence(value).is_some() {
+                return Err(fatal(
+                    "Args.add() doesn't accept vectorized arguments. Please use Args.add_all() or Args.add_joined() instead.",
+                ));
+            }
+            Err(wrong("add", value))
+        };
         let mut state = args_of(this).state.lock().unwrap();
         match bound[1] {
             None => {
-                let text = text_of(first).ok_or_else(|| wrong("add", first))?;
+                let text = single(first)?;
                 state.items.push(match &format {
-                    Some(p) => formatted("add", p, &text)?,
+                    Some(p) => formatted(p, &text),
                     None => text,
                 });
             }
             Some(value) => {
-                let name = first
-                    .unpack_str()
-                    .ok_or_else(|| fatal("add: the argument name must be a string"))?;
-                state.items.push(name.to_owned());
-                let text = text_of(value).ok_or_else(|| wrong("add", value))?;
+                let name = arg_name(Some(first))?;
+                state.items.push(name);
+                let text = single(value)?;
                 state.items.push(match &format {
-                    Some(p) => formatted("add", p, &text)?,
+                    Some(p) => formatted(p, &text),
                     None => text,
                 });
             }
@@ -293,25 +355,23 @@ fn args_members(builder: &mut MethodsBuilder) {
             eval,
         )?;
         let (name, values) = match bound[1] {
-            Some(values) => (
-                Some(
-                    bound[0]
-                        .and_then(|v| v.unpack_str())
-                        .ok_or_else(|| fatal("add_all: the argument name must be a string"))?
-                        .to_owned(),
-                ),
-                values,
-            ),
+            Some(values) => (Some(arg_name(bound[0])?), values),
             None => (None, bound[0].expect("required")),
         };
         let format_each = string_opt("add_all", "format_each", bound[3])?;
+        if let Some(pattern) = &format_each {
+            check_format("format_each", pattern)?;
+        }
         let before_each = string_opt("add_all", "before_each", bound[4])?;
         let omit_if_empty = flag("add_all", "omit_if_empty", bound[5], true)?;
         let uniquify = flag("add_all", "uniquify", bound[6], false)?;
+        flag("add_all", "expand_directories", bound[7], true)?;
         let terminate_with = string_opt("add_all", "terminate_with", bound[8])?;
+        flag("add_all", "allow_closure", bound[9], false)?;
         let items = expand(
             "add_all",
             values,
+            name.is_some(),
             bound[2],
             format_each.as_deref(),
             uniquify,
@@ -363,28 +423,35 @@ fn args_members(builder: &mut MethodsBuilder) {
             eval,
         )?;
         let (name, values) = match bound[1] {
-            Some(values) => (
-                Some(
-                    bound[0]
-                        .and_then(|v| v.unpack_str())
-                        .ok_or_else(|| fatal("add_joined: the argument name must be a string"))?
-                        .to_owned(),
-                ),
-                values,
-            ),
+            Some(values) => (Some(arg_name(bound[0])?), values),
             None => (None, bound[0].expect("required")),
         };
-        let join_with = bound[2]
-            .and_then(|v| v.unpack_str())
-            .ok_or_else(|| fatal("in call to add_joined(), parameter 'join_with' got value of type that is not 'string'"))?
+        let join = bound[2].expect("required");
+        let join_with = join
+            .unpack_str()
+            .ok_or_else(|| {
+                fatal(format!(
+                    "in call to add_joined(), parameter 'join_with' got value of type '{}', want 'string'",
+                    join.get_type()
+                ))
+            })?
             .to_owned();
         let format_each = string_opt("add_joined", "format_each", bound[4])?;
+        if let Some(pattern) = &format_each {
+            check_format("format_each", pattern)?;
+        }
         let format_joined = string_opt("add_joined", "format_joined", bound[5])?;
+        if let Some(pattern) = &format_joined {
+            check_format("format_joined", pattern)?;
+        }
         let omit_if_empty = flag("add_joined", "omit_if_empty", bound[6], true)?;
         let uniquify = flag("add_joined", "uniquify", bound[7], false)?;
+        flag("add_joined", "expand_directories", bound[8], true)?;
+        flag("add_joined", "allow_closure", bound[9], false)?;
         let items = expand(
             "add_joined",
             values,
+            name.is_some(),
             bound[3],
             format_each.as_deref(),
             uniquify,
@@ -395,7 +462,7 @@ fn args_members(builder: &mut MethodsBuilder) {
         }
         let mut joined = items.join(&join_with);
         if let Some(pattern) = format_joined {
-            joined = formatted("add_joined", &pattern, &joined)?;
+            joined = formatted(&pattern, &joined);
         }
         let mut state = args_of(this).state.lock().unwrap();
         if let Some(name) = name {
@@ -421,10 +488,21 @@ fn args_members(builder: &mut MethodsBuilder) {
             args,
             eval,
         )?;
-        let pattern = bound[0]
-            .and_then(|v| v.unpack_str())
-            .ok_or_else(|| fatal("in call to use_param_file(), parameter 'param_file_arg' got value of type that is not 'string'"))?
+        let given = bound[0].expect("required");
+        let pattern = given
+            .unpack_str()
+            .ok_or_else(|| {
+                fatal(format!(
+                    "in call to use_param_file(), parameter 'param_file_arg' got value of type '{}', want 'string'",
+                    given.get_type()
+                ))
+            })?
             .to_owned();
+        if check_format("param_file_arg", &pattern).is_err() {
+            return Err(fatal(format!(
+                "Invalid value for parameter \"param_file_arg\": Expected string with a single \"%s\", got \"{pattern}\""
+            )));
+        }
         let use_always = flag("use_param_file", "use_always", bound[1], false)?;
         let mut state = args_of(this).state.lock().unwrap();
         let format = state.format.unwrap_or(ParamFormat::Shell);
@@ -443,9 +521,10 @@ fn args_members(builder: &mut MethodsBuilder) {
             "multiline" => ParamFormat::Multiline,
             "flag_per_line" => ParamFormat::FlagPerLine,
             other => {
-                return Err(fatal(format!(
-                    "Invalid value for parameter \"format\": Allowed values are: \"shell\", \"multiline\", \"flag_per_line\", got \"{other}\""
-                )));
+                let _ = other;
+                return Err(fatal(
+                    "Invalid value for parameter \"format\": Expected one of \"shell\", \"multiline\", \"flag_per_line\"",
+                ));
             }
         };
         let mut state = args_of(this).state.lock().unwrap();
