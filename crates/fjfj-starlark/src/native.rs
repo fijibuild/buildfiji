@@ -406,6 +406,18 @@ fn internal_globals(builder: &mut GlobalsBuilder) {
         Ok(crate::native_method::wrap(heap, module, name, function))
     }
 
+    /// `function` as the function `name` of the file `file` of Bazel's builtins.
+    fn fjfj_builtins_function<'v>(
+        #[starlark(require = pos)] name: &str,
+        #[starlark(require = pos)] file: &str,
+        #[starlark(require = pos)] function: Value<'v>,
+        heap: Heap<'v>,
+    ) -> starlark::Result<Value<'v>> {
+        Ok(crate::native_method::wrap_function(
+            heap, name, file, function,
+        ))
+    }
+
     /// The `apple_platform` called `name`.
     fn fjfj_apple_platform<'v>(
         #[starlark(require = pos)] name: &str,

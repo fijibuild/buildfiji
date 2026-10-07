@@ -82,3 +82,74 @@ pub(crate) fn wrap<'v>(
         function,
     })
 }
+
+/// A function Bazel defines in its `@_builtins` Starlark, which prints with
+/// the file it is in: `<function name from @@_builtins//:path.bzl>`.
+#[derive(
+    Debug, Trace, Coerce, ProvidesStaticType, NoSerialize, StarlarkPagablePanic, Allocative,
+)]
+#[repr(C)]
+pub(crate) struct BuiltinsFunctionGen<V> {
+    #[trace(static)]
+    name: String,
+    #[trace(static)]
+    file: String,
+    function: V,
+}
+
+starlark_complex_value!(pub(crate) BuiltinsFunction);
+
+impl<'v> Freeze for BuiltinsFunction<'v> {
+    type Frozen = FrozenBuiltinsFunction;
+
+    fn freeze(self, freezer: &Freezer) -> FreezeResult<FrozenBuiltinsFunction> {
+        Ok(BuiltinsFunctionGen {
+            name: self.name,
+            file: self.file,
+            function: self.function.freeze(freezer)?,
+        })
+    }
+}
+
+impl<V> fmt::Display for BuiltinsFunctionGen<V> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "<function {} from @@_builtins//:{}>",
+            self.name, self.file
+        )
+    }
+}
+
+#[starlark_value(type = "function")]
+impl<'v, V: ValueLike<'v>> StarlarkValue<'v> for BuiltinsFunctionGen<V>
+where
+    Self: ProvidesStaticType<'v>,
+{
+    fn invoke(
+        &self,
+        _me: Value<'v>,
+        args: &Arguments<'v, '_>,
+        eval: &mut Evaluator<'v, '_, '_>,
+    ) -> starlark::Result<Value<'v>> {
+        self.function.to_value().invoke(args, eval)
+    }
+
+    fn name_for_call_stack(&self, _me: Value<'v>) -> String {
+        self.name.clone()
+    }
+}
+
+/// `function` as the function `name` of the file `file` of Bazel's builtins.
+pub(crate) fn wrap_function<'v>(
+    heap: starlark::values::Heap<'v>,
+    name: &str,
+    file: &str,
+    function: Value<'v>,
+) -> Value<'v> {
+    heap.alloc_complex(BuiltinsFunctionGen {
+        name: name.to_owned(),
+        file: file.to_owned(),
+        function,
+    })
+}

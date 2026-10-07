@@ -375,6 +375,10 @@ fn type_global(builder: &mut starlark::environment::GlobalsBuilder) {
                 }
             }
         }
+        // Probed on 9.2.0: the feature flag provider is its own type.
+        if crate::analysis::target::builtin("_FeatureFlagInfo").is_some_and(|p| p.ptr_eq(a)) {
+            return Ok(heap.alloc("FeatureFlagInfo"));
+        }
         Ok(a.get_type_value().to_value())
     }
 }

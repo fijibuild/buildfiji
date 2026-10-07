@@ -414,13 +414,13 @@ apple_common = struct(
     Objc = _Objc,
     XcodeProperties = None,
     XcodeVersionConfig = _XcodeVersionConfig,
-    apple_host_system_env = _unavailable("apple_common.apple_host_system_env", "buildfiji-136.15"),
-    apple_toolchain = lambda: struct(developer_dir = _unavailable("apple_common.apple_toolchain().developer_dir", "buildfiji-136.15"), platform_developer_framework_dir = _unavailable("apple_common.apple_toolchain().platform_developer_framework_dir", "buildfiji-136.15"), sdk_dir = _unavailable("apple_common.apple_toolchain().sdk_dir", "buildfiji-136.15")),
-    dotted_version = lambda version: str(version) if version else None,
-    new_objc_provider = _unavailable("apple_common.new_objc_provider", "buildfiji-136.15"),
+    apple_host_system_env = fjfj_builtins_function("apple_host_system_env", "common/objc/apple_env.bzl", _unavailable("apple_common.apple_host_system_env", "buildfiji-136.15")),
+    apple_toolchain = fjfj_builtins_function("lambda", "common/objc/apple_common.bzl", lambda: struct(developer_dir = _unavailable("apple_common.apple_toolchain().developer_dir", "buildfiji-136.15"), platform_developer_framework_dir = _unavailable("apple_common.apple_toolchain().platform_developer_framework_dir", "buildfiji-136.15"), sdk_dir = _unavailable("apple_common.apple_toolchain().sdk_dir", "buildfiji-136.15"))),
+    dotted_version = fjfj_builtins_function("lambda", "common/objc/apple_common.bzl", lambda version: str(version) if version else None),
     platform = _APPLE_PLATFORM,
     platform_type = _APPLE_PLATFORM_TYPE,
-    target_apple_env = _unavailable("apple_common.target_apple_env", "buildfiji-136.15"),
+    new_objc_provider = _Objc,
+    target_apple_env = fjfj_builtins_function("target_apple_env", "common/objc/apple_env.bzl", _unavailable("apple_common.target_apple_env", "buildfiji-136.15")),
 )
 
 android_common = struct(

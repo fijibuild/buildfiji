@@ -2201,3 +2201,26 @@ r = rule(implementation = _impl)
     let want = r#"<built-in method TestEnvironment of testing value>|builtin_function_or_method|<built-in method instrumented_files_info of coverage_common value>|<built-in method toolchain_type of config_common value>|{"A": "b"}"#;
     assert!(err.contains(want), "wanted `{want}` in\n{err}");
 }
+
+/// Probed on Bazel 9.2.0: the functions of `apple_common` that Bazel defines
+/// in its builtins print with their file, `new_objc_provider` is a provider,
+/// and the feature flag provider is its own type.
+#[test]
+fn apple_common_functions_print_with_their_builtins_file() {
+    let src = r#"
+def _impl(ctx):
+    fail("|".join([
+        str(apple_common.target_apple_env),
+        type(apple_common.target_apple_env),
+        str(apple_common.dotted_version),
+        str(apple_common.new_objc_provider),
+        type(apple_common.new_objc_provider),
+        type(config_common.FeatureFlagInfo),
+        apple_common.dotted_version("1.2"),
+    ]))
+r = rule(implementation = _impl)
+"#;
+    let err = run_rule(&request(src, "r", Vec::new(), Vec::new())).unwrap_err();
+    let want = "<function target_apple_env from @@_builtins//:common/objc/apple_env.bzl>|function|<function lambda from @@_builtins//:common/objc/apple_common.bzl>|<provider>|Provider|FeatureFlagInfo|1.2";
+    assert!(err.contains(want), "wanted `{want}` in\n{err}");
+}
