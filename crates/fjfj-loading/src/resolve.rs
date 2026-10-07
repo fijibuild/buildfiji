@@ -318,15 +318,23 @@ impl Resolver<'_> {
 }
 
 /// What Bazel says of a pattern whose package did not load: one whose BUILD
-/// file has errors was evaluated for it, one that could not be read was
-/// being parsed.
-fn in_pattern(pattern: &str, message: String) -> String {
+/// file has errors was evaluated for it. One that could not be read says
+/// nothing of the pattern for a label, was being parsed for `:all` and `:*`,
+/// and is an error under the directory for `...`. Probed on 9.2.0.
+fn in_pattern(pattern: &TargetPattern, message: String) -> String {
+    let text = &pattern.text;
     if !message.starts_with("error loading package '") {
         message
     } else if message.ends_with("' contains errors") {
-        format!("Error evaluating '{pattern}': {message}")
+        format!("Error evaluating '{text}': {message}")
     } else {
-        format!("while parsing '{pattern}': {message}")
+        match &pattern.pattern {
+            Pattern::Target(_) | Pattern::Path { .. } => message,
+            Pattern::InPackage { .. } => format!("while parsing '{text}': {message}"),
+            Pattern::Below { directory, .. } => {
+                format!("error loading package under directory '{directory}': {message}")
+            }
+        }
     }
 }
 
@@ -366,7 +374,7 @@ pub fn resolve_with(
             }
             Err(message) => failures.push(Failure {
                 pattern: pattern.text.clone(),
-                message: in_pattern(&pattern.text, message),
+                message: in_pattern(pattern, message),
             }),
         }
     }

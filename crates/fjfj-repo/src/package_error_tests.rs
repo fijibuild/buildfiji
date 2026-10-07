@@ -313,3 +313,53 @@ fn a_package_that_does_not_load_says_what_bazel_says() {
         assert_eq!(events, row.events, "{text}");
     }
 }
+
+/// Probed on Bazel 9.2.0: a package whose `load` cannot be satisfied is named
+/// by the pattern that asked for it only as a wildcard of the package does;
+/// a label says nothing of it, and `...` says it was under a directory.
+#[test]
+fn the_pattern_that_found_a_package_that_does_not_load_is_named_only_as_bazel_names_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let ws = dir.path().join("ws");
+    std::fs::create_dir_all(ws.join("a")).unwrap();
+    std::fs::write(ws.join("a/BUILD"), "load('//a:missing.bzl', 'x')\n").unwrap();
+    let module = eval_module_file("MODULE.bazel", "module(name = 'm')\n", &EvalOptions::root())
+        .unwrap()
+        .module;
+    let repos = Repos::new(
+        Options {
+            workspace_root: ws,
+            output_base: dir.path().join("ob"),
+            environ: BTreeMap::new(),
+            downloader: None,
+            repository_cache: None,
+            distdirs: Vec::new(),
+            registries: Vec::new(),
+            facts: Vec::new(),
+            repo_overrides: Vec::new(),
+        },
+        module,
+    )
+    .unwrap();
+    let reason = "error loading package 'a': cannot load '//a:missing.bzl': no such file";
+    for (text, want) in [
+        ("//a:t", reason.to_owned()),
+        ("//a", reason.to_owned()),
+        ("//a:t+", reason.to_owned()),
+        ("//a:all", format!("while parsing '//a:all': {reason}")),
+        ("//a:*", format!("while parsing '//a:*': {reason}")),
+        (
+            "//a/...",
+            format!("error loading package under directory 'a': {reason}"),
+        ),
+    ] {
+        let ctx = PatternContext {
+            repo: "",
+            offset: "",
+        };
+        let pattern = TargetPattern::parse(text, ctx, &mut |r| r.to_owned()).unwrap();
+        let out = resolve(&[pattern], &repos);
+        let messages: Vec<String> = out.failures.into_iter().map(|f| f.message).collect();
+        assert_eq!(messages, [want], "{text}");
+    }
+}
