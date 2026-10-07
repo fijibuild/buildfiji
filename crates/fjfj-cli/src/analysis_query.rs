@@ -437,6 +437,7 @@ fn build_options(
         strategy: fjfj_exec::run::Options::default().strategy,
         show_result: 0,
         record_execution_platforms: true,
+        subcommands: false,
         test: None,
         workspace_status: None,
         incompatible: None,

@@ -248,16 +248,22 @@ impl CtxState {
     ) {
         let progress = match progress_message {
             // `%{label}`, `%{input}` and `%{output}` stand for the label of
-            // the target, the first input and the first output.
+            // the target, and the first input and output by their short paths.
             Some(message) => message
                 .replace("%{label}", &fjfj_graph::expand::label_text(&self.label))
                 .replace(
                     "%{input}",
-                    &inputs.first().map(Artifact::exec_path).unwrap_or_default(),
+                    &inputs
+                        .first()
+                        .map(|i| FileValueView(i).short_path())
+                        .unwrap_or_default(),
                 )
                 .replace(
                     "%{output}",
-                    &outputs.first().map(Artifact::exec_path).unwrap_or_default(),
+                    &outputs
+                        .first()
+                        .map(|o| FileValueView(o).short_path())
+                        .unwrap_or_default(),
                 ),
             None => {
                 let first = outputs

@@ -46,6 +46,8 @@ pub(crate) struct Options {
     pub show_result: usize,
     /// Decide the execution platform of every rule, for `aquery`.
     pub record_execution_platforms: bool,
+    /// `--subcommands`: say what each command is as it starts.
+    pub subcommands: bool,
     /// `test`: run the tests among the targets, and how much of their logs to show.
     pub test: Option<fjfj_bazel_compat::test_flags::TestOutput>,
     /// The contents of `stable-status.txt` and `volatile-status.txt`, for the
@@ -494,6 +496,8 @@ pub(crate) struct Report {
     /// Actions that cannot be in one build, found once every target was
     /// analysed: nothing runs.
     pub action_conflicts: Vec<String>,
+    /// What `--subcommands` says of each command that ran.
+    pub subcommands: Vec<String>,
     /// Every configured target analysis made, the roots and what they read.
     pub analysed: Vec<Arc<ConfiguredTarget>>,
     pub configured: usize,
@@ -522,6 +526,7 @@ impl Report {
             results: Vec::new(),
             analysis_errors: Vec::new(),
             action_conflicts: Vec::new(),
+            subcommands: Vec::new(),
             incompatible_errors: Vec::new(),
             configuration_checksum: String::new(),
             source_file_warnings: Vec::new(),
@@ -1132,7 +1137,15 @@ pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> R
         ));
         return report;
     }
-    let collector = Arc::new(Collector::default());
+    let collector = Arc::new(Collector {
+        outputs: Mutex::default(),
+        said: Mutex::default(),
+        subcommands: request.options.subcommands.then(|| Subcommands {
+            execroot: request.layout.execroot().display().to_string(),
+            configuration: report.configuration_checksum.clone(),
+            strategy: report.strategy,
+        }),
+    });
     let execution_started = Instant::now();
     let outcome = handle.block_on(execute(
         &request.layout,
@@ -1150,6 +1163,7 @@ pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> R
     ));
     report.execution = execution_started.elapsed();
     report.outputs = std::mem::take(&mut *collector.outputs.lock().unwrap());
+    report.subcommands = std::mem::take(&mut *collector.said.lock().unwrap());
     report.critical_path = outcome.critical_path;
     report.spawned = outcome.spawned;
     report.internal = outcome.ran.saturating_sub(outcome.spawned);
@@ -1323,10 +1337,64 @@ fn shown(prefix: &str, configuration: &Configuration, artifact: &Artifact) -> St
 #[derive(Default)]
 struct Collector {
     outputs: Mutex<Vec<(String, String)>>,
+    /// With `--subcommands`: what each command that starts says of itself.
+    subcommands: Option<Subcommands>,
+    /// What `--subcommands` printed, for the report to say after the analysis.
+    said: Mutex<Vec<String>>,
+}
+
+/// What `--subcommands` prints of a command besides the command.
+struct Subcommands {
+    execroot: String,
+    configuration: String,
+    strategy: &'static str,
 }
 
 impl Progress for Collector {
-    fn started(&self, _: &Action) {}
+    fn started(&self, action: &Action) {
+        let Some(sub) = &self.subcommands else { return };
+        let fjfj_graph::ActionKind::Spawn { argv, env, .. } = &action.kind else {
+            return;
+        };
+        let what = action.progress_message.clone().unwrap_or_else(|| {
+            format!(
+                "{} {}",
+                action.mnemonic,
+                action.outputs.first().map_or("", |o| o.path.as_str())
+            )
+        });
+        let quote = |arg: &str| {
+            let plain = !arg.is_empty()
+                && arg
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || "-_./:,+@%".contains(c));
+            if plain {
+                arg.to_owned()
+            } else {
+                format!("'{}'", arg.replace('\'', "'\\''"))
+            }
+        };
+        let mut text = format!(
+            "SUBCOMMAND: # {} rule target {} [action '{what}', configuration: {}, execution platform: @@platforms//host:host, mnemonic: {}]\n(cd {} && \\\n  exec env - \\\n",
+            action.owner_kind,
+            label_text(&action.owner),
+            sub.configuration,
+            action.mnemonic,
+            quote(&sub.execroot),
+        );
+        let mut env: Vec<_> = env.iter().collect();
+        env.sort();
+        for (name, value) in env {
+            text.push_str(&format!("    {name}={} \\\n", quote(value)));
+        }
+        text.push_str(&format!(
+            "  {})\n# Configuration: {}\n# Execution platform: @@platforms//host:host\n# Runner: {}",
+            argv.iter().map(|a| quote(a)).collect::<Vec<_>>().join(" "),
+            sub.configuration,
+            sub.strategy,
+        ));
+        self.said.lock().unwrap().push(text);
+    }
 
     fn output(&self, action: &Action, text: &str) {
         let what = action
@@ -1468,6 +1536,9 @@ pub(crate) fn print(
         for warning in &report.source_file_warnings {
             eprintln!("{warning}");
         }
+    }
+    for text in &report.subcommands {
+        eprintln!("{text}");
     }
     if keep_going {
         for (label, message) in &report.incompatible_errors {

@@ -820,6 +820,7 @@ async fn build_main(
             })?,
         },
         record_execution_platforms: true,
+        subcommands: diagnostics.subcommands,
         test: test_flags
             .as_ref()
             .filter(|_| command == "test")
@@ -1270,6 +1271,7 @@ mod tests {
             strategy: fjfj_exec::run::Options::default().strategy,
             show_result: 1,
             record_execution_platforms: false,
+            subcommands: true,
             test: None,
             workspace_status: None,
             incompatible: None,
@@ -1304,6 +1306,21 @@ mod tests {
         assert_eq!(
             report.failures[0].message,
             "(Exit 3): bash failed: error executing Genrule command (from genrule rule target //:bad) /bin/bash -c 'source external/bazel_tools/tools/genrule/genrule-setup.sh; exit 3'"
+        );
+        // Each command that ran says what it is, as `--subcommands` has it.
+        let mut said: Vec<&str> = report
+            .subcommands
+            .iter()
+            .map(|text| text.lines().next().unwrap())
+            .collect();
+        said.sort();
+        assert_eq!(said.len(), 2, "{said:?}");
+        assert!(
+            said[1].starts_with("SUBCOMMAND: # genrule rule target //:g [action 'Executing genrule //:g', configuration: "),
+            "{said:?}"
+        );
+        assert!(
+            said[1].ends_with(", execution platform: @@platforms//host:host, mnemonic: Genrule]")
         );
         let good = report.results.iter().find(|r| r.label.name == "g").unwrap();
         assert!(good.built);
@@ -1386,6 +1403,7 @@ checks_test = rule(implementation = _checks, analysis_test = True, attrs = {"ok"
             strategy: fjfj_exec::run::Options::default().strategy,
             show_result: 1,
             record_execution_platforms: false,
+            subcommands: false,
             test: Some(fjfj_bazel_compat::test_flags::TestOutput::Summary),
             workspace_status: None,
             incompatible: None,
@@ -1526,6 +1544,7 @@ checks_test = rule(implementation = _checks, analysis_test = True, attrs = {"ok"
                 strategy: fjfj_exec::run::Options::default().strategy,
                 show_result: 1,
                 record_execution_platforms: false,
+                subcommands: false,
                 test: None,
                 workspace_status: None,
                 incompatible: None,
