@@ -326,6 +326,8 @@ pub(crate) async fn run(args: QueryArgs, kind: Kind) -> Result<(), CliError> {
         .into_iter()
         .chain(args.expr.iter().cloned())
         .collect();
+    let with_rc = fjfj_bazel_compat::option_syntax::normalize(&with_rc, command)
+        .map_err(|e| CliError::CommandLine(anyhow::anyhow!(e)))?;
     let (flags, rest) = extract(kind, &with_rc)?;
     let (build_flags, rest) = fjfj_bazel_compat::build_flags::extract(&rest, command);
     let (test_flags, rest) = fjfj_bazel_compat::test_flags::extract(&rest, command)
@@ -433,11 +435,13 @@ fn build_options(
         keep_going: true,
         build: false,
         symlink_prefix: "bazel-".to_owned(),
+        clean_links: None,
+        make_links: false,
         jobs: None,
         strategy: fjfj_exec::run::Options::default().strategy,
         show_result: 0,
         record_execution_platforms: true,
-        subcommands: false,
+        subcommands: None,
         test: None,
         workspace_status: None,
         incompatible: None,

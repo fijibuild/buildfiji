@@ -38,6 +38,12 @@ pub(crate) struct Options {
     /// `--nobuild`: stop after analysis, running no actions.
     pub build: bool,
     pub symlink_prefix: String,
+    /// `--experimental_convenience_symlinks=clean`: the links of this prefix
+    /// are removed instead of made.
+    pub clean_links: Option<String>,
+    /// Make the links (`--experimental_convenience_symlinks=normal`): `log_only`
+    /// shows paths through them and makes none.
+    pub make_links: bool,
     /// `--jobs`; the number of CPUs if unset.
     pub jobs: Option<usize>,
     /// `--spawn_strategy`: how commands are run.
@@ -47,7 +53,7 @@ pub(crate) struct Options {
     /// Decide the execution platform of every rule, for `aquery`.
     pub record_execution_platforms: bool,
     /// `--subcommands`: say what each command is as it starts.
-    pub subcommands: bool,
+    pub subcommands: Option<SubcommandsStyle>,
     /// `test`: run the tests among the targets, and how much of their logs to show.
     pub test: Option<fjfj_bazel_compat::test_flags::TestOutput>,
     /// The contents of `stable-status.txt` and `volatile-status.txt`, for the
@@ -59,6 +65,14 @@ pub(crate) struct Options {
     /// `run`: every target asked for must be an executable, which Bazel
     /// finds out when it has analysed them, before it builds anything.
     pub run: bool,
+}
+
+/// How `--subcommands` shows a command.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SubcommandsStyle {
+    Plain,
+    /// `--subcommands=pretty_print`: a word to a line.
+    PrettyPrint,
 }
 
 /// How a build treats the targets it was asked for that its platform cannot
@@ -211,34 +225,66 @@ pub(crate) fn apply_test_flags(
     configuration.test_args = flags.args.clone();
 }
 
-/// `--jobs`: a number, `auto`, or `HOST_CPUS` with `*factor` or `-n`.
-pub(crate) fn jobs_from(text: Option<&str>) -> Result<Option<usize>, String> {
-    let Some(text) = text else { return Ok(None) };
-    let cpus = std::thread::available_parallelism().map_or(1, |n| n.get());
-    let bad = || {
+/// The machine's memory in megabytes, for `HOST_RAM`.
+fn host_ram_mb() -> i64 {
+    std::fs::read_to_string("/proc/meminfo")
+        .ok()
+        .and_then(|text| {
+            text.lines()
+                .find_map(|l| l.strip_prefix("MemTotal:"))
+                .and_then(|l| l.split_whitespace().next()?.parse::<i64>().ok())
+        })
+        .map_or(1024, |kb| kb / 1024)
+}
+
+/// A resource flag (`--jobs`, `--local_test_jobs`): a number, or `auto`,
+/// `HOST_CPUS` or `HOST_RAM` optionally followed by `*factor` or `-n`.
+/// Probed on Bazel 9.2.0, which words the errors as below, and refuses a
+/// value under one.
+pub(crate) fn resource_from(name: &str, text: &str) -> Result<usize, String> {
+    let cpus = std::thread::available_parallelism().map_or(1, |n| n.get()) as i64;
+    let syntax = || {
         format!(
-            "While parsing option --jobs={text}: '{text}' is not an integer or \"auto\" or HOST_CPUS[*factor|-n]"
+            "While parsing option --{name}={text}: Parameter '{text}' does not follow correct syntax. This flag takes an integer, or a keyword (\"auto\", \"HOST_CPUS\", \"HOST_RAM\"), optionally followed by an operation ([-|*]<float>) eg. \"auto\", \"HOST_CPUS*.5\"."
         )
     };
-    let jobs = if text == "auto" {
-        cpus
-    } else if let Some(rest) = text.strip_prefix("HOST_CPUS") {
-        match rest {
-            "" => cpus,
-            r if r.starts_with('*') => {
-                let factor: f64 = r[1..].parse().map_err(|_| bad())?;
-                ((cpus as f64 * factor).floor() as usize).max(1)
-            }
-            r if r.starts_with('-') => {
-                let n: usize = r[1..].parse().map_err(|_| bad())?;
-                cpus.saturating_sub(n).max(1)
-            }
-            _ => return Err(bad()),
-        }
+    let (base, operation) = if let Ok(n) = text.parse::<i64>() {
+        (n, None)
     } else {
-        text.parse().map_err(|_| bad())?
+        let (keyword, rest) = match text.find(['*', '-']) {
+            Some(at) => (&text[..at], &text[at..]),
+            None => (text, ""),
+        };
+        let base = match keyword {
+            "auto" | "HOST_CPUS" => cpus,
+            "HOST_RAM" => host_ram_mb(),
+            _ => return Err(syntax()),
+        };
+        let operation = match rest {
+            "" => None,
+            r => {
+                let operand: f64 = r[1..].parse().map_err(|_| syntax())?;
+                Some((r.starts_with('*'), operand))
+            }
+        };
+        (base, operation)
     };
-    Ok(Some(jobs))
+    let value = match operation {
+        None => base,
+        Some((true, factor)) => (base as f64 * factor).floor() as i64,
+        Some((false, minus)) => (base as f64 - minus).floor() as i64,
+    };
+    if value < 1 {
+        return Err(format!(
+            "While parsing option --{name}={text}: Value '({value})' must be at least 1."
+        ));
+    }
+    Ok(value as usize)
+}
+
+/// `--jobs`.
+pub(crate) fn jobs_from(text: Option<&str>) -> Result<Option<usize>, String> {
+    text.map(|t| resource_from("jobs", t)).transpose()
 }
 
 /// Where, and what.
@@ -1143,7 +1189,8 @@ pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> R
     let collector = Arc::new(Collector {
         outputs: Mutex::default(),
         said: Mutex::default(),
-        subcommands: request.options.subcommands.then(|| Subcommands {
+        subcommands: request.options.subcommands.map(|style| Subcommands {
+            style,
             execroot: request.layout.execroot().display().to_string(),
             configuration: report.configuration_checksum.clone(),
             strategy: report.strategy,
@@ -1233,8 +1280,12 @@ pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> R
     }
     report.tests.sort_by_key(|t| label_text(&t.label));
     let prefix = &request.options.symlink_prefix;
+    if let Some(prefix) = &request.options.clean_links {
+        let _ = request.layout.remove_convenience_links(prefix);
+    }
     // Bazel makes no links when it builds nothing (`--nobuild`, `cquery`).
     if request.options.build
+        && request.options.make_links
         && let Ok(failed) = request
             .layout
             .convenience_links(prefix, &request.options.configuration.mnemonic())
@@ -1291,7 +1342,7 @@ pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> R
             .to_vec()
             .iter()
             .filter(|a| !a.is_source())
-            .map(|a| shown(prefix, &request.options.configuration, a))
+            .map(|a| shown(prefix, &request.layout, &request.options.configuration, a))
             .collect();
         report.results.push(TargetResult {
             label: label.clone(),
@@ -1321,16 +1372,24 @@ pub(crate) fn print_nothing_built(elapsed: Duration) {
 /// A file as the console names it: `bazel-bin/pkg/f` for a derived one.
 pub(crate) fn shown_path(
     prefix: &str,
+    layout: &Layout,
     configuration: &Configuration,
     artifact: &Artifact,
 ) -> String {
-    shown(prefix, configuration, artifact)
+    shown(prefix, layout, configuration, artifact)
 }
 
 /// A file as the console names it: `bazel-bin/pkg/f` for a derived one.
-fn shown(prefix: &str, configuration: &Configuration, artifact: &Artifact) -> String {
+fn shown(
+    prefix: &str,
+    layout: &Layout,
+    configuration: &Configuration,
+    artifact: &Artifact,
+) -> String {
     let bin = configuration.bin_dir();
     match artifact.exec_path().strip_prefix(&format!("{bin}/")) {
+        // Without links the file is shown where it is.
+        Some(_) if prefix == "/" => layout.resolve(artifact).display().to_string(),
         Some(rest) => format!("{prefix}bin/{rest}"),
         None => artifact.exec_path(),
     }
@@ -1348,6 +1407,7 @@ struct Collector {
 
 /// What `--subcommands` prints of a command besides the command.
 struct Subcommands {
+    style: SubcommandsStyle,
     execroot: String,
     configuration: String,
     strategy: &'static str,
@@ -1390,11 +1450,17 @@ impl Progress for Collector {
         for (name, value) in env {
             text.push_str(&format!("    {name}={} \\\n", quote(value)));
         }
+        let command = match sub.style {
+            SubcommandsStyle::Plain => argv.iter().map(|a| quote(a)).collect::<Vec<_>>().join(" "),
+            SubcommandsStyle::PrettyPrint => argv
+                .iter()
+                .map(|a| quote(a))
+                .collect::<Vec<_>>()
+                .join(" \\\n    "),
+        };
         text.push_str(&format!(
-            "  {})\n# Configuration: {}\n# Execution platform: @@platforms//host:host\n# Runner: {}",
-            argv.iter().map(|a| quote(a)).collect::<Vec<_>>().join(" "),
-            sub.configuration,
-            sub.strategy,
+            "  {command})\n# Configuration: {}\n# Execution platform: @@platforms//host:host\n# Runner: {}",
+            sub.configuration, sub.strategy,
         ));
         self.said.lock().unwrap().push(text);
     }
@@ -1946,6 +2012,47 @@ fn absolute(layout: &Layout, repo: &str, location: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    /// Probed on Bazel 9.2.0.
+    #[test]
+    fn a_resource_flag_is_a_number_or_a_keyword_with_an_operation() {
+        use super::resource_from;
+        let cpus = std::thread::available_parallelism().map_or(1, |n| n.get());
+        assert_eq!(resource_from("jobs", "7"), Ok(7));
+        assert_eq!(resource_from("jobs", "auto"), Ok(cpus));
+        assert_eq!(resource_from("jobs", "HOST_CPUS"), Ok(cpus));
+        assert_eq!(
+            resource_from("jobs", "HOST_CPUS*.5"),
+            Ok(((cpus as f64 * 0.5).floor() as usize).max(1))
+        );
+        assert_eq!(
+            resource_from("jobs", "HOST_CPUS-1"),
+            Ok(cpus.saturating_sub(1))
+        );
+        assert_eq!(
+            resource_from("jobs", "0").unwrap_err(),
+            "While parsing option --jobs=0: Value '(0)' must be at least 1."
+        );
+        assert_eq!(
+            resource_from("local_test_jobs", "HOST_CPUS*0").unwrap_err(),
+            "While parsing option --local_test_jobs=HOST_CPUS*0: Value '(0)' must be at least 1."
+        );
+        for bad in [
+            "abc",
+            "1.5",
+            "",
+            "host_cpus",
+            "HOST_CPUS+1",
+            "HOST_CPUS*abc",
+        ] {
+            assert_eq!(
+                resource_from("jobs", bad).unwrap_err(),
+                format!(
+                    "While parsing option --jobs={bad}: Parameter '{bad}' does not follow correct syntax. This flag takes an integer, or a keyword (\"auto\", \"HOST_CPUS\", \"HOST_RAM\"), optionally followed by an operation ([-|*]<float>) eg. \"auto\", \"HOST_CPUS*.5\"."
+                )
+            );
+        }
+    }
+
     use super::*;
 
     fn label(package: &str, name: &str) -> Label {

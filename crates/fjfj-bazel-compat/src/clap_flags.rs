@@ -147,6 +147,12 @@ fn base_arg(flag: &'static FlagInfo) -> Arg {
         } else {
             arg.action(ArgAction::Set)
         }
+    } else if !flag.enum_values.is_empty() && flag.type_converter != Some("Boolean") {
+        // `--flag`, `--noflag` and `--flag=value` for one of a few values.
+        arg.num_args(0..=1)
+            .require_equals(true)
+            .default_missing_value("")
+            .action(ArgAction::Set)
     } else {
         arg.action(ArgAction::SetTrue)
     }

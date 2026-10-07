@@ -25,6 +25,7 @@ pub mod exit_code;
 pub mod flag_alias;
 pub mod flag_registry;
 pub mod misc_flags;
+pub mod option_syntax;
 pub mod output_filter;
 pub mod remote_flags;
 pub mod run_flags;

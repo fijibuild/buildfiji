@@ -31,6 +31,8 @@ pub struct DiagnosticsFlags {
     pub verbose_failures: bool,
     /// `--subcommands`/`-s`: print each action's command line as it runs.
     pub subcommands: bool,
+    /// `--subcommands=pretty_print`: each word of a command on a line.
+    pub pretty_subcommands: bool,
     /// `--explain=<path>` (or `--explain <path>`): write a step-by-step
     /// rebuild explanation here.
     pub explain: Option<PathBuf>,
@@ -64,7 +66,10 @@ pub fn extract(args: &[String], command: &str) -> (DiagnosticsFlags, Vec<String>
         match m.flag.name {
             "keep_going" => flags.keep_going = !m.negated,
             "verbose_failures" => flags.verbose_failures = !m.negated,
-            "subcommands" => flags.subcommands = !m.negated,
+            "subcommands" => {
+                flags.subcommands = !m.negated;
+                flags.pretty_subcommands = !m.negated && m.value == Some("pretty_print");
+            }
             "verbose_explanations" => {} // documented no-op in Bazel; drop
             "explain" => match m.value.map(str::to_string).or_else(|| iter.next().cloned()) {
                 Some(value) => flags.explain = Some(PathBuf::from(value)),

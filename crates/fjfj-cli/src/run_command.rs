@@ -36,6 +36,7 @@ pub(crate) async fn run(args: TargetArgs) -> Result<(), CliError> {
     let shown_of = |artifact: &fjfj_graph::Artifact| {
         let shown = crate::build_command::shown_path(
             &built.options.symlink_prefix,
+            layout,
             &built.options.configuration,
             artifact,
         );

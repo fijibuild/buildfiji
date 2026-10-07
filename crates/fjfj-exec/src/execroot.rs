@@ -135,6 +135,31 @@ pub enum Cleaned {
 }
 
 impl Layout {
+    /// The links `prefix` names that lead into the output base, which a build
+    /// made, are removed.
+    pub fn remove_convenience_links(&self, prefix: &str) -> io::Result<()> {
+        if prefix == "/" {
+            return Ok(());
+        }
+        let workspace_name = self.workspace.file_name().map_or_else(
+            || "workspace".to_owned(),
+            |n| n.to_string_lossy().into_owned(),
+        );
+        for name in [
+            "bin",
+            "out",
+            "testlogs",
+            "genfiles",
+            workspace_name.as_str(),
+        ] {
+            let at = self.workspace.join(format!("{prefix}{name}"));
+            if std::fs::read_link(&at).is_ok_and(|to| to.starts_with(&self.output_base)) {
+                std::fs::remove_file(&at)?;
+            }
+        }
+        Ok(())
+    }
+
     /// `bazel clean`: the convenience links go, the action cache goes, and so
     /// does the execroot, or with `expunge` the whole output base. With
     /// `asynchronous` the tree is renamed (`<tree>_tmp_<unique>`) and deleted
@@ -146,25 +171,7 @@ impl Layout {
         asynchronous: bool,
         unique: &str,
     ) -> io::Result<Cleaned> {
-        // Links that lead into the output base, which a build made.
-        if prefix != "/" {
-            let workspace_name = self.workspace.file_name().map_or_else(
-                || "workspace".to_owned(),
-                |n| n.to_string_lossy().into_owned(),
-            );
-            for name in [
-                "bin",
-                "out",
-                "testlogs",
-                "genfiles",
-                workspace_name.as_str(),
-            ] {
-                let at = self.workspace.join(format!("{prefix}{name}"));
-                if std::fs::read_link(&at).is_ok_and(|to| to.starts_with(&self.output_base)) {
-                    std::fs::remove_file(&at)?;
-                }
-            }
-        }
+        self.remove_convenience_links(prefix)?;
         let cache = self.output_base.join("fjfj-action-cache.json");
         match std::fs::remove_file(&cache) {
             Err(e) if e.kind() != io::ErrorKind::NotFound => return Err(e),

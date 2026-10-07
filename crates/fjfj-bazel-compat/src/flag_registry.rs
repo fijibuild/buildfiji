@@ -113,6 +113,11 @@ impl FlagRegistry {
         }
     }
 
+    /// The flag named `name` (or its old name), whatever command it is for.
+    pub fn named(&self, name: &str) -> Option<&'static FlagInfo> {
+        self.by_name.get(name).copied()
+    }
+
     /// Resolve one raw flag token — `--name`, `--name=value`, `--noname`,
     /// `-x` or `-xvalue` (Bazel's single-dash abbreviation form) — against
     /// `command` (use `"startup"` for a startup option). `token` must

@@ -27,6 +27,7 @@ pub const IMPLEMENTED: &[&str] = &[
     "skip_incompatible_explicit_targets",
     "experimental_platform_in_output_dir",
     "experimental_override_platform_cpu_name",
+    "experimental_convenience_symlinks",
     "enable_runfiles",
     "build_runfile_links",
     "legacy_external_runfiles",
@@ -156,6 +157,9 @@ pub struct BuildFlags {
     /// `--stamp`, `--collect_code_coverage`, `--force_pic` and `--save_temps`,
     /// each as the last of its spellings gave it.
     pub switches: Vec<(String, bool)>,
+    /// `--experimental_convenience_symlinks`: `normal`, `clean`, `ignore` or
+    /// `log_only`, checked by whoever uses it.
+    pub convenience_symlinks: Option<String>,
     /// `--strip`: `always`, `sometimes` or `never`, checked by whoever uses it.
     pub strip: Option<String>,
     /// `--fission`: the modes it is on in, as written.
@@ -257,6 +261,7 @@ pub fn extract(args: &[String], command: &str) -> (BuildFlags, Vec<String>) {
             ),
             "host_platform" => flags.host_platform = Some(value),
             "strip" => flags.strip = Some(value),
+            "experimental_convenience_symlinks" => flags.convenience_symlinks = Some(value),
             "fission" => flags.fission = Some(value),
             "experimental_override_platform_cpu_name" => flags.platform_name_overrides.push(value),
             "toolchain_resolution_debug" => flags.toolchain_resolution_debug = Some(value),

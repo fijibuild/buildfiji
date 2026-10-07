@@ -573,6 +573,8 @@ pub(crate) fn drop_build_family_flags(
     rest: Vec<String>,
     command: &'static str,
 ) -> Result<Vec<String>, CliError> {
+    let rest = fjfj_bazel_compat::option_syntax::normalize(&rest, command)
+        .map_err(|e| CliError::CommandLine(anyhow::anyhow!(e)))?;
     let (aliases, rest) =
         flag_alias::extract(&rest).map_err(|e| CliError::CommandLine(anyhow::Error::from(e)))?;
     let rest = flag_alias::apply(&aliases, &rest);
@@ -625,8 +627,10 @@ async fn build_main(
              Starlark-defined build settings always start with '--', not '-'."
         )));
     }
+    let before = fjfj_bazel_compat::option_syntax::normalize(before, command)
+        .map_err(|e| CliError::CommandLine(anyhow::anyhow!(e)))?;
     let (aliases, rest) =
-        flag_alias::extract(before).map_err(|e| CliError::CommandLine(anyhow::Error::from(e)))?;
+        flag_alias::extract(&before).map_err(|e| CliError::CommandLine(anyhow::Error::from(e)))?;
     let rest = flag_alias::apply(&aliases, &rest);
     // buildfiji-gwl.15/gwl.16: validate every flag token against
     // the full generated `bazel_flags` table *before* any typed
@@ -790,6 +794,19 @@ async fn build_main(
     if let Some(flags) = &test_flags {
         build_command::apply_test_flags(&mut configuration, flags);
     }
+    let convenience = build_flags
+        .convenience_symlinks
+        .clone()
+        .unwrap_or_else(|| "normal".to_owned());
+    if !["normal", "clean", "ignore", "log_only"].contains(&convenience.as_str()) {
+        return Err(CliError::CommandLine(anyhow::anyhow!(
+            "While parsing option --experimental_convenience_symlinks={convenience}: Not a valid convenience symlinks mode: '{convenience}' (should be normal, clean, ignore or log_only)"
+        )));
+    }
+    let symlink_prefix = build_flags
+        .symlink_prefix
+        .clone()
+        .unwrap_or_else(|| "bazel-".to_owned());
     let build = build_command::Options {
         configuration,
         platform: build_flags.platforms.clone(),
@@ -802,10 +819,14 @@ async fn build_main(
         output_groups: build_flags.output_groups.clone(),
         keep_going: diagnostics.keep_going,
         build: build_flags.build.unwrap_or(true),
-        symlink_prefix: build_flags
-            .symlink_prefix
-            .clone()
-            .unwrap_or_else(|| "bazel-".to_owned()),
+        // `normal` and `log_only` show paths through the links; only `normal` makes them.
+        symlink_prefix: if matches!(convenience.as_str(), "normal" | "log_only") {
+            symlink_prefix.clone()
+        } else {
+            "/".to_owned()
+        },
+        clean_links: (convenience == "clean").then(|| symlink_prefix.clone()),
+        make_links: convenience == "normal",
         jobs: build_command::jobs_from(build_flags.jobs.as_deref())
             .map_err(|e| CliError::CommandLine(anyhow::anyhow!(e)))?,
         strategy: match build_flags.spawn_strategy.as_deref() {
@@ -822,7 +843,13 @@ async fn build_main(
             })?,
         },
         record_execution_platforms: true,
-        subcommands: diagnostics.subcommands,
+        subcommands: diagnostics
+            .subcommands
+            .then_some(if diagnostics.pretty_subcommands {
+                build_command::SubcommandsStyle::PrettyPrint
+            } else {
+                build_command::SubcommandsStyle::Plain
+            }),
         test: test_flags
             .as_ref()
             .filter(|_| command == "test")
@@ -1269,11 +1296,13 @@ mod tests {
             keep_going: true,
             build: true,
             symlink_prefix: "bazel-".into(),
+            clean_links: None,
+            make_links: true,
             jobs: None,
             strategy: fjfj_exec::run::Options::default().strategy,
             show_result: 1,
             record_execution_platforms: false,
-            subcommands: true,
+            subcommands: Some(build_command::SubcommandsStyle::Plain),
             test: None,
             workspace_status: None,
             incompatible: None,
@@ -1401,11 +1430,13 @@ checks_test = rule(implementation = _checks, analysis_test = True, attrs = {"ok"
             keep_going: true,
             build: true,
             symlink_prefix: "bazel-".into(),
+            clean_links: None,
+            make_links: true,
             jobs: None,
             strategy: fjfj_exec::run::Options::default().strategy,
             show_result: 1,
             record_execution_platforms: false,
-            subcommands: false,
+            subcommands: None,
             test: Some(fjfj_bazel_compat::test_flags::TestOutput::Summary),
             workspace_status: None,
             incompatible: None,
@@ -1542,11 +1573,13 @@ checks_test = rule(implementation = _checks, analysis_test = True, attrs = {"ok"
                 keep_going: true,
                 build: false,
                 symlink_prefix: "bazel-".into(),
+                clean_links: None,
+                make_links: true,
                 jobs: None,
                 strategy: fjfj_exec::run::Options::default().strategy,
                 show_result: 1,
                 record_execution_platforms: false,
-                subcommands: false,
+                subcommands: None,
                 test: None,
                 workspace_status: None,
                 incompatible: None,
