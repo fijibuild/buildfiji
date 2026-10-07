@@ -1373,10 +1373,13 @@ r = rule(implementation = _impl, fragments = ["cpp"])
     );
 }
 
-/// Probed on Bazel 9.2.0: the members of the cpp fragment behind its
-/// private-API allowlist fail for a file of the main repo or of a repo that is
-/// not on the list (rules_java, rules_python, ...), which rules_cc, rules_apple,
-/// rules_android, protobuf and rules_shell are; three name the feature.
+/// Probed on Bazel 9.2.0 over a matrix of repos and packages (the same for
+/// every member): the members of the cpp fragment behind its private-API
+/// allowlist fail for a file of the main repo or of a repo that is not on the
+/// list (rules_python, rules_go, ...), which rules_cc, rules_apple,
+/// rules_android, protobuf and rules_shell are, all of them; rules_java is
+/// under `java`, rules_rust under `rust/private`; three members name the
+/// feature.
 #[test]
 fn private_members_of_the_cpp_fragment_fail_for_files_that_are_not_allowlisted() {
     let src = r#"
@@ -1387,8 +1390,8 @@ def _impl(ctx):
     return []
 r = rule(implementation = _impl, fragments = ["cpp"], attrs = {"member": attr.string()})
 "#;
-    let run = |repo: &str, member: &str| {
-        let module = module_in(repo, "", src).unwrap();
+    let run = |repo: &str, package: &str, member: &str| {
+        let module = module_in(repo, package, src).unwrap();
         run_rule(&request_in(
             module,
             "r",
@@ -1396,20 +1399,48 @@ r = rule(implementation = _impl, fragments = ["cpp"], attrs = {"member": attr.st
             Vec::new(),
         ))
     };
-    for repo in [
-        "rules_cc+",
-        "rules_apple+",
-        "rules_android+",
-        "protobuf+",
-        "rules_shell+",
+    for (repo, package) in [
+        ("rules_cc+", ""),
+        ("rules_cc+", "cc/private"),
+        ("rules_apple+", ""),
+        ("rules_android+", "src/common"),
+        ("protobuf+", ""),
+        ("rules_shell+", ""),
+        ("rules_java+", "java"),
+        ("rules_java+", "java/common"),
+        ("rules_rust+", "rust/private"),
+        ("rules_rust+", "rust/private/rules"),
     ] {
-        run(repo, "compilation_mode").unwrap_or_else(|e| panic!("{repo}: {e}"));
+        run(repo, package, "fission_active_for_current_compilation_mode")
+            .unwrap_or_else(|e| panic!("{repo}//{package}: {e}"));
     }
-    for (repo, member, file, feature) in [
-        ("", "compilation_mode", "//:t.bzl", ""),
-        ("rules_java+", "grte_top", "@@rules_java+//:t.bzl", ""),
-        ("rules_python+", "save_temps", "@@rules_python+//:t.bzl", ""),
+    for (repo, package, member, file, feature) in [
+        ("", "", "compilation_mode", "//:t.bzl", ""),
+        ("rules_java+", "", "grte_top", "@@rules_java+//:t.bzl", ""),
         (
+            "rules_java+",
+            "javatests",
+            "grte_top",
+            "@@rules_java+//javatests:t.bzl",
+            "",
+        ),
+        ("rules_rust+", "", "grte_top", "@@rules_rust+//:t.bzl", ""),
+        (
+            "rules_rust+",
+            "rust",
+            "grte_top",
+            "@@rules_rust+//rust:t.bzl",
+            "",
+        ),
+        (
+            "rules_python+",
+            "python/private",
+            "save_temps",
+            "@@rules_python+//python/private:t.bzl",
+            "",
+        ),
+        (
+            "",
             "",
             "force_pic",
             "//:t.bzl",
@@ -1417,18 +1448,20 @@ r = rule(implementation = _impl, fragments = ["cpp"], attrs = {"member": attr.st
         ),
         (
             "",
+            "",
             "fdo_instrument",
             "//:t.bzl",
             " (feature 'fdo_instrument' in CppConfiguration)",
         ),
         (
             "",
+            "",
             "generate_llvm_lcov",
             "//:t.bzl",
             " (feature 'generate_llvm_lcov' in CppConfiguration)",
         ),
     ] {
-        let err = run(repo, member).unwrap_err();
+        let err = run(repo, package, member).unwrap_err();
         let want = format!("Error in {member}: file '{file}' cannot use private API{feature}");
         assert!(err.lines().any(|line| line == want), "{member}: {err}");
     }

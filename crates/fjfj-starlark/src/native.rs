@@ -307,8 +307,10 @@ pub fn bzl_globals() -> Globals {
 }
 
 /// The repos whose files may use the members Bazel 9.2.0 hides behind its
-/// private-API allowlist, probed one repo at a time (rules_java, rules_python,
-/// rules_go, rules_rust and the main repo are refused).
+/// private-API allowlist, probed (the same for every member) over a matrix of
+/// repos and packages: all of these, and `rules_java` under `java` and
+/// `rules_rust` under `rust/private`. `rules_python`, `rules_go`, the main
+/// repo and the rest are refused.
 const PRIVATE_API_REPOS: [&str; 5] = [
     "rules_cc",
     "rules_apple",
@@ -317,19 +319,36 @@ const PRIVATE_API_REPOS: [&str; 5] = [
     "rules_shell",
 ];
 
+/// `(repo, package)` of the allowlist that a repo does not have in full.
+const PRIVATE_API_PACKAGES: [(&str, &str); 2] =
+    [("rules_java", "java"), ("rules_rust", "rust/private")];
+
 /// Whether the file named `file` by a frame may use the private API: the
-/// builtins overlay, `@bazel_tools`, or a repo of the allowlist.
+/// builtins overlay, `@bazel_tools`, or a repo or package of the allowlist.
 fn may_use_private_api(file: &str) -> bool {
     if file.starts_with("@_builtins") || file.starts_with("@@_builtins") {
         return true;
     }
-    let Some(repo) = file.strip_prefix("@@").and_then(|r| r.split("//").next()) else {
+    let Some((repo, rest)) = file.strip_prefix("@@").and_then(|r| r.split_once("//")) else {
         return false;
     };
-    repo == "bazel_tools"
-        || PRIVATE_API_REPOS.iter().any(|allowed| {
-            repo.strip_prefix(allowed)
-                .is_some_and(|rest| rest.starts_with('+'))
+    // The canonical name of a module's repo ends in `+`, an extension's in
+    // `+<extension>+<name>`.
+    let module = repo.split('+').next().unwrap_or(repo);
+    if repo == "bazel_tools" {
+        return true;
+    }
+    let package = rest.split(':').next().unwrap_or(rest);
+    PRIVATE_API_REPOS
+        .iter()
+        .any(|allowed| module == *allowed && repo.contains('+'))
+        || PRIVATE_API_PACKAGES.iter().any(|(allowed, under)| {
+            module == *allowed
+                && repo.contains('+')
+                && (package == *under
+                    || package
+                        .strip_prefix(under)
+                        .is_some_and(|rest| rest.starts_with('/')))
         })
 }
 
