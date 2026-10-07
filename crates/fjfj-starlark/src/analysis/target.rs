@@ -51,6 +51,9 @@ pub struct DepInfo {
     pub runfiles: fjfj_graph::Runfiles,
     /// The other providers it gave.
     pub providers: Vec<StoredProvider>,
+    /// Whether its configuration builds the runfiles tree (`--build_runfile_links`),
+    /// which puts `files_to_run.runfiles_manifest` inside the tree.
+    pub build_runfile_links: bool,
 }
 
 #[derive(ProvidesStaticType, NoSerialize, Allocative)]
@@ -115,6 +118,7 @@ pub(crate) fn default_info<'v>(
     has_runfiles_tree: bool,
     runfiles: &fjfj_graph::Runfiles,
     owner: &Label,
+    build_runfile_links: bool,
 ) -> Value<'v> {
     let provider = builtin("DefaultInfo").expect("the builtins define DefaultInfo");
     let items: Vec<Value<'v>> = files
@@ -150,7 +154,11 @@ pub(crate) fn default_info<'v>(
                 ("repo_mapping_manifest".to_owned(), sibling(".repo_mapping")),
                 (
                     "runfiles_manifest".to_owned(),
-                    sibling(".runfiles_manifest"),
+                    sibling(if build_runfile_links {
+                        ".runfiles/MANIFEST"
+                    } else {
+                        ".runfiles_manifest"
+                    }),
                 ),
             ],
         )
@@ -266,6 +274,7 @@ pub fn template_variables_of(providers: Vec<StoredProvider>) -> Vec<(String, Str
         executable: None,
         runfiles: fjfj_graph::Runfiles::default(),
         providers,
+        build_runfile_links: true,
     });
     starlark::environment::Module::with_temp_heap(|module| template_variables(&info, module.heap()))
 }
@@ -308,6 +317,7 @@ impl TargetValue {
                 self.info.executable.is_some(),
                 &self.info.runfiles,
                 &self.info.label,
+                self.info.build_runfile_links,
             ));
         }
         let mut matching = self

@@ -1,7 +1,7 @@
 //! `runfiles`, what `ctx.runfiles()` builds and `DefaultInfo` carries
 //! (buildfiji-136.9).
 
-use super::file::{alloc_file, artifact_of};
+use super::file::{FileValue, alloc_file, artifact_of};
 use crate::args::fatal;
 use crate::depset::{Order, depset_to_list, is_depset, new_depset};
 use allocative::Allocative;
@@ -23,9 +23,116 @@ pub(crate) struct RunfilesValue {
 
 starlark_simple_value!(RunfilesValue);
 
+/// A `File` as a depset prints it.
+fn file_repr(artifact: &Artifact, owner: &Label) -> String {
+    FileValue {
+        artifact: artifact.clone(),
+        owner: owner.clone(),
+    }
+    .to_string()
+}
+
+/// `depset([...])` of the given items, as Bazel prints one.
+fn depset_repr(items: &[String], order: Option<&str>) -> String {
+    let order = order.map_or_else(String::new, |o| format!(", order = \"{o}\""));
+    format!("depset([{}]{order})", items.join(", "))
+}
+
+fn entries_repr(entries: &[(String, Artifact)], owner: &Label) -> String {
+    let items: Vec<String> = entries
+        .iter()
+        .map(|(path, artifact)| {
+            format!(
+                "SymlinkEntry(path = {path:?}, target_file = {})",
+                file_repr(artifact, owner)
+            )
+        })
+        .collect();
+    depset_repr(&items, None)
+}
+
 impl fmt::Display for RunfilesValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("runfiles")
+        let files: Vec<String> = self
+            .runfiles
+            .files
+            .iter()
+            .map(|a| file_repr(a, &self.owner))
+            .collect();
+        write!(
+            f,
+            "Runfiles(empty_files = depset([]), files = {}, root_symlinks = {}, symlinks = {})",
+            depset_repr(&files, Some("postorder")),
+            entries_repr(&self.runfiles.root_symlinks, &self.owner),
+            entries_repr(&self.runfiles.symlinks, &self.owner),
+        )
+    }
+}
+
+/// One entry of `runfiles.symlinks` or `root_symlinks`.
+#[derive(Debug, ProvidesStaticType, NoSerialize, Allocative)]
+pub(crate) struct SymlinkEntryValue {
+    path: String,
+    #[allocative(skip)]
+    target: Artifact,
+    #[allocative(skip)]
+    owner: Label,
+}
+
+starlark_simple_value!(SymlinkEntryValue);
+
+impl fmt::Display for SymlinkEntryValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "SymlinkEntry(path = {:?}, target_file = {})",
+            self.path,
+            file_repr(&self.target, &self.owner)
+        )
+    }
+}
+
+#[starlark_value(type = "SymlinkEntry")]
+impl<'v> StarlarkValue<'v> for SymlinkEntryValue {
+    fn get_methods() -> Option<&'static Methods> {
+        static RES: MethodsStatic = MethodsStatic::new("SymlinkEntry", symlink_entry_members);
+        Some(RES.methods())
+    }
+
+    fn write_hash(
+        &self,
+        hasher: &mut starlark::collections::StarlarkHasher,
+    ) -> starlark::Result<()> {
+        use std::hash::Hash;
+        self.path.hash(hasher);
+        self.target.path.hash(hasher);
+        Ok(())
+    }
+
+    fn equals(&self, other: Value<'v>) -> starlark::Result<bool> {
+        Ok(other
+            .downcast_ref::<SymlinkEntryValue>()
+            .is_some_and(|o| o.path == self.path && o.target == self.target))
+    }
+}
+
+#[starlark_module]
+fn symlink_entry_members(builder: &mut MethodsBuilder) {
+    #[starlark(attribute)]
+    fn path(this: Value) -> starlark::Result<String> {
+        Ok(this
+            .downcast_ref::<SymlinkEntryValue>()
+            .expect("a SymlinkEntry")
+            .path
+            .clone())
+    }
+
+    #[starlark(attribute)]
+    fn target_file<'v>(this: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
+        let me = this
+            .downcast_ref::<SymlinkEntryValue>()
+            .expect("a SymlinkEntry");
+        Ok(alloc_file(heap, me.target.clone(), me.owner.clone()))
     }
 }
 
@@ -52,7 +159,7 @@ fn runfiles_members(builder: &mut MethodsBuilder) {
             .iter()
             .map(|a| alloc_file(heap, a.clone(), me.owner.clone()))
             .collect();
-        new_depset(heap, &items, Order::Default, &[])
+        new_depset(heap, &items, Order::Postorder, &[])
     }
 
     /// `runfiles.symlinks`: depset of `SymlinkEntry(path, target_file)`.
@@ -185,16 +292,11 @@ fn symlink_entries<'v>(
     let items: Vec<Value<'v>> = entries
         .iter()
         .map(|(path, artifact)| {
-            crate::structs::new_struct(
-                heap,
-                vec![
-                    ("path".to_owned(), heap.alloc(path.as_str())),
-                    (
-                        "target_file".to_owned(),
-                        alloc_file(heap, artifact.clone(), owner.clone()),
-                    ),
-                ],
-            )
+            heap.alloc(SymlinkEntryValue {
+                path: path.clone(),
+                target: artifact.clone(),
+                owner: owner.clone(),
+            })
         })
         .collect();
     new_depset(heap, &items, Order::Default, &[])

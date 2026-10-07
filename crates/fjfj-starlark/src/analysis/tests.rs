@@ -218,6 +218,7 @@ r = rule(implementation = _impl, attrs = {"srcs": attr.label_list(allow_files = 
         executable: None,
         runfiles: fjfj_graph::Runfiles::default(),
         providers: Vec::new(),
+        build_runfile_links: true,
     };
     let req = request(
         src,
@@ -275,6 +276,7 @@ r = rule(implementation = _impl, attrs = {"deps": attr.label_list()})
         executable: None,
         runfiles: fjfj_graph::Runfiles::default(),
         providers: first.providers,
+        build_runfile_links: true,
     };
     let second = run_rule(&request_in(
         module,
@@ -344,6 +346,7 @@ r = rule(implementation = _impl, attrs = {"cmds": attr.string_list()})
         executable: None,
         runfiles: fjfj_graph::Runfiles::default(),
         providers,
+        build_runfile_links: true,
     };
     let deps = vec![
         dep_of("tc", "tc", provided.providers),
@@ -464,6 +467,7 @@ fn args_are_expanded_as_bazel_expands_them() {
         executable: None,
         runfiles: fjfj_graph::Runfiles::default(),
         providers: Vec::new(),
+        build_runfile_links: true,
     };
     let module = module_in("", "", ARGS).unwrap();
     let attrs = |params: bool| {
@@ -1030,6 +1034,7 @@ r = rule(
         executable: None,
         runfiles: fjfj_graph::Runfiles::default(),
         providers: Vec::new(),
+        build_runfile_links: true,
     };
     let group = DepInfo {
         label: label("pkg", "g"),
@@ -1039,6 +1044,7 @@ r = rule(
         executable: None,
         runfiles: fjfj_graph::Runfiles::default(),
         providers: Vec::new(),
+        build_runfile_links: true,
     };
     let module = module_in("rules_cc+", "", src).unwrap();
     let run = |fail: &str, main: bool| {
@@ -1594,6 +1600,7 @@ r = rule(implementation = _impl, subrules = [sub])
         executable: None,
         runfiles: Default::default(),
         providers: Vec::new(),
+        build_runfile_links: true,
     };
     let out = run_rule(&request(src, "r", Vec::new(), vec![helper])).unwrap();
     assert_eq!(out.printed.without_sites(), ["t 7 h None", "ok"]);
@@ -1650,6 +1657,7 @@ r = rule(implementation = _impl, attrs = {"src": attr.label(allow_single_file = 
         executable: None,
         runfiles: Default::default(),
         providers: Vec::new(),
+        build_runfile_links: true,
     };
     let attrs = vec![("src".to_owned(), AttrValue::Label(label("", "a.cc")))];
     let out = run_rule(&request(src, "r", attrs, vec![src_file])).unwrap();
@@ -1732,15 +1740,13 @@ r = rule(implementation = _impl, attrs = {"tool": attr.label(executable = True, 
         executable: Some(exe.clone()),
         runfiles: Default::default(),
         providers: Vec::new(),
+        build_runfile_links: true,
     };
     let attrs = vec![("tool".to_owned(), AttrValue::Label(label("", "tool")))];
     let out = run_rule(&request(src, "r", attrs, vec![tool])).unwrap();
     assert_eq!(
         out.printed.without_sites(),
-        [
-            format!("True False {BIN}/out"),
-            "tool tool.runfiles_manifest".to_owned()
-        ]
+        [format!("True False {BIN}/out"), "tool MANIFEST".to_owned()]
     );
     let [_write, run] = &out.actions[..] else {
         panic!("{:?}", out.actions)
@@ -1778,6 +1784,7 @@ r = rule(implementation = _impl, attrs = {"tool": attr.label(executable = True, 
         executable: Some(exe),
         runfiles: Default::default(),
         providers: Vec::new(),
+        build_runfile_links: true,
     };
     let attrs = vec![("tool".to_owned(), AttrValue::Label(label("", "tool")))];
     let out = run_rule(&request(src, "r", attrs, vec![tool])).unwrap();
@@ -1984,4 +1991,43 @@ r = rule(implementation = _impl)
     let out = run_rule(&request(src, "r", Vec::new(), Vec::new())).unwrap();
     assert_eq!(out.actions[0].outputs[0].path, "b");
     assert_eq!(out.actions.len(), 2);
+}
+
+/// Probed on Bazel 9.2.0: how `runfiles`, `ctx.outputs` and `ctx.exec_groups`
+/// print and what type they have.
+#[test]
+fn runfiles_outputs_and_exec_groups_print_as_bazel_prints_them() {
+    let src = r#"
+def _impl(ctx):
+    f = ctx.actions.declare_file("f")
+    ctx.actions.write(f, "x")
+    ctx.actions.write(ctx.outputs.o, "x")
+    rf = ctx.runfiles(files = [f], symlinks = {"a/b": f}, root_symlinks = {"c": f})
+    fail("|".join([
+        str(ctx.runfiles()),
+        str(rf),
+        type(rf.symlinks.to_list()[0]),
+        rf.symlinks.to_list()[0].path,
+        str(ctx.outputs),
+        type(ctx.outputs),
+        str(dir(ctx.outputs)),
+        str(ctx.exec_groups),
+    ]))
+r = rule(implementation = _impl, outputs = {"o": "%{name}.txt"})
+"#;
+    let mut req = request(src, "r", Vec::new(), Vec::new());
+    req.outputs = vec![("o".to_owned(), "t.txt".to_owned())];
+    let err = run_rule(&req).unwrap_err();
+    let want = [
+        r#"Runfiles(empty_files = depset([]), files = depset([], order = "postorder"), root_symlinks = depset([]), symlinks = depset([]))"#,
+        r#"Runfiles(empty_files = depset([]), files = depset([<generated file f>], order = "postorder"), root_symlinks = depset([SymlinkEntry(path = "c", target_file = <generated file f>)]), symlinks = depset([SymlinkEntry(path = "a/b", target_file = <generated file f>)]))"#,
+        "SymlinkEntry",
+        "a/b",
+        "ctx.outputs(o = <generated file t.txt>)",
+        "Outputs",
+        r#"["o"]"#,
+        "<ctx.exec_groups: >",
+    ]
+    .join("|");
+    assert!(err.contains(&want), "wanted `{want}` in\n{err}");
 }

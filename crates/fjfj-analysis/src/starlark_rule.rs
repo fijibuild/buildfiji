@@ -29,6 +29,14 @@ pub fn dep_info(target: &ConfiguredTarget, generated: bool) -> DepInfo {
         executable: target.executable.clone(),
         runfiles: target.runfiles.clone(),
         providers: target.providers.clone(),
+        build_runfile_links: target
+            .configuration
+            .settings
+            .get(&format!(
+                "{}build_runfile_links",
+                fjfj_graph::config::COMMAND_LINE_OPTION
+            ))
+            .is_none_or(|v| !matches!(v, fjfj_graph::SettingValue::Bool(false))),
     }
 }
 

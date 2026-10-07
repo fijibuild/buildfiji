@@ -757,40 +757,9 @@ fn ctx_members(builder: &mut MethodsBuilder) {
 
     #[starlark(attribute)]
     fn outputs<'v>(this: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
-        let s = state(this);
-        // An `attr.output_list()` is a list of its files, empty if the target
-        // set none; an `attr.output()` it did not set is None.
-        let lists: Vec<&str> = s
-            .schema
-            .attrs
-            .iter()
-            .filter(|a| a.def.ty == AttrType::OutputList)
-            .map(|a| a.name.as_str())
-            .collect();
-        let mut fields: Vec<(String, Value<'v>)> = Vec::new();
-        for (name, artifact) in &s.outputs {
-            if !lists.contains(&name.as_str()) {
-                fields.push((name.clone(), s.file(heap, artifact.clone())));
-            }
-        }
-        for attr in &s.schema.attrs {
-            match attr.def.ty {
-                AttrType::OutputList => {
-                    let files: Vec<Value<'v>> = s
-                        .outputs
-                        .iter()
-                        .filter(|(n, _)| *n == attr.name)
-                        .map(|(_, a)| s.file(heap, a.clone()))
-                        .collect();
-                    fields.push((attr.name.clone(), heap.alloc(AllocList(files))));
-                }
-                AttrType::Output if !fields.iter().any(|(n, _)| *n == attr.name) => {
-                    fields.push((attr.name.clone(), Value::new_none()));
-                }
-                _ => {}
-            }
-        }
-        Ok(new_struct(heap, fields))
+        Ok(heap.alloc(OutputsValue {
+            state: state(this).clone(),
+        }))
     }
 
     /// `ctx.package_relative_label(input)`: `input` as written in the BUILD
@@ -1509,7 +1478,7 @@ impl fmt::Debug for ExecGroupCollection {
 
 impl fmt::Display for ExecGroupCollection {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("<exec_group_collection>")
+        f.write_str("<ctx.exec_groups: >")
     }
 }
 
@@ -1587,5 +1556,127 @@ impl<'v> StarlarkValue<'v> for ExecGroupContext {
 
     fn dir_attr(&self) -> Vec<String> {
         vec!["toolchains".to_owned()]
+    }
+}
+
+/// `ctx.outputs`: the predeclared outputs of the rule, by the name the rule
+/// gave them.
+#[derive(ProvidesStaticType, NoSerialize, Allocative)]
+pub(crate) struct OutputsValue {
+    #[allocative(skip)]
+    state: Arc<CtxState>,
+}
+
+starlark_simple_value!(OutputsValue);
+
+impl fmt::Debug for OutputsValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("ctx.outputs()")
+    }
+}
+
+/// What a name of `ctx.outputs` holds.
+enum Output {
+    File(Artifact),
+    List(Vec<Artifact>),
+    Unset,
+}
+
+impl fmt::Display for OutputsValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let file = |a: &Artifact| {
+            super::file::FileValue {
+                artifact: a.clone(),
+                owner: self.state.label.clone(),
+            }
+            .to_string()
+        };
+        let fields: Vec<String> = self
+            .entries()
+            .iter()
+            .map(|(name, out)| {
+                let text = match out {
+                    Output::File(a) => file(a),
+                    Output::List(l) => {
+                        format!("[{}]", l.iter().map(file).collect::<Vec<_>>().join(", "))
+                    }
+                    Output::Unset => "None".to_owned(),
+                };
+                format!("{name} = {text}")
+            })
+            .collect();
+        write!(f, "ctx.outputs({})", fields.join(", "))
+    }
+}
+
+impl OutputsValue {
+    /// Each name, in order, and what it holds: an `attr.output_list()` is a
+    /// list of its files, empty if the target set none; an `attr.output()` it
+    /// did not set is None.
+    fn entries(&self) -> Vec<(String, Output)> {
+        let s = &self.state;
+        let lists: Vec<&str> = s
+            .schema
+            .attrs
+            .iter()
+            .filter(|a| a.def.ty == AttrType::OutputList)
+            .map(|a| a.name.as_str())
+            .collect();
+        let mut entries: Vec<(String, Output)> = Vec::new();
+        for (name, artifact) in &s.outputs {
+            if !lists.contains(&name.as_str()) {
+                entries.push((name.clone(), Output::File(artifact.clone())));
+            }
+        }
+        for attr in &s.schema.attrs {
+            match attr.def.ty {
+                AttrType::OutputList => {
+                    let files = s
+                        .outputs
+                        .iter()
+                        .filter(|(n, _)| *n == attr.name)
+                        .map(|(_, a)| a.clone())
+                        .collect();
+                    entries.push((attr.name.clone(), Output::List(files)));
+                }
+                AttrType::Output if !entries.iter().any(|(n, _)| *n == attr.name) => {
+                    entries.push((attr.name.clone(), Output::Unset));
+                }
+                _ => {}
+            }
+        }
+        entries.sort_by(|a, b| a.0.cmp(&b.0));
+        entries
+    }
+}
+
+#[starlark_value(type = "Outputs")]
+impl<'v> StarlarkValue<'v> for OutputsValue {
+    fn get_attr(&self, attribute: &str, heap: Heap<'v>) -> Option<Value<'v>> {
+        let s = &self.state;
+        self.entries()
+            .into_iter()
+            .find(|(n, _)| n == attribute)
+            .map(|(_, out)| match out {
+                Output::File(a) => s.file(heap, a),
+                Output::List(l) => heap.alloc(AllocList(
+                    l.into_iter().map(|a| s.file(heap, a)).collect::<Vec<_>>(),
+                )),
+                Output::Unset => Value::new_none(),
+            })
+    }
+
+    fn has_attr(&self, attribute: &str, heap: Heap<'v>) -> bool {
+        self.get_attr(attribute, heap).is_some()
+    }
+
+    fn dir_attr(&self) -> Vec<String> {
+        self.entries().into_iter().map(|(n, _)| n).collect()
+    }
+
+    fn no_attr_message(&self, attribute: &str) -> Option<String> {
+        Some(format!(
+            "No attribute '{attribute}' in outputs. Make sure you declared a rule output with this name."
+        ))
     }
 }
