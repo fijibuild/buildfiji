@@ -60,6 +60,10 @@ impl<'v> StarlarkValue<'v> for ActionsValue {
     }
 }
 
+/// The length of a command line above which an `Args` that allows it goes to a
+/// param file, as Bazel 9.2.0 does.
+const PARAM_FILE_LIMIT: usize = 31744;
+
 fn state<'v>(this: Value<'v>) -> &'v Arc<CtxState> {
     &this.downcast_ref::<ActionsValue>().expect("actions").state
 }
@@ -774,6 +778,45 @@ fn spawn<'v>(
     }
     let mut arguments: Vec<String> = Vec::new();
     let mut param_files = 0;
+    // An `Args` that asked for a param file gets one when the command line is
+    // too long for the system: each word and its separator count, the
+    // executable and, for a shell command, `-c` and the script among them.
+    // Probed on Bazel 9.2.0, where the limit is 31744 and no flag moves it.
+    let too_long = {
+        let last = bound[14].expect("required");
+        let mut total = if shell {
+            SHELL.len() + 1 + "-c".len() + 1 + last.unpack_str().map_or(0, |c| c.len() + 1) + 1
+        } else if let Some(file) = artifact_of(last) {
+            file.exec_path().len() + 1
+        } else if let Some(file) = files_to_run_inputs(last).and_then(|f| f.first().cloned()) {
+            file.exec_path().len() + 1
+        } else {
+            last.unpack_str().map_or(0, |p| p.len() + 1)
+        };
+        for item in bound[3]
+            .filter(|v| !v.is_none())
+            .and_then(sequence)
+            .unwrap_or_default()
+        {
+            total += if let Some(text) = item.unpack_str() {
+                text.len() + 1
+            } else if let Some(file) = artifact_of(item) {
+                file.exec_path().len() + 1
+            } else if let Some(built) = super::args_object::args_value(item) {
+                built
+                    .state
+                    .lock()
+                    .unwrap()
+                    .items
+                    .iter()
+                    .map(|a| a.len() + 1)
+                    .sum()
+            } else {
+                0
+            };
+        }
+        total > PARAM_FILE_LIMIT
+    };
     if let Some(v) = bound[3].filter(|v| !v.is_none()) {
         for item in sequence(v).ok_or_else(|| {
             fatal(format!(
@@ -788,7 +831,7 @@ fn spawn<'v>(
             } else if let Some(built) = super::args_object::args_value(item) {
                 let state = built.state.lock().unwrap();
                 match &state.param_file {
-                    Some(param) if param.use_always => {
+                    Some(param) if param.use_always || too_long => {
                         // The arguments go to a file the command is told of.
                         let first = outputs[0].path.clone();
                         let file = s.derived_next_to(&outputs[0], &format!(

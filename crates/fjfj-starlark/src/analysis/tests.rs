@@ -521,6 +521,37 @@ fn args_are_expanded_as_bazel_expands_them() {
     assert!(paths(&spawn.inputs).contains(&format!("{BIN}/o-0.params")));
 }
 
+/// An `Args` that asked for a param file gets one when the command line is
+/// longer than 31744, each word counting its separator and the executable
+/// counting too. Probed on Bazel 9.2.0 at both sides of the limit.
+#[test]
+fn an_args_that_may_use_a_param_file_does_when_the_command_line_is_too_long() {
+    let src = r#"
+def _impl(ctx):
+    o = ctx.actions.declare_file("o")
+    a = ctx.actions.args()
+    a.add_all(["x" * int(ctx.attr.w)] * int(ctx.attr.n))
+    a.use_param_file("@%s")
+    ctx.actions.run(outputs = [o], executable = "/bin/true", arguments = [a])
+    return [DefaultInfo(files = depset([o]))]
+r = rule(implementation = _impl, attrs = {"w": attr.string(), "n": attr.string()})
+"#;
+    let module = module_in("", "", src).unwrap();
+    let uses_param_file = |w: &str, n: &str| {
+        let attrs = vec![
+            ("w".to_owned(), AttrValue::String(w.to_owned())),
+            ("n".to_owned(), AttrValue::String(n.to_owned())),
+        ];
+        let out = run_rule(&request_in(module.clone(), "r", attrs, Vec::new())).unwrap();
+        out.actions.len() == 2
+    };
+    // "/bin/true " is 10 and each word costs its length and one.
+    assert!(!uses_param_file("2", "10575"));
+    assert!(uses_param_file("10", "2885"));
+    assert!(!uses_param_file("100", "314"));
+    assert!(uses_param_file("100", "315"));
+}
+
 /// `ctx.fragments` are the structs of the builtins, made from the
 /// configuration (buildfiji-136.18); a late-bound default is the label of its
 /// option's default (buildfiji-bo8).
