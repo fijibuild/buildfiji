@@ -5,7 +5,7 @@
 //! when the action runs, so a `map_each` is called during analysis.
 
 use super::file::artifact_of;
-use crate::args::{Wording, bind, describe, fatal, param};
+use crate::args::{Wording, bind, fatal, param};
 use crate::depset::{depset_to_list, is_depset};
 use allocative::Allocative;
 use starlark::environment::{Methods, MethodsBuilder, MethodsStatic};
@@ -100,10 +100,30 @@ fn text_of(value: Value<'_>) -> Option<String> {
     None
 }
 
-fn wrong(function: &str, value: Value<'_>) -> starlark::Error {
+/// An argument that is not a string, int, File or Label, as Bazel puts it on
+/// the command line: its Java string, which is `str()` but for a bool, that is
+/// `true` or `false`.
+fn other_text(value: Value<'_>) -> String {
+    match value.unpack_bool() {
+        Some(b) => b.to_string(),
+        None => value.to_str(),
+    }
+}
+
+fn arg_text(value: Value<'_>) -> String {
+    text_of(value).unwrap_or_else(|| other_text(value))
+}
+
+/// What `map_each` may return is a string, None or a list of strings.
+fn mapped_wrong(value: Value<'_>) -> starlark::Error {
+    let found = match crate::args::sequence(value)
+        .and_then(|items| items.into_iter().find(|i| i.unpack_str().is_none()))
+    {
+        Some(bad) if value.get_type() == "list" => format!("list containing {}", bad.get_type()),
+        _ => value.get_type().to_owned(),
+    };
     fatal(format!(
-        "{function}: expected a string, int, File or Label, got {}",
-        describe(value)
+        "Expected map_each to return string, None, or list of strings, found {found}"
     ))
 }
 
@@ -259,17 +279,21 @@ fn expand<'v>(
                 if mapped.is_none() {
                     continue;
                 }
-                if let Some(text) = text_of(mapped) {
-                    produced.push(text);
-                } else if let Some(list) = crate::args::sequence(mapped) {
-                    for each in list {
-                        produced.push(text_of(each).ok_or_else(|| wrong(function, each))?);
+                if let Some(text) = mapped.unpack_str() {
+                    produced.push(text.to_owned());
+                } else if mapped.get_type() == "list" {
+                    for each in crate::args::sequence(mapped).unwrap_or_default() {
+                        produced.push(
+                            each.unpack_str()
+                                .ok_or_else(|| mapped_wrong(mapped))?
+                                .to_owned(),
+                        );
                     }
                 } else {
-                    return Err(wrong(function, mapped));
+                    return Err(mapped_wrong(mapped));
                 }
             }
-            None => produced.push(text_of(item).ok_or_else(|| wrong(function, item))?),
+            None => produced.push(arg_text(item)),
         }
         for text in produced {
             let text = match format_each {
@@ -318,7 +342,7 @@ fn args_members(builder: &mut MethodsBuilder) {
                     "Args.add() doesn't accept vectorized arguments. Please use Args.add_all() or Args.add_joined() instead.",
                 ));
             }
-            Err(wrong("add", value))
+            Ok(other_text(value))
         };
         let mut state = args_of(this).state.lock().unwrap();
         match bound[1] {

@@ -652,6 +652,80 @@ fn the_wrong_calls_of_args_say_what_bazel_says() {
     }
 }
 
+/// Probed on Bazel 9.2.0: a value that is not a string, int, File or Label
+/// goes on the command line as its Java string (`str()`, but `true` and
+/// `false`); `map_each` may return only strings, None or a list of strings.
+#[test]
+fn args_stringify_other_values_and_map_each_returns_strings_only() {
+    let src = r#"
+def _m(x):
+    return {"s": struct(), "n": 5, "l": ["a", 1], "f": 1.5, "ok": ["p", "q"], "none": None}[x]
+
+def _impl(ctx):
+    a = ctx.actions.args()
+    if ctx.attr.k == "values":
+        a.add_all([None, True, 1.5, {"a": 1}, (1, 2), [3, 4], struct(), depset(["q"])])
+        a.add(struct(z = [1]))
+        a.add("--flag", False)
+    else:
+        a.add_all([ctx.attr.k], map_each = _m)
+    ctx.actions.run_shell(outputs = [ctx.actions.declare_file("o")], command = "true", arguments = [a])
+    return []
+r = rule(implementation = _impl, attrs = {"k": attr.string()})
+"#;
+    let module = module_in("", "", src).unwrap();
+    let run = |k: &str| {
+        run_rule(&request_in(
+            module.clone(),
+            "r",
+            vec![("k".to_owned(), AttrValue::String(k.to_owned()))],
+            Vec::new(),
+        ))
+    };
+    let out = run("values").unwrap();
+    let ActionKind::Spawn { argv, .. } = &out.actions[0].kind else {
+        panic!()
+    };
+    assert_eq!(
+        &argv[4..],
+        [
+            "None",
+            "true",
+            "1.5",
+            r#"{"a": 1}"#,
+            "(1, 2)",
+            "[3, 4]",
+            "struct()",
+            r#"depset(["q"])"#,
+            "struct(z = [1])",
+            "--flag",
+            "false"
+        ]
+    );
+    let out = run("ok").unwrap();
+    let ActionKind::Spawn { argv, .. } = &out.actions[0].kind else {
+        panic!()
+    };
+    assert_eq!(&argv[4..], ["p", "q"]);
+    let out = run("none").unwrap();
+    let ActionKind::Spawn { argv, .. } = &out.actions[0].kind else {
+        panic!()
+    };
+    assert_eq!(argv, &["/bin/bash", "-c", "true"]);
+    for (k, found) in [
+        ("s", "struct"),
+        ("n", "int"),
+        ("f", "float"),
+        ("l", "list containing int"),
+    ] {
+        let err = run(k).unwrap_err();
+        let want = format!(
+            "Error in add_all: Expected map_each to return string, None, or list of strings, found {found}"
+        );
+        assert!(err.lines().any(|line| line == want), "{k}: {err}");
+    }
+}
+
 /// Probed on Bazel 9.2.0: a `map_each` that is not a top-level def is
 /// refused, at the name of a def and at the `lambda` of a lambda, unless
 /// `allow_closure`; a builtin function is accepted.
