@@ -2196,3 +2196,30 @@ r = rule(implementation = _impl)
     let on = analyse_in(&repos, "//:n", on).await.unwrap();
     assert_eq!(on.printed.without_sites(), ["coverage_enabled: True"]);
 }
+
+/// Probed on Bazel 9.2.0: a label attribute with `cfg = config.exec()` gives
+/// the target, as `cfg = "exec"` does; only a transition makes a list.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_dep_through_config_exec_is_a_target_not_a_list() {
+    let (_dir, repos) = workspace(&[
+        ("MODULE.bazel", ""),
+        (
+            "defs.bzl",
+            r#"
+def _impl(ctx):
+    print("types:", type(ctx.attr.d), type(ctx.attr.e))
+    return []
+r = rule(implementation = _impl, attrs = {
+    "d": attr.label(cfg = config.exec()),
+    "e": attr.label(cfg = "exec"),
+})
+"#,
+        ),
+        (
+            "BUILD.bazel",
+            "load(':defs.bzl', 'r')\nfilegroup(name = 'g')\nr(name = 'a', d = ':g', e = ':g')\n",
+        ),
+    ]);
+    let t = analyse(&repos, "//:a").await.unwrap();
+    assert_eq!(t.printed.without_sites(), ["types: Target Target"]);
+}

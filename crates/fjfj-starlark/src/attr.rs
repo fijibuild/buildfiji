@@ -602,7 +602,7 @@ fn same_attribute<'v>(
         !v.values.is_empty()
             || matches!(v.def.files, FileTypes::Suffixes(_))
             || (v.def.computed_default && !v.computed.is_some_and(is_late_bound))
-            || matches!(v.def.cfg, Config::Exec | Config::Host)
+            || (matches!(v.def.cfg, Config::Exec | Config::Host) && v.transition.is_none())
     };
     if opaque(a) || opaque(b) {
         return Ok(false);
@@ -1178,7 +1178,14 @@ fn constrain_labels<'v>(
             Some(_) => return Err(bad_cfg()),
             // `config.target()` is the target configuration by another name.
             None if crate::decl::is_target_transition(cfg) => def.cfg = Config::Target,
-            None if matches!(cfg.get_type(), "transition" | "ExecTransitionFactory") => {
+            // `config.exec()` is the exec configuration by another name, and
+            // like `cfg = "exec"` gives a target, not a list.
+            None if cfg.get_type() == "ExecTransitionFactory" => {
+                def.cfg = Config::Exec;
+                // Kept for what two attributes compare by.
+                kept.transition = Some(cfg);
+            }
+            None if cfg.get_type() == "transition" => {
                 def.cfg = Config::Transition;
                 kept.transition = Some(cfg);
             }
