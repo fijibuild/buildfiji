@@ -32,6 +32,14 @@ impl Default {
     }
 }
 
+/// Whether the option `name` holds a string, as `--strip` and
+/// `--java_runtime_version` do.
+pub(crate) fn is_string(name: &str) -> bool {
+    DEFAULTS
+        .iter()
+        .any(|(n, default)| *n == name && matches!(default, Default::Str(_)))
+}
+
 /// Every option but the five fjfj computes (`cpu`, `compilation_mode`,
 /// `define`, `action_env`, `is exec configuration`), by name.
 pub(crate) const DEFAULTS: &[(&str, Default)] = &[

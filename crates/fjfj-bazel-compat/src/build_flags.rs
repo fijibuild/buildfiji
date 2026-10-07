@@ -33,6 +33,11 @@ pub const IMPLEMENTED: &[&str] = &[
     "force_pic",
     "save_temps",
     "fission",
+    "host_javacopt",
+    "java_runtime_version",
+    "tool_java_runtime_version",
+    "java_language_version",
+    "tool_java_language_version",
     "copt",
     "cxxopt",
     "conlyopt",
@@ -66,6 +71,16 @@ const LIST_OPTIONS: &[&str] = &[
     "linkopt",
     "host_copt",
     "javacopt",
+    "host_javacopt",
+];
+
+/// The flags that hold a string, the last one given winning: what a
+/// `config_setting(values = ...)` or a `select` on them reads.
+const STRING_OPTIONS: &[&str] = &[
+    "java_runtime_version",
+    "tool_java_runtime_version",
+    "java_language_version",
+    "tool_java_language_version",
 ];
 
 /// The flags that name a label, the last one given winning: the options the
@@ -257,7 +272,7 @@ pub fn extract(args: &[String], command: &str) -> (BuildFlags, Vec<String>) {
             }
             "symlink_prefix" => flags.symlink_prefix = Some(value),
             "show_result" => flags.show_result = Some(value),
-            other if LABEL_OPTIONS.contains(&other) => {
+            other if LABEL_OPTIONS.contains(&other) || STRING_OPTIONS.contains(&other) => {
                 flags.options.retain(|(name, _)| name != other);
                 flags.options.push((other.to_owned(), value));
             }
@@ -329,6 +344,27 @@ mod tests {
         assert_eq!(flags.strip.as_deref(), Some("always"));
         assert_eq!(flags.fission.as_deref(), Some("dbg,opt"));
         assert_eq!(rest, ["//a:a"]);
+    }
+
+    #[test]
+    fn the_java_version_flags_keep_the_last_value_and_javacopts_add_up() {
+        let (flags, _) = extract(
+            &args(&[
+                "--java_runtime_version=8",
+                "--java_runtime_version=17",
+                "--host_javacopt=-a",
+                "--host_javacopt=-b",
+            ]),
+            "build",
+        );
+        assert_eq!(
+            flags.options,
+            [
+                ("java_runtime_version".to_owned(), "17".to_owned()),
+                ("host_javacopt".to_owned(), "-a".to_owned()),
+                ("host_javacopt".to_owned(), "-b".to_owned()),
+            ]
+        );
     }
 
     #[test]

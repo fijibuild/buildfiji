@@ -272,8 +272,8 @@ impl Configuration {
         for (name, value) in &self.options {
             out.insert(
                 option(name),
-                // `--strip` is a string; the rest are lists of words.
-                if name == "strip" {
+                // A string option is a string; the rest are lists of words.
+                if crate::build_options::is_string(name) {
                     SettingValue::Str(value.clone())
                 } else {
                     SettingValue::List(value.split_whitespace().map(str::to_owned).collect())
