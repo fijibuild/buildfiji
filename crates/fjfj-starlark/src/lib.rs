@@ -141,6 +141,7 @@ mod macros_tests;
 mod map_view;
 mod module_ctx;
 mod native;
+mod native_method;
 mod native_rule_fns;
 mod proto;
 mod provider;

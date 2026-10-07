@@ -338,8 +338,8 @@ platform_common = struct(
 
 config_common = struct(
     FeatureFlagInfo = _FeatureFlagInfo,
-    config_feature_flag_transition = _unavailable("config_common.config_feature_flag_transition", "buildfiji-136.16"),
-    toolchain_type = _toolchain_type,
+    config_feature_flag_transition = fjfj_native_method("config_common", "config_feature_flag_transition", _unavailable("config_common.config_feature_flag_transition", "buildfiji-136.16")),
+    toolchain_type = fjfj_native_method("config_common", "toolchain_type", _toolchain_type),
 )
 
 # Coverage is not collected yet (buildfiji-fyz.9); the provider is, with what the
@@ -358,13 +358,13 @@ def _instrumented_files_info(
     )
 
 coverage_common = struct(
-    instrumented_files_info = _instrumented_files_info,
+    instrumented_files_info = fjfj_native_method("coverage_common", "instrumented_files_info", _instrumented_files_info),
 )
 
 testing = struct(
     ExecutionInfo = _ExecutionInfo,
-    TestEnvironment = _TestEnvironment,
-    analysis_test = _unavailable("testing.analysis_test", "buildfiji-136.16"),
+    TestEnvironment = fjfj_native_method("testing", "TestEnvironment", _TestEnvironment),
+    analysis_test = fjfj_native_method("testing", "analysis_test", _unavailable("testing.analysis_test", "buildfiji-136.16")),
 )
 
 cc_common = struct(

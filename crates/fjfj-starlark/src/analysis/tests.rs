@@ -2181,3 +2181,23 @@ r = rule(implementation = _impl)
     let want = "<function DefaultInfo>|<function ExecutionInfo>|<function ToolchainInfo>|<provider>|<provider>|<provider>|None";
     assert!(err.contains(want), "wanted `{want}` in\n{err}");
 }
+
+/// Probed on Bazel 9.2.0: methods of the native module values print as
+/// built-in methods of them and have that type.
+#[test]
+fn native_module_methods_print_as_built_in_methods() {
+    let src = r#"
+def _impl(ctx):
+    fail("|".join([
+        str(testing.TestEnvironment),
+        type(testing.TestEnvironment),
+        str(coverage_common.instrumented_files_info),
+        str(config_common.toolchain_type),
+        str(testing.TestEnvironment({"A": "b"}).environment),
+    ]))
+r = rule(implementation = _impl)
+"#;
+    let err = run_rule(&request(src, "r", Vec::new(), Vec::new())).unwrap_err();
+    let want = r#"<built-in method TestEnvironment of testing value>|builtin_function_or_method|<built-in method instrumented_files_info of coverage_common value>|<built-in method toolchain_type of config_common value>|{"A": "b"}"#;
+    assert!(err.contains(want), "wanted `{want}` in\n{err}");
+}

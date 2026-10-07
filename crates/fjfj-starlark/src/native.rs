@@ -396,6 +396,16 @@ fn internal_globals(builder: &mut GlobalsBuilder) {
         Err(fatal(format!("\u{1}{function}\u{1}{message}")))
     }
 
+    /// `function` as the native method `name` of the module value `module`.
+    fn fjfj_native_method<'v>(
+        #[starlark(require = pos)] module: &str,
+        #[starlark(require = pos)] name: &str,
+        #[starlark(require = pos)] function: Value<'v>,
+        heap: Heap<'v>,
+    ) -> starlark::Result<Value<'v>> {
+        Ok(crate::native_method::wrap(heap, module, name, function))
+    }
+
     /// The `apple_platform` called `name`.
     fn fjfj_apple_platform<'v>(
         #[starlark(require = pos)] name: &str,

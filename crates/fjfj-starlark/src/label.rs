@@ -493,8 +493,10 @@ pub(crate) fn caller<'a>(
             "{function}() can only be called while a .bzl file is evaluated"
         ))
     })?;
-    let file = eval
-        .call_stack_top_location()
+    // A method of a module value (`native_method.rs`) is a native frame of
+    // its own above the Starlark one that called it.
+    let file = (0..3)
+        .find_map(|n| eval.call_stack_nth_location(n))
         .map(|span| span.resolve().file)
         .unwrap_or_default();
     let label = Label::parse(
