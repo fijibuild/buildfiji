@@ -521,6 +521,64 @@ fn args_are_expanded_as_bazel_expands_them() {
     assert!(paths(&spawn.inputs).contains(&format!("{BIN}/o-0.params")));
 }
 
+/// Probed on Bazel 9.2.0: `ctx.resolve_command` expands `$(location)` only if
+/// asked to, make variables only if given some, and runs the result with bash;
+/// `ctx.expand_location` and the expansion in `resolve_command` report a
+/// problem as an error of the rule, which goes on, and `ctx.resolve_tools` is
+/// refused.
+#[test]
+fn resolve_command_and_the_expansion_functions_report_as_bazel_does() {
+    let src = r#"
+def _impl(ctx):
+    _, argv, manifests = ctx.resolve_command(command = "echo $(X) $$", expand_locations = True, make_variables = {"X": "y"})
+    print(argv, manifests)
+    _, plain, _ = ctx.resolve_command(command = "echo $(X) $$", make_variables = {"X": "y"})
+    print(plain)
+    print(ctx.expand_location("$(location nope.txt) kept"))
+    _, same, _ = ctx.resolve_command(command = "$(BAD)", attribute = "cmd", make_variables = {"X": "y"})
+    print(same)
+    return [DefaultInfo()]
+r = rule(implementation = _impl)
+def _refuse(ctx):
+    ctx.resolve_tools(tools = [])
+    return [DefaultInfo()]
+refuse = rule(implementation = _refuse)
+"#;
+    let err = run_rule(&request(src, "r", Vec::new(), Vec::new())).unwrap_err();
+    let (printed, err) = super::run::split_printed(&err);
+    let printed: Vec<&str> = printed
+        .iter()
+        .map(|line| line.split_once("bzl:").map_or("", |(_, rest)| rest))
+        .map(|rest| rest.split_once(": ").map_or("", |(_, text)| text))
+        .collect();
+    assert_eq!(
+        printed,
+        [
+            r#"["/bin/bash", "-c", "echo y $"] []"#,
+            r#"["/bin/bash", "-c", "echo y $"]"#,
+            "$(location nope.txt) kept",
+            r#"["/bin/bash", "-c", "$(BAD)"]"#,
+        ]
+    );
+    let events: Vec<&str> = err
+        .strip_prefix(super::run::ATTRIBUTE_ERRORS)
+        .expect("errors of the rule")
+        .lines()
+        .collect();
+    assert_eq!(
+        events,
+        [
+            "in r rule //:t: label '//:nope.txt' in $(location) expression is not a declared prerequisite of this rule",
+            "in cmd attribute of r rule //:t: $(BAD) not defined",
+        ]
+    );
+    let err = run_rule(&request(src, "refuse", Vec::new(), Vec::new())).unwrap_err();
+    assert!(
+        err.contains("Pass an executable or tools argument to ctx.actions.run or ctx.actions.run_shell instead of calling ctx.resolve_tools.\nUse --noincompatible_disallow_ctx_resolve_tools"),
+        "{err}"
+    );
+}
+
 /// An `Args` that asked for a param file gets one when the command line is
 /// longer than 31744, each word counting its separator and the executable
 /// counting too. Probed on Bazel 9.2.0 at both sides of the limit.

@@ -892,7 +892,9 @@ fn ctx_members(builder: &mut MethodsBuilder) {
         }
     }
 
-    /// `ctx.expand_location(input, targets = [])`.
+    /// `ctx.expand_location(input, targets = [])`. A reference that cannot be
+    /// expanded is an error of the rule, which goes on after: the text comes
+    /// back as it was and the rule fails when its implementation returns.
     fn expand_location<'v>(
         this: Value<'v>,
         input: &str,
@@ -912,32 +914,193 @@ fn ctx_members(builder: &mut MethodsBuilder) {
                 });
             }
         }
-        let outs: Vec<Artifact> = s.outputs.iter().map(|(_, a)| a.clone()).collect();
-        let defines = s.configuration.defines.clone();
-        let expander = Expander {
-            rule_class: &s.rule_kind,
-            attribute: "args",
-            label: &s.label,
-            srcs: &[],
-            outs: &outs,
-            prerequisites: &prerequisites,
-            bin_dir: &s.bin_dir(),
-            target_cpu: target_cpu(&s.configuration.cpu),
-            compilation_mode: s.configuration.compilation_mode.name(),
-            defines: &defines,
-            main_repo_name: &s.main_repo_name,
-            context: LabelContext {
-                repo: &s.label.repo,
-                package: &s.label.package,
-            },
-        };
-        expander
-            .expand_locations(input)
-            .map_err(|e| fatal(e.message))
+        Ok(s.expand_locations_or_record(input, &prerequisites, None))
+    }
+
+    /// `ctx.resolve_command(*, command, attribute, expand_locations,
+    /// make_variables, tools, label_dict, execution_requirements)`: the
+    /// inputs a command needs (the files of its tools), the argv that runs
+    /// it with bash, and no manifests. `$(location)` is expanded only if
+    /// asked to be, from the `label_dict` and the tools; make variables only
+    /// if some were given.
+    fn resolve_command<'v>(
+        this: Value<'v>,
+        args: &Arguments<'v, '_>,
+        eval: &mut Evaluator<'v, '_, '_>,
+    ) -> starlark::Result<Value<'v>> {
+        let s = state(this);
+        let heap = eval.heap();
+        let bound = bind(
+            "resolve_command",
+            Wording::Signature,
+            &[
+                param("command", false, false),
+                param("attribute", false, false),
+                param("expand_locations", false, false),
+                param("make_variables", false, false),
+                param("tools", false, false),
+                param("label_dict", false, false),
+                param("execution_requirements", false, false),
+            ],
+            args,
+            eval,
+        )?;
+        let mut command = bound[0]
+            .and_then(|v| v.unpack_str())
+            .unwrap_or_default()
+            .to_owned();
+        let attribute = bound[1].and_then(|v| v.unpack_str()).map(str::to_owned);
+        let expand_locations = bound[2].and_then(|v| v.unpack_bool()).unwrap_or(false);
+        let mut prerequisites = Vec::new();
+        let mut inputs: Vec<Artifact> = Vec::new();
+        let mut runfiles: Vec<Artifact> = Vec::new();
+        for tool in bound[4]
+            .and_then(|t| crate::attr::sequence(t, heap))
+            .unwrap_or_default()
+        {
+            if let Some(target) = tool.downcast_ref::<super::target::TargetValue>() {
+                let info = &target.info;
+                prerequisites.push(Prerequisite {
+                    label: info.label.clone(),
+                    files: info.files.clone(),
+                });
+                let mut files = info.files.clone();
+                if let Some(exe) = &info.executable {
+                    if !files.contains(exe) {
+                        files.push(exe.clone());
+                    }
+                    runfiles.extend(s.executable_runfiles(exe));
+                }
+                for file in files {
+                    if !inputs.contains(&file) {
+                        inputs.push(file);
+                    }
+                }
+            }
+        }
+        for tree in runfiles {
+            if !inputs.contains(&tree) {
+                inputs.push(tree);
+            }
+        }
+        if let Some(dict) = bound[5].and_then(DictRef::from_value) {
+            for (k, v) in dict.iter() {
+                let (Some(label), Some(files)) = (
+                    crate::label::label_of_value(k),
+                    crate::attr::sequence(v, heap),
+                ) else {
+                    continue;
+                };
+                prerequisites.push(Prerequisite {
+                    label,
+                    files: files
+                        .into_iter()
+                        .filter_map(super::file::artifact_of)
+                        .collect(),
+                });
+            }
+        }
+        if expand_locations {
+            command = s.expand_locations_or_record(&command, &prerequisites, attribute.as_deref());
+        }
+        let variables: BTreeMap<String, String> = bound[3]
+            .filter(|v| !v.is_none())
+            .and_then(DictRef::from_value)
+            .map(|d| {
+                d.iter()
+                    .filter_map(|(k, v)| {
+                        Some((k.unpack_str()?.to_owned(), v.unpack_str()?.to_owned()))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        if !variables.is_empty() {
+            let vars = s.make_variables(heap);
+            let lookup = |name: &str| variables.get(name).cloned().or_else(|| vars.lookup(name));
+            match fjfj_graph::expand::expand_make_variables(&command, &lookup) {
+                Ok(expanded) => command = expanded,
+                Err(message) => s.record_error(&message, attribute.as_deref()),
+            }
+        }
+        let files: Vec<Value<'v>> = inputs.into_iter().map(|a| s.file(heap, a)).collect();
+        let argv: Vec<Value<'v>> = ["/bin/bash", "-c", &command]
+            .iter()
+            .map(|a| heap.alloc(*a))
+            .collect();
+        Ok(heap.alloc((
+            heap.alloc(AllocList(files)),
+            heap.alloc(AllocList(argv)),
+            heap.alloc(AllocList(Vec::<Value<'v>>::new())),
+        )))
+    }
+
+    /// `ctx.resolve_tools(tools = [])`: Bazel 9 refuses it.
+    fn resolve_tools<'v>(this: Value<'v>, args: &Arguments<'v, '_>) -> starlark::Result<Value<'v>> {
+        let _ = (this, args);
+        Err(fatal(
+            "Pass an executable or tools argument to ctx.actions.run or ctx.actions.run_shell instead of calling ctx.resolve_tools.\nUse --noincompatible_disallow_ctx_resolve_tools to temporarily disable this check.",
+        ))
     }
 }
 
 impl CtxState {
+    /// A problem the rule reports and goes on after, once: `in <attribute>
+    /// attribute of <rule> rule <label>: <message>`, or without the attribute
+    /// for a call that has none.
+    fn record_error(&self, message: &str, attribute: Option<&str>) {
+        let label = fjfj_graph::expand::label_text(&self.label);
+        let error = match attribute {
+            Some(attribute) => fjfj_graph::expand::ExpandError {
+                attribute: attribute.to_owned(),
+                rule_class: self.rule_kind.clone(),
+                label,
+                message: message.to_owned(),
+            }
+            .to_string(),
+            None => format!("in {} rule {label}: {message}", self.rule_kind),
+        };
+        let mut errors = self.errors.lock().unwrap();
+        if !errors.contains(&error) {
+            errors.push(error);
+        }
+    }
+
+    /// `input` with its `$(location)` references expanded from
+    /// `prerequisites`, or as it was, with the problem recorded.
+    fn expand_locations_or_record(
+        &self,
+        input: &str,
+        prerequisites: &[Prerequisite],
+        attribute: Option<&str>,
+    ) -> String {
+        let outs: Vec<Artifact> = self.outputs.iter().map(|(_, a)| a.clone()).collect();
+        let defines = self.configuration.defines.clone();
+        let expander = Expander {
+            rule_class: &self.rule_kind,
+            attribute: attribute.unwrap_or("args"),
+            label: &self.label,
+            srcs: &[],
+            outs: &outs,
+            prerequisites,
+            bin_dir: &self.bin_dir(),
+            target_cpu: target_cpu(&self.configuration.cpu),
+            compilation_mode: self.configuration.compilation_mode.name(),
+            defines: &defines,
+            main_repo_name: &self.main_repo_name,
+            context: LabelContext {
+                repo: &self.label.repo,
+                package: &self.label.package,
+            },
+        };
+        match expander.expand_locations(input) {
+            Ok(expanded) => expanded,
+            Err(e) => {
+                self.record_error(&e.message, attribute);
+                input.to_owned()
+            }
+        }
+    }
+
     fn attr_def(&self, name: &str) -> Option<&fjfj_graph::rule::AttrDef> {
         self.schema
             .attrs
