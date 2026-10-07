@@ -396,6 +396,16 @@ fn internal_globals(builder: &mut GlobalsBuilder) {
         Err(fatal(format!("\u{1}{function}\u{1}{message}")))
     }
 
+    /// The `apple_platform` called `name`.
+    fn fjfj_apple_platform<'v>(
+        #[starlark(require = pos)] name: &str,
+        heap: Heap<'v>,
+    ) -> starlark::Result<Value<'v>> {
+        crate::apple_platform::ApplePlatform::named(name)
+            .map(|p| heap.alloc(p))
+            .ok_or_else(|| fatal(format!("no Apple platform {name}")))
+    }
+
     /// The type of the elements of a depset, `None` if it is empty.
     fn fjfj_depset_item_type<'v>(
         #[starlark(require = pos)] depset: Value<'v>,

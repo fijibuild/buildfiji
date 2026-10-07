@@ -6,6 +6,7 @@
 //! `native.*`, `select`, ...) are supplied by this crate as globals.
 
 mod analysis;
+mod apple_platform;
 mod args;
 mod attr;
 /// What `print` shows: `<file>:<line>:<column>: <text>`, the call site first as

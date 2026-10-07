@@ -503,7 +503,7 @@ _native_implementations = {
 # knows of the configuration; a field a rule reads that is not here is an
 # error of the rule's, so it is added when one reads it.
 def _make_fragments(options):
-    macos = apple_common.platform.macos
+    macos = fjfj_apple_platform("macos")
     apple = struct(
         xcode_version_flag = None,
         ios_sdk_version_flag = None,

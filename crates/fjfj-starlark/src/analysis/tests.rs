@@ -2055,3 +2055,17 @@ r = rule(implementation = _impl)
     .join("|");
     assert!(err.contains(&want), "wanted `{want}` in\n{err}");
 }
+
+/// Probed on Bazel 9.2.0: `single_arch_platform` is an `apple_platform`.
+#[test]
+fn single_arch_platform_is_an_apple_platform() {
+    let src = r#"
+def _impl(ctx):
+    s = ctx.fragments.apple.single_arch_platform
+    fail("|".join([str(s), type(s), str(dir(s)), s.name_in_plist, str(s.is_device), str(s == s), str(s == apple_common.platform.macos), str({s: 1}[s])]))
+r = rule(implementation = _impl, fragments = ["apple"])
+"#;
+    let err = run_rule(&request(src, "r", Vec::new(), Vec::new())).unwrap_err();
+    let want = r#"macos|apple_platform|["is_device", "name", "name_in_plist", "platform_type"]|MacOSX|True|True|False|1"#;
+    assert!(err.contains(want), "wanted `{want}` in\n{err}");
+}
