@@ -32,6 +32,7 @@
 use crate::codemap::Pos;
 use crate::codemap::Span;
 use crate::codemap::Spanned;
+use crate::dialect::DialectTypes;
 use crate::eval_exception::EvalException;
 use crate::lexer;
 use crate::lexer::LexemeError;
@@ -393,7 +394,7 @@ impl<'a, I: Iterator<Item = Lexeme>> ParserRd<'a, I> {
         let params = self.parse_comma_separated_def_params()?;
         self.expect(&Token::ClosingRound)?;
         let return_type = if self.eat(&Token::MinusGreater) {
-            Some(Box::new(self.parse_type_expr()?))
+            self.parse_type_expr()?.map(Box::new)
         } else {
             None
         };
@@ -553,7 +554,7 @@ impl<'a, I: Iterator<Item = Lexeme>> ParserRd<'a, I> {
 
         // Check for type annotation
         let ty = if self.eat(&Token::Colon) {
-            Some(Box::new(self.parse_type_expr()?))
+            self.parse_type_expr()?.map(Box::new)
         } else {
             None
         };
@@ -1364,9 +1365,15 @@ impl<'a, I: Iterator<Item = Lexeme>> ParserRd<'a, I> {
         }
     }
 
-    fn parse_type_expr(&mut self) -> Result<AstTypeExpr, EvalException> {
+    /// The annotation after a `:` or `->`. A dialect that only parses types
+    /// (Bazel's) takes any expression there and keeps none of it, as Bazel
+    /// does: no name in it is resolved and nothing in it is evaluated.
+    fn parse_type_expr(&mut self) -> Result<Option<AstTypeExpr>, EvalException> {
         let expr = self.parse_test()?;
-        grammar_util::dialect_check_type(&self.state, expr)
+        if self.state.dialect.enable_types == DialectTypes::ParseOnly {
+            return Ok(None);
+        }
+        grammar_util::dialect_check_type(&self.state, expr).map(Some)
     }
 
     // ==================== Parameters ====================
@@ -1488,7 +1495,7 @@ impl<'a, I: Iterator<Item = Lexeme>> ParserRd<'a, I> {
 
     fn parse_optional_type(&mut self) -> Result<Option<Box<AstTypeExpr>>, EvalException> {
         if self.eat(&Token::Colon) {
-            Ok(Some(Box::new(self.parse_type_expr()?)))
+            Ok(self.parse_type_expr()?.map(Box::new))
         } else {
             Ok(None)
         }

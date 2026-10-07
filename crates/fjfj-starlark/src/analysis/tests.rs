@@ -2069,3 +2069,20 @@ r = rule(implementation = _impl, fragments = ["apple"])
     let want = r#"macos|apple_platform|["is_device", "name", "name_in_plist", "platform_type"]|MacOSX|True|True|False|1"#;
     assert!(err.contains(want), "wanted `{want}` in\n{err}");
 }
+
+/// Probed on Bazel 9.2.0: a type annotation in a `.bzl` is parsed and ignored,
+/// so a name in it need not exist and nothing in it is evaluated.
+#[test]
+fn type_annotations_in_a_bzl_are_ignored() {
+    let src = r#"
+x: undefined_name = 1
+def f(a: undefined_name, *args: depset, b: struct = 2, **kw: typing.Any) -> "int" | nothing:
+    y: tuple[int, str] = (a, b)
+    return y[0]
+def _impl(ctx):
+    fail("got %s %s" % (f(7), x))
+r = rule(implementation = _impl)
+"#;
+    let err = run_rule(&request(src, "r", Vec::new(), Vec::new())).unwrap_err();
+    assert!(err.contains("got 7 1"), "{err}");
+}
