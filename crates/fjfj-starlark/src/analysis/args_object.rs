@@ -46,6 +46,8 @@ pub(crate) enum ArgItem {
 #[derive(Debug, Default)]
 pub(crate) struct ArgsState {
     pub(crate) items: Vec<ArgItem>,
+    /// Where in `items` each call of `add`, `add_all` or `add_joined` began.
+    calls: Vec<usize>,
     pub(crate) param_file: Option<ParamFile>,
     pub(crate) format: Option<ParamFormat>,
 }
@@ -83,6 +85,40 @@ impl ArgsState {
                 ArgItem::Text(_) => Vec::new(),
             })
             .collect()
+    }
+
+    /// A call begins: what it adds is one line of a `flag_per_line` file.
+    fn begin_call(&mut self) {
+        self.calls.push(self.items.len());
+    }
+
+    /// The lines of a `flag_per_line` parameter file: one per call, `--name`
+    /// then `=` and the rest joined by a space, and nothing for a call whose
+    /// first word is not a `--flag`. `None` when a call waits for a tree,
+    /// whose words are not known yet.
+    pub(crate) fn flag_lines(&self) -> Option<Vec<String>> {
+        let mut lines = Vec::new();
+        for (n, start) in self.calls.iter().enumerate() {
+            let end = self.calls.get(n + 1).copied().unwrap_or(self.items.len());
+            let mut words = Vec::new();
+            for item in &self.items[*start..end] {
+                match item {
+                    ArgItem::Text(text) => words.push(text.as_str()),
+                    ArgItem::Lazy { .. } => return None,
+                }
+            }
+            match words.split_first() {
+                Some((flag, rest)) if flag.starts_with("--") => {
+                    if rest.is_empty() {
+                        lines.push((*flag).to_owned());
+                    } else {
+                        lines.push(format!("{flag}={}", rest.join(" ")));
+                    }
+                }
+                _ => {}
+            }
+        }
+        Some(lines)
     }
 
     fn push_text(&mut self, text: String) {
@@ -447,6 +483,7 @@ fn args_members(builder: &mut MethodsBuilder) {
             Ok(other_text(value))
         };
         let mut state = args_of(this).state.lock().unwrap();
+        state.begin_call();
         match bound[1] {
             None => {
                 let text = single(first)?;
@@ -531,6 +568,7 @@ fn args_members(builder: &mut MethodsBuilder) {
         }
         words.extend(terminate_with.iter().cloned());
         let mut state = args_of(this).state.lock().unwrap();
+        state.begin_call();
         let trees: Vec<fjfj_graph::Artifact> =
             items.iter().filter_map(|e| e.tree.clone()).collect();
         match lazy_items(&items, format_each.as_deref()) {
@@ -630,6 +668,7 @@ fn args_members(builder: &mut MethodsBuilder) {
         let mut words: Vec<String> = name.iter().cloned().collect();
         words.push(joined);
         let mut state = args_of(this).state.lock().unwrap();
+        state.begin_call();
         let trees: Vec<fjfj_graph::Artifact> =
             items.iter().filter_map(|e| e.tree.clone()).collect();
         match lazy_items(&items, format_each.as_deref()) {

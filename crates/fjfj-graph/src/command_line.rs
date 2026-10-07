@@ -8,8 +8,6 @@
 //! The words `argv` holds for it are what `aquery` shows: the tree as one
 //! word, which is how Bazel shows it too.
 
-use std::fmt::Write as _;
-
 /// How a parameter file lists its arguments.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum ParamFormat {
@@ -284,23 +282,10 @@ pub fn param_file_contents(items: &[String], format: ParamFormat) -> String {
                 out.push_str(&shell_quote(item));
                 out.push('\n');
             }
-            ParamFormat::Multiline => {
+            // The lines are made a call at a time, before this.
+            ParamFormat::Multiline | ParamFormat::FlagPerLine => {
                 out.push_str(item);
                 out.push('\n');
-            }
-            ParamFormat::FlagPerLine => {
-                match item
-                    .strip_prefix("--")
-                    .and_then(|rest| rest.split_once('='))
-                {
-                    Some((flag, value)) => {
-                        let _ = write!(out, "--{flag}\n{value}\n");
-                    }
-                    None => {
-                        out.push_str(item);
-                        out.push('\n');
-                    }
-                }
             }
         }
     }
@@ -483,7 +468,7 @@ mod tests {
         );
         assert_eq!(
             param_file_contents(&items, ParamFormat::FlagPerLine),
-            "--a\nb c\nit's\nplain\n"
+            "--a=b c\nit's\nplain\n"
         );
     }
 }

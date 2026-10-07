@@ -1903,3 +1903,37 @@ fn a_parameter_file_quotes_what_bazels_shell_escaper_quotes() {
         "'a=b'\n'--flag=v'\nplain-x_1.2/y:z,@%+\n''\n'it'\\''s'\n"
     );
 }
+
+const FLAG_LINES: &str = r#"
+def _impl(ctx):
+    o = ctx.actions.declare_file("o")
+    a = ctx.actions.args()
+    a.add("--k=v w")
+    a.add("positional")
+    a.add("--x", "y")
+    a.add_all("--t", ["a", "b c"])
+    a.add_all(["p", "q"])
+    a.add_all("-single", ["a", "b"])
+    a.add_all("--t0", [], omit_if_empty = False)
+    a.add_joined("--j", ["a", "b"], join_with = ",")
+    a.add_all("--eq=", ["a", "b"])
+    a.use_param_file("@%s", use_always = True)
+    a.set_param_file_format("flag_per_line")
+    ctx.actions.run_shell(outputs = [o], command = "true", arguments = [a])
+    return []
+
+r = rule(implementation = _impl)
+"#;
+
+#[test]
+fn flag_per_line_writes_a_line_for_each_flag_call() {
+    let module = module_in("", "", FLAG_LINES).unwrap();
+    let out = run_rule(&request_in(module, "r", Vec::new(), Vec::new())).unwrap();
+    let ActionKind::WriteFile { contents, .. } = &out.actions[0].kind else {
+        panic!("{:?}", out.actions)
+    };
+    assert_eq!(
+        String::from_utf8_lossy(contents),
+        "--k=v w\n--x=y\n--t=a b c\n--t0\n--j=a,b\n--eq==a b\n"
+    );
+}

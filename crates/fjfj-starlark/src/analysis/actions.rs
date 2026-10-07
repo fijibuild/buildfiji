@@ -907,6 +907,13 @@ fn spawn<'v>(
                         let (words, waiting) = state.words();
                         // What waits for a tree reads it.
                         let trees = state.trees();
+                        // A line a call, which needs the calls' own words.
+                        let words = match (param.format, state.flag_lines()) {
+                            (fjfj_graph::command_line::ParamFormat::FlagPerLine, Some(lines)) => {
+                                lines
+                            }
+                            _ => words,
+                        };
                         s.register(
                             "ParameterFileWrite",
                             Some(format!("Writing file {}", basename(&file))),
