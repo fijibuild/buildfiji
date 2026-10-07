@@ -1444,6 +1444,133 @@ mod tests {
         );
     }
 
+    /// Probed on Bazel 9.2.0: with `--keep_going` the targets that make one file
+    /// differently are not both built; the one Bazel lists first is dropped,
+    /// with the targets that need it, and the rest are built.
+    #[test]
+    fn keep_going_builds_what_does_not_conflict() {
+        let dir = Scratch::new("build-conflict");
+        let module = "module(name = 'root', version = '0')\n";
+        std::fs::write(
+            dir.0.join("defs.bzl"),
+            r#"
+def _impl(ctx):
+    out = ctx.actions.declare_file(ctx.attr.out)
+    ctx.actions.write(out, ctx.attr.content)
+    for dep in ctx.attr.deps:
+        pass
+    return [DefaultInfo(files = depset([out]))]
+
+w = rule(implementation = _impl, attrs = {"out": attr.string(), "content": attr.string(), "deps": attr.label_list()})
+"#,
+        )
+        .unwrap();
+        std::fs::write(
+            dir.0.join("BUILD.bazel"),
+            "load(':defs.bzl', 'w')\nw(name = 'a', out = 'same.txt', content = '1')\nw(name = 'b', out = 'same.txt', content = '2')\nw(name = 'c', out = 'c.txt', content = 'c', deps = [':b'])\nw(name = 'g', out = 'g.txt', content = 'g')\n",
+        )
+        .unwrap();
+        let mut args = fixture_registry_flags();
+        args.push("--lockfile_mode=update".to_owned());
+        let (bzlmod, _) = bzlmod_flags::extract(&args, "build");
+        let flags = fetch_command::FetchFlags {
+            output_base: Some(dir.0.join("ob")),
+            repository_cache: Some(None),
+            ..fetch_command::FetchFlags::default()
+        };
+        let build = |keep_going: bool| {
+            let options = build_command::Options {
+                configuration: fjfj_graph::Configuration {
+                    cpu: "k8".into(),
+                    ..fjfj_graph::Configuration::default()
+                },
+                platform: None,
+                extra_toolchains: Vec::new(),
+                extra_execution_platforms: Vec::new(),
+                host_platform: None,
+                starlark_flags: Vec::new(),
+                toolchain_resolution_debug: None,
+                aspects: Vec::new(),
+                output_groups: Vec::new(),
+                keep_going,
+                build: true,
+                symlink_prefix: "bazel-".into(),
+                clean_links: None,
+                make_links: true,
+                expand_test_suites: true,
+                jobs: None,
+                strategy: fjfj_exec::run::Options::default().strategy,
+                show_result: 1,
+                record_execution_platforms: false,
+                subcommands: None,
+                test: None,
+                workspace_status: None,
+                incompatible: None,
+                run: false,
+            };
+            let (flags, bzlmod, root) = (flags.clone(), bzlmod.clone(), dir.0.clone());
+            let patterns = [
+                "//:a".to_owned(),
+                "//:b".to_owned(),
+                "//:c".to_owned(),
+                "//:g".to_owned(),
+            ];
+            let runtime = tokio::runtime::Runtime::new().unwrap();
+            runtime
+                .block_on(async move {
+                    tokio::task::spawn_blocking(move || {
+                        fetch_command::run_for_build(
+                            &flags,
+                            &bzlmod,
+                            &root,
+                            module,
+                            &patterns,
+                            "",
+                            Some(&options),
+                        )
+                    })
+                    .await
+                })
+                .unwrap()
+                .unwrap()
+                .report
+                .expect("analysed")
+        };
+        // Without it nothing is built.
+        let stopped = build(false);
+        assert_eq!(stopped.action_conflicts.len(), 1);
+        assert!(stopped.conflict_dropped.is_empty());
+        assert!(!dir.0.join("bazel-bin/g.txt").exists());
+        // With it the loser, b, and c, which needs it, are not.
+        let report = build(true);
+        assert_eq!(report.action_conflicts.len(), 1);
+        let dropped: Vec<&str> = report
+            .conflict_dropped
+            .iter()
+            .map(|l| l.name.as_str())
+            .collect();
+        assert_eq!(dropped, ["b"]);
+        let built: Vec<(&str, bool)> = report
+            .results
+            .iter()
+            .map(|r| (r.label.name.as_str(), r.built))
+            .collect();
+        assert_eq!(
+            built,
+            [("a", true), ("b", false), ("c", false), ("g", true)]
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.0.join("bazel-bin/same.txt")).unwrap(),
+            "1"
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.0.join("bazel-bin/g.txt")).unwrap(),
+            "g"
+        );
+        assert!(!dir.0.join("bazel-bin/c.txt").exists());
+        assert!(!report.succeeded());
+    }
+
     #[test]
     fn test_runs_the_tests_among_its_targets_and_remembers_the_ones_that_passed() {
         use build_command::TestStatus;

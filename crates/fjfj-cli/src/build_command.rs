@@ -544,8 +544,11 @@ pub(crate) struct Report {
     pub analysis_sites: BTreeMap<Label, Site>,
     pub failures: Vec<Failure>,
     /// Actions that cannot be in one build, found once every target was
-    /// analysed: nothing runs.
+    /// analysed: nothing runs, unless `--keep_going` drops the targets that
+    /// lost (`conflict_dropped`) and builds the rest.
     pub action_conflicts: Vec<String>,
+    /// The targets `--keep_going` does not build because their actions conflict.
+    pub conflict_dropped: Vec<Label>,
     /// What `--subcommands` says of each command that ran.
     pub subcommands: Vec<String>,
     /// Every configured target analysis made, the roots and what they read.
@@ -576,6 +579,7 @@ impl Report {
             results: Vec::new(),
             analysis_errors: Vec::new(),
             action_conflicts: Vec::new(),
+            conflict_dropped: Vec::new(),
             subcommands: Vec::new(),
             incompatible_errors: Vec::new(),
             configuration_checksum: String::new(),
@@ -1113,6 +1117,34 @@ pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> R
     }
 
     let mut actions: Vec<Action> = all.iter().flat_map(|t| t.actions.clone()).collect();
+    // Found with every target analysed, so before `--nobuild` stops there.
+    let conflicts = fjfj_graph::conflicts::found(&actions);
+    // The roots as asked for, for the results, when some are dropped.
+    let mut asked_roots: Option<Vec<(Label, Arc<ConfiguredTarget>)>> = None;
+    if !conflicts.is_empty() {
+        report.action_conflicts = conflicts.iter().map(|c| c.message.clone()).collect();
+        if !request.options.keep_going {
+            report.elapsed = started.elapsed();
+            return report;
+        }
+        // Under `--keep_going` the targets that lost, and the targets that
+        // need them, are not built; the others are.
+        let dropped: BTreeSet<Label> = conflicts
+            .iter()
+            .flat_map(|c| c.losers.iter().cloned())
+            .collect();
+        let by_key = targets_by_key(&all);
+        let needs_dropped = |label: &Label, target: &ConfiguredTarget| {
+            needed_labels(label, target, &by_key)
+                .iter()
+                .any(|needed| dropped.iter().any(|d| label_text(d) == *needed))
+        };
+        report.conflict_dropped = dropped.iter().cloned().collect();
+        asked_roots = Some(roots.clone());
+        roots.retain(|(label, target)| !needs_dropped(label, target));
+        aspect_roots.retain(|target| !needs_dropped(&target.label, target));
+        actions.retain(|action| !dropped.contains(&action.owner));
+    }
     let mut wanted: Vec<Artifact> = roots
         .iter()
         .flat_map(|(_, t)| t.files.to_vec().into_iter().chain(t.extra_outputs.clone()))
@@ -1164,12 +1196,6 @@ pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> R
             outputs,
             exec_group: None,
         });
-    }
-    // Found with every target analysed, so before `--nobuild` stops there.
-    report.action_conflicts = fjfj_graph::conflicts::conflicts(&actions);
-    if !report.action_conflicts.is_empty() {
-        report.elapsed = started.elapsed();
-        return report;
     }
     if !request.options.build {
         actions.clear();
@@ -1300,44 +1326,26 @@ pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> R
     }
     // Which targets a root needs matters only once something has failed; the walk clones and
     // hashes a key per target, so a build that failed nothing does not make it.
-    let by_key: std::collections::HashMap<ConfiguredTargetKey, &Arc<ConfiguredTarget>> =
-        if report.failures.is_empty() {
-            std::collections::HashMap::new()
-        } else {
-            all.iter()
-                .map(|t| {
-                    (
-                        ConfiguredTargetKey {
-                            label: t.label.clone(),
-                            configuration: t.configuration.clone(),
-                        },
-                        t,
-                    )
-                })
-                .collect()
-        };
-    for (label, target) in &roots {
+    let by_key = if report.failures.is_empty() && report.conflict_dropped.is_empty() {
+        std::collections::HashMap::new()
+    } else {
+        targets_by_key(&all)
+    };
+    let results_for = asked_roots.as_ref().unwrap_or(&roots);
+    for (label, target) in results_for {
         // It was built unless one of the targets it needs failed.
-        let mut needed: HashSet<String> = HashSet::new();
-        if !report.failures.is_empty() {
-            let mut pending = vec![ConfiguredTargetKey {
-                label: label.clone(),
-                configuration: target.configuration.clone(),
-            }];
-            let mut visited: HashSet<ConfiguredTargetKey> = HashSet::new();
-            while let Some(next) = pending.pop() {
-                if !visited.insert(next.clone()) {
-                    continue;
-                }
-                if let Some(t) = by_key.get(&next) {
-                    needed.insert(label_text(&t.label));
-                    pending.extend(t.deps.iter().cloned());
-                }
-            }
-        }
+        let needed = if by_key.is_empty() {
+            HashSet::new()
+        } else {
+            needed_labels(label, target, &by_key)
+        };
         // With `--nobuild` nothing was built, so nothing is listed as up to date.
-        let built =
-            request.options.build && report.failures.iter().all(|f| !needed.contains(&f.owner));
+        let built = request.options.build
+            && report.failures.iter().all(|f| !needed.contains(&f.owner))
+            && report
+                .conflict_dropped
+                .iter()
+                .all(|d| !needed.contains(&label_text(d)));
         // Only what was built is listed, not the sources among a target's files.
         let files = target
             .files
@@ -1355,6 +1363,47 @@ pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> R
     }
     report.elapsed = started.elapsed();
     report
+}
+
+/// The configured targets by key.
+fn targets_by_key(
+    all: &[Arc<ConfiguredTarget>],
+) -> std::collections::HashMap<ConfiguredTargetKey, &Arc<ConfiguredTarget>> {
+    all.iter()
+        .map(|t| {
+            (
+                ConfiguredTargetKey {
+                    label: t.label.clone(),
+                    configuration: t.configuration.clone(),
+                },
+                t,
+            )
+        })
+        .collect()
+}
+
+/// The labels of the targets `root` needs, itself among them.
+fn needed_labels(
+    label: &Label,
+    root: &ConfiguredTarget,
+    by_key: &std::collections::HashMap<ConfiguredTargetKey, &Arc<ConfiguredTarget>>,
+) -> HashSet<String> {
+    let mut needed: HashSet<String> = HashSet::new();
+    let mut pending = vec![ConfiguredTargetKey {
+        label: label.clone(),
+        configuration: root.configuration.clone(),
+    }];
+    let mut visited: HashSet<ConfiguredTargetKey> = HashSet::new();
+    while let Some(next) = pending.pop() {
+        if !visited.insert(next.clone()) {
+            continue;
+        }
+        if let Some(t) = by_key.get(&next) {
+            needed.insert(label_text(&t.label));
+            pending.extend(t.deps.iter().cloned());
+        }
+    }
+    needed
 }
 
 /// What the main repository is called in a runfiles tree.
@@ -1580,7 +1629,8 @@ pub(crate) fn print(
     for line in analysis_error_lines(report, layout, keep_going) {
         eprintln!("{line}");
     }
-    let incompatible = !report.incompatible_errors.is_empty();
+    let incompatible =
+        !report.incompatible_errors.is_empty() || !report.conflict_dropped.is_empty();
     // What the platform cannot build and what failed to analyse were
     // analysed as well.
     let analysed = report.results.len() + report.skipped.len() + report.failed_roots.len();
@@ -1625,9 +1675,13 @@ pub(crate) fn print(
     if let Some(mode) = test_output {
         print_test_output(report, mode);
     }
-    // Bazel says each twice: as the event, and again in the error that ends the build.
+    // Bazel says each twice: as the event, and again in the error that ends the
+    // build; under `--keep_going` the build goes on, so once.
     for message in &report.action_conflicts {
         eprintln!("ERROR: {message}");
+        if keep_going {
+            continue;
+        }
         // Said of what two targets made.
         let two_owners = !message.starts_with("file ")
             || message.lines().nth(1).is_some_and(|l| l.contains(", "));
@@ -1635,6 +1689,12 @@ pub(crate) fn print(
             eprintln!("Use --verbose_failures to see the command lines of failed build steps.");
         }
         eprintln!("ERROR: {message}");
+    }
+    for label in &report.conflict_dropped {
+        eprintln!(
+            "WARNING: errors encountered while analyzing target '{}': it will not be built",
+            label_text(label)
+        );
     }
     let mut failed_owners: Vec<&str> = Vec::new();
     for failure in &report.failures {
