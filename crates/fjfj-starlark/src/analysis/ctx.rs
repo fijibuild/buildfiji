@@ -7,10 +7,11 @@ use crate::args::{Wording, bind, fatal, param};
 use crate::label::StarlarkLabel;
 use crate::structs::new_struct;
 use allocative::Allocative;
+use fjfj_graph::config::COMMAND_LINE_OPTION;
 use fjfj_graph::expand::{Expander, Prerequisite};
 use fjfj_graph::rule::{AttrType, AttrValue};
 use fjfj_graph::schema::RuleSchema;
-use fjfj_graph::{Action, Artifact, Configuration, Label, LabelContext};
+use fjfj_graph::{Action, Artifact, Configuration, Label, LabelContext, SettingValue};
 use starlark::environment::{Methods, MethodsBuilder, MethodsStatic};
 use starlark::eval::{Arguments, Evaluator};
 use starlark::starlark_module;
@@ -262,6 +263,11 @@ impl CtxState {
             "linux"
         };
         let option = |name: &str| config.options.get(name).cloned().unwrap_or_default();
+        let switch = |name: &str| {
+            let on = config.settings.get(&format!("{COMMAND_LINE_OPTION}{name}"))
+                == Some(&SettingValue::Bool(true));
+            if on { "1" } else { "" }.to_owned()
+        };
         vec![
             ("copt", option("copt")),
             ("cxxopt", option("cxxopt")),
@@ -297,6 +303,26 @@ impl CtxState {
                         .join("\n")
                 } else {
                     String::new()
+                },
+            ),
+            // The switches `--stamp`, `--collect_code_coverage`, `--force_pic`
+            // and `--save_temps`, and whether `--fission` is on in this mode.
+            ("stamp", switch("stamp")),
+            ("collect_code_coverage", switch("collect_code_coverage")),
+            ("force_pic", switch("force_pic")),
+            ("save_temps", switch("save_temps")),
+            (
+                "fission",
+                match config
+                    .settings
+                    .get(&format!("{COMMAND_LINE_OPTION}fission"))
+                {
+                    Some(SettingValue::List(modes))
+                        if modes.iter().any(|m| m == config.compilation_mode.name()) =>
+                    {
+                        "1".to_owned()
+                    }
+                    _ => String::new(),
                 },
             ),
             ("short_id", config.mnemonic()),

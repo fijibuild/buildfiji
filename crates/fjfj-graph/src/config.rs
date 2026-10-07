@@ -272,7 +272,12 @@ impl Configuration {
         for (name, value) in &self.options {
             out.insert(
                 option(name),
-                SettingValue::List(value.split_whitespace().map(str::to_owned).collect()),
+                // `--strip` is a string; the rest are lists of words.
+                if name == "strip" {
+                    SettingValue::Str(value.clone())
+                } else {
+                    SettingValue::List(value.split_whitespace().map(str::to_owned).collect())
+                },
             );
         }
         for (name, value) in &self.settings {

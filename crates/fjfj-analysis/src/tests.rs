@@ -2168,3 +2168,31 @@ r = rule(implementation = _impl)
     let n = analyse_in(&repos, "//:n", config).await.unwrap();
     assert_eq!(n.printed.without_sites(), ["test_env: {}"]);
 }
+
+/// Probed on Bazel 9.2.0: `--collect_code_coverage` is what
+/// `ctx.configuration.coverage_enabled` says.
+#[tokio::test(flavor = "multi_thread")]
+async fn ctx_configuration_coverage_enabled_follows_collect_code_coverage() {
+    let (_dir, repos) = workspace(&[
+        ("MODULE.bazel", ""),
+        (
+            "defs.bzl",
+            r#"
+def _impl(ctx):
+    print("coverage_enabled:", ctx.configuration.coverage_enabled)
+    return []
+r = rule(implementation = _impl)
+"#,
+        ),
+        ("BUILD.bazel", "load(':defs.bzl', 'r')\nr(name = 'n')\n"),
+    ]);
+    let off = analyse(&repos, "//:n").await.unwrap();
+    assert_eq!(off.printed.without_sites(), ["coverage_enabled: False"]);
+    let mut on = config();
+    on.settings.insert(
+        "//command_line_option:collect_code_coverage".into(),
+        fjfj_graph::SettingValue::Bool(true),
+    );
+    let on = analyse_in(&repos, "//:n", on).await.unwrap();
+    assert_eq!(on.printed.without_sites(), ["coverage_enabled: True"]);
+}

@@ -27,6 +27,12 @@ pub const IMPLEMENTED: &[&str] = &[
     "skip_incompatible_explicit_targets",
     "experimental_platform_in_output_dir",
     "experimental_override_platform_cpu_name",
+    "strip",
+    "stamp",
+    "collect_code_coverage",
+    "force_pic",
+    "save_temps",
+    "fission",
     "copt",
     "cxxopt",
     "conlyopt",
@@ -47,6 +53,9 @@ pub const IMPLEMENTED: &[&str] = &[
     "grte_top",
     "fdo_optimize",
 ];
+
+/// The boolean flags that reach the configuration, with their negations.
+const SWITCHES: &[&str] = &["stamp", "collect_code_coverage", "force_pic", "save_temps"];
 
 /// The flags that are lists of options, kept in `options` joined by a space
 /// in the order given.
@@ -118,6 +127,13 @@ pub struct BuildFlags {
     /// `--experimental_override_name_platform_in_output_dir`: `LABEL=NAME`
     /// for each, as written, in order.
     pub platform_name_overrides: Vec<String>,
+    /// `--stamp`, `--collect_code_coverage`, `--force_pic` and `--save_temps`,
+    /// each as the last of its spellings gave it.
+    pub switches: Vec<(String, bool)>,
+    /// `--strip`: `always`, `sometimes` or `never`, checked by whoever uses it.
+    pub strip: Option<String>,
+    /// `--fission`: the modes it is on in, as written.
+    pub fission: Option<String>,
     /// `--copt` and the like, by flag name, each value in order.
     pub options: Vec<(String, String)>,
     /// `--//pkg:flag=value`, in order.
@@ -178,6 +194,11 @@ pub fn extract(args: &[String], command: &str) -> (BuildFlags, Vec<String>) {
             flags.skip_incompatible_explicit_targets = !m.negated;
             continue;
         }
+        if SWITCHES.contains(&name) {
+            flags.switches.retain(|(n, _)| n != name);
+            flags.switches.push((name.to_owned(), !m.negated));
+            continue;
+        }
         if name == "experimental_platform_in_output_dir" {
             flags.platform_in_output_dir = !m.negated;
             continue;
@@ -209,6 +230,8 @@ pub fn extract(args: &[String], command: &str) -> (BuildFlags, Vec<String>) {
                     .map(str::to_owned),
             ),
             "host_platform" => flags.host_platform = Some(value),
+            "strip" => flags.strip = Some(value),
+            "fission" => flags.fission = Some(value),
             "experimental_override_platform_cpu_name" => flags.platform_name_overrides.push(value),
             "toolchain_resolution_debug" => flags.toolchain_resolution_debug = Some(value),
             "action_env" => flags.action_env.push(value),
@@ -277,6 +300,35 @@ mod tests {
             "build",
         );
         assert!(!flags.platform_in_output_dir);
+    }
+
+    #[test]
+    fn the_switches_the_fragments_read_are_taken_last_spelling_wins() {
+        let (flags, rest) = extract(
+            &args(&[
+                "--stamp",
+                "--collect_code_coverage",
+                "--nostamp",
+                "--stamp",
+                "--noforce_pic",
+                "--strip=always",
+                "--fission",
+                "dbg,opt",
+                "//a:a",
+            ]),
+            "build",
+        );
+        assert_eq!(
+            flags.switches,
+            [
+                ("collect_code_coverage".to_owned(), true),
+                ("stamp".to_owned(), true),
+                ("force_pic".to_owned(), false),
+            ]
+        );
+        assert_eq!(flags.strip.as_deref(), Some("always"));
+        assert_eq!(flags.fission.as_deref(), Some("dbg,opt"));
+        assert_eq!(rest, ["//a:a"]);
     }
 
     #[test]

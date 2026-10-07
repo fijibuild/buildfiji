@@ -492,8 +492,8 @@ def _make_fragments(options):
         experimental_link_static_libraries_once = lambda: False,
         fdo_instrument = lambda: None,
         fdo_path = lambda: None,
-        fission_active_for_current_compilation_mode = lambda: False,
-        force_pic = lambda: False,
+        fission_active_for_current_compilation_mode = lambda: bool(options["fission"]),
+        force_pic = lambda: bool(options["force_pic"]),
         generate_llvm_lcov = lambda: False,
         grte_top = lambda: None,
         include_scanning = lambda: False,
@@ -515,7 +515,7 @@ def _make_fragments(options):
         propeller_optimize_absolute_ld_profile = lambda: None,
         proto_profile = lambda: False,
         save_feature_state = lambda: False,
-        save_temps = lambda: False,
+        save_temps = lambda: bool(options["save_temps"]),
         share_native_deps = lambda: True,
         should_generate_dotd_files = lambda: True,
         # --strip=sometimes strips in fastbuild.
@@ -539,13 +539,13 @@ def _make_fragments(options):
 # `ctx.configuration`.
 def _make_configuration(options):
     return struct(
-        coverage_enabled = False,
+        coverage_enabled = bool(options["collect_code_coverage"]),
         default_shell_env = dict([line.split("=", 1) for line in options["default_shell_env"].split("\n")]),
         host_path_separator = ":",
         short_id = options["short_id"],
         test_env = dict([line.split("=", 1) for line in options["test_env"].split("\n") if line]),
         is_tool_configuration = lambda: bool(options["exec"]),
-        stamp_binaries = lambda: False,
+        stamp_binaries = lambda: bool(options["stamp"]),
         is_sibling_repository_layout = lambda: False,
         has_separate_genfiles_directory = lambda: False,
         runfiles_enabled = lambda: True,

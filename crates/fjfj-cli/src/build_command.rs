@@ -115,6 +115,48 @@ pub(crate) fn configuration_from(
             .platform_names
             .insert(fjfj_graph::expand::label_text(&label), value.to_owned());
     }
+    let option = |name: &str| format!("{}{name}", fjfj_graph::config::COMMAND_LINE_OPTION);
+    for (name, on) in &flags.switches {
+        if *on {
+            configuration
+                .settings
+                .insert(option(name), fjfj_graph::SettingValue::Bool(true));
+        } else {
+            configuration.settings.remove(&option(name));
+        }
+    }
+    if let Some(strip) = &flags.strip {
+        if !["always", "sometimes", "never"].contains(&strip.as_str()) {
+            return Err(format!(
+                "While parsing option --strip={strip}: Not a valid strip mode: '{strip}' (should be always, sometimes or never)"
+            ));
+        }
+        configuration
+            .options
+            .insert("strip".to_owned(), strip.clone());
+    }
+    if let Some(fission) = &flags.fission {
+        // `yes` is every mode and `no` none, each only on its own.
+        let modes: Vec<String> = match fission.as_str() {
+            "yes" => ["fastbuild", "dbg", "opt"].map(str::to_owned).to_vec(),
+            "no" => Vec::new(),
+            list => {
+                let mut modes = Vec::new();
+                for mode in list.split(',').filter(|m| !m.is_empty()) {
+                    if fjfj_graph::CompilationMode::parse(mode).is_none() {
+                        return Err(format!(
+                            "While parsing option --fission={fission}: Not a valid compilation mode: '{mode}' (should be fastbuild, dbg or opt)"
+                        ));
+                    }
+                    modes.push(mode.to_owned());
+                }
+                modes
+            }
+        };
+        configuration
+            .settings
+            .insert(option("fission"), fjfj_graph::SettingValue::List(modes));
+    }
     configuration.defines = flags.defines.iter().cloned().collect();
     for entry in &flags.action_env {
         match entry.split_once('=') {
