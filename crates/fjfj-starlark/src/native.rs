@@ -352,6 +352,37 @@ fn may_use_private_api(file: &str) -> bool {
         })
 }
 
+/// Fail unless the file of the frame `skip` frames below the innermost one
+/// that has a place may use the private API.
+pub(crate) fn check_private_api(
+    eval: &Evaluator<'_, '_, '_>,
+    skip: usize,
+    feature: Option<&str>,
+) -> starlark::Result<NoneType> {
+    let frames = eval.call_stack().frames;
+    let Some(file) = frames
+        .iter()
+        .rev()
+        .filter_map(|frame| frame.location.as_ref())
+        .nth(skip)
+        .map(|span| span.resolve().file)
+    else {
+        return Ok(NoneType);
+    };
+    if may_use_private_api(&file) {
+        return Ok(NoneType);
+    }
+    // Bazel writes a main repo label without its `@@`.
+    let label = file
+        .strip_prefix("@@")
+        .filter(|l| l.starts_with("//"))
+        .unwrap_or(&file);
+    let at = feature.map_or(String::new(), |f| {
+        format!(" (feature '{f}' in CppConfiguration)")
+    });
+    Err(fatal(format!("file '{label}' cannot use private API{at}")))
+}
+
 /// What the builtins (and nothing else) use.
 #[starlark_module]
 fn internal_globals(builder: &mut GlobalsBuilder) {
@@ -381,28 +412,7 @@ fn internal_globals(builder: &mut GlobalsBuilder) {
         #[starlark(require = pos)] feature: Option<&str>,
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> starlark::Result<NoneType> {
-        let frames = eval.call_stack().frames;
-        let Some(file) = frames
-            .iter()
-            .rev()
-            .nth(1)
-            .and_then(|frame| frame.location.as_ref())
-            .map(|span| span.resolve().file)
-        else {
-            return Ok(NoneType);
-        };
-        if may_use_private_api(&file) {
-            return Ok(NoneType);
-        }
-        // Bazel writes a main repo label without its `@@`.
-        let label = file
-            .strip_prefix("@@")
-            .filter(|l| l.starts_with("//"))
-            .unwrap_or(&file);
-        let at = feature.map_or(String::new(), |f| {
-            format!(" (feature '{f}' in CppConfiguration)")
-        });
-        Err(fatal(format!("file '{label}' cannot use private API{at}")))
+        check_private_api(eval, 1, feature)
     }
 
     /// Bazel's `Starlark.freeze`: a list that nothing can change any more, which

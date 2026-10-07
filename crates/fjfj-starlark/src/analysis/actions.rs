@@ -352,6 +352,22 @@ impl FileValueView<'_> {
     }
 }
 
+/// `path` with its `.` and `a/..` parts folded away, as Bazel's `PathFragment`
+/// has it.
+fn normalized(path: &str) -> String {
+    let mut parts: Vec<&str> = Vec::new();
+    for part in path.split('/') {
+        match part {
+            "" | "." => {}
+            ".." if parts.last().is_some_and(|last| *last != "..") => {
+                parts.pop();
+            }
+            other => parts.push(other),
+        }
+    }
+    parts.join("/")
+}
+
 /// `declare_file` and `declare_symlink`: a new file of the rule's package.
 fn declare<'v>(
     this: Value<'v>,
@@ -386,7 +402,16 @@ fn declare<'v>(
                 symlink: false,
             }
         }
-        None => s.derived(filename),
+        None => {
+            if filename.starts_with('/') {
+                return Err(fatal(format!(
+                    "the output artifact '{filename}' is not under package directory '{}' for target '{}'",
+                    s.label.package,
+                    fjfj_graph::expand::label_text(&s.label)
+                )));
+            }
+            s.derived(&normalized(filename))
+        }
     };
     artifact.symlink = function == "declare_symlink";
     // Declaring a path again is allowed (Bazel gives the same file); two
@@ -495,6 +520,7 @@ fn actions_members(builder: &mut MethodsBuilder) {
         path: &str,
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> starlark::Result<Value<'v>> {
+        crate::native::check_private_api(eval, 0, None)?;
         let s = state(this);
         let artifact = Artifact {
             root: fjfj_graph::artifact::Root::derived(s.bin_dir()),
@@ -504,6 +530,47 @@ fn actions_members(builder: &mut MethodsBuilder) {
         };
         s.declared.lock().unwrap().insert(artifact.exec_path());
         Ok(alloc_file(eval.heap(), artifact, s.label.clone()))
+    }
+
+    /// `ctx.actions.do_nothing(*, mnemonic, inputs = [])`: an action for the
+    /// extra-action machinery, whose output (`<name>.extra_action_dummy`)
+    /// nothing asks for.
+    fn do_nothing<'v>(
+        this: Value<'v>,
+        args: &Arguments<'v, '_>,
+        eval: &mut Evaluator<'v, '_, '_>,
+    ) -> starlark::Result<NoneType> {
+        let s = state(this);
+        let bound = bind(
+            "do_nothing",
+            Wording::Signature,
+            &[
+                param("mnemonic", false, true),
+                param("inputs", false, false),
+            ],
+            args,
+            eval,
+        )?;
+        let mnemonic = unpacked("do_nothing", "mnemonic", bound[0], "string", |v| {
+            v.unpack_str()
+        })?;
+        let inputs = match bound[1] {
+            Some(v) => files_of(eval, "do_nothing", "inputs", v)?,
+            None => Vec::new(),
+        };
+        let output = s.derived(&format!("{}.extra_action_dummy", s.label.name));
+        s.declared.lock().unwrap().insert(output.exec_path());
+        s.register(
+            mnemonic,
+            None,
+            ActionKind::WriteFile {
+                contents: Vec::new(),
+                executable: false,
+            },
+            inputs,
+            vec![output],
+        );
+        Ok(NoneType)
     }
 
     /// `ctx.actions.template_dict()`.

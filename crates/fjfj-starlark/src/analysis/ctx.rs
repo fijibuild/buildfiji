@@ -568,6 +568,13 @@ fn ctx_members(builder: &mut MethodsBuilder) {
         }
     }
 
+    /// `ctx.created_actions()`: the actions of a `_skylark_testable` rule,
+    /// `None` for any other.
+    fn created_actions<'v>(this: Value<'v>) -> starlark::Result<starlark::values::none::NoneType> {
+        let _ = this;
+        Ok(starlark::values::none::NoneType)
+    }
+
     /// `ctx.kind` (`ctx.rule.kind` in an aspect): the rule class.
     #[starlark(attribute)]
     fn kind<'v>(this: Value<'v>) -> starlark::Result<String> {

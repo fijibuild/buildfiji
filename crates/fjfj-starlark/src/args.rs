@@ -116,12 +116,16 @@ pub(crate) fn bind<'v>(
         }
         bound[slot] = Some(*value);
     }
-    let missing: Vec<&Param> = params
+    let mut missing: Vec<&Param> = params
         .iter()
         .zip(&bound)
         .filter(|(p, value)| p.required && value.is_none())
         .map(|(p, _)| p)
         .collect();
+    // Bazel reports the positional parameters first, and only those.
+    if missing.iter().any(|p| p.positional) {
+        missing.retain(|p| p.positional);
+    }
     if let Some(first) = missing.first() {
         let names: Vec<&str> = missing.iter().map(|p| p.name).collect();
         return Err(fatal(format!(

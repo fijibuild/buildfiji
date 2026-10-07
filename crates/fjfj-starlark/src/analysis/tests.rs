@@ -1937,3 +1937,51 @@ fn flag_per_line_writes_a_line_for_each_flag_call() {
         "--k=v w\n--x=y\n--t=a b c\n--t0\n--j=a,b\n--eq==a b\n"
     );
 }
+
+/// Probed on Bazel 9.2.0.
+#[test]
+fn declare_file_do_nothing_and_private_api_as_bazel_has_them() {
+    let cases: [(&str, &str); 5] = [
+        (
+            "ctx.actions.declare_file('/abs')",
+            "Error in declare_file: the output artifact '/abs' is not under package directory '' for target '//:t'",
+        ),
+        (
+            "ctx.actions.do_nothing()",
+            "Error in do_nothing: do_nothing() missing 1 required named argument: mnemonic",
+        ),
+        (
+            "ctx.actions.do_nothing(mnemonic = 1)",
+            "Error in do_nothing: in call to do_nothing(), parameter 'mnemonic' got value of type 'int', want 'string'",
+        ),
+        (
+            "ctx.actions.args().add_joined()",
+            "Error in add_joined: add_joined() missing 1 required positional argument: arg_name_or_values",
+        ),
+        (
+            "ctx.actions.declare_shareable_artifact('x')",
+            "cannot use private API",
+        ),
+    ];
+    for (call, want) in cases {
+        let src = format!(
+            "def _impl(ctx):\n    {call}\n    return []\nr = rule(implementation = _impl)\n"
+        );
+        let err = run_rule(&request(&src, "r", Vec::new(), Vec::new())).unwrap_err();
+        assert!(err.contains(want), "{call}: wanted `{want}` in\n{err}");
+    }
+    // `a/../b` is `b`, and `do_nothing` and `created_actions` are fine.
+    let src = r#"
+def _impl(ctx):
+    f = ctx.actions.declare_file("a/../b")
+    ctx.actions.write(f, "x")
+    ctx.actions.do_nothing(mnemonic = "M", inputs = [f])
+    if ctx.created_actions() != None:
+        fail("created_actions")
+    return [DefaultInfo(files = depset([f]))]
+r = rule(implementation = _impl)
+"#;
+    let out = run_rule(&request(src, "r", Vec::new(), Vec::new())).unwrap();
+    assert_eq!(out.actions[0].outputs[0].path, "b");
+    assert_eq!(out.actions.len(), 2);
+}
