@@ -148,6 +148,7 @@ pub(crate) fn register(
         root: exe.root.clone(),
         path: format!("{}{suffix}", exe.path),
         tree: false,
+        symlink: false,
     };
     let (dir, manifest, repo_mapping) = (
         at(".runfiles"),
@@ -161,6 +162,7 @@ pub(crate) fn register(
         root: exe.root.clone(),
         path: format!("{}/MANIFEST", dir.path),
         tree: false,
+        symlink: false,
     };
     let label = fjfj_graph::expand::label_text(&target.label);
     let made = |mnemonic: &str,

@@ -162,6 +162,7 @@ mod tests {
                 root: Root::derived("bazel-out/k8-fastbuild/bin"),
                 path: path.into(),
                 tree: false,
+                symlink: false,
             }],
             exec_group: None,
         }

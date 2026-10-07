@@ -183,8 +183,7 @@ fn file_members(builder: &mut MethodsBuilder) {
 
     #[starlark(attribute)]
     fn is_symlink<'v>(this: Value<'v>) -> starlark::Result<bool> {
-        let _ = this;
-        Ok(false)
+        Ok(file(this).artifact.symlink)
     }
 
     #[starlark(attribute)]

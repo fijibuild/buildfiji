@@ -2274,3 +2274,37 @@ genrule(name = 'g', outs = ['g.txt'], toolchains = [':v1', ':v2'], cmd = 'echo $
             .ends_with("echo one zz bazel-out/k8-fastbuild/bin")
     );
 }
+
+/// Probed on Bazel 9.2.0: a file made by `declare_symlink` has `is_symlink`,
+/// also when a dependent reads it from `DefaultInfo`.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_declared_symlink_is_a_symlink_to_the_rule_that_made_it_and_to_its_dependents() {
+    let (_dir, repos) = workspace(&[
+        ("MODULE.bazel", ""),
+        (
+            "defs.bzl",
+            r#"
+def _make(ctx):
+    link = ctx.actions.declare_symlink(ctx.label.name + "_l")
+    ctx.actions.symlink(output = link, target_path = "../x")
+    plain = ctx.actions.declare_file(ctx.label.name + "_p")
+    ctx.actions.write(plain, "p")
+    print("made:", link.is_symlink, plain.is_symlink)
+    return [DefaultInfo(files = depset([link, plain]))]
+make = rule(implementation = _make)
+def _use(ctx):
+    print("used:", [f.is_symlink for f in ctx.attr.dep.files.to_list()])
+    return []
+use = rule(implementation = _use, attrs = {"dep": attr.label()})
+"#,
+        ),
+        (
+            "BUILD.bazel",
+            "load(':defs.bzl', 'make', 'use')\nmake(name = 'm')\nuse(name = 'u', dep = ':m')\n",
+        ),
+    ]);
+    let m = analyse(&repos, "//:m").await.unwrap();
+    assert_eq!(m.printed.without_sites(), ["made: True False"]);
+    let u = analyse(&repos, "//:u").await.unwrap();
+    assert_eq!(u.printed.without_sites(), ["used: [True, False]"]);
+}

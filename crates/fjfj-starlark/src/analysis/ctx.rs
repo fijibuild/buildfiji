@@ -1145,6 +1145,7 @@ impl CtxState {
                 root: file.root.clone(),
                 path: format!("{}.runfiles", file.path),
                 tree: false,
+                symlink: false,
             });
         }
         self.rule

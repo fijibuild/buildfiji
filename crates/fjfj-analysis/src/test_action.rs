@@ -209,6 +209,7 @@ pub(crate) async fn register(
         root: root.clone(),
         path: format!("{dir}/{name}"),
         tree: false,
+        symlink: false,
     };
     let (log, xml) = (file("test.log"), file("test.xml"));
     let tmp = {

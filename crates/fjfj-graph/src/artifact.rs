@@ -54,6 +54,10 @@ pub struct Artifact {
     /// A directory an action fills (`declare_directory`): a tree artifact.
     #[serde(default)]
     pub tree: bool,
+    /// An unresolved symlink (`declare_symlink`): the link itself is the
+    /// output, whatever it points to.
+    #[serde(default)]
+    pub symlink: bool,
 }
 
 impl Artifact {
@@ -62,6 +66,7 @@ impl Artifact {
             root: Root::source_of(repo),
             path: join(package, name),
             tree: false,
+            symlink: false,
         }
     }
 
@@ -76,6 +81,7 @@ impl Artifact {
                 format!("external/{repo}/{path}")
             },
             tree: false,
+            symlink: false,
         }
     }
 

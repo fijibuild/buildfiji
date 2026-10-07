@@ -147,6 +147,7 @@ fn files_to_run_inputs(value: Value<'_>) -> Option<Vec<Artifact>> {
             root: exe.root.clone(),
             path: format!("{}.runfiles", exe.path),
             tree: false,
+            symlink: false,
         });
     }
     Some(out)
@@ -221,6 +222,7 @@ impl CtxState {
             root: sibling.root.clone(),
             path,
             tree: false,
+            symlink: false,
         }
     }
 
@@ -329,7 +331,7 @@ fn declare<'v>(
             "in call to {function}(), parameter 'filename' got value of type that is not 'string'"
         ))
     })?;
-    let artifact = match bound[1].filter(|v| !v.is_none()) {
+    let mut artifact = match bound[1].filter(|v| !v.is_none()) {
         Some(sibling) => {
             let sibling = artifact_of(sibling).ok_or_else(|| {
                     fatal(format!("in call to {function}(), parameter 'sibling' got value of type that is not 'File'"))
@@ -342,10 +344,12 @@ fn declare<'v>(
                 root: sibling.root,
                 path,
                 tree: false,
+                symlink: false,
             }
         }
         None => s.derived(filename),
     };
+    artifact.symlink = function == "declare_symlink";
     // Declaring a path again is allowed (Bazel gives the same file); two
     // different actions creating it are not (checked when the rule is done).
     s.declared.lock().unwrap().insert(artifact.exec_path());
@@ -457,6 +461,7 @@ fn actions_members(builder: &mut MethodsBuilder) {
             root: fjfj_graph::artifact::Root::derived(s.bin_dir()),
             path: path.to_owned(),
             tree: false,
+            symlink: false,
         };
         s.declared.lock().unwrap().insert(artifact.exec_path());
         Ok(alloc_file(eval.heap(), artifact, s.label.clone()))

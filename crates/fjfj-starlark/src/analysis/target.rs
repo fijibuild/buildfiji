@@ -137,6 +137,7 @@ pub(crate) fn default_info<'v>(
                             root: e.root.clone(),
                             path: format!("{}{suffix}", e.path),
                             tree: false,
+                            symlink: false,
                         },
                         owner.clone(),
                     )

@@ -867,6 +867,7 @@ async fn the_workspace_status_action_writes_both_files() {
         root: fjfj_graph::Root::derived("bazel-out"),
         path: "stable-status.txt".into(),
         tree: false,
+        symlink: false,
     };
     let volatile = Artifact {
         path: "volatile-status.txt".into(),

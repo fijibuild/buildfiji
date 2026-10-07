@@ -1090,6 +1090,7 @@ pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> R
             root: fjfj_graph::Root::derived("bazel-out"),
             path: name.to_owned(),
             tree: false,
+            symlink: false,
         };
         let outputs = vec![output("stable-status.txt"), output("volatile-status.txt")];
         wanted.push(outputs[0].clone());
