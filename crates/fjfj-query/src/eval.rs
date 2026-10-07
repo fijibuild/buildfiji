@@ -43,6 +43,9 @@ pub struct Evaluator<'g> {
     listing: Vec<Label>,
     /// The patterns `--keep_going` skipped, as `ERROR: Skipping ...` lines.
     skipped: Mutex<Vec<String>>,
+    /// Whether `--keep_going` went on past a pattern whose error was said
+    /// already.
+    said_errors: Mutex<bool>,
     /// The transitive closure of `--universe_scope`: what a universe query
     /// can see. `None` for a query that has no universe.
     universe: Option<Set>,
@@ -66,6 +69,7 @@ impl<'g> Evaluator<'g> {
             nodes: Mutex::new(HashMap::new()),
             listing: Vec::new(),
             skipped: Mutex::new(Vec::new()),
+            said_errors: Mutex::new(false),
             universe: None,
             universe_packages: BTreeSet::new(),
             scope_errors: Vec::new(),
@@ -126,7 +130,23 @@ impl<'g> Evaluator<'g> {
         {
             return Err(format!("no targets found beneath '{dir}'"));
         }
-        let labels = self.graph.pattern(word)?;
+        let labels = if self.options.keep_going {
+            let found = self.graph.pattern_lenient(word);
+            match found.error {
+                // Nothing came of it: the caller says why.
+                Some(error) if found.labels.is_empty() && !found.said => return Err(error),
+                Some(_) if found.said => *self.said_errors.lock().unwrap() = true,
+                Some(error) => self
+                    .skipped
+                    .lock()
+                    .unwrap()
+                    .push(format!("ERROR: Skipping '{word}': {error}")),
+                None => {}
+            }
+            found.labels
+        } else {
+            self.graph.pattern(word)?
+        };
         if self.universe.is_none() || labels.is_empty() {
             return Ok(labels.into_iter().collect());
         }
@@ -180,6 +200,12 @@ impl<'g> Evaluator<'g> {
     /// if the result is complete.
     pub fn skipped(&self) -> Vec<String> {
         self.skipped.lock().unwrap().clone()
+    }
+
+    /// Whether `--keep_going` went on past an error, which it said or which a
+    /// package said already: the result may be incomplete.
+    pub fn incomplete(&self) -> bool {
+        !self.skipped.lock().unwrap().is_empty() || *self.said_errors.lock().unwrap()
     }
 
     /// List results that are in `listing` in its order, the rest after them

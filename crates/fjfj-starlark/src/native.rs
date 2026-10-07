@@ -87,6 +87,9 @@ pub enum BuildFileError {
         events: Vec<String>,
         /// What `print()` wrote before the end, for whoever wants it.
         printed: Vec<String>,
+        /// What the file defined before it ended, when it ran to the end: Bazel
+        /// keeps the targets, with the package marked as in error.
+        partial: Option<Box<Package>>,
     },
 }
 
@@ -411,6 +414,7 @@ fn failure(error: starlark::Error) -> BuildFileError {
             BuildFileError::Package {
                 events: vec![crate::syntax_event(&file.unwrap_or_default(), &error)],
                 printed: Vec::new(),
+                partial: None,
             }
         }
         None => BuildFileError::Eval(anyhow::anyhow!("{}", crate::traceback(&error)), Vec::new()),
@@ -425,6 +429,7 @@ fn static_failure(path: &str, errors: &[starlark::Error]) -> BuildFileError {
             .map(|e| crate::syntax_event(path, e))
             .collect(),
         printed: Vec::new(),
+        partial: None,
     }
 }
 
@@ -456,6 +461,7 @@ fn failure_after(ctx: &BuildContext<'_>, error: starlark::Error) -> BuildFileErr
         BuildFileError::Package { events, .. } => BuildFileError::Package {
             events,
             printed: said,
+            partial: None,
         },
         other => other,
     }
@@ -518,6 +524,7 @@ pub fn evaluate_build_file(input: &BuildFile<'_>) -> Result<BuildFileOutput, Bui
                     return BuildFileError::Package {
                         events,
                         printed: Vec::new(),
+                        partial: None,
                     };
                 }
             }
@@ -535,6 +542,7 @@ pub fn evaluate_build_file(input: &BuildFile<'_>) -> Result<BuildFileOutput, Bui
         return Err(BuildFileError::Package {
             events: state.errors,
             printed: printed.into_inner(),
+            partial: Some(Box::new(state.builder.build())),
         });
     }
     Ok(BuildFileOutput {

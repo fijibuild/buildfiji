@@ -42,6 +42,12 @@ pub trait PackageSource: Send + Sync {
     ) -> Result<Arc<Package>, String> {
         self.package(repo, package)
     }
+
+    /// What the BUILD file of a package that failed with errors defined before
+    /// it ended: Bazel keeps those targets, with the package marked as in error.
+    fn partial(&self, _repo: &str, _package: &str) -> Option<Arc<Package>> {
+        None
+    }
 }
 
 /// Why a package is being loaded, as Bazel's events for a failure differ.
@@ -63,6 +69,14 @@ pub struct Failure {
     /// The pattern as given.
     pub pattern: String,
     pub message: String,
+    /// The message of the package error alone, when a package with errors
+    /// caused the failure.
+    pub package_error: Option<String>,
+    /// Whether the pattern is a `...` one.
+    pub tree: bool,
+    /// Whether the package that failed is one whose BUILD file ran to the end
+    /// and reported errors, so that it still defines targets.
+    pub defined: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -73,6 +87,9 @@ pub struct Resolved {
     /// package or below a directory.
     pub explicit: std::collections::BTreeSet<Label>,
     pub failures: Vec<Failure>,
+    /// What the patterns select in packages whose BUILD files reported errors
+    /// but defined targets: Bazel keeps them, and they fail to analyse.
+    pub in_error: Vec<Label>,
 }
 
 fn label_text(label: &Label) -> String {
@@ -192,8 +209,45 @@ impl Resolver<'_> {
         package: &str,
         rules_only: bool,
         purpose: Purpose,
-    ) -> Result<Vec<Label>, String> {
-        let loaded = self.load(repo, package, purpose)?;
+    ) -> Result<Vec<Label>, Failed> {
+        match self.load(repo, package, purpose) {
+            Ok(loaded) => self.wildcard_of(&loaded, repo, package, rules_only),
+            Err(message) => Err(self.failed(repo, package, message, |partial| {
+                self.wildcard_of(partial, repo, package, rules_only).ok()
+            })),
+        }
+    }
+
+    /// `message`, which says a package failed to load, with what the package
+    /// defined before it did if it ended with errors (`from`).
+    fn failed(
+        &self,
+        repo: &str,
+        package: &str,
+        message: String,
+        from: impl Fn(&Package) -> Option<Vec<Label>>,
+    ) -> Failed {
+        let defined = message
+            .ends_with("' contains errors")
+            .then(|| self.source.partial(repo, package))
+            .flatten();
+        Failed {
+            message,
+            partial: defined
+                .as_ref()
+                .and_then(|partial| from(partial))
+                .unwrap_or_default(),
+            defined: defined.is_some(),
+        }
+    }
+
+    fn wildcard_of(
+        &self,
+        loaded: &Package,
+        repo: &str,
+        package: &str,
+        rules_only: bool,
+    ) -> Result<Vec<Label>, Failed> {
         let mut out = Vec::new();
         let label = |name: &str| Label {
             repo: repo.to_owned(),
@@ -208,7 +262,7 @@ impl Resolver<'_> {
             out.push(label(&target.name));
         }
         if !rules_only {
-            let lookup = self.source.lookup(repo)?;
+            let lookup = self.source.lookup(repo).map_err(Failed::plain)?;
             if let Some(name) = lookup
                 .build_file(package)
                 .ok()
@@ -221,27 +275,37 @@ impl Resolver<'_> {
         Ok(out)
     }
 
-    fn target(&self, label: &Label) -> Result<Label, String> {
-        let lookup = self.source.lookup(&label.repo)?;
+    fn target(&self, label: &Label) -> Result<Label, Failed> {
+        let lookup = self.source.lookup(&label.repo).map_err(Failed::plain)?;
         let loaded = match self.load(&label.repo, &label.package, Purpose::Target) {
             Ok(loaded) => loaded,
-            // A package with errors declares no target that can be found, and
-            // the errors were said already.
+            // A package whose file did not run to the end declares no target
+            // that can be found, and the errors were said already. One that
+            // did declares the targets it got to.
             Err(message) if message.ends_with("' contains errors") => {
+                if let Some(partial) = self.source.partial(&label.repo, &label.package)
+                    && declared_target(&partial, &lookup, label).is_ok()
+                {
+                    return Err(Failed {
+                        message,
+                        partial: vec![label.clone()],
+                        defined: true,
+                    });
+                }
                 let build = lookup
                     .build_file(&label.package)
-                    .map_err(|e| e.to_string())?;
-                return Err(format!(
+                    .map_err(|e| Failed::plain(e.to_string()))?;
+                return Err(Failed::plain(format!(
                     "no such target '{}': target '{}' not declared in package '{}' defined by {}",
                     label_text(label),
                     label.name,
                     label.package,
                     build.display()
-                ));
+                )));
             }
-            Err(message) => return Err(message),
+            Err(message) => return Err(Failed::plain(message)),
         };
-        declared_target(&loaded, &lookup, label)?;
+        declared_target(&loaded, &lookup, label).map_err(Failed::plain)?;
         Ok(label.clone())
     }
 
@@ -283,36 +347,100 @@ impl Resolver<'_> {
         })
     }
 
-    fn select(&self, pattern: &Pattern) -> Result<Vec<Label>, String> {
+    fn select(&self, pattern: &Pattern) -> Selected {
+        let mut selected = Selected::default();
         match pattern {
-            Pattern::Target(label) => Ok(vec![self.target(label)?]),
-            Pattern::Path { repo, path } => {
-                let label = self.enclosing(repo, path)?;
-                Ok(vec![self.target(&label)?])
-            }
+            Pattern::Target(label) => match self.target(label) {
+                Ok(label) => selected.targets.push(label),
+                Err(failed) => selected.fail(failed),
+            },
+            Pattern::Path { repo, path } => match self.enclosing(repo, path) {
+                Ok(label) => match self.target(&label) {
+                    Ok(label) => selected.targets.push(label),
+                    Err(failed) => selected.fail(failed),
+                },
+                Err(message) => selected.fail(Failed::plain(message)),
+            },
             Pattern::InPackage {
                 repo,
                 package,
                 rules_only,
-            } => self.wildcard(repo, package, *rules_only, Purpose::Package),
+            } => match self.wildcard(repo, package, *rules_only, Purpose::Package) {
+                Ok(labels) => selected.targets = labels,
+                Err(failed) => selected.fail(failed),
+            },
             Pattern::Below {
                 repo,
                 directory,
                 rules_only,
             } => {
-                let lookup = self.source.lookup(repo)?;
-                let packages = lookup
-                    .packages_under(directory)
-                    .map_err(|e| e.to_string())?;
+                let lookup = match self.source.lookup(repo) {
+                    Ok(lookup) => lookup,
+                    Err(message) => {
+                        selected.fail(Failed::plain(message));
+                        return selected;
+                    }
+                };
+                let packages = match lookup.packages_under(directory) {
+                    Ok(packages) => packages,
+                    Err(e) => {
+                        selected.fail(Failed::plain(e.to_string()));
+                        return selected;
+                    }
+                };
                 if packages.is_empty() {
-                    return Err(format!("no targets found beneath '{directory}'"));
+                    selected.fail(Failed::plain(format!(
+                        "no targets found beneath '{directory}'"
+                    )));
+                    return selected;
                 }
-                let mut out = Vec::new();
+                // A package that fails costs the pattern its error, not the
+                // targets of the others.
                 for package in packages {
-                    out.extend(self.wildcard(repo, &package, *rules_only, Purpose::Tree)?);
+                    match self.wildcard(repo, &package, *rules_only, Purpose::Tree) {
+                        Ok(labels) => selected.targets.extend(labels),
+                        Err(failed) => selected.fail(failed),
+                    }
                 }
-                Ok(out)
             }
+        }
+        selected
+    }
+}
+
+/// Why one package could not be selected from, and what it did define.
+struct Failed {
+    message: String,
+    partial: Vec<Label>,
+    defined: bool,
+}
+
+impl Failed {
+    fn plain(message: String) -> Failed {
+        Failed {
+            message,
+            partial: Vec::new(),
+            defined: false,
+        }
+    }
+}
+
+/// What one pattern selected: the targets it got, those of packages with
+/// errors, and the first thing that went wrong.
+#[derive(Default)]
+struct Selected {
+    targets: Vec<Label>,
+    in_error: Vec<Label>,
+    failure: Option<String>,
+    defined: bool,
+}
+
+impl Selected {
+    fn fail(&mut self, failed: Failed) {
+        self.in_error.extend(failed.partial);
+        if self.failure.is_none() {
+            self.failure = Some(failed.message);
+            self.defined = failed.defined;
         }
     }
 }
@@ -495,30 +623,48 @@ pub fn resolve_with(
     let mut removed: HashSet<Label> = HashSet::new();
     let mut explicit: std::collections::BTreeSet<Label> = std::collections::BTreeSet::new();
     let mut failures = Vec::new();
+    let mut in_error: Vec<Label> = Vec::new();
     for pattern in patterns {
-        match resolver.select(&pattern.pattern) {
-            Ok(labels) if pattern.negative => removed.extend(labels),
-            Ok(labels) => {
-                if matches!(pattern.pattern, Pattern::Target(_) | Pattern::Path { .. }) {
-                    explicit.extend(labels.iter().cloned());
-                }
-                for label in labels {
-                    if !selected.contains(&label) {
-                        selected.push(label);
-                    }
+        let chosen = resolver.select(&pattern.pattern);
+        let labels = chosen.targets;
+        if pattern.negative {
+            removed.extend(labels);
+            removed.extend(chosen.in_error);
+        } else {
+            if matches!(pattern.pattern, Pattern::Target(_) | Pattern::Path { .. }) {
+                explicit.extend(labels.iter().cloned());
+            }
+            for label in labels {
+                if !selected.contains(&label) {
+                    selected.push(label);
                 }
             }
-            Err(message) => failures.push(Failure {
+            for label in chosen.in_error {
+                if !in_error.contains(&label) {
+                    in_error.push(label);
+                }
+            }
+        }
+        if let Some(message) = chosen.failure {
+            let package_error = message
+                .ends_with("' contains errors")
+                .then(|| message.clone());
+            failures.push(Failure {
                 pattern: pattern.text.clone(),
                 message: in_pattern(pattern, message),
-            }),
+                package_error,
+                tree: matches!(pattern.pattern, Pattern::Below { .. }),
+                defined: chosen.defined,
+            });
         }
     }
     selected.retain(|l| !removed.contains(l));
-    explicit.retain(|l| selected.contains(l));
+    in_error.retain(|l| !removed.contains(l));
+    explicit.retain(|l| selected.contains(l) || in_error.contains(l));
     Resolved {
         targets: selected,
         explicit,
         failures,
+        in_error,
     }
 }

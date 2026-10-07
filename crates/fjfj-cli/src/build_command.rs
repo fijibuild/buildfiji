@@ -346,14 +346,15 @@ pub(crate) struct Site {
 /// warning, and a target that failed because of one it reads says so besides.
 fn keep_going_warnings(report: &Report) -> Vec<String> {
     let mut lines = Vec::new();
-    for (label, _) in &report.analysis_errors {
+    for (label, message) in &report.analysis_errors {
         if !report.failed_roots.contains(label) {
             continue;
         }
-        let because_of_dep = report
-            .analysis_sites
-            .get(label)
-            .is_some_and(|site| site.failing != *label);
+        let because_of_dep = is_package_in_error(message)
+            || report
+                .analysis_sites
+                .get(label)
+                .is_some_and(|site| site.failing != *label);
         lines.push(format!(
             "WARNING: errors encountered while analyzing target '{}', it will not be built.{}",
             label_text(label),
@@ -362,6 +363,12 @@ fn keep_going_warnings(report: &Report) -> Vec<String> {
             } else {
                 ""
             }
+        ));
+    }
+    for label in &report.package_error_roots {
+        lines.push(format!(
+            "WARNING: errors encountered while analyzing target '{}', it will not be built.\nAnalysis failed",
+            label_text(label)
         ));
     }
     for (label, message) in &report.incompatible_errors {
@@ -373,10 +380,30 @@ fn keep_going_warnings(report: &Report) -> Vec<String> {
     lines
 }
 
+/// Whether `message` is what reading a target of a package in error says.
+fn is_package_in_error(message: &str) -> bool {
+    message.starts_with("Target '")
+        && message.contains("' contains an error and its package is in error and referenced by '")
+}
+
 /// The target a message of analysis says it is about: the rule label in
 /// `in <what> rule <label>: <why>`, which is how Bazel starts the error of a
 /// rule, whichever target of the build that rule is the target of.
 fn failing_target(message: &str) -> Option<Label> {
+    // A target of a package in error: the one that read it fails.
+    if let Some((_, parent)) = message
+        .strip_prefix("Target '")
+        .and_then(|rest| rest.split_once(" and referenced by '"))
+    {
+        return Label::parse(
+            parent.trim_end_matches('\''),
+            fjfj_graph::LabelContext {
+                repo: "",
+                package: "",
+            },
+        )
+        .ok();
+    }
     if let Some(transition) = fjfj_starlark::split_transition_error(message) {
         return Label::parse(
             transition.target,
@@ -580,6 +607,12 @@ pub(crate) struct Report {
     pub action_conflicts: Vec<String>,
     /// The targets `--keep_going` does not build because their actions conflict.
     pub conflict_dropped: Vec<Label>,
+    /// Requested targets of packages whose BUILD files reported errors: Bazel
+    /// keeps them and fails their analysis.
+    pub package_error_roots: Vec<Label>,
+    /// Where each of them reads a target of a package in error, as Bazel says
+    /// it: one `ERROR:` line for each.
+    pub package_error_events: Vec<String>,
     /// What `--subcommands` says of each command that ran.
     pub subcommands: Vec<String>,
     /// Every configured target analysis made, the roots and what they read.
@@ -611,6 +644,8 @@ impl Report {
             analysis_errors: Vec::new(),
             action_conflicts: Vec::new(),
             conflict_dropped: Vec::new(),
+            package_error_roots: Vec::new(),
+            package_error_events: Vec::new(),
             subcommands: Vec::new(),
             incompatible_errors: Vec::new(),
             configuration_checksum: String::new(),
@@ -641,6 +676,7 @@ impl Report {
         self.analysis_errors.is_empty()
             && self.incompatible_errors.is_empty()
             && self.action_conflicts.is_empty()
+            && self.package_error_roots.is_empty()
             && self.failures.is_empty()
     }
 }
@@ -1605,11 +1641,15 @@ fn analysis_error_lines(report: &Report, layout: &Layout, keep_going: bool) -> V
                         for event in fjfj_starlark::error_events(&message) {
                             lines.push(format!("ERROR: {at}: {event}"));
                         }
-                        lines.push(format!(
-                            "ERROR: {at}: Analysis of target '{}' (config: {}) failed",
-                            label_text(&site.failing),
-                            site.config
-                        ));
+                        // Reading a target of a package in error is the whole
+                        // of the error.
+                        if !is_package_in_error(&message) {
+                            lines.push(format!(
+                                "ERROR: {at}: Analysis of target '{}' (config: {}) failed",
+                                label_text(&site.failing),
+                                site.config
+                            ));
+                        }
                     }
                 }
                 if !keep_going {
@@ -1660,11 +1700,17 @@ pub(crate) fn print(
     for line in analysis_error_lines(report, layout, keep_going) {
         eprintln!("{line}");
     }
+    for line in &report.package_error_events {
+        eprintln!("{line}");
+    }
     let incompatible =
         !report.incompatible_errors.is_empty() || !report.conflict_dropped.is_empty();
     // What the platform cannot build and what failed to analyse were
     // analysed as well.
-    let analysed = report.results.len() + report.skipped.len() + report.failed_roots.len();
+    let analysed = report.results.len()
+        + report.skipped.len()
+        + report.failed_roots.len()
+        + report.package_error_roots.len();
     if ((report.analysis_errors.is_empty() && !incompatible) || keep_going)
         && !(load_errors.is_some() && analysed == 0)
     {
@@ -1674,7 +1720,8 @@ pub(crate) fn print(
                 .first()
                 .map(|r| &r.label)
                 .or(report.skipped.first())
-                .or(report.failed_roots.first());
+                .or(report.failed_roots.first())
+                .or(report.package_error_roots.first());
             only.map(|label| format!("target {}", label_text(label)))
                 .unwrap_or_default()
         } else {
@@ -1807,8 +1854,10 @@ pub(crate) fn print(
             );
         }
         let tests = report.tests.len();
-        // The targets that failed to analyse are not among those found.
-        let found_count = requested.saturating_sub(report.failed_roots.len());
+        // The targets of packages with errors are not among those found.
+        let found_count = requested
+            .saturating_sub(report.package_error_roots.len())
+            .saturating_sub(report.failed_roots.len());
         let found = match (found_count - tests.min(found_count), tests) {
             (_, 0) if test_output.is_some() && found_count == 0 => "0 test targets".to_owned(),
             (_, 0) => plural(found_count, "target", "targets"),
@@ -1825,7 +1874,7 @@ pub(crate) fn print(
         }
 
         // `--show_result=1`: say where the result is when there is one target.
-        let analysed_ok = analysed - report.failed_roots.len();
+        let analysed_ok = analysed - report.package_error_roots.len() - report.failed_roots.len();
         if analysed_ok - report.source_files.len().min(analysed_ok) <= show_result {
             for result in built
                 .iter()
@@ -2098,7 +2147,7 @@ fn is_too_big(test: &TestResult) -> bool {
 
 /// A location as `bazel` prints it: the BUILD file's absolute path, then the
 /// line and column.
-fn absolute(layout: &Layout, repo: &str, location: &str) -> String {
+pub(crate) fn absolute(layout: &Layout, repo: &str, location: &str) -> String {
     let root = if repo.is_empty() {
         layout.workspace.clone()
     } else {
@@ -2109,8 +2158,9 @@ fn absolute(layout: &Layout, repo: &str, location: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    /// Probed on Bazel 9.2.0 (buildfiji-xqeg): a root that failed itself is
-    /// warned of alone, and one that failed because of what it reads says so.
+    /// Probed on Bazel 9.2.0 (buildfiji-xqeg, buildfiji-mum.29): a root that
+    /// failed itself is warned of alone, one that failed because of what it
+    /// reads says so, and so does a target of a package in error.
     #[test]
     fn keep_going_warns_of_each_target_it_goes_on_without() {
         use super::*;
@@ -2123,28 +2173,50 @@ mod tests {
             workspace: std::path::PathBuf::new(),
             output_base: std::path::PathBuf::new(),
         });
-        report.failed_roots = vec![label("bad"), label("uses")];
+        report.failed_roots = vec![label("bad"), label("uses"), label("reads")];
         report.analysis_errors = vec![
             (label("bad"), "in r rule //:bad: boom".to_owned()),
             (label("uses"), "in r rule //:bad: boom".to_owned()),
+            (
+                label("reads"),
+                "Target '//p:t' contains an error and its package is in error and referenced by '//:reads'"
+                    .to_owned(),
+            ),
         ];
-        for (root, failing) in [("bad", "bad"), ("uses", "bad")] {
-            report.analysis_sites.insert(
-                label(root),
-                Site {
-                    failing: label(failing),
-                    location: "BUILD:1:1".to_owned(),
-                    config: "abc".to_owned(),
-                },
-            );
-        }
+        report.analysis_sites.insert(
+            label("bad"),
+            Site {
+                failing: label("bad"),
+                location: "BUILD:1:1".to_owned(),
+                config: "abc".to_owned(),
+            },
+        );
+        report.analysis_sites.insert(
+            label("uses"),
+            Site {
+                failing: label("bad"),
+                location: "BUILD:1:1".to_owned(),
+                config: "abc".to_owned(),
+            },
+        );
+        report.package_error_roots = vec![Label {
+            repo: String::new(),
+            package: "p".to_owned(),
+            name: "t".to_owned(),
+        }];
         let warn = "WARNING: errors encountered while analyzing target";
         assert_eq!(
             keep_going_warnings(&report),
             [
                 format!("{warn} '//:bad', it will not be built."),
                 format!("{warn} '//:uses', it will not be built.\nAnalysis failed"),
+                format!("{warn} '//:reads', it will not be built.\nAnalysis failed"),
+                format!("{warn} '//p:t', it will not be built.\nAnalysis failed"),
             ]
+        );
+        assert_eq!(
+            failing_target(&report.analysis_errors[2].1),
+            Some(label("reads"))
         );
     }
 

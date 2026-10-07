@@ -155,10 +155,36 @@ pub struct Node {
 }
 
 /// Where a query's targets come from.
+/// What a pattern selected, and what went wrong with the part it did not.
+#[derive(Debug, Clone, Default)]
+pub struct Lenient {
+    pub labels: Vec<Label>,
+    pub error: Option<String>,
+    pub said: bool,
+}
+
 pub trait Graph: Sync {
     /// The targets a pattern (`//a:b`, `//a/...`, `//a:all`) selects, or
     /// Bazel's error.
     fn pattern(&self, text: &str) -> Result<Vec<Label>, String>;
+
+    /// [`Graph::pattern`] for `--keep_going`: the targets it got even when
+    /// part of it failed, and the error of the rest. `said` means the error
+    /// was reported already (a package that failed to load tells so itself).
+    fn pattern_lenient(&self, text: &str) -> Lenient {
+        match self.pattern(text) {
+            Ok(labels) => Lenient {
+                labels,
+                error: None,
+                said: false,
+            },
+            Err(error) => Lenient {
+                labels: Vec::new(),
+                error: Some(error),
+                said: false,
+            },
+        }
+    }
 
     /// A target loaded.
     fn node(&self, label: &Label) -> Result<Arc<Node>, String>;

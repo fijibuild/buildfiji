@@ -239,6 +239,8 @@ struct Inner {
     prints: Prints,
     /// What went wrong in the packages loaded, until [`Repos::take_events`].
     events: Mutex<Events>,
+    /// What the BUILD files that reported errors defined, by package.
+    partials: Mutex<HashMap<(String, String), Arc<fjfj_graph::package::Package>>>,
 }
 
 /// The errors of packages, each said once: a BUILD file is read again for each
@@ -439,6 +441,7 @@ impl Repos {
                 queue: printed,
                 ..Events::default()
             }),
+            partials: Mutex::new(HashMap::new()),
         });
         let loader = BzlLoader::with_provider(Box::new(Provider(Arc::downgrade(&inner))), true);
         let _ = inner.loader.set(loader);
@@ -650,6 +653,15 @@ impl fjfj_loading::PackageSource for Repos {
     ) -> Result<Arc<fjfj_graph::package::Package>, String> {
         self.load(repo, package, purpose)
     }
+
+    fn partial(&self, repo: &str, package: &str) -> Option<Arc<fjfj_graph::package::Package>> {
+        self.inner
+            .partials
+            .lock()
+            .unwrap()
+            .get(&(repo.to_owned(), package.to_owned()))
+            .cloned()
+    }
 }
 
 impl Repos {
@@ -756,8 +768,17 @@ impl Repos {
                 contains_errors(&mut events, &text)
             }
             BuildFileError::Package {
-                events: reported, ..
+                events: reported,
+                partial,
+                ..
             } => {
+                if let Some(partial) = partial {
+                    self.inner
+                        .partials
+                        .lock()
+                        .unwrap()
+                        .insert((repo.to_owned(), package.to_owned()), Arc::new(*partial));
+                }
                 let first = reported.first().cloned().unwrap_or_default();
                 events.extend(reported);
                 contains_errors(&mut events, &first)

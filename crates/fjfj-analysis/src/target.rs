@@ -237,7 +237,10 @@ impl Key for ConfiguredTargetKey {
     type Value = ConfiguredTarget;
 
     async fn compute(&self, ctx: &Ctx) -> Result<ConfiguredTarget, Error> {
-        let mut target = self.analyse(ctx).await?;
+        let mut target = self
+            .analyse(ctx)
+            .await
+            .map_err(|e| referenced_by(e, &self.label))?;
         target.transitive_repos = transitive_repos(ctx, &target).await?;
         // A target that reads an incompatible one is incompatible too, which
         // is known once what it reads is analysed.
@@ -274,6 +277,30 @@ pub(crate) async fn transitive_repos(
     Ok(Arc::new(repos))
 }
 
+/// What the error of a target in a package whose BUILD file had errors says, as
+/// Bazel has it, up to who reads it.
+const PACKAGE_IN_ERROR: &str = "' contains an error and its package is in error";
+
+/// A target of a package in error that `parent` reads: Bazel says who read it
+/// when the first target that did fails, and the targets that read that one
+/// fail with the same words.
+fn referenced_by(error: Error, parent: &Label) -> Error {
+    let text = error.to_string();
+    let Some(rest) = text.strip_prefix("Target '") else {
+        return error;
+    };
+    let Some((target, tail)) = rest.split_once(PACKAGE_IN_ERROR) else {
+        return error;
+    };
+    if !tail.is_empty() || target == fjfj_graph::expand::label_text(parent) {
+        return error;
+    }
+    Error::msg(format!(
+        "{text} and referenced by '{}'",
+        fjfj_graph::expand::label_text(parent)
+    ))
+}
+
 impl ConfiguredTargetKey {
     async fn analyse(&self, ctx: &Ctx) -> Result<ConfiguredTarget, Error> {
         let label = &self.label;
@@ -282,7 +309,17 @@ impl ConfiguredTargetKey {
                 repo: label.repo.clone(),
                 package: label.package.clone(),
             })
-            .await?;
+            .await
+            .map_err(|e| {
+                if e.to_string().ends_with("' contains errors") {
+                    Error::msg(format!(
+                        "Target '{}{PACKAGE_IN_ERROR}",
+                        fjfj_graph::expand::label_text(label)
+                    ))
+                } else {
+                    e
+                }
+            })?;
         let mut target = ConfiguredTarget::new(self);
         match package.target(&label.name) {
             Some(declared) => match &declared.kind {

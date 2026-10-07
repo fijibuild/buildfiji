@@ -363,3 +363,88 @@ fn the_pattern_that_found_a_package_that_does_not_load_is_named_only_as_bazel_na
         assert_eq!(messages, [want], "{text}");
     }
 }
+
+/// Probed on Bazel 9.2.0 (buildfiji-mum.29): a BUILD file whose rules reported
+/// errors still defines them, so a target named in it, or all of it, is a
+/// target that fails to analyse; the other packages under a `...` are
+/// selected whatever happens in the one with errors, a syntax error included.
+#[test]
+fn a_package_with_rule_errors_keeps_its_targets_and_the_others_under_a_tree_are_selected() {
+    let dir = tempfile::tempdir().unwrap();
+    let ws = dir.path().join("ws");
+    for (file, text) in [
+        (
+            "pkg/BUILD",
+            "genrule(name='ok', outs=['o'], cmd='true')\ngenrule(name='bad', cmd='true')\n",
+        ),
+        (
+            "good/BUILD",
+            "genrule(name='g', outs=['g.txt'], cmd='true')\n",
+        ),
+        ("syn/BUILD", "x = = 1\n"),
+    ] {
+        let at = ws.join(file);
+        std::fs::create_dir_all(at.parent().unwrap()).unwrap();
+        std::fs::write(at, text).unwrap();
+    }
+    let module = eval_module_file("MODULE.bazel", "module(name = 'm')\n", &EvalOptions::root())
+        .unwrap()
+        .module;
+    let repos = Repos::new(
+        Options {
+            workspace_root: ws,
+            output_base: dir.path().join("ob"),
+            environ: BTreeMap::new(),
+            downloader: None,
+            repository_cache: None,
+            distdirs: Vec::new(),
+            registries: Vec::new(),
+            facts: Vec::new(),
+            repo_overrides: Vec::new(),
+        },
+        module,
+    )
+    .unwrap();
+    let ctx = PatternContext {
+        repo: "",
+        offset: "",
+    };
+    let label = |package: &str, name: &str| fjfj_graph::Label {
+        repo: String::new(),
+        package: package.to_owned(),
+        name: name.to_owned(),
+    };
+    let run = |text: &str| {
+        let pattern = TargetPattern::parse(text, ctx, &mut |r| r.to_owned()).unwrap();
+        resolve(&[pattern], &repos)
+    };
+
+    let one = run("//pkg:ok");
+    assert!(one.targets.is_empty());
+    assert_eq!(one.in_error, [label("pkg", "ok")]);
+    let failure = &one.failures[0];
+    assert_eq!(
+        failure.message,
+        "Error evaluating '//pkg:ok': error loading package 'pkg': Package 'pkg' contains errors"
+    );
+    assert!(failure.defined && !failure.tree);
+
+    // A name the package did not get to define is not one.
+    let missing = run("//pkg:nonesuch");
+    assert!(missing.in_error.is_empty());
+    assert!(missing.failures[0].message.starts_with("no such target"));
+    assert!(!missing.failures[0].defined);
+
+    let all = run("//pkg:all");
+    assert_eq!(all.in_error, [label("pkg", "ok"), label("pkg", "bad")]);
+
+    let tree = run("//...");
+    assert_eq!(tree.targets, [label("good", "g")]);
+    assert_eq!(tree.in_error, [label("pkg", "ok"), label("pkg", "bad")]);
+    assert!(tree.failures.iter().all(|f| f.tree));
+    assert!(tree.failures[0].defined);
+    // The syntax error defines nothing.
+    let syntax = run("//syn/...");
+    assert!(syntax.targets.is_empty() && syntax.in_error.is_empty());
+    assert!(!syntax.failures[0].defined);
+}

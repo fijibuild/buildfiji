@@ -317,11 +317,11 @@ pub(crate) fn run_for_build(
                 },
                 options,
             };
-            Some(crate::build_command::run(
-                &repos,
-                &targets.targets,
-                &request,
-            ))
+            let mut report = crate::build_command::run(&repos, &targets.targets, &request);
+            report.package_error_roots = targets.in_error.clone();
+            report.package_error_events =
+                package_error_events(&repos, &targets.in_error, &request.layout);
+            Some(report)
         }
         _ => None,
     };
@@ -545,6 +545,57 @@ pub(crate) struct Resolved {
     pub session: Option<Arc<LockSession>>,
     pub existing: Option<String>,
     pub lock_path: PathBuf,
+}
+
+/// What Bazel says of each target in `roots`, which are in packages whose BUILD
+/// files reported errors, that reads a target of one: that it contains an
+/// error, its package being in error, and who reads it.
+fn package_error_events(
+    repos: &Repos,
+    roots: &[fjfj_graph::Label],
+    layout: &fjfj_exec::execroot::Layout,
+) -> Vec<String> {
+    use fjfj_graph::package::TargetKind;
+    use fjfj_loading::PackageSource;
+    let mut lines = Vec::new();
+    for root in roots {
+        let Some(package) = repos.partial(&root.repo, &root.package) else {
+            continue;
+        };
+        let Some(target) = package.target(&root.name) else {
+            continue;
+        };
+        let TargetKind::Rule { attrs, .. } = &target.kind else {
+            continue;
+        };
+        let mut read: Vec<&fjfj_graph::Label> = Vec::new();
+        for (name, value) in attrs {
+            if name != "visibility" {
+                value.labels(&mut read);
+            }
+        }
+        let mut said: Vec<&fjfj_graph::Label> = Vec::new();
+        for dep in read {
+            // What the rule makes is not something it reads.
+            let own_output = dep.repo == root.repo
+                && dep.package == root.package
+                && package.target(&dep.name).is_some_and(
+                    |t| matches!(&t.kind, TargetKind::GeneratedFile { rule } if *rule == root.name),
+                );
+            if own_output || said.contains(&dep) || repos.partial(&dep.repo, &dep.package).is_none()
+            {
+                continue;
+            }
+            said.push(dep);
+            lines.push(format!(
+                "ERROR: {}: Target '{}' contains an error and its package is in error and referenced by '{}'",
+                crate::build_command::absolute(layout, &root.repo, &target.location),
+                fjfj_graph::expand::label_text(dep),
+                fjfj_graph::expand::label_text(root)
+            ));
+        }
+    }
+    lines
 }
 
 #[cfg(test)]

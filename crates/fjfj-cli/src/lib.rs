@@ -959,11 +959,36 @@ async fn build_main(
         ));
     }
     if !targets.failures.is_empty() {
+        // A `...` that reaches a package that did define targets stops the
+        // build as it is loaded, with the error of the package alone.
+        let stops_at_load = targets
+            .failures
+            .iter()
+            .find(|f| f.tree && f.defined)
+            .and_then(|f| f.package_error.as_deref())
+            .filter(|_| !diagnostics.keep_going);
+        if let Some(error) = stops_at_load {
+            eprintln!("ERROR: {error}");
+            build_command::print_nothing_built(started.elapsed());
+            return Err(match command {
+                "build" => CliError::Reported,
+                "run" => CliError::Build(anyhow::anyhow!("Build failed. Not running target")),
+                _ => CliError::Build(anyhow::anyhow!(
+                    "Couldn't start the build. Unable to run tests"
+                )),
+            });
+        }
         // `test` says it only when it goes on.
         if command != "test" || diagnostics.keep_going {
             eprintln!("WARNING: Target pattern parsing failed.");
         }
         for failure in &targets.failures {
+            // Going on past a package with errors, Bazel says no more than the
+            // errors of the package: the targets it defined fail later, and a
+            // `...` is not skipped for it.
+            if diagnostics.keep_going && (failure.tree || failure.defined) {
+                continue;
+            }
             eprintln!("ERROR: Skipping '{}': {}", failure.pattern, failure.message);
         }
         if !diagnostics.keep_going {
@@ -1008,7 +1033,7 @@ async fn build_main(
     let layout = report.layout.clone();
     let succeeded = build_command::print(
         &report,
-        targets.targets.len(),
+        targets.targets.len() + targets.in_error.len(),
         build_show_result,
         diagnostics.keep_going,
         diagnostics.verbose_failures,
@@ -1568,6 +1593,140 @@ w = rule(implementation = _impl, attrs = {"out": attr.string(), "content": attr.
             "g"
         );
         assert!(!dir.0.join("bazel-bin/c.txt").exists());
+        assert!(!report.succeeded());
+    }
+
+    /// Probed on Bazel 9.2.0 (buildfiji-mum.29): under `--keep_going` a `...`
+    /// builds the packages without errors, the targets of one whose rules
+    /// reported errors fail, and so does a target that reads one of them.
+    #[test]
+    fn keep_going_builds_the_packages_that_have_no_errors_and_fails_the_targets_that_read_the_others()
+     {
+        let dir = Scratch::new("build-package-errors");
+        let module = "module(name = 'root', version = '0')\n";
+        for (file, text) in [
+            (
+                "pkg/BUILD.bazel",
+                "genrule(name = 'ok', outs = ['o'], cmd = 'true')\ngenrule(name = 'bad', cmd = 'true')\ngenrule(name = 'ok2', srcs = [':ok'], outs = ['o2'], cmd = 'true')\n",
+            ),
+            (
+                "good/BUILD.bazel",
+                "genrule(name = 'g', outs = ['g.txt'], cmd = 'echo g > $@')\n",
+            ),
+            (
+                "dep/BUILD.bazel",
+                "genrule(name = 'g2', srcs = ['//pkg:ok'], outs = ['g2.txt'], cmd = 'true')\ngenrule(name = 'g3', srcs = [':g2'], outs = ['g3.txt'], cmd = 'true')\n",
+            ),
+        ] {
+            let at = dir.0.join("ws").join(file);
+            std::fs::create_dir_all(at.parent().unwrap()).unwrap();
+            std::fs::write(at, text).unwrap();
+        }
+        let mut args = fixture_registry_flags();
+        args.push("--lockfile_mode=update".to_owned());
+        let (bzlmod, _) = bzlmod_flags::extract(&args, "build");
+        let flags = fetch_command::FetchFlags {
+            output_base: Some(dir.0.join("ob")),
+            repository_cache: Some(None),
+            ..fetch_command::FetchFlags::default()
+        };
+        let options = build_command::Options {
+            configuration: fjfj_graph::Configuration {
+                cpu: "k8".into(),
+                ..fjfj_graph::Configuration::default()
+            },
+            platform: None,
+            extra_toolchains: Vec::new(),
+            extra_execution_platforms: Vec::new(),
+            host_platform: None,
+            starlark_flags: Vec::new(),
+            toolchain_resolution_debug: None,
+            aspects: Vec::new(),
+            output_groups: Vec::new(),
+            keep_going: true,
+            build: true,
+            symlink_prefix: "bazel-".into(),
+            clean_links: None,
+            make_links: true,
+            expand_test_suites: true,
+            jobs: None,
+            strategy: fjfj_exec::run::Options::default().strategy,
+            show_result: 1,
+            record_execution_platforms: false,
+            subcommands: None,
+            test: None,
+            workspace_status: None,
+            incompatible: None,
+            run: false,
+        };
+        let root = dir.0.join("ws");
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let loaded = runtime
+            .block_on(async move {
+                tokio::task::spawn_blocking(move || {
+                    fetch_command::run_for_build(
+                        &flags,
+                        &bzlmod,
+                        &root,
+                        module,
+                        &["//...".to_owned()],
+                        "",
+                        Some(&options),
+                    )
+                })
+                .await
+            })
+            .unwrap()
+            .unwrap();
+        // The failure of the `...` is known; what it selected is kept.
+        assert_eq!(loaded.targets.failures.len(), 1);
+        assert!(loaded.targets.failures[0].tree && loaded.targets.failures[0].defined);
+        let name = |labels: &[fjfj_graph::Label]| -> Vec<String> {
+            let mut names: Vec<String> =
+                labels.iter().map(fjfj_graph::expand::label_text).collect();
+            names.sort();
+            names
+        };
+        assert_eq!(
+            name(&loaded.targets.targets),
+            ["//dep:g2", "//dep:g3", "//good:g"]
+        );
+        let report = loaded.report.expect("the targets were built");
+        assert_eq!(
+            name(&report.package_error_roots),
+            ["//pkg:bad", "//pkg:ok", "//pkg:ok2"]
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.0.join("ws/bazel-bin/good/g.txt")).unwrap(),
+            "g\n"
+        );
+        let built: Vec<(String, bool)> = report
+            .results
+            .iter()
+            .map(|r| (fjfj_graph::expand::label_text(&r.label), r.built))
+            .collect();
+        assert_eq!(built, [("//good:g".to_owned(), true)]);
+        // g2 reads a target of the package in error; g3 reads g2.
+        let said: Vec<&str> = report
+            .analysis_errors
+            .iter()
+            .map(|(_, message)| message.as_str())
+            .collect();
+        assert_eq!(said.len(), 2, "{said:?}");
+        assert!(
+            said.iter().all(|m| *m
+                == "Target '//pkg:ok' contains an error and its package is in error and referenced by '//dep:g2'"),
+            "{said:?}"
+        );
+        assert_eq!(
+            report.package_error_events.len(),
+            1,
+            "{:?}",
+            report.package_error_events
+        );
+        assert!(report.package_error_events[0].ends_with(
+            "pkg/BUILD.bazel:3:8: Target '//pkg:ok' contains an error and its package is in error and referenced by '//pkg:ok2'"
+        ), "{:?}", report.package_error_events);
         assert!(!report.succeeded());
     }
 

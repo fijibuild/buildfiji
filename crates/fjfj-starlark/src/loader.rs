@@ -341,10 +341,18 @@ impl BzlLoader {
                 ),
                 printed,
             ),
-            BuildFileError::Package { events, printed } => {
+            BuildFileError::Package {
+                events,
+                printed,
+                partial,
+            } => {
                 let here = format!("{path}:");
                 let absolute = build.to_string_lossy();
                 BuildFileError::Package {
+                    partial: partial.map(|mut package| {
+                        package.loads = loader.loads.borrow().clone();
+                        package
+                    }),
                     events: events
                         .into_iter()
                         .map(|event| match event.strip_prefix(&here) {

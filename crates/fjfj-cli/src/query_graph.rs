@@ -1062,6 +1062,40 @@ impl Graph for QueryGraph {
         Ok(resolved.targets)
     }
 
+    fn pattern_lenient(&self, text: &str) -> fjfj_query::Lenient {
+        let context = PatternContext {
+            repo: "",
+            offset: "",
+        };
+        let parsed = match TargetPattern::parse(text, context, &mut |apparent| match apparent {
+            "" => String::new(),
+            _ => self
+                .repos
+                .main_repo_canonical(apparent)
+                .unwrap_or_else(|| apparent.to_owned()),
+        }) {
+            Ok(parsed) => parsed,
+            Err(e) => {
+                return fjfj_query::Lenient {
+                    error: Some(e.to_string()),
+                    ..Default::default()
+                };
+            }
+        };
+        let resolved = resolve_with(&[parsed], &*self.repos, true);
+        let failure = resolved.failures.first();
+        // The package says what is wrong with it, for a `...` or a package
+        // that defined targets before it failed.
+        let said = failure.is_some_and(|f| f.tree || f.defined);
+        let mut labels = resolved.targets;
+        labels.extend(resolved.in_error);
+        fjfj_query::Lenient {
+            labels,
+            error: failure.map(|f| f.message.clone()),
+            said,
+        }
+    }
+
     fn node(&self, label: &Label) -> Result<Arc<Node>, String> {
         if let Some(done) = self.nodes.lock().unwrap().get(label) {
             return Ok(done.clone());

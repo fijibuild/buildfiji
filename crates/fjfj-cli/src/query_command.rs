@@ -277,7 +277,7 @@ pub(crate) async fn run(args: QueryArgs) -> Result<(), CliError> {
             ))
         })?;
     let output =
-        tokio::task::spawn_blocking(move || -> Result<(Vec<u8>, Vec<String>), CliError> {
+        tokio::task::spawn_blocking(move || -> Result<(Vec<u8>, Vec<String>, bool), CliError> {
             let (resolved, repos) =
                 fetch_command::begin(&fetch, &bzlmod, &workspace_root, &module_bazel_text)
                     .map_err(|e| fetch_command::asked(e, fetch_command::Asked::Query(&query)))?;
@@ -337,22 +337,24 @@ pub(crate) async fn run(args: QueryArgs) -> Result<(), CliError> {
                 eprintln!("{line}");
             }
             let skipped = evaluator.skipped();
+            let incomplete = evaluator.incomplete();
             drop(evaluator);
             fetch_command::finish(resolved, &repos)?;
-            Ok((text, skipped))
+            Ok((text, skipped, incomplete))
         })
         .await
         .map_err(|e| CliError::Internal(anyhow::anyhow!("query task panicked: {e}")))??;
-    let (output, skipped) = output;
-    crate::query_io::write(&io, &output)?;
-    if skipped.is_empty() {
+    let (output, skipped, incomplete) = output;
+    if !incomplete {
+        crate::query_io::write(&io, &output)?;
         return Ok(());
     }
-    // Bazel prints what it skipped, and the result it has, and exits 3.
+    // Bazel says what it skipped, then gives the result it has and exits 3.
     for line in &skipped {
         eprintln!("{line}");
     }
     eprintln!("WARNING: --keep_going specified, ignoring errors. Results may be inaccurate");
+    crate::query_io::write(&io, &output)?;
     Err(CliError::QueryIncomplete)
 }
 
