@@ -418,10 +418,19 @@ fn text_one(out: &mut String, row: &Row<'_>, settings: Settings, layout: &Layout
             "  Inputs: [{}]\n",
             exec_paths(&action.inputs).join(", ")
         ));
-        out.push_str(&format!(
-            "  Outputs: [{}]\n",
-            exec_paths(&action.outputs).join(", ")
-        ));
+        // A directory an action fills says so.
+        let outputs: Vec<String> = action
+            .outputs
+            .iter()
+            .map(|o| {
+                if o.tree {
+                    format!("{} (TreeArtifact)", o.exec_path())
+                } else {
+                    o.exec_path()
+                }
+            })
+            .collect();
+        out.push_str(&format!("  Outputs: [{}]\n", outputs.join(", ")));
     }
     match &action.kind {
         ActionKind::Spawn {
@@ -636,6 +645,67 @@ mod tests {
         assert!(!proto.contains("@dep//p:g"), "{proto}");
     }
 
+    /// Probed on Bazel 9.2.0: a directory an action fills is marked in the
+    /// text, and two sets that are each one file alone are one dep set.
+    #[test]
+    fn a_tree_output_is_marked_and_single_file_sets_are_shared() {
+        let label = Label {
+            repo: String::new(),
+            package: "p".into(),
+            name: "t".into(),
+        };
+        let key = fjfj_analysis::ConfiguredTargetKey {
+            label: label.clone(),
+            configuration: fjfj_graph::Configuration::default(),
+        };
+        let file = |path: &str, tree: bool| Artifact {
+            root: fjfj_graph::Root::derived("bazel-out/k8-fastbuild/bin"),
+            path: path.into(),
+            tree,
+            symlink: false,
+        };
+        let input = file("p/in", false);
+        let action = |mnemonic: &str, output: Artifact| Action {
+            owner: label.clone(),
+            owner_kind: "r".into(),
+            location: String::new(),
+            configuration: "k8-fastbuild".into(),
+            mnemonic: mnemonic.into(),
+            progress_message: None,
+            kind: ActionKind::WriteFile {
+                contents: Vec::new(),
+                executable: false,
+            },
+            inputs: vec![input.clone()],
+            input_set: Some(Arc::new(NestedSet::of(vec![input.clone()]))),
+            outputs: vec![output],
+            exec_group: None,
+        };
+        let mut target = ConfiguredTarget::new(&key);
+        target.actions.push(action("MkDir", file("p/dir", true)));
+        target.actions.push(action("Link", file("p/link", false)));
+        let rows = rows_of(&target, &[], Settings::default(), &Apparent);
+        let layout = Layout {
+            workspace: "/ws".into(),
+            output_base: "/ob".into(),
+        };
+        let text = text(&rows, Settings::default(), &layout);
+        assert!(
+            text.contains("  Outputs: [bazel-out/k8-fastbuild/bin/p/dir (TreeArtifact)]\n"),
+            "{text}"
+        );
+        assert!(
+            text.contains("  Outputs: [bazel-out/k8-fastbuild/bin/p/link]\n"),
+            "{text}"
+        );
+        let pieces = pieces(&rows, Settings::default(), &layout);
+        let sets = pieces
+            .iter()
+            .filter(|p| p.name == "dep_set_of_files")
+            .count();
+        assert_eq!(sets, 1);
+    }
+
     #[test]
     fn contents_are_base64() {
         assert_eq!(base64(b"content"), "Y29udGVudA==");
@@ -663,6 +733,9 @@ struct Dump {
     artifacts: BTreeMap<String, i64>,
     fragments: BTreeMap<String, i64>,
     dep_sets: BTreeMap<usize, i64>,
+    /// The dep sets of one file and nothing else, by the file: Bazel keeps such
+    /// a set as the file itself, so every set of that file is one.
+    single_dep_sets: BTreeMap<String, i64>,
     held: Vec<Arc<NestedSet<Artifact>>>,
 }
 
@@ -677,15 +750,30 @@ impl Dump {
 
     /// The id of the dep set of `set`. Bazel gives one id to one set, however
     /// many sets and actions hold it, and two sets that happen to hold the
-    /// same files are two. Ids go to a set before the sets below it, and the
+    /// same files are two, unless each is that one file alone (probed on
+    /// 9.2.0). Ids go to a set before the sets below it, and the
     /// sets and artifacts below it are written first, as Bazel's dump does.
     fn dep_set(&mut self, set: &Arc<NestedSet<Artifact>>) -> i64 {
         let key = Arc::as_ptr(set) as usize;
+        let single = match (set.direct(), set.transitive()) {
+            ([only], []) => Some(only.exec_path()),
+            _ => None,
+        };
         if let Some(id) = self.dep_sets.get(&key) {
             return *id;
         }
-        let id = self.dep_sets.len() as i64 + 1;
-        self.dep_sets.insert(key, id);
+        if let Some(id) = single.as_ref().and_then(|f| self.single_dep_sets.get(f)) {
+            return *id;
+        }
+        let id = (self.dep_sets.len() + self.single_dep_sets.len()) as i64 + 1;
+        match single {
+            Some(file) => {
+                self.single_dep_sets.insert(file, id);
+            }
+            None => {
+                self.dep_sets.insert(key, id);
+            }
+        }
         // The pointer names the set only while the set lives.
         self.held.push(set.clone());
         let below: Vec<i64> = set
