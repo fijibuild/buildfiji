@@ -209,6 +209,18 @@ impl<'v> StarlarkValue<'v> for TargetValue {
         if same_provider(default, Some(other)) {
             return Ok(true);
         }
+        // Every rule's target has output groups.
+        if self.info.rule_class.is_some() && same_provider(builtin("OutputGroupInfo"), Some(other))
+        {
+            return Ok(true);
+        }
+        if matches!(
+            self.info.rule_class.as_deref(),
+            Some("filegroup" | "genrule" | "alias")
+        ) && same_provider(builtin("InstrumentedFilesInfo"), Some(other))
+        {
+            return Ok(true);
+        }
         Ok(self.info.providers.iter().any(|p| {
             provider_of(p.value.value().to_value()).is_some_and(|q| same_provider(q, Some(other)))
         }))
@@ -279,10 +291,13 @@ impl TargetValue {
 
     pub(super) fn find<'v>(&self, provider: Value<'v>, heap: Heap<'v>) -> Option<Value<'v>> {
         if same_provider(builtin("DefaultInfo"), Some(provider)) {
-            // A file, or an alias of one, is its own executable for `files_to_run`.
+            // A file, an alias of a source file, and a `filegroup` of one file
+            // are their own executable for `files_to_run` (probed on 9.2.0:
+            // a rule of Starlark or a `genrule` with one output is not).
             let executable = self.info.executable.as_ref().or_else(|| {
                 match (self.info.rule_class.as_deref(), &self.info.files[..]) {
-                    (None | Some("alias"), [file]) => Some(file),
+                    (None | Some("filegroup"), [file]) => Some(file),
+                    (Some("alias"), [file]) if file.is_source() => Some(file),
                     _ => None,
                 }
             });
@@ -306,26 +321,57 @@ impl TargetValue {
             .filter(|instance| {
                 provider_of(*instance).is_some_and(|q| same_provider(q, Some(provider)))
             });
-        let first = matching.next()?;
-        // The output groups of the rule and of the aspects applied to it are
-        // all the target's, in one `OutputGroupInfo`.
+        let first = matching.next();
+        // Every rule's target has output groups, a hidden one first among
+        // them; those of the rule and of the aspects applied to it are all
+        // the target's, in one `OutputGroupInfo`.
         if same_provider(builtin("OutputGroupInfo"), Some(provider)) {
-            let rest: Vec<Value<'v>> = matching.collect();
-            if !rest.is_empty() {
-                let mut fields: Vec<(String, Value<'v>)> = Vec::new();
-                for instance in std::iter::once(first).chain(rest) {
-                    for (name, value) in crate::structs::fields_of(instance).unwrap_or_default() {
-                        if !fields.iter().any(|(n, _)| n == name) {
-                            fields.push((name.to_owned(), value));
-                        }
+            if self.info.rule_class.is_none() {
+                return first;
+            }
+            let mut fields: Vec<(String, Value<'v>)> = vec![(
+                HIDDEN_GROUP.to_owned(),
+                new_depset(heap, &[], Order::Default, &[]).expect("an empty depset"),
+            )];
+            for instance in first.into_iter().chain(matching) {
+                for (name, value) in crate::structs::fields_of(instance).unwrap_or_default() {
+                    if !fields.iter().any(|(n, _)| n == name) {
+                        fields.push((name.to_owned(), value));
                     }
                 }
-                return Some(new_instance(heap, provider, fields));
             }
+            return Some(new_instance(heap, provider, fields));
         }
-        Some(first)
+        // What the rules that make no program say of coverage: nothing is
+        // instrumented.
+        if first.is_none()
+            && same_provider(builtin("InstrumentedFilesInfo"), Some(provider))
+            && matches!(
+                self.info.rule_class.as_deref(),
+                Some("filegroup" | "genrule" | "alias")
+            )
+        {
+            let empty = || new_depset(heap, &[], Order::Default, &[]).expect("an empty depset");
+            return Some(new_instance(
+                heap,
+                provider,
+                vec![
+                    ("instrumented_files".to_owned(), empty()),
+                    ("metadata_files".to_owned(), empty()),
+                ],
+            ));
+        }
+        first
+    }
+
+    /// The output groups of a target: its `OutputGroupInfo`, if it has one.
+    fn output_groups<'v>(&self, heap: Heap<'v>) -> Option<Value<'v>> {
+        builtin("OutputGroupInfo").and_then(|p| self.find(p, heap))
     }
 }
+
+/// The output group Bazel gives every rule's target, which nothing sets.
+const HIDDEN_GROUP: &str = "_hidden_top_level_INTERNAL_";
 
 #[starlark_module]
 fn target_members(builder: &mut MethodsBuilder) {
@@ -352,6 +398,22 @@ fn target_members(builder: &mut MethodsBuilder) {
             info.runfiles.clone(),
             info.label.clone(),
         ))
+    }
+
+    /// The `OutputGroupInfo` of the target, which a `Target` has as a member.
+    #[starlark(attribute)]
+    fn output_groups<'v>(this: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
+        target(this)
+            .output_groups(heap)
+            .ok_or_else(|| fatal("'Target' value has no field or method 'output_groups'"))
+    }
+
+    /// The actions of the rule's target, which only a rule that is testable
+    /// has: empty otherwise.
+    #[starlark(attribute)]
+    fn actions<'v>(this: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
+        let _ = this;
+        Ok(heap.alloc(starlark::values::list::AllocList(Vec::<Value<'v>>::new())))
     }
 
     /// `DefaultInfo.files_to_run`, which a `Target` also has.

@@ -20,6 +20,15 @@ pub(crate) fn ctx_of_actions<'v>(actions: Value<'v>, heap: Heap<'v>) -> Option<V
     Some(alloc_ctx(heap, actions.state.clone()))
 }
 
+/// A `root` of the output directory at `path`, which `ctx.configuration` has
+/// for `bin_dir` and `genfiles_dir`.
+pub(crate) fn alloc_root<'v>(heap: Heap<'v>, path: &str) -> Value<'v> {
+    heap.alloc(file::RootValue {
+        path: path.to_owned(),
+        source: false,
+    })
+}
+
 /// An `Args` that belongs to no `ctx.actions` (there is nothing in it that does).
 pub(crate) fn new_args<'v>(heap: Heap<'v>) -> Value<'v> {
     heap.alloc(args_object::ArgsValue::new())

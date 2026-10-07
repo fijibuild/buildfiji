@@ -48,7 +48,7 @@ impl fmt::Debug for ActionsValue {
 
 impl fmt::Display for ActionsValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("ctx.actions")
+        write!(f, "actions for<rule context for {}>", self.state.label)
     }
 }
 

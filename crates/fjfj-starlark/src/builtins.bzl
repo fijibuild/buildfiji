@@ -682,20 +682,32 @@ def _make_fragments(options):
         platform = struct(_os = options["os"]),
         java = struct(),
         proto = struct(experimental_protoc_opts = []),
-        py = struct(),
         coverage = struct(),
+        # Bazel 9.2.0 has these too and no `py`; nothing reads them here.
+        android = struct(),
+        bazel_android = struct(),
+        j2objc = struct(),
+        objc = struct(),
     )
 
 # `ctx.configuration`.
 def _make_configuration(options):
+    # Bazel hides it behind its private-API allowlist (buildfiji-136.25).
+    def stamp_binaries():
+        fjfj_check_private_api()
+        return bool(options["stamp"])
+
     return struct(
         coverage_enabled = bool(options["collect_code_coverage"]),
         default_shell_env = dict([line.split("=", 1) for line in options["default_shell_env"].split("\n")]),
         host_path_separator = ":",
         short_id = options["short_id"],
+        bin_dir = fjfj_root(options["bin_dir"]),
+        genfiles_dir = fjfj_root(options["bin_dir"]),
+        disabled_features = lambda: [],
         test_env = dict([line.split("=", 1) for line in options["test_env"].split("\n") if line]),
         is_tool_configuration = lambda: bool(options["exec"]),
-        stamp_binaries = lambda: bool(options["stamp"]),
+        stamp_binaries = stamp_binaries,
         is_sibling_repository_layout = lambda: False,
         has_separate_genfiles_directory = lambda: False,
         runfiles_enabled = lambda: True,

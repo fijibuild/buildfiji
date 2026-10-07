@@ -325,13 +325,23 @@ impl CtxState {
                     _ => String::new(),
                 },
             ),
-            ("short_id", config.mnemonic()),
+            ("short_id", config.checksum()[..7].to_owned()),
+            ("bin_dir", config.bin_dir()),
             ("exec", if config.exec { "1" } else { "" }.to_owned()),
         ]
     }
 
     fn file<'v>(&self, heap: Heap<'v>, artifact: Artifact) -> Value<'v> {
-        let owner = self.label.clone();
+        // A source file is owned by its own target, where the rule has that
+        // target among those it reads (probed on 9.2.0, buildfiji-136.32).
+        let owner = if artifact.is_source() {
+            self.deps
+                .values()
+                .find(|d| d.rule_class.is_none() && !d.generated && d.files.contains(&artifact))
+                .map_or_else(|| self.label.clone(), |d| d.label.clone())
+        } else {
+            self.label.clone()
+        };
         alloc_file(heap, artifact, owner)
     }
 }
@@ -350,6 +360,9 @@ pub(crate) fn attr_named<'v>(state: &CtxState, heap: Heap<'v>, name: &str) -> Va
         .map_or_else(Value::new_none, |(_, v)| state.attr_value(heap, v))
 }
 
+/// The label lists every rule has, which `ctx.attr` and `ctx.files` show.
+const IMPLICIT_LABEL_LISTS: [&str; 2] = ["_action_listener", "_config_dependencies"];
+
 #[derive(ProvidesStaticType, NoSerialize, Allocative)]
 pub(crate) struct CtxValue {
     #[allocative(skip)]
@@ -366,7 +379,7 @@ impl fmt::Debug for CtxValue {
 
 impl fmt::Display for CtxValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "<ctx for {}>", self.state.label)
+        write!(f, "<rule context for {}>", self.state.label)
     }
 }
 
@@ -551,7 +564,7 @@ fn ctx_members(builder: &mut MethodsBuilder) {
     fn rule<'v>(this: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
         match &state(this).rule {
             Some(rule) => Ok(alloc_ctx(heap, rule.clone())),
-            None => Err(fatal("'ctx.rule' is only available in aspects")),
+            None => Err(fatal("'rule' is only available in aspect implementations")),
         }
     }
 
@@ -563,7 +576,13 @@ fn ctx_members(builder: &mut MethodsBuilder) {
 
     #[starlark(attribute)]
     fn aspect_ids<'v>(this: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
-        Ok(heap.alloc(AllocList(state(this).aspect_ids.iter().map(String::as_str))))
+        let s = state(this);
+        if s.rule.is_none() {
+            return Err(fatal(
+                "'aspect_ids' is only available in aspect implementations",
+            ));
+        }
+        Ok(heap.alloc(AllocList(s.aspect_ids.iter().map(String::as_str))))
     }
 
     #[starlark(attribute)]
@@ -583,6 +602,27 @@ fn ctx_members(builder: &mut MethodsBuilder) {
             {
                 fields.push((attr.name.clone(), Value::new_none()));
             }
+        }
+        // `name` is the rule's.
+        match fields.iter_mut().find(|(n, _)| n == "name") {
+            Some(field) => field.1 = heap.alloc(s.label.name.as_str()),
+            None => fields.push(("name".to_owned(), heap.alloc(s.label.name.as_str()))),
+        }
+        // What every rule has that nothing sets: Bazel's defaults for the
+        // package's.
+        let mut absent = |name: &str, value: Value<'v>| {
+            if !fields.iter().any(|(n, _)| n == name) {
+                fields.push((name.to_owned(), value));
+            }
+        };
+        absent("testonly", Value::new_bool(false));
+        absent("deprecation", Value::new_none());
+        absent(
+            "package_metadata",
+            heap.alloc(AllocList(Vec::<Value<'v>>::new())),
+        );
+        for name in IMPLICIT_LABEL_LISTS {
+            absent(name, heap.alloc(AllocList(Vec::<Value<'v>>::new())));
         }
         Ok(new_struct(heap, fields))
     }
@@ -626,8 +666,15 @@ fn ctx_members(builder: &mut MethodsBuilder) {
     fn files<'v>(this: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
         let s = state(this);
         let mut fields = Vec::new();
+        // The private label lists every rule has, which nothing sets.
+        for name in IMPLICIT_LABEL_LISTS {
+            fields.push((
+                name.to_owned(),
+                heap.alloc(AllocList(Vec::<Value<'v>>::new())),
+            ));
+        }
         for name in s.schema.attrs.iter().map(|a| &a.name) {
-            if s.takes_files(name) {
+            if s.takes_files(name) && !s.hidden_from_files(name) {
                 // An attribute with no value is an empty list.
                 let files = s
                     .attrs
@@ -906,7 +953,7 @@ fn ctx_members(builder: &mut MethodsBuilder) {
             })
             .ok_or_else(|| {
                 fatal(format!(
-                    "in call to target_platform_has_constraint(), parameter 'constraint_value' got value of type '{}', want 'ConstraintValueInfo'",
+                    "in call to target_platform_has_constraint(), parameter 'constraintValue' got value of type '{}', want 'ConstraintValueInfo'",
                     constraint_value.get_type()
                 ))
             })?;
@@ -980,7 +1027,9 @@ fn ctx_members(builder: &mut MethodsBuilder) {
         heap: Heap<'v>,
     ) -> starlark::Result<String> {
         let s = state(this);
-        let mut prerequisites = Vec::new();
+        // What `$(location)` can name: the targets given, and what the rule
+        // reads through `srcs`, `deps` and `tools` (not `data`, probed).
+        let mut prerequisites = s.location_scope();
         for t in targets
             .and_then(|t| crate::attr::sequence(t, heap))
             .unwrap_or_default()
@@ -1180,6 +1229,30 @@ impl CtxState {
         }
     }
 
+    /// The targets of `srcs`, `deps` and `tools` of the rule, which a
+    /// `$(location)` in `ctx.expand_location` can name.
+    fn location_scope(&self) -> Vec<Prerequisite> {
+        let mut out: Vec<Prerequisite> = Vec::new();
+        for (name, value) in &self.attrs {
+            if !["srcs", "deps", "tools"].contains(&name.as_str()) {
+                continue;
+            }
+            let mut labels = Vec::new();
+            value.labels(&mut labels);
+            for label in labels {
+                if let Some(dep) = self.deps.get(label)
+                    && !out.iter().any(|p| p.label == dep.label)
+                {
+                    out.push(Prerequisite {
+                        label: dep.label.clone(),
+                        files: dep.files.clone(),
+                    });
+                }
+            }
+        }
+        out
+    }
+
     fn attr_def(&self, name: &str) -> Option<&fjfj_graph::rule::AttrDef> {
         self.schema
             .attrs
@@ -1188,9 +1261,20 @@ impl CtxState {
             .map(|a| &a.def)
     }
 
-    /// `ctx.attr` does not show private attributes of the rule.
+    /// `ctx.attr` does not show these attributes of the rule that Bazel's
+    /// has none of (probed on 9.2.0).
     fn schema_hidden(&self, name: &str) -> bool {
-        name == "visibility" && false
+        [
+            "aspect_hints",
+            "exec_group_compatible_with",
+            "applicable_licenses",
+        ]
+        .contains(&name)
+    }
+
+    /// `ctx.files` leaves out these label attributes too.
+    fn hidden_from_files(&self, name: &str) -> bool {
+        self.schema_hidden(name) || ["visibility", "transitive_configs"].contains(&name)
     }
 
     /// Every label attribute has its files in `ctx.files` (probed on Bazel

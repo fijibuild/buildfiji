@@ -380,6 +380,11 @@ fn internal_globals(builder: &mut GlobalsBuilder) {
 /// What the builtins (and nothing else) use, continued.
 #[starlark_module]
 fn internal_ctx_globals(builder: &mut GlobalsBuilder) {
+    /// A `root` of the output directory at `path`.
+    fn fjfj_root<'v>(path: &str, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
+        Ok(crate::analysis::alloc_root(heap, path))
+    }
+
     /// The `ctx` that owns `actions`.
     fn fjfj_actions_ctx<'v>(actions: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
         crate::analysis::ctx_of_actions(actions, heap)

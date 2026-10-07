@@ -984,6 +984,188 @@ r = rule(implementation = _impl, attrs = {"fail": attr.string()})
     }
 }
 
+/// Probed on Bazel 9.2.0 (the members printed by both tools): what `ctx`,
+/// `ctx.attr`, `ctx.configuration` and a `Target` have.
+#[test]
+fn ctx_and_target_members_are_bazels() {
+    let src = r#"
+def _impl(ctx):
+    print(sorted(dir(ctx.attr)))
+    print(ctx.attr.name, ctx.attr.testonly, ctx.attr.deprecation, ctx.attr.package_metadata)
+    print(sorted(dir(ctx.files)))
+    print(sorted(dir(ctx.fragments)))
+    c = ctx.configuration
+    print(c.bin_dir.path, c.genfiles_dir.path, c.disabled_features(), len(c.short_id))
+    print(ctx.expand_location("$(location //pkg:a.txt)"))
+    print(ctx.file.src.owner, ctx.files.srcs[0].owner)
+    d = ctx.attr.dep
+    print(OutputGroupInfo in d, d[OutputGroupInfo], d.output_groups, d.actions)
+    print(InstrumentedFilesInfo in d, d.files_to_run.executable)
+    print(str(ctx), str(ctx.actions))
+    if ctx.attr.fail == "rule":
+        ctx.rule
+    elif ctx.attr.fail == "aspect_ids":
+        ctx.aspect_ids
+    elif ctx.attr.fail == "constraint":
+        ctx.target_platform_has_constraint(Label("//:x"))
+    elif ctx.attr.fail == "stamp":
+        c.stamp_binaries()
+    return []
+r = rule(
+    implementation = _impl,
+    fragments = ["cpp"],
+    attrs = {
+        "srcs": attr.label_list(allow_files = True),
+        "src": attr.label(allow_single_file = True),
+        "dep": attr.label(),
+        "fail": attr.string(),
+    },
+)
+"#;
+    let source = |name: &str| DepInfo {
+        label: label("pkg", name),
+        rule_class: None,
+        generated: false,
+        files: vec![Artifact::source("", "pkg", name)],
+        executable: None,
+        runfiles: fjfj_graph::Runfiles::default(),
+        providers: Vec::new(),
+    };
+    let group = DepInfo {
+        label: label("pkg", "g"),
+        rule_class: Some("filegroup".to_owned()),
+        generated: false,
+        files: vec![Artifact::source("", "pkg", "a.txt")],
+        executable: None,
+        runfiles: fjfj_graph::Runfiles::default(),
+        providers: Vec::new(),
+    };
+    let module = module_in("rules_cc+", "", src).unwrap();
+    let run = |fail: &str, main: bool| {
+        let module = if main {
+            module_in("", "", src).unwrap()
+        } else {
+            module.clone()
+        };
+        run_rule(&request_in(
+            module,
+            "r",
+            vec![
+                (
+                    "srcs".to_owned(),
+                    AttrValue::LabelList(vec![label("pkg", "a.txt")]),
+                ),
+                ("src".to_owned(), AttrValue::Label(label("pkg", "a.txt"))),
+                ("dep".to_owned(), AttrValue::Label(label("pkg", "g"))),
+                ("fail".to_owned(), AttrValue::String(fail.to_owned())),
+            ],
+            vec![source("a.txt"), group.clone()],
+        ))
+    };
+    let printed = run("", false).unwrap().printed.without_sites();
+    let names = |text: &str| -> Vec<String> {
+        text.trim_matches(['[', ']'])
+            .split(", ")
+            .map(|name| name.trim_matches('"').to_owned())
+            .collect()
+    };
+    assert_eq!(
+        names(&printed[0]),
+        [
+            "_action_listener",
+            "_config_dependencies",
+            "compatible_with",
+            "dep",
+            "deprecation",
+            "exec_compatible_with",
+            "exec_properties",
+            "expect_failure",
+            "fail",
+            "features",
+            "generator_function",
+            "generator_location",
+            "generator_name",
+            "name",
+            "package_metadata",
+            "restricted_to",
+            "src",
+            "srcs",
+            "tags",
+            "target_compatible_with",
+            "testonly",
+            "toolchains",
+            "transitive_configs",
+            "visibility"
+        ]
+    );
+    assert_eq!(printed[1], "t False None []");
+    assert_eq!(
+        names(&printed[2]),
+        [
+            "_action_listener",
+            "_config_dependencies",
+            "compatible_with",
+            "dep",
+            "exec_compatible_with",
+            "package_metadata",
+            "restricted_to",
+            "src",
+            "srcs",
+            "target_compatible_with",
+            "toolchains"
+        ]
+    );
+    assert_eq!(
+        names(&printed[3]),
+        [
+            "android",
+            "apple",
+            "bazel_android",
+            "coverage",
+            "cpp",
+            "j2objc",
+            "java",
+            "objc",
+            "platform",
+            "proto"
+        ]
+    );
+    assert!(printed[4].starts_with(&format!("{BIN} {BIN} [] ")));
+    // The rule reads `a.txt` through `srcs`.
+    assert_eq!(printed[5], "pkg/a.txt");
+    assert_eq!(printed[6], "//pkg:a.txt //pkg:a.txt");
+    assert_eq!(
+        printed[7],
+        "True struct(_hidden_top_level_INTERNAL_ = depset([])) struct(_hidden_top_level_INTERNAL_ = depset([])) []"
+    );
+    assert_eq!(printed[8], "True <source file pkg/a.txt>");
+    assert_eq!(
+        printed[9],
+        "<rule context for //:t> actions for<rule context for //:t>"
+    );
+    for (fail, want) in [
+        (
+            "rule",
+            "Error: 'rule' is only available in aspect implementations",
+        ),
+        (
+            "aspect_ids",
+            "Error: 'aspect_ids' is only available in aspect implementations",
+        ),
+        (
+            "constraint",
+            "Error in target_platform_has_constraint: in call to target_platform_has_constraint(), parameter 'constraintValue' got value of type 'Label', want 'ConstraintValueInfo'",
+        ),
+        (
+            "stamp",
+            "Error in stamp_binaries: file '//:t.bzl' cannot use private API",
+        ),
+    ] {
+        let err = run(fail, true).unwrap_err();
+        assert!(err.lines().any(|l| l == want), "{fail}: {err}");
+    }
+}
+
 /// Probed on Bazel 9.2.0: a `map_each` that is not a top-level def is
 /// refused, at the name of a def and at the `lambda` of a lambda, unless
 /// `allow_closure`; a builtin function is accepted.
@@ -1128,7 +1310,7 @@ fn configuration_unset_files_and_status_templates() {
     let src = r#"
 def _impl(ctx):
     c = ctx.configuration
-    print(c.short_id, c.is_tool_configuration(), c.host_path_separator, c.coverage_enabled)
+    print(len(c.short_id), c.is_tool_configuration(), c.host_path_separator, c.coverage_enabled)
     print(ctx.file._zipper, ctx.files._zipper, ctx.executable._tool)
     template = ctx.actions.declare_file("t.template")
     ctx.actions.write(template, "{A}")
@@ -1149,7 +1331,7 @@ r = rule(
     let out = run_rule(&request(src, "r", Vec::new(), Vec::new())).unwrap();
     assert_eq!(
         out.printed.without_sites(),
-        ["k8-fastbuild False : False", "None [] None"]
+        ["7 False : False", "None [] None"]
     );
     let [_, expand] = &out.actions[..] else {
         panic!("{:?}", out.actions)
