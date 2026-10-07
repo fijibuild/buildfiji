@@ -738,7 +738,7 @@ impl Repos {
                 })
                 .map_or(first, |(_, message)| message);
             if purpose == Purpose::Tree {
-                events.push("package contains errors: ".to_owned());
+                events.push(format!("package contains errors: {name}"));
             }
             if purpose != Purpose::Target {
                 events.push(format!("package contains errors: {name}: {message}"));
