@@ -10,5 +10,6 @@ mod resolve;
 pub use glob::{GlobError, GlobOptions, glob, subpackages};
 pub use lookup::{LookupError, PackageLookup};
 pub use resolve::{
-    Failure, PackageSource, Purpose, Resolved, declared_target, resolve, resolve_with,
+    Failure, PackageSource, Purpose, Resolved, SuiteIssue, declared_target, expand_test_suites,
+    resolve, resolve_with,
 };

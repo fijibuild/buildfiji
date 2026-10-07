@@ -437,6 +437,7 @@ fn build_options(
         symlink_prefix: "bazel-".to_owned(),
         clean_links: None,
         make_links: false,
+        expand_test_suites: false,
         jobs: None,
         strategy: fjfj_exec::run::Options::default().strategy,
         show_result: 0,
@@ -544,7 +545,7 @@ fn evaluate(
         .extend(report.starlark_settings.iter().cloned());
     if !report.analysis_errors.is_empty() {
         // The events of the failure are the build's, and so is the exit code.
-        build_command::print(&report, named_count, 0, false, false, None, false);
+        build_command::print(&report, named_count, 0, false, false, None, None);
         return Err(CliError::Reported);
     }
     let configured = ConfiguredGraph::new(&graph, &report.analysed, &top_level, platforms);

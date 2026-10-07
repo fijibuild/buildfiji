@@ -200,3 +200,92 @@ fn a_pattern_that_selects_nothing_is_skipped_with_bazels_reason() {
         );
     }
 }
+
+/// Probed on Bazel 9.2.0 with `bazel build`: a `test_suite` among the targets
+/// is its tests, where it was; what it lists that is no test is an error.
+#[test]
+fn a_test_suite_among_the_targets_is_its_tests() {
+    let dir = tempfile::tempdir().unwrap();
+    let ws = dir.path().join("ws");
+    let files = [
+        (
+            "t.bzl",
+            "my_test = rule(implementation = lambda ctx: [], test = True)\n",
+        ),
+        ("BUILD.bazel", ""),
+        (
+            "p/BUILD.bazel",
+            "load('//:t.bzl', 'my_test')\n\
+             my_test(name = 'a_test', size = 'small', tags = ['fast'])\n\
+             my_test(name = 'b_test', tags = ['slow', 'manual'])\n\
+             my_test(name = 'c_test', tags = ['fast'])\n\
+             genrule(name = 'gen', outs = ['g'], cmd = 'true')\n\
+             test_suite(name = 'every')\n\
+             test_suite(name = 'fast', tags = ['fast'])\n\
+             test_suite(name = 'listed', tests = [':b_test', ':fast'])\n\
+             test_suite(name = 'bad', tests = [':gen'])\n\
+             test_suite(name = 'loop', tests = [':loop'])\n",
+        ),
+    ];
+    for (file, text) in files {
+        let at = ws.join(file);
+        std::fs::create_dir_all(at.parent().unwrap()).unwrap();
+        std::fs::write(at, text).unwrap();
+    }
+    let module = eval_module_file("MODULE.bazel", "module(name = 'm')\n", &EvalOptions::root())
+        .unwrap()
+        .module;
+    let repos = Repos::new(
+        Options {
+            workspace_root: ws,
+            output_base: dir.path().join("ob"),
+            environ: BTreeMap::new(),
+            downloader: None,
+            repository_cache: None,
+            distdirs: Vec::new(),
+            registries: Vec::new(),
+            facts: Vec::new(),
+            repo_overrides: Vec::new(),
+        },
+        module,
+    )
+    .unwrap();
+    let ctx = PatternContext {
+        repo: "",
+        offset: "",
+    };
+    let expand = |patterns: &[&str]| {
+        let parsed: Vec<TargetPattern> = patterns
+            .iter()
+            .map(|p| TargetPattern::parse(p, ctx, &mut |r| r.to_owned()).unwrap())
+            .collect();
+        let mut resolved = resolve(&parsed, &repos);
+        let issues = fjfj_loading::expand_test_suites(&mut resolved, &repos);
+        let names: Vec<String> = resolved.targets.iter().map(|l| l.name.clone()).collect();
+        (names, issues)
+    };
+    assert_eq!(expand(&["//p:every"]).0, ["a_test", "c_test"]);
+    assert_eq!(expand(&["//p:fast"]).0, ["a_test", "c_test"]);
+    // Each once, in the order found: `b_test` is named, `fast` brings the rest.
+    assert_eq!(
+        expand(&["//p:listed", "//p:a_test"]).0,
+        ["b_test", "a_test", "c_test"]
+    );
+    // A target that is no suite is left as it is.
+    assert_eq!(expand(&["//p:gen"]).0, ["gen"]);
+    let (names, issues) = expand(&["//p:bad", "//p:a_test"]);
+    assert_eq!(names, ["a_test"]);
+    assert_eq!(issues.len(), 1);
+    assert!(
+        matches!(&issues[0].error, fjfj_graph::suite::SuiteError::NotATest(pair) if pair.1.name == "gen"),
+        "{:?}",
+        issues[0].error
+    );
+    assert_eq!(issues[0].location, "p/BUILD.bazel:9:11");
+    let (names, issues) = expand(&["//p:loop"]);
+    assert!(names.is_empty());
+    assert!(matches!(
+        issues[0].error,
+        fjfj_graph::suite::SuiteError::Cycle(_)
+    ));
+}

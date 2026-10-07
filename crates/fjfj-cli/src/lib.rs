@@ -827,6 +827,7 @@ async fn build_main(
         },
         clean_links: (convenience == "clean").then(|| symlink_prefix.clone()),
         make_links: convenience == "normal",
+        expand_test_suites: build_flags.expand_test_suites.unwrap_or(true),
         jobs: build_command::jobs_from(build_flags.jobs.as_deref())
             .map_err(|e| CliError::CommandLine(anyhow::anyhow!(e)))?,
         strategy: match build_flags.spawn_strategy.as_deref() {
@@ -867,6 +868,7 @@ async fn build_main(
     let loaded = fetch_repositories_for_build(repo_flags, &bzlmod, texts, offset, build).await?;
     let resolution = loaded.resolution;
     let targets = loaded.targets;
+    let suite_issues = loaded.suite_issues;
     tracing::info!(
         selected_modules = resolution.selection.keys().count(),
         "bzlmod module graph resolved"
@@ -880,6 +882,81 @@ async fn build_main(
             "{}\nERROR: Build did NOT complete successfully",
             failure.message
         )));
+    }
+    // A `test_suite` that could not be expanded: what it lists that is no
+    // test is an error of loading that the rest goes on past; a cycle stops
+    // the build.
+    let mut load_errors: Option<(&'static str, bool)> =
+        (!targets.failures.is_empty()).then_some(("errors parsing the target pattern", false));
+    if !suite_issues.is_empty() {
+        let workspace = locate_workspace_root(command)?;
+        let at = |issue: &fjfj_loading::SuiteIssue| {
+            let root = if issue.suite.repo.is_empty() {
+                workspace.clone()
+            } else {
+                fetch_command::default_output_base(&workspace)
+                    .join("external")
+                    .join(&issue.suite.repo)
+            };
+            root.join(&issue.location).display().to_string()
+        };
+        let name = |label: &fjfj_graph::Label| fjfj_graph::expand::label_text(label);
+        for issue in &suite_issues {
+            use fjfj_graph::suite::SuiteError;
+            match &issue.error {
+                SuiteError::NotATest(pair) => eprintln!(
+                    "ERROR: {}: in test_suite rule '{}': expecting a test or a test_suite rule but '{}' is not one.",
+                    at(issue),
+                    name(&pair.0),
+                    name(&pair.1)
+                ),
+                SuiteError::Cycle(path) => {
+                    let mut lines = vec![format!(
+                        "ERROR: {}: in test_suite rule {}: cycle in dependency graph:",
+                        at(issue),
+                        name(&issue.suite)
+                    )];
+                    let drawn: Vec<String> = path
+                        .iter()
+                        .enumerate()
+                        .map(|(i, l)| {
+                            let tail = if path.len() == 2 && i == 0 {
+                                " [self-edge]"
+                            } else {
+                                ""
+                            };
+                            let lead = match i {
+                                0 => ".-> ",
+                                n if n + 1 == path.len() => "`-- ",
+                                _ => "|   ",
+                            };
+                            format!("{lead}{}{tail}", name(l))
+                        })
+                        .collect();
+                    // A suite that lists itself draws no closing line.
+                    lines.extend(if path.len() == 2 {
+                        vec![drawn[0].clone(), "`--".to_owned()]
+                    } else {
+                        drawn
+                    });
+                    for line in lines {
+                        eprintln!("{line}");
+                    }
+                    eprintln!("ERROR: cycles detected during target parsing");
+                    build_command::print_nothing_built(started.elapsed());
+                    return Err(CliError::Reported);
+                }
+                SuiteError::Other(message) => eprintln!("ERROR: {message}"),
+            }
+        }
+        load_errors = Some((
+            if command == "build" || command == "run" {
+                "loading phase errors"
+            } else {
+                "errors parsing the target pattern"
+            },
+            true,
+        ));
     }
     if !targets.failures.is_empty() {
         // `test` says it only when it goes on.
@@ -936,7 +1013,7 @@ async fn build_main(
         diagnostics.keep_going,
         diagnostics.verbose_failures,
         build_options_test_output,
-        !targets.failures.is_empty(),
+        load_errors,
     );
     if !succeeded {
         // `run` says so after the build has said why.
@@ -1298,6 +1375,7 @@ mod tests {
             symlink_prefix: "bazel-".into(),
             clean_links: None,
             make_links: true,
+            expand_test_suites: true,
             jobs: None,
             strategy: fjfj_exec::run::Options::default().strategy,
             show_result: 1,
@@ -1432,6 +1510,7 @@ checks_test = rule(implementation = _checks, analysis_test = True, attrs = {"ok"
             symlink_prefix: "bazel-".into(),
             clean_links: None,
             make_links: true,
+            expand_test_suites: true,
             jobs: None,
             strategy: fjfj_exec::run::Options::default().strategy,
             show_result: 1,
@@ -1575,6 +1654,7 @@ checks_test = rule(implementation = _checks, analysis_test = True, attrs = {"ok"
                 symlink_prefix: "bazel-".into(),
                 clean_links: None,
                 make_links: true,
+                expand_test_suites: true,
                 jobs: None,
                 strategy: fjfj_exec::run::Options::default().strategy,
                 show_result: 1,

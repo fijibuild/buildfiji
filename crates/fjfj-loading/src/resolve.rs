@@ -338,6 +338,142 @@ fn in_pattern(pattern: &TargetPattern, message: String) -> String {
     }
 }
 
+/// A `test_suite` the build could not expand, and why.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SuiteIssue {
+    /// The suite that failed: where it is declared is in `location`.
+    pub suite: Label,
+    /// `file:line:col` of the suite in its package, as targets have it.
+    pub location: String,
+    pub error: fjfj_graph::suite::SuiteError,
+}
+
+/// The suites of a source, as [`fjfj_graph::suite`] reads them.
+struct SourceSuites<'a> {
+    source: &'a dyn PackageSource,
+}
+
+impl SourceSuites<'_> {
+    fn strings(attrs: &[(String, AttrValue)], name: &str) -> Vec<String> {
+        match attrs.iter().find(|(n, _)| n == name) {
+            Some((_, AttrValue::StringList(items))) => items.clone(),
+            _ => Vec::new(),
+        }
+    }
+
+    fn test_of(attrs: &[(String, AttrValue)]) -> fjfj_graph::suite::SuiteTest {
+        let size = match attrs.iter().find(|(n, _)| n == "size") {
+            Some((_, AttrValue::String(size))) if !size.is_empty() => size.clone(),
+            _ => "medium".to_owned(),
+        };
+        fjfj_graph::suite::SuiteTest {
+            tags: Self::strings(attrs, "tags"),
+            size,
+        }
+    }
+}
+
+impl fjfj_graph::suite::Suites for SourceSuites<'_> {
+    fn member(&self, label: &Label) -> Result<fjfj_graph::suite::Member, String> {
+        use fjfj_graph::suite::Member;
+        let Ok(package) = self.source.package(&label.repo, &label.package) else {
+            return Ok(Member::Other);
+        };
+        let Some(Target {
+            kind: TargetKind::Rule {
+                rule_class, attrs, ..
+            },
+            ..
+        }) = package.target(&label.name)
+        else {
+            return Ok(Member::Other);
+        };
+        Ok(if rule_class == "test_suite" {
+            Member::Suite {
+                tests: match attrs.iter().find(|(n, _)| n == "tests") {
+                    Some((_, AttrValue::LabelList(labels))) => labels.clone(),
+                    _ => Vec::new(),
+                },
+                tags: Self::strings(attrs, "tags"),
+            }
+        } else if rule_class.ends_with("_test") {
+            Member::Test(Self::test_of(attrs))
+        } else {
+            Member::Other
+        })
+    }
+
+    fn package_tests(
+        &self,
+        label: &Label,
+    ) -> Result<Vec<(Label, fjfj_graph::suite::SuiteTest)>, String> {
+        let package = self.source.package(&label.repo, &label.package)?;
+        Ok(package
+            .targets()
+            .iter()
+            .filter_map(|target| match &target.kind {
+                TargetKind::Rule {
+                    rule_class, attrs, ..
+                } if rule_class.ends_with("_test") => {
+                    Some((package.label(target), Self::test_of(attrs)))
+                }
+                _ => None,
+            })
+            .collect())
+    }
+}
+
+/// `--expand_test_suites`: each `test_suite` in `resolved.targets` becomes the
+/// tests it stands for, each once, where the suite was. A suite that cannot be
+/// expanded is dropped and returned with why.
+pub fn expand_test_suites(resolved: &mut Resolved, source: &dyn PackageSource) -> Vec<SuiteIssue> {
+    let suites = SourceSuites { source };
+    let mut issues = Vec::new();
+    let mut out: Vec<Label> = Vec::new();
+    let is_suite = |label: &Label| {
+        source
+            .package(&label.repo, &label.package)
+            .ok()
+            .and_then(|p| {
+                p.target(&label.name).map(|t| {
+                    matches!(&t.kind, TargetKind::Rule { rule_class, .. } if rule_class == "test_suite")
+                })
+            })
+            .unwrap_or(false)
+    };
+    for label in std::mem::take(&mut resolved.targets) {
+        if !is_suite(&label) {
+            if !out.contains(&label) {
+                out.push(label);
+            }
+            continue;
+        }
+        match fjfj_graph::suite::expand(&suites, &label, true) {
+            Ok(tests) => {
+                for test in tests {
+                    if !out.contains(&test) {
+                        out.push(test);
+                    }
+                }
+            }
+            Err(error) => {
+                let location = source
+                    .package(&label.repo, &label.package)
+                    .ok()
+                    .and_then(|p| p.target(&label.name).map(|t| t.location.clone()))
+                    .unwrap_or_default();
+                issues.push(SuiteIssue {
+                    suite: label,
+                    location,
+                    error,
+                });
+            }
+        }
+    }
+    resolved.targets = out;
+    issues
+}
+
 /// The targets `patterns` select.
 pub fn resolve(patterns: &[TargetPattern], source: &dyn PackageSource) -> Resolved {
     resolve_with(patterns, source, false)

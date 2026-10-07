@@ -28,6 +28,7 @@ pub const IMPLEMENTED: &[&str] = &[
     "experimental_platform_in_output_dir",
     "experimental_override_platform_cpu_name",
     "experimental_convenience_symlinks",
+    "expand_test_suites",
     "enable_runfiles",
     "build_runfile_links",
     "legacy_external_runfiles",
@@ -160,6 +161,8 @@ pub struct BuildFlags {
     /// `--experimental_convenience_symlinks`: `normal`, `clean`, `ignore` or
     /// `log_only`, checked by whoever uses it.
     pub convenience_symlinks: Option<String>,
+    /// `--[no]expand_test_suites` (default on).
+    pub expand_test_suites: Option<bool>,
     /// `--strip`: `always`, `sometimes` or `never`, checked by whoever uses it.
     pub strip: Option<String>,
     /// `--fission`: the modes it is on in, as written.
@@ -222,6 +225,10 @@ pub fn extract(args: &[String], command: &str) -> (BuildFlags, Vec<String>) {
         }
         if name == "skip_incompatible_explicit_targets" {
             flags.skip_incompatible_explicit_targets = !m.negated;
+            continue;
+        }
+        if name == "expand_test_suites" {
+            flags.expand_test_suites = Some(!m.negated);
             continue;
         }
         if SWITCHES.contains(&name) {

@@ -281,7 +281,14 @@ pub(crate) fn run_for_build(
             "No repository visible as '@{apparent}' from main repository"
         )));
     }
-    let targets = fjfj_loading::resolve(&parsed, &repos);
+    let mut targets = fjfj_loading::resolve(&parsed, &repos);
+    // A suite among the targets is its tests, for what builds.
+    let suite_issues = match build {
+        Some(options) if options.expand_test_suites => {
+            fjfj_loading::expand_test_suites(&mut targets, &repos)
+        }
+        _ => Vec::new(),
+    };
     // The build happens before the lockfile is written, so that it holds the
     // extensions the analysis ran.
     let repos = Arc::new(repos);
@@ -322,6 +329,7 @@ pub(crate) fn run_for_build(
     Ok(BuildLoad {
         resolution,
         targets,
+        suite_issues,
         report,
     })
 }
@@ -330,6 +338,8 @@ pub(crate) fn run_for_build(
 pub(crate) struct BuildLoad {
     pub resolution: Resolution,
     pub targets: fjfj_loading::Resolved,
+    /// The `test_suite`s that could not be expanded.
+    pub suite_issues: Vec<fjfj_loading::SuiteIssue>,
     /// What building the targets did; `None` when a pattern failed and the
     /// build does not go on.
     pub report: Option<crate::build_command::Report>,

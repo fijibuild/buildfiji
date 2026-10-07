@@ -41,6 +41,8 @@ pub(crate) struct Options {
     /// `--experimental_convenience_symlinks=clean`: the links of this prefix
     /// are removed instead of made.
     pub clean_links: Option<String>,
+    /// `--expand_test_suites`: a `test_suite` among the targets is its tests.
+    pub expand_test_suites: bool,
     /// Make the links (`--experimental_convenience_symlinks=normal`): `log_only`
     /// shows paths through them and makes none.
     pub make_links: bool,
@@ -1566,7 +1568,7 @@ pub(crate) fn print(
     keep_going: bool,
     verbose_failures: bool,
     test_output: Option<fjfj_bazel_compat::test_flags::TestOutput>,
-    pattern_errors: bool,
+    load_errors: Option<(&'static str, bool)>,
 ) -> bool {
     let layout = &report.layout;
     for text in &report.printed {
@@ -1583,7 +1585,7 @@ pub(crate) fn print(
     // analysed as well.
     let analysed = report.results.len() + report.skipped.len() + report.failed_roots.len();
     if ((report.analysis_errors.is_empty() && !incompatible) || keep_going)
-        && !(pattern_errors && analysed == 0)
+        && !(load_errors.is_some() && analysed == 0)
     {
         let what = if analysed == 1 {
             let only = report
@@ -1704,8 +1706,10 @@ pub(crate) fn print(
             label_text(label)
         );
     }
-    let ok = report.succeeded() && !pattern_errors;
-    if ok || keep_going {
+    let ok = report.succeeded() && load_errors.is_none();
+    // A `test_suite` that failed to expand does not stop the listing.
+    let goes_on = report.succeeded() && load_errors.is_some_and(|(_, on)| on);
+    if ok || keep_going || goes_on {
         let built: Vec<&TargetResult> = report.results.iter().filter(|r| r.built).collect();
         if !report.succeeded() && !built.is_empty() {
             eprintln!(
@@ -1753,8 +1757,8 @@ pub(crate) fn print(
             }
         }
     }
-    if pattern_errors {
-        eprintln!("ERROR: command succeeded, but there were errors parsing the target pattern");
+    if let Some((what, _)) = load_errors {
+        eprintln!("ERROR: command succeeded, but there were {what}");
     }
     eprintln!(
         "INFO: Elapsed time: {:.3}s, Critical Path: {:.2}s",
@@ -1816,7 +1820,7 @@ pub(crate) fn print(
             .tests
             .iter()
             .all(|t| matches!(t.status, TestStatus::Passed | TestStatus::Skipped));
-        if !ok && keep_going && none_failed {
+        if !ok && (keep_going || goes_on) && none_failed {
             eprintln!("All tests passed but there were other errors during the build.");
             eprintln!();
         }
