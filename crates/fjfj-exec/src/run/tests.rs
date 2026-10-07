@@ -320,6 +320,64 @@ async fn an_action_whose_inputs_and_outputs_are_unchanged_does_not_run_again() {
     assert_eq!((sixth.ran, sixth.cached), (1, 0));
 }
 
+/// Probed on Bazel 9.2.0: `ctx.actions.symlink` makes a tree artifact a link to
+/// another, and writing a file over a directory says what Java says.
+#[tokio::test]
+async fn a_tree_can_be_a_link_to_another_and_a_file_cannot_be_written_over_a_directory() {
+    let (_dir, layout) = layout();
+    let (mut source, mut linked) = (out("src_d"), out("link_d"));
+    source.tree = true;
+    linked.tree = true;
+    let fill = shell(
+        &format!("mkdir -p {0}/s && echo a > {0}/s/f", source.exec_path()),
+        vec![],
+        vec![source.clone()],
+    );
+    let mut link = shell("", vec![source.clone()], vec![linked.clone()]);
+    link.kind = ActionKind::Symlink {
+        target: source.exec_path(),
+    };
+    let outcome = run(
+        &layout,
+        vec![fill, link],
+        std::slice::from_ref(&linked),
+        false,
+    )
+    .await;
+    assert!(outcome.failures.is_empty(), "{:?}", outcome.failures);
+    let at = layout.execroot().join(linked.exec_path());
+    assert!(
+        std::fs::symlink_metadata(&at)
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
+    assert_eq!(std::fs::read_to_string(at.join("s/f")).unwrap(), "a\n");
+
+    let mut directory = out("over_d");
+    directory.tree = true;
+    let mut write = shell("", vec![], vec![directory.clone()]);
+    write.kind = ActionKind::WriteFile {
+        contents: b"x".to_vec(),
+        executable: false,
+    };
+    // The output is a directory by the time the file is written to it.
+    let outcome = run(
+        &layout,
+        vec![write],
+        std::slice::from_ref(&directory),
+        false,
+    )
+    .await;
+    assert_eq!(
+        outcome.failures[0].message,
+        format!(
+            "java.io.FileNotFoundException: {} (Is a directory)",
+            layout.execroot().join(directory.exec_path()).display()
+        )
+    );
+}
+
 /// A command line that reads a tree artifact is made when the tree has been
 /// filled, one word for each file in it in the order of their paths, in the
 /// command and in a parameter file (buildfiji-136.37).

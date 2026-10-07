@@ -706,8 +706,9 @@ impl Scheduler {
                 std::fs::create_dir_all(dir)
                     .map_err(|e| fail(format!("cannot create {}: {e}", dir.display())))?;
             }
-            // A tree artifact exists, empty, before the action fills it.
-            if out.tree {
+            // A tree artifact exists, empty, before the action fills it; a link
+            // to another is the link.
+            if out.tree && !matches!(action.kind, ActionKind::Symlink { .. }) {
                 std::fs::create_dir_all(&at)
                     .map_err(|e| fail(format!("cannot create {}: {e}", at.display())))?;
             }
@@ -718,8 +719,17 @@ impl Scheduler {
                 executable,
             } => {
                 let at = execroot.join(action.outputs[0].exec_path());
-                std::fs::write(&at, contents)
-                    .map_err(|e| fail(format!("cannot write {}: {e}", at.display())))?;
+                std::fs::write(&at, contents).map_err(|e| {
+                    // What Bazel says, as Java does: a directory is in the way.
+                    if e.raw_os_error() == Some(21) {
+                        fail(format!(
+                            "java.io.FileNotFoundException: {} (Is a directory)",
+                            at.display()
+                        ))
+                    } else {
+                        fail(format!("cannot write {}: {e}", at.display()))
+                    }
+                })?;
                 let _ = executable;
             }
             ActionKind::ParamFile {
