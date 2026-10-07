@@ -752,7 +752,6 @@ impl Scheduler {
                 empty_files,
             } => {
                 let mapping_at = execroot.join(repo_mapping);
-                let lines = self.manifest_text(&mapping_at, entries, empty_files);
                 // Not what an earlier run left: it may have linked more.
                 let tree = execroot.join(dir);
                 remove(&tree)
@@ -779,9 +778,15 @@ impl Scheduler {
                     std::fs::write(&file, b"")
                         .map_err(|e| fail(format!("cannot write {}: {e}", file.display())))?;
                 }
-                std::fs::write(tree.join("MANIFEST"), lines).map_err(|e| {
+                // The manifest is the file next to the tree, which the tree
+                // links.
+                std::os::unix::fs::symlink(
+                    execroot.join(format!("{dir}_manifest")),
+                    tree.join("MANIFEST"),
+                )
+                .map_err(|e| {
                     fail(format!(
-                        "cannot write the manifest in {}: {e}",
+                        "cannot link the manifest in {}: {e}",
                         tree.display()
                     ))
                 })?;

@@ -870,6 +870,12 @@ async fn a_runfiles_tree_is_four_actions_and_its_directory_is_left_as_the_tree_m
     assert!(outcome.failures.is_empty(), "{:?}", outcome.failures);
     assert_eq!((outcome.closure, outcome.ran), (5, 5));
     let at = layout.execroot().join(dir.exec_path());
+    // The manifest is a link to the file beside the tree, as Bazel's is.
+    assert!(
+        std::fs::symlink_metadata(at.join("MANIFEST"))
+            .unwrap()
+            .is_symlink()
+    );
     let listing = std::fs::read_to_string(at.join("MANIFEST")).unwrap();
     assert!(listing.starts_with("_main/data "), "{listing}");
     assert!(listing.contains("_repo_mapping "), "{listing}");
