@@ -85,6 +85,36 @@ pub(crate) fn configuration_from(
     if let Some(cpu) = &flags.cpu {
         configuration.cpu = cpu.clone();
     }
+    configuration.platform_in_output_dir = flags.platform_in_output_dir;
+    for entry in &flags.platform_name_overrides {
+        let parsed = entry
+            .split_once('=')
+            .filter(|(name, value)| !name.is_empty() && !value.is_empty() && !value.contains('='))
+            .and_then(|(name, value)| {
+                let label = fjfj_graph::Label::parse(
+                    name,
+                    fjfj_graph::LabelContext {
+                        repo: "",
+                        package: "",
+                    },
+                )
+                .ok()?;
+                Some((label, value))
+            });
+        let Some((label, value)) = parsed else {
+            return Err(format!(
+                "While parsing option --experimental_override_name_platform_in_output_dir={entry}: Variable definitions must be in the form of a 'name=value' assignment. 'name' and 'value' must be non-empty and may not include '='."
+            ));
+        };
+        if value.contains('/') {
+            return Err(format!(
+                "CPU/Platform descriptor '{value}' is invalid as part of a path: must not contain /"
+            ));
+        }
+        configuration
+            .platform_names
+            .insert(fjfj_graph::expand::label_text(&label), value.to_owned());
+    }
     configuration.defines = flags.defines.iter().cloned().collect();
     for entry in &flags.action_env {
         match entry.split_once('=') {
@@ -837,6 +867,7 @@ pub(crate) fn run(repos: &Arc<Repos>, targets: &[Label], request: &Request) -> R
         match platform {
             Ok((label, constraints)) => {
                 configuration.constraints = constraints;
+                configuration.platform = Some(label.clone());
                 configuration.settings.insert(
                     format!("{}platforms", fjfj_graph::config::COMMAND_LINE_OPTION),
                     fjfj_graph::SettingValue::List(vec![fjfj_graph::expand::label_text(&label)]),

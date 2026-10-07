@@ -98,6 +98,15 @@ pub struct Configuration {
     /// The `constraint_value`s the target platform has, as canonical labels:
     /// what `ctx.target_platform_has_constraint` and `select()` ask.
     pub constraints: std::collections::BTreeSet<crate::Label>,
+    /// The target platform, `--platforms`: `None` is the host.
+    pub platform: Option<crate::Label>,
+    /// `--experimental_platform_in_output_dir`: the output directory is named
+    /// for the target platform rather than the cpu.
+    pub platform_in_output_dir: bool,
+    /// `--experimental_override_name_platform_in_output_dir`: the name a
+    /// platform, by canonical label, has in the output directory instead of
+    /// its target name.
+    pub platform_names: BTreeMap<String, String>,
     /// Other flags, by name, for `config_setting(values = ...)`: `copt`,
     /// `linkopt`, ...
     pub options: BTreeMap<String, String>,
@@ -172,6 +181,9 @@ impl Default for Configuration {
             compilation_mode: CompilationMode::default(),
             defines: BTreeMap::new(),
             constraints: std::collections::BTreeSet::new(),
+            platform: None,
+            platform_in_output_dir: false,
+            platform_names: BTreeMap::new(),
             options: BTreeMap::new(),
             test_env: BTreeMap::new(),
             action_env: BTreeMap::new(),
@@ -277,7 +289,11 @@ impl Configuration {
     /// The directory of `bazel-out` this configuration's outputs are in:
     /// `k8-fastbuild`. A configuration that builds tools says so.
     pub fn mnemonic(&self) -> String {
-        let mut name = format!("{}-{}", self.cpu, self.compilation_mode.name());
+        let mut name = format!(
+            "{}-{}",
+            self.platform_dir_name(),
+            self.compilation_mode.name()
+        );
         if self.exec {
             name.push_str("-exec");
         }
@@ -286,6 +302,20 @@ impl Configuration {
             name.push_str(&hash);
         }
         name
+    }
+
+    /// What leads the name of the output directory: the cpu, or with
+    /// `--experimental_platform_in_output_dir` the name of the target platform
+    /// (its target name, or what `--experimental_override_name_platform_in_output_dir`
+    /// gave it) when one was asked for. Probed on Bazel 9.2.0.
+    fn platform_dir_name(&self) -> &str {
+        match (&self.platform, self.platform_in_output_dir) {
+            (Some(platform), true) => self
+                .platform_names
+                .get(&crate::expand::label_text(platform))
+                .unwrap_or(&platform.name),
+            _ => &self.cpu,
+        }
     }
 
     /// The twelve hex digits a Starlark transition adds to the name of the
@@ -440,12 +470,38 @@ mod tests {
     }
 
     #[test]
+    fn the_platform_names_the_output_directory_when_asked() {
+        let platform = crate::Label {
+            repo: String::new(),
+            package: "a/b".into(),
+            name: "q".into(),
+        };
+        let mut config = Configuration {
+            platform: Some(platform),
+            ..Configuration::default()
+        };
+        assert_eq!(config.mnemonic(), format!("{}-fastbuild", host_cpu()));
+        config.platform_in_output_dir = true;
+        assert_eq!(config.mnemonic(), "q-fastbuild");
+        config
+            .platform_names
+            .insert("//a/b:q".into(), "renamed".into());
+        assert_eq!(config.mnemonic(), "renamed-fastbuild");
+        config.platform = None;
+        config.cpu = "foo".into();
+        assert_eq!(config.mnemonic(), "foo-fastbuild");
+    }
+
+    #[test]
     fn the_mode_and_exec_show_in_the_name() {
         let config = Configuration {
             cpu: "k8".into(),
             compilation_mode: CompilationMode::Opt,
             defines: BTreeMap::new(),
             constraints: std::collections::BTreeSet::new(),
+            platform: None,
+            platform_in_output_dir: false,
+            platform_names: BTreeMap::new(),
             options: BTreeMap::new(),
             test_env: BTreeMap::new(),
             action_env: BTreeMap::new(),

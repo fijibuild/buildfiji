@@ -269,6 +269,7 @@ async fn write(
             let label = setting_label(text, "")?;
             let constraints = crate::platform_constraints_in(ctx, &label).await?;
             configuration.constraints = constraints;
+            configuration.platform = Some(label);
             configuration
                 .settings
                 .insert(name.to_owned(), value.clone());

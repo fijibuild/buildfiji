@@ -25,6 +25,8 @@ pub const IMPLEMENTED: &[&str] = &[
     "show_result",
     "build",
     "skip_incompatible_explicit_targets",
+    "experimental_platform_in_output_dir",
+    "experimental_override_platform_cpu_name",
     "copt",
     "cxxopt",
     "conlyopt",
@@ -110,6 +112,12 @@ pub struct BuildFlags {
     /// `--skip_incompatible_explicit_targets`: a target named outright that
     /// the platform cannot build is skipped, as one a wildcard selects is.
     pub skip_incompatible_explicit_targets: bool,
+    /// `--experimental_platform_in_output_dir`: the output directory is named
+    /// for the target platform, not the cpu.
+    pub platform_in_output_dir: bool,
+    /// `--experimental_override_name_platform_in_output_dir`: `LABEL=NAME`
+    /// for each, as written, in order.
+    pub platform_name_overrides: Vec<String>,
     /// `--copt` and the like, by flag name, each value in order.
     pub options: Vec<(String, String)>,
     /// `--//pkg:flag=value`, in order.
@@ -170,6 +178,10 @@ pub fn extract(args: &[String], command: &str) -> (BuildFlags, Vec<String>) {
             flags.skip_incompatible_explicit_targets = !m.negated;
             continue;
         }
+        if name == "experimental_platform_in_output_dir" {
+            flags.platform_in_output_dir = !m.negated;
+            continue;
+        }
         let Some(value) = m.value.map(str::to_string).or_else(|| iter.next().cloned()) else {
             rest.push(arg.clone());
             continue;
@@ -197,6 +209,7 @@ pub fn extract(args: &[String], command: &str) -> (BuildFlags, Vec<String>) {
                     .map(str::to_owned),
             ),
             "host_platform" => flags.host_platform = Some(value),
+            "experimental_override_platform_cpu_name" => flags.platform_name_overrides.push(value),
             "toolchain_resolution_debug" => flags.toolchain_resolution_debug = Some(value),
             "action_env" => flags.action_env.push(value),
             "extra_toolchains" => flags.extra_toolchains.extend(
@@ -240,6 +253,30 @@ mod tests {
 
     fn args(words: &[&str]) -> Vec<String> {
         words.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn the_platform_in_the_output_dir_flags_are_taken() {
+        let (flags, rest) = extract(
+            &args(&[
+                "--experimental_platform_in_output_dir",
+                "--experimental_override_name_platform_in_output_dir=//:q=a",
+                "--experimental_override_name_platform_in_output_dir=//:p=b",
+                "//a:a",
+            ]),
+            "build",
+        );
+        assert!(flags.platform_in_output_dir);
+        assert_eq!(flags.platform_name_overrides, ["//:q=a", "//:p=b"]);
+        assert_eq!(rest, ["//a:a"]);
+        let (flags, _) = extract(
+            &args(&[
+                "--experimental_platform_in_output_dir",
+                "--noexperimental_platform_in_output_dir",
+            ]),
+            "build",
+        );
+        assert!(!flags.platform_in_output_dir);
     }
 
     #[test]
