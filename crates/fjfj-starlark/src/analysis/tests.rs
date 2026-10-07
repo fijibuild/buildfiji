@@ -2112,3 +2112,48 @@ r = rule(implementation = _impl)
     let want = "DefaultInfo|OutputGroupInfo|RunEnvironmentInfo|struct|struct|struct|Provider|int";
     assert!(err.contains(want), "wanted `{want}` in\n{err}");
 }
+
+/// Probed on Bazel 9.2.0: `testing.ExecutionInfo` and `testing.TestEnvironment`
+/// (a `RunEnvironmentInfo`) take their arguments positionally, with defaults.
+#[test]
+fn execution_info_and_test_environment_take_positional_arguments() {
+    let src = r#"
+def _impl(ctx):
+    e = testing.ExecutionInfo({"a": "b"})
+    t = testing.TestEnvironment({"A": "b"}, ["C"])
+    fail("|".join([
+        str(e),
+        str(t),
+        str(RunEnvironmentInfo()),
+        type(t),
+    ]))
+r = rule(implementation = _impl)
+"#;
+    let err = run_rule(&request(src, "r", Vec::new(), Vec::new())).unwrap_err();
+    let want = r#"struct(exec_group = "test", requirements = {"a": "b"})|struct(environment = {"A": "b"}, inherited_environment = ["C"])|struct(environment = {}, inherited_environment = [])|RunEnvironmentInfo"#;
+    assert!(err.contains(want), "wanted `{want}` in\n{err}");
+    for (call, text) in [
+        (
+            "testing.ExecutionInfo(1)",
+            "in call to ExecutionInfo(), parameter 'requirements' got value of type 'int', want 'dict'",
+        ),
+        (
+            "testing.ExecutionInfo({}, 'x', 3)",
+            "ExecutionInfo() accepts no more than 2 positional arguments but got 3",
+        ),
+        (
+            "RunEnvironmentInfo(nope = 1)",
+            "RunEnvironmentInfo() got unexpected keyword argument 'nope'",
+        ),
+        (
+            "RunEnvironmentInfo({'a': 1})",
+            "got dict<string, int> for 'environment', want dict<string, string>",
+        ),
+    ] {
+        let src = format!(
+            "def _impl(ctx):\n    {call}\n    return []\nr = rule(implementation = _impl)\n"
+        );
+        let err = run_rule(&request(&src, "r", Vec::new(), Vec::new())).unwrap_err();
+        assert!(err.contains(text), "{call}: wanted `{text}` in\n{err}");
+    }
+}

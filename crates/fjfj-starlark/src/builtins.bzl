@@ -76,9 +76,46 @@ DefaultInfo, _raw_default_info = provider(
     init = _default_info_init,
 )
 
-RunEnvironmentInfo = provider(
+# The arguments of a native constructor with these parameters, in order, as
+# Bazel's argument binding takes them (probed on 9.2.0): `fn` names the call in
+# the errors, `params` is `(name, default, type, want)` and `want` is how the
+# type reads in the error.
+def _bind_native(fn, params, args, kwargs):
+    if len(args) > len(params):
+        fjfj_native_error(fn, "%s() accepts no more than %d positional arguments but got %d" % (fn, len(params), len(args)))
+    known = [p[0] for p in params]
+    for name in kwargs:
+        if name not in known:
+            fjfj_native_error(fn, "%s() got unexpected keyword argument '%s'" % (fn, name))
+    out = {}
+    for i, (name, default, kind, want) in enumerate(params):
+        if i < len(args):
+            if name in kwargs:
+                fjfj_native_error(fn, "%s() got multiple values for parameter '%s'" % (fn, name))
+            value = args[i]
+        else:
+            value = kwargs.get(name, default)
+        if type(value) != kind:
+            fjfj_native_error(fn, "in call to %s(), parameter '%s' got value of type '%s', want '%s'" % (fn, name, type(value), want))
+        if kind == "dict":
+            for k, v in value.items():
+                if type(k) != "string" or type(v) != "string":
+                    fjfj_native_error(fn, "got dict<%s, %s> for '%s', want dict<string, string>" % (type(k), type(v), name))
+        out[name] = value
+    return out
+
+def _run_environment_fields(fn, args, kwargs):
+    fields = _bind_native(fn, [
+        ("environment", {}, "dict", "dict"),
+        ("inherited_environment", [], "list", "sequence"),
+    ], args, kwargs)
+    fields["inherited_environment"] = list(fields["inherited_environment"])
+    return fields
+
+RunEnvironmentInfo, _raw_run_environment_info = provider(
     doc = "The environment a binary or test runs in.",
     fields = ["environment", "inherited_environment"],
+    init = lambda *args, **kwargs: _run_environment_fields("RunEnvironmentInfo", args, kwargs),
 )
 
 PackageSpecificationInfo = provider(
@@ -240,8 +277,15 @@ _PlatformInfo = provider(doc = "A platform.")
 _TemplateVariableInfo, _raw_TemplateVariableInfo = provider(doc = "Make variables.", fields = ["variables"], init = lambda variables: {"variables": variables})
 _ToolchainInfo = provider(doc = "The data of a toolchain.")
 _FeatureFlagInfo = provider(doc = "A feature flag's value.", fields = ["value"])
-_ExecutionInfo = provider(doc = "How a test runs.", fields = ["requirements", "exec_group"])
-_TestEnvironment = provider(doc = "The environment of a test.", fields = ["environment", "inherited_environment"])
+_ExecutionInfo, _raw_execution_info = provider(
+    doc = "How a test runs.",
+    fields = ["requirements", "exec_group"],
+    init = lambda *args, **kwargs: _bind_native("ExecutionInfo", [
+        ("requirements", {}, "dict", "dict"),
+        ("exec_group", "test", "string", "string"),
+    ], args, kwargs),
+)
+_TestEnvironment = lambda *args, **kwargs: _raw_run_environment_info(**_run_environment_fields("TestEnvironment", args, kwargs))
 _Objc = provider(doc = "Objective-C information.")
 _XcodeProperties = provider(doc = "Xcode properties.")
 def _xcode_version_config_init(
