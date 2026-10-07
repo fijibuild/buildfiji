@@ -174,7 +174,7 @@ impl RuleSchema {
     /// Bazel's "did you mean" for an attribute a call names and the class
     /// does not have.
     pub fn suggest(&self, given: &str) -> Option<&str> {
-        crate::rule::suggest(
+        crate::rule::suggest_attribute(
             given,
             self.attrs
                 .iter()

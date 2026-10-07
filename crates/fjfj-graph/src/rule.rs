@@ -417,9 +417,9 @@ impl RuleClass {
     }
 
     /// Bazel's "did you mean" for an attribute it does not know: the nearest
-    /// name if it is close enough.
+    /// name if it is close enough, by [`suggest_attribute`].
     pub fn suggest(&self, given: &str) -> Option<&'static str> {
-        suggest(given, self.attrs.iter().map(|a| a.name))
+        suggest_attribute(given, self.attrs.iter().map(|a| a.name))
     }
 }
 
@@ -533,6 +533,22 @@ pub fn suggest<'a>(given: &str, candidates: impl IntoIterator<Item = &'a str>) -
         .map(|(_, c)| c)
 }
 
+/// The same for an attribute a rule does not have: at most `(n - 1) / 2` edits
+/// for a word of `n` characters, and never more than four (probed on Bazel
+/// 9.2.0 for words of three to twenty; the length is the given word's).
+pub fn suggest_attribute<'a>(
+    given: &str,
+    candidates: impl IntoIterator<Item = &'a str>,
+) -> Option<&'a str> {
+    let limit = (given.chars().count().saturating_sub(1) / 2).min(4);
+    candidates
+        .into_iter()
+        .map(|c| (edit_distance(given, c), c))
+        .filter(|&(d, _)| d <= limit)
+        .min_by_key(|&(d, _)| d)
+        .map(|(_, c)| c)
+}
+
 /// The same for a keyword argument a builtin function does not take. It is
 /// not the rule of [`suggest`]: `non_empty` gets `allow_empty` (four edits,
 /// for a word of nine), which that rule refuses. The rule that fits every
@@ -619,6 +635,36 @@ mod tests {
             ("default_visibility", ""),
         ] {
             assert_eq!(FILEGROUP.suggest(given).unwrap_or(""), want, "{given}");
+        }
+        // The most edits it takes, by the length of the word (probed on 9.2.0).
+        for (len, most) in [
+            (3, 1),
+            (4, 1),
+            (5, 2),
+            (6, 2),
+            (7, 3),
+            (8, 3),
+            (9, 4),
+            (12, 4),
+            (20, 4),
+        ] {
+            let word: String = "abcdefghijklmnopqrst".chars().take(len).collect();
+            let near = |edits: usize| -> String {
+                word.chars()
+                    .take(len - edits)
+                    .chain(std::iter::repeat_n('1', edits))
+                    .collect()
+            };
+            assert_eq!(
+                suggest_attribute(&near(most), [word.as_str()]),
+                Some(word.as_str()),
+                "{len}"
+            );
+            assert_eq!(
+                suggest_attribute(&near(most + 1), [word.as_str()]),
+                None,
+                "{len}"
+            );
         }
         // `alias` has no `srcs` to suggest.
         assert_eq!(ALIAS.suggest("src"), None);
