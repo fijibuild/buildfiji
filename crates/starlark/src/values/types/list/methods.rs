@@ -54,11 +54,11 @@ pub(crate) fn list_methods(builder: &mut MethodsBuilder) {
     /// ```
     fn append<'v>(
         this: Value<'v>,
-        #[starlark(require = pos)] el: Value<'v>,
+        #[starlark(require = pos)] item: Value<'v>,
         heap: Heap<'v>,
     ) -> anyhow::Result<NoneType> {
         let this = ListData::from_value_mut(this)?;
-        this.push(el, heap);
+        this.push(item, heap);
         Ok(NoneType)
     }
 
@@ -195,12 +195,12 @@ pub(crate) fn list_methods(builder: &mut MethodsBuilder) {
     fn insert<'v>(
         this: Value<'v>,
         #[starlark(require = pos)] index: i32,
-        #[starlark(require = pos)] el: Value<'v>,
+        #[starlark(require = pos)] item: Value<'v>,
         heap: Heap<'v>,
     ) -> anyhow::Result<NoneType> {
         let this = ListData::from_value_mut(this)?;
         let index = convert_index(this.len() as i32, index);
-        this.insert(index, el, heap);
+        this.insert(index, item, heap);
         Ok(NoneType)
     }
 

@@ -133,6 +133,33 @@ pub(crate) struct NativeFunction {
     pub(crate) special_builtin_function: Option<SpecialBuiltinFunction>,
 }
 
+/// The names of the positional parameters the docs of a native function or
+/// method list, in order: what a call that left some out says it needs.
+fn positional_names_of(docs: &DocItem) -> Vec<String> {
+    match docs {
+        DocItem::Member(crate::docs::DocMember::Function(f)) => f
+            .params
+            .pos_only
+            .iter()
+            .chain(&f.params.pos_or_named)
+            .map(|p| p.name.clone())
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+impl NativeFunction {
+    pub(crate) fn positional_names(&self) -> Vec<String> {
+        positional_names_of(&self.docs)
+    }
+}
+
+impl NativeMethod {
+    pub(crate) fn positional_names(&self) -> Vec<String> {
+        positional_names_of(&self.docs)
+    }
+}
+
 impl AllocFrozenValue for NativeFunction {
     fn alloc_frozen_value(self, heap: &FrozenHeap) -> FrozenValue {
         heap.alloc_simple(self)
@@ -163,9 +190,11 @@ impl<'v> StarlarkValue<'v> for NativeFunction {
         args: &Arguments<'v, '_>,
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> crate::Result<Value<'v>> {
-        self.function
-            .invoke(eval, args)
-            .map_err(|e| crate::eval::runtime::arguments::named_native_error(e, &self.name))
+        self.function.invoke(eval, args).map_err(|e| {
+            crate::eval::runtime::arguments::named_native_error(e, &self.name, &|| {
+                self.positional_names()
+            })
+        })
     }
 
     fn get_attr(&self, attribute: &str, heap: Heap<'v>) -> Option<Value<'v>> {
@@ -412,7 +441,11 @@ where
         self.method
             .function
             .invoke(eval, self.this.to_value(), args)
-            .map_err(|e| crate::eval::runtime::arguments::named_native_error(e, &self.method.name))
+            .map_err(|e| {
+                crate::eval::runtime::arguments::named_native_error(e, &self.method.name, &|| {
+                    self.method.positional_names()
+                })
+            })
     }
 
     fn documentation(&self) -> DocItem {

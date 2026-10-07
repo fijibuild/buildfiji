@@ -92,7 +92,11 @@ pub(crate) enum FunctionError {
 
 /// `error` of the native function `function`, worded as Bazel does when the
 /// call itself was wrong (fjfj).
-pub(crate) fn named_native_error(error: crate::Error, function: &str) -> crate::Error {
+pub(crate) fn named_native_error(
+    error: crate::Error,
+    function: &str,
+    positional: &dyn Fn() -> Vec<String>,
+) -> crate::Error {
     use crate::ErrorKind::*;
     let (Function(inner) | Native(inner) | Value(inner) | Other(inner)) = error.kind() else {
         return error;
@@ -128,9 +132,26 @@ pub(crate) fn named_native_error(error: crate::Error, function: &str) -> crate::
                 function,
             }
         } else {
-            FunctionError::MissingCount {
-                function,
-                count: min - got,
+            // The names of the parameters that were not given, as the docs
+            // of the function have them.
+            let names: Vec<String> = bazel_parameter_names(&function)
+                .map(|names| names.iter().map(|n| (*n).to_owned()).collect())
+                .unwrap_or_else(positional)
+                .into_iter()
+                .take(min)
+                .skip(got)
+                .collect();
+            if names.len() == min - got {
+                FunctionError::Missing {
+                    function,
+                    kind: "positional",
+                    names,
+                }
+            } else {
+                FunctionError::MissingCount {
+                    function,
+                    count: min - got,
+                }
             }
         })
         .map(crate::Error::from)
@@ -161,11 +182,38 @@ pub(crate) fn named_native_error(error: crate::Error, function: &str) -> crate::
             .downcast_ref::<ParameterType>()
             .map(|found| ParameterType {
                 function: Some(function.to_owned()),
+                // Bazel lists the numbers as `int or float`.
+                want: if found.want == "float or int" {
+                    "int or float".to_owned()
+                } else if found.want == "string"
+                    && matches!(function, "strip" | "lstrip" | "rstrip")
+                {
+                    "string or NoneType".to_owned()
+                } else {
+                    found.want.clone()
+                },
                 ..found.clone()
             })
             .map(crate::Error::new_value)
     };
     named.unwrap_or(error)
+}
+
+/// What Bazel calls the positional parameters of the builtins whose names here
+/// differ or are not listed (fjfj).
+fn bazel_parameter_names(function: &str) -> Option<&'static [&'static str]> {
+    Some(match function {
+        "type" | "len" | "repr" | "str" | "bool" | "dir" | "list" | "tuple" | "float" => &["x"],
+        "hasattr" => &["x", "name"],
+        "getattr" => &["x", "name", "default"],
+        "hash" => &["value"],
+        "reversed" => &["sequence"],
+        "sorted" => &["iterable"],
+        "any" | "all" => &["elements"],
+        "enumerate" => &["list", "start"],
+        "int" => &["x", "base"],
+        _ => return None,
+    })
 }
 
 /// The type of the first key of `kwargs` that is not a string.

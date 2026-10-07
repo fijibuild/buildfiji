@@ -105,11 +105,23 @@ pub fn traceback(error: &starlark::Error) -> String {
         (_, Some(name)) => format!("Error in {name}: {}", plain(error)),
         _ => match native {
             Some(frame)
-                if !matches!(error.kind(), ErrorKind::Parser(_)) && !not_callable(error) =>
+                if !matches!(error.kind(), ErrorKind::Parser(_))
+                    && !not_callable(error)
+                    && !before_the_call(error) =>
             {
                 format!("Error in {}: {}", frame.name, plain(error))
             }
-            _ => format!("Error: {}", plain(error)),
+            // A call that was wrong before the function ran names the
+            // function in its words.
+            _ => match plain(error)
+                .strip_prefix("in call to ")
+                .and_then(|rest| rest.split_once("(), "))
+            {
+                Some((function, _)) if !function.contains(' ') => {
+                    format!("Error in {function}: {}", plain(error))
+                }
+                _ => format!("Error: {}", plain(error)),
+            },
         },
     };
     let (message, text) = match missing_symbol(error) {
@@ -118,6 +130,12 @@ pub fn traceback(error: &starlark::Error) -> String {
             with_last_column(text, column),
         ),
         None => (message, text),
+    };
+    // A method that does not exist is at the dot, not at the parenthesis of
+    // the call it was to make.
+    let text = match dot_column(error, frames) {
+        Some(column) => with_last_column(text, column),
+        None => text,
     };
     let mut text = text;
     text.push_str(&message);
@@ -154,6 +172,25 @@ fn missing_symbol(error: &starlark::Error) -> Option<(String, String, usize)> {
     Some((label, symbol, column))
 }
 
+/// The column of the `.` before the name of a method that a value does not
+/// have, on the line of the call that was to use it.
+fn dot_column(error: &starlark::Error, frames: &[starlark_syntax::frame::Frame]) -> Option<usize> {
+    let message = plain(error);
+    let name = message
+        .rsplit_once("has no field or method '")?
+        .1
+        .strip_suffix('\'')?;
+    let at = error.span().or_else(|| frames.last()?.location.as_ref())?;
+    let begin = at.resolve_span().begin;
+    let line = at.file.source_line(begin.line);
+    let call = line
+        .char_indices()
+        .nth(begin.column)
+        .map_or(line.len(), |(i, _)| i);
+    let dot = line[..call].rfind(&format!(".{name}"))?;
+    Some(line[..dot].chars().count() + 1)
+}
+
 /// `text` with the column of its last entry replaced.
 fn with_last_column(text: String, column: usize) -> String {
     const KEY: &str = ", column ";
@@ -177,6 +214,15 @@ fn not_callable(error: &starlark::Error) -> bool {
         ),
         _ => false,
     }
+}
+
+/// Whether the error was found in the arguments of a call, before the function
+/// it names ran: Bazel names no function for those.
+fn before_the_call(error: &starlark::Error) -> bool {
+    let text = plain(error);
+    text.starts_with("keywords must be strings")
+        || text.starts_with("argument after ** must be a dict")
+        || text.starts_with("argument after * must be an iterable")
 }
 
 /// What the error says, with neither the location nor the call stack.
@@ -280,6 +326,116 @@ mod tests {
     /// What Bazel 9.2.0 reports for a BUILD file of one statement, as probed:
     /// the column where the failing operation is, and the words.
     const PROBED: &[(&str, &str, &str)] = &[
+        (
+            "r = 1\n",
+            "fail(\"a\", sep = \"-\")",
+            "column 5, in <toplevel>\n\t\tfail(\"a\", sep = \"-\")\nError in fail: a",
+        ),
+        (
+            "r = 1\n",
+            "fail(\"x\", attr = \"srcs\")",
+            "column 5, in <toplevel>\n\t\tfail(\"x\", attr = \"srcs\")\nError in fail: attribute srcs: x",
+        ),
+        (
+            "r = 1\n",
+            "fail(\"a\", \"b\", sep = \"\")",
+            "column 5, in <toplevel>\n\t\tfail(\"a\", \"b\", sep = \"\")\nError in fail: ab",
+        ),
+        (
+            "r = 1\n",
+            "fail(attr = \"x\")",
+            "column 5, in <toplevel>\n\t\tfail(attr = \"x\")\nError in fail: attribute x:",
+        ),
+        (
+            "r = 1\n",
+            "fail(\"a\", sep = 1)",
+            "column 5, in <toplevel>\n\t\tfail(\"a\", sep = 1)\nError in fail: in call to fail(), parameter 'sep' got value of type 'int', want 'string'",
+        ),
+        (
+            "r = 1\n",
+            "len(5)",
+            "column 4, in <toplevel>\n\t\tlen(5)\nError in len: in call to len(), parameter 'x' got value of type 'int', want 'iterable or string'",
+        ),
+        (
+            "r = 1\n",
+            "dict(1)",
+            "column 5, in <toplevel>\n\t\tdict(1)\nError in dict: in dict, got int, want iterable",
+        ),
+        (
+            "r = 1\n",
+            "dict([1])",
+            "column 5, in <toplevel>\n\t\tdict([1])\nError in dict: in dict, dictionary update sequence element #0 is not iterable (int)",
+        ),
+        (
+            "r = 1\n",
+            "dict([[1, 2, 3]])",
+            "column 5, in <toplevel>\n\t\tdict([[1, 2, 3]])\nError in dict: in dict, item #0 has length 3, but exactly two elements are required",
+        ),
+        (
+            "r = 1\n",
+            "\"abc\".replace()",
+            "column 14, in <toplevel>\n\t\t\"abc\".replace()\nError in replace: replace() missing 2 required positional arguments: old, new",
+        ),
+        (
+            "r = 1\n",
+            "hasattr()",
+            "column 8, in <toplevel>\n\t\thasattr()\nError in hasattr: hasattr() missing 2 required positional arguments: x, name",
+        ),
+        (
+            "r = 1\n",
+            "type()",
+            "column 5, in <toplevel>\n\t\ttype()\nError in type: type() missing 1 required positional argument: x",
+        ),
+        (
+            "r = 1\n",
+            "\"a\".find()",
+            "column 9, in <toplevel>\n\t\t\"a\".find()\nError in find: find() missing 1 required positional argument: sub",
+        ),
+        (
+            "r = 1\n",
+            "\"a\".join(1)",
+            "column 9, in <toplevel>\n\t\t\"a\".join(1)\nError in join: in call to join(), parameter 'elements' got value of type 'int', want 'iterable'",
+        ),
+        (
+            "r = 1\n",
+            "\"a\".join([1])",
+            "column 9, in <toplevel>\n\t\t\"a\".join([1])\nError in join: expected string for sequence element 0, got '1' of type int",
+        ),
+        (
+            "r = 1\n",
+            "\"a\".strip(1)",
+            "column 10, in <toplevel>\n\t\t\"a\".strip(1)\nError in strip: in call to strip(), parameter 'chars' got value of type 'int', want 'string or NoneType'",
+        ),
+        (
+            "r = 1\n",
+            "[].append()",
+            "column 10, in <toplevel>\n\t\t[].append()\nError in append: append() missing 1 required positional argument: item",
+        ),
+        (
+            "r = 1\n",
+            "[].insert(1)",
+            "column 10, in <toplevel>\n\t\t[].insert(1)\nError in insert: insert() missing 1 required positional argument: item",
+        ),
+        (
+            "r = 1\n",
+            "{}.update(1)",
+            "column 10, in <toplevel>\n\t\t{}.update(1)\nError in update: in update, got int, want iterable",
+        ),
+        (
+            "r = 1\n",
+            "float([])",
+            "column 6, in <toplevel>\n\t\tfloat([])\nError in float: in call to float(), parameter 'x' got value of type 'list', want 'string, bool, int, or float'",
+        ),
+        (
+            "r = 1\n",
+            "abs(\"a\")",
+            "column 4, in <toplevel>\n\t\tabs(\"a\")\nError in abs: in call to abs(), parameter 'x' got value of type 'string', want 'int or float'",
+        ),
+        (
+            "r = 1\n",
+            "\"x\".nope()",
+            "column 4, in <toplevel>\n\t\t\"x\".nope()\nError: 'string' value has no field or method 'nope'",
+        ),
         (
             "r = 1\n",
             "x = 1 + \"a\"",

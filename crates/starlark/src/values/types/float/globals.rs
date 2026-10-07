@@ -54,12 +54,12 @@ pub(crate) fn register_float(globals: &mut GlobalsBuilder) {
     /// ```
     #[starlark(as_type = StarlarkFloat, speculative_exec_safe)]
     fn float(
-        #[starlark(require = pos)] a: Option<Either<Either<NumRef, bool>, &str>>,
+        #[starlark(require = pos)] x: Option<Either<Either<NumRef, bool>, &str>>,
     ) -> anyhow::Result<f64> {
-        if a.is_none() {
+        if x.is_none() {
             return Ok(0.0);
         }
-        let a = a.unwrap();
+        let a = x.unwrap();
         match a {
             Either::Left(Either::Left(f)) => Ok(f.as_float()),
             Either::Left(Either::Right(b)) => Ok(if b { 1.0 } else { 0.0 }),

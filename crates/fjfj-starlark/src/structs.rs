@@ -285,6 +285,10 @@ starlark::starlark_simple_value!(StructConstructor);
 
 #[starlark_value(type = "Provider")]
 impl<'v> StarlarkValue<'v> for StructConstructor {
+    fn name_for_call_stack(&self, _me: Value<'v>) -> String {
+        "struct".to_owned()
+    }
+
     /// `struct(**fields)`.
     fn invoke(
         &self,

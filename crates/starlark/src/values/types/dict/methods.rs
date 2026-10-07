@@ -326,7 +326,13 @@ pub(crate) fn dict_methods(registry: &mut MethodsBuilder) {
                     }
                 }
                 _ => {
-                    for v in pairs.iterate(heap)? {
+                    let items = pairs.iterate(heap).map_err(|_| {
+                        starlark::Error::new_other(anyhow::anyhow!(
+                            "in update, got {}, want iterable",
+                            pairs.get_type()
+                        ))
+                    })?;
+                    for v in items {
                         let mut it = v.iterate(heap)?;
                         // `StarlarkIterator` is fused.
                         let (Some(k), Some(v), None) = (it.next(), it.next(), it.next()) else {

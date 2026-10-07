@@ -226,14 +226,14 @@ pub(crate) fn string_methods(builder: &mut MethodsBuilder) {
     #[starlark(speculative_exec_safe)]
     fn count(
         this: &str,
-        #[starlark(require = pos)] needle: &str,
+        #[starlark(require = pos)] sub: &str,
         #[starlark(require = pos, default = NoneOr::None)] start: NoneOr<i32>,
         #[starlark(require = pos, default = NoneOr::None)] end: NoneOr<i32>,
     ) -> anyhow::Result<i32> {
         if let Some(StrIndices { haystack, .. }) =
             convert_str_indices(this, start.into_option(), end.into_option())
         {
-            Ok(fast_string::count_matches(haystack, needle) as i32)
+            Ok(fast_string::count_matches(haystack, sub) as i32)
         } else {
             Ok(0)
         }
@@ -292,14 +292,14 @@ pub(crate) fn string_methods(builder: &mut MethodsBuilder) {
     #[starlark(speculative_exec_safe)]
     fn find(
         this: &str,
-        #[starlark(require = pos)] needle: &str,
+        #[starlark(require = pos)] sub: &str,
         #[starlark(require = pos, default = NoneOr::None)] start: NoneOr<i32>,
         #[starlark(require = pos, default = NoneOr::None)] end: NoneOr<i32>,
     ) -> anyhow::Result<i32> {
         if let Some(StrIndices { start, haystack }) =
             convert_str_indices(this, start.into_option(), end.into_option())
         {
-            if let Some(index) = haystack.find(needle) {
+            if let Some(index) = haystack.find(sub) {
                 let index = fast_string::len(&haystack[..index]);
                 return Ok((start + index).0 as i32);
             }
@@ -393,14 +393,14 @@ pub(crate) fn string_methods(builder: &mut MethodsBuilder) {
     #[starlark(speculative_exec_safe)]
     fn index(
         this: &str,
-        #[starlark(require = pos)] needle: &str,
+        #[starlark(require = pos)] sub: &str,
         #[starlark(require = pos, default = NoneOr::None)] start: NoneOr<i32>,
         #[starlark(require = pos, default = NoneOr::None)] end: NoneOr<i32>,
     ) -> anyhow::Result<i32> {
         if let Some(StrIndices { start, haystack }) =
             convert_str_indices(this, start.into_option(), end.into_option())
         {
-            if let Some(index) = haystack.find(needle) {
+            if let Some(index) = haystack.find(sub) {
                 let index = fast_string::len(&haystack[..index]);
                 return Ok((start + index).0 as i32);
             }
@@ -647,15 +647,31 @@ pub(crate) fn string_methods(builder: &mut MethodsBuilder) {
     #[starlark(speculative_exec_safe)]
     fn join<'v>(
         this: &str,
-        #[starlark(require = pos)] to_join: ValueOfUnchecked<'v, StarlarkIter<String>>,
+        #[starlark(require = pos)] elements: ValueOfUnchecked<'v, StarlarkIter<String>>,
         heap: Heap<'v>,
     ) -> starlark::Result<ValueOfUnchecked<'v, String>> {
-        #[inline(always)]
-        fn as_str<'v>(x: Value<'v>) -> crate::Result<StringValue<'v>> {
-            StringValue::unpack_named_param(x, "to_join")
+        // As Bazel says an element that is not a string.
+        fn as_string<'v>(x: Value<'v>, index: usize) -> crate::Result<StringValue<'v>> {
+            StringValue::new(x).ok_or_else(|| {
+                crate::Error::new_other(anyhow::anyhow!(
+                    "expected string for sequence element {index}, got '{}' of type {}",
+                    x.to_str(),
+                    x.get_type()
+                ))
+            })
         }
 
-        let mut it = to_join.get().iterate(heap)?;
+        let mut it = elements.get().iterate(heap).map_err(|_| {
+            crate::Error::new_other(anyhow::anyhow!(
+                "in call to join(), parameter 'elements' got value of type '{}', want 'iterable'",
+                elements.get().get_type()
+            ))
+        })?;
+        let mut index = 0usize;
+        let mut as_str = |x: Value<'v>| {
+            index += 1;
+            as_string(x, index - 1)
+        };
         match it.next() {
             None => Ok(ValueOfUnchecked::new(Value::new_empty_string())),
             Some(x1) => {
@@ -828,14 +844,14 @@ pub(crate) fn string_methods(builder: &mut MethodsBuilder) {
     #[starlark(speculative_exec_safe)]
     fn rfind(
         this: &str,
-        #[starlark(require = pos)] needle: &str,
+        #[starlark(require = pos)] sub: &str,
         #[starlark(require = pos, default = NoneOr::None)] start: NoneOr<i32>,
         #[starlark(require = pos, default = NoneOr::None)] end: NoneOr<i32>,
     ) -> anyhow::Result<i32> {
         if let Some(StrIndices { start, haystack }) =
             convert_str_indices(this, start.into_option(), end.into_option())
         {
-            if let Some(index) = haystack.rfind(needle) {
+            if let Some(index) = haystack.rfind(sub) {
                 let index = fast_string::len(&haystack[..index]);
                 return Ok((start + index).0 as i32);
             }
@@ -863,14 +879,14 @@ pub(crate) fn string_methods(builder: &mut MethodsBuilder) {
     #[starlark(speculative_exec_safe)]
     fn rindex(
         this: &str,
-        #[starlark(require = pos)] needle: &str,
+        #[starlark(require = pos)] sub: &str,
         #[starlark(require = pos, default = NoneOr::None)] start: NoneOr<i32>,
         #[starlark(require = pos, default = NoneOr::None)] end: NoneOr<i32>,
     ) -> anyhow::Result<i32> {
         if let Some(StrIndices { start, haystack }) =
             convert_str_indices(this, start.into_option(), end.into_option())
         {
-            if let Some(index) = haystack.rfind(needle) {
+            if let Some(index) = haystack.rfind(sub) {
                 let index = fast_string::len(&haystack[..index]);
                 return Ok((start + index).0 as i32);
             }
@@ -1185,10 +1201,10 @@ pub(crate) fn string_methods(builder: &mut MethodsBuilder) {
     #[starlark(speculative_exec_safe)]
     fn strip<'v>(
         this: StringValue<'v>,
-        #[starlark(require = pos)] chars: Option<&str>,
+        #[starlark(require = pos, default = NoneOr::None)] chars: NoneOr<&str>,
         heap: Heap<'v>,
     ) -> anyhow::Result<StringValue<'v>> {
-        let res = match chars {
+        let res = match chars.into_option() {
             None => this.trim(),
             Some(s) => this.trim_matches(|c| s.contains(c)),
         };

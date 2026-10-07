@@ -49,15 +49,45 @@ pub(crate) fn register_other(builder: &mut GlobalsBuilder) {
     /// fail("oops", 1, False)  # fail: oops 1 False
     /// # "#, "oops 1 False");
     /// ```
-    fn fail(#[starlark(args)] args: UnpackTuple<Value>) -> starlark::Result<StarlarkNever> {
-        let mut s = String::new();
-        for x in args.items {
-            s.push(' ');
-            match x.unpack_str() {
-                Some(x) => s.push_str(x),
-                None => x.collect_repr(&mut s),
-            }
+    fn fail<'v>(
+        #[starlark(args)] args: UnpackTuple<Value<'v>>,
+        #[starlark(require = named)] sep: Option<Value<'v>>,
+        #[starlark(require = named)] attr: Option<Value<'v>>,
+    ) -> starlark::Result<StarlarkNever> {
+        // `sep` separates the values (a space), `attr` names the attribute
+        // that is wrong, as Bazel's `fail` has them.
+        let sep = match sep {
+            None => " ",
+            Some(v) => v.unpack_str().ok_or_else(|| {
+                starlark::Error::new_other(anyhow::anyhow!(
+                    "in call to fail(), parameter 'sep' got value of type '{}', want 'string'",
+                    v.get_type()
+                ))
+            })?,
+        };
+        let attr = match attr.filter(|v| !v.is_none()) {
+            None => None,
+            Some(v) => Some(v.unpack_str().ok_or_else(|| {
+                starlark::Error::new_other(anyhow::anyhow!(
+                    "in call to fail(), parameter 'attr' got value of type '{}', want 'string or NoneType'",
+                    v.get_type()
+                ))
+            })?),
+        };
+        let mut parts: Vec<String> = Vec::new();
+        if let Some(attr) = attr {
+            parts.push(format!("attribute {attr}:"));
         }
+        for x in args.items {
+            let mut part = String::new();
+            match x.unpack_str() {
+                Some(x) => part.push_str(x),
+                None => x.collect_repr(&mut part),
+            }
+            parts.push(part);
+        }
+        // The caller strips what leads, as it did the space before each.
+        let s = format!(" {}", parts.join(sep));
         Err(starlark::Error::new_kind(starlark::ErrorKind::Fail(
             anyhow::Error::msg(s),
         )))

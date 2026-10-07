@@ -28,20 +28,28 @@ use crate::values::dict::DictRef;
 use crate::values::dict::value::FrozenDict;
 use crate::values::function::SpecialBuiltinFunction;
 
-fn unpack_pair<'v>(pair: Value<'v>, heap: Heap<'v>) -> crate::Result<(Value<'v>, Value<'v>)> {
-    let mut it = pair.iterate(heap)?;
-    if let Some(first) = it.next() {
-        if let Some(second) = it.next() {
-            if it.next().is_none() {
-                return Ok((first, second));
-            }
-        }
+fn unpack_pair<'v>(
+    pair: Value<'v>,
+    index: usize,
+    heap: Heap<'v>,
+) -> crate::Result<(Value<'v>, Value<'v>)> {
+    let items: Vec<Value<'v>> = pair
+        .iterate(heap)
+        .map_err(|_| {
+            crate::Error::new_other(anyhow::anyhow!(
+                "in dict, dictionary update sequence element #{index} is not iterable ({})",
+                pair.get_type()
+            ))
+        })?
+        .collect();
+    match items[..] {
+        [first, second] => Ok((first, second)),
+        _ => Err(anyhow::anyhow!(
+            "in dict, item #{index} has length {}, but exactly two elements are required",
+            items.len()
+        )
+        .into()),
     }
-    Err(anyhow::anyhow!(
-        "Found a non-pair element in the positional argument of dict(): {}",
-        pair.to_repr(),
-    )
-    .into())
 }
 
 #[starlark_module]
@@ -103,10 +111,16 @@ pub(crate) fn register_dict(globals: &mut GlobalsBuilder) {
                         result
                     }
                     None => {
-                        let it = pos.iterate(heap)?;
+                        // As Bazel says a value that is not a sequence of pairs.
+                        let it = pos.iterate(heap).map_err(|_| {
+                            starlark::Error::new_other(anyhow::anyhow!(
+                                "in dict, got {}, want iterable",
+                                pos.get_type()
+                            ))
+                        })?;
                         let mut result = SmallMap::with_capacity(it.size_hint().0 + kwargs.len());
-                        for el in it {
-                            let (k, v) = unpack_pair(el, heap)?;
+                        for (index, el) in it.enumerate() {
+                            let (k, v) = unpack_pair(el, index, heap)?;
                             let k = k.get_hashed()?;
                             result.insert_hashed(k, v);
                         }
