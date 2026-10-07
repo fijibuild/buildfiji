@@ -498,6 +498,22 @@ fn ctx_members(builder: &mut MethodsBuilder) {
         }))
     }
 
+    /// `bazel-out/stable-status.txt`, which the build writes before any action
+    /// reads it: the keys of the workspace status that are stable.
+    #[starlark(attribute)]
+    fn info_file<'v>(this: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
+        let _ = this;
+        Ok(status_file(heap, "stable-status.txt"))
+    }
+
+    /// `bazel-out/volatile-status.txt`: the keys that change from build to
+    /// build, which never make an action that reads them run again.
+    #[starlark(attribute)]
+    fn version_file<'v>(this: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
+        let _ = this;
+        Ok(status_file(heap, "volatile-status.txt"))
+    }
+
     #[starlark(attribute)]
     fn genfiles_dir<'v>(this: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
         Ok(heap.alloc(super::file::RootValue {
@@ -1160,6 +1176,25 @@ impl CtxState {
 }
 
 /// What `$(TARGET_CPU)` is for a `--cpu`.
+/// A file of the workspace status, which the build writes under `bazel-out`
+/// itself: owned by no target.
+fn status_file<'v>(heap: Heap<'v>, name: &str) -> Value<'v> {
+    alloc_file(
+        heap,
+        Artifact {
+            root: fjfj_graph::Root::derived("bazel-out"),
+            path: name.to_owned(),
+            tree: false,
+            symlink: false,
+        },
+        Label {
+            repo: String::new(),
+            package: String::new(),
+            name: String::new(),
+        },
+    )
+}
+
 pub(crate) fn target_cpu(cpu: &str) -> &str {
     match cpu {
         "k8" => "x86_64",

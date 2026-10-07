@@ -319,6 +319,65 @@ async fn an_action_whose_inputs_and_outputs_are_unchanged_does_not_run_again() {
     assert_eq!((sixth.ran, sixth.cached), (1, 0));
 }
 
+/// Probed on Bazel 9.2.0: an action that reads `volatile-status.txt` does not
+/// run again when the volatile status changed, one that reads
+/// `stable-status.txt` does when the stable status did (buildfiji-ivq).
+#[tokio::test]
+async fn the_volatile_status_never_makes_an_action_run_again_and_the_stable_status_does() {
+    let (_dir, layout) = layout();
+    let status = |name: &str| Artifact {
+        root: fjfj_graph::Root::derived("bazel-out"),
+        path: name.to_owned(),
+        tree: false,
+        symlink: false,
+    };
+    let (stable, volatile) = (status("stable-status.txt"), status("volatile-status.txt"));
+    let (reads_stable, reads_volatile) = (out("stable.txt"), out("volatile.txt"));
+    let actions = |stable_text: &str, volatile_text: &str| {
+        let mut writer = shell("", vec![], vec![stable.clone(), volatile.clone()]);
+        writer.kind = ActionKind::WorkspaceStatus {
+            stable: stable_text.to_owned(),
+            volatile: volatile_text.to_owned(),
+        };
+        writer.mnemonic = "BazelWorkspaceStatusAction".to_owned();
+        vec![
+            writer,
+            shell(
+                &format!("cat {} > {}", stable.exec_path(), reads_stable.exec_path()),
+                vec![stable.clone()],
+                vec![reads_stable.clone()],
+            ),
+            shell(
+                &format!(
+                    "cat {} > {}",
+                    volatile.exec_path(),
+                    reads_volatile.exec_path()
+                ),
+                vec![volatile.clone()],
+                vec![reads_volatile.clone()],
+            ),
+        ]
+    };
+    let wanted = [reads_stable.clone(), reads_volatile.clone()];
+    let first = run(&layout, actions("A\n", "1\n"), &wanted, false).await;
+    assert!(first.failures.is_empty(), "{:?}", first.failures);
+    assert_eq!(first.spawned, 2);
+    // Only the volatile status changed.
+    let second = run(&layout, actions("A\n", "2\n"), &wanted, false).await;
+    assert_eq!((second.spawned, second.cached), (0, 2));
+    assert_eq!(
+        std::fs::read_to_string(layout.execroot().join(reads_volatile.exec_path())).unwrap(),
+        "1\n"
+    );
+    // The stable status changed.
+    let third = run(&layout, actions("BB\n", "3\n"), &wanted, false).await;
+    assert_eq!((third.spawned, third.cached), (1, 1));
+    assert_eq!(
+        std::fs::read_to_string(layout.execroot().join(reads_stable.exec_path())).unwrap(),
+        "BB\n"
+    );
+}
+
 /// Bazel leaves a file output, and every file and directory inside a tree
 /// artifact, 0555; a plain directory is left as it is.
 #[test]

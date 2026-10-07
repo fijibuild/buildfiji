@@ -90,7 +90,8 @@ fn hostname_fallback() -> String {
         .unwrap_or_else(|| "unknown".to_string())
 }
 
-/// `FORMATTED_DATE`'s documented format: `yyyy MMM d HH:mm:ss EEE`, UTC.
+/// `FORMATTED_DATE`'s format, as Bazel 9.2.0 writes it (not as its documentation
+/// says): `yyyy MMM dd HH mm ss EEE`, UTC, as in `2026 Oct 07 04 28 54 Wed`.
 /// `time::Month`/`time::Weekday`'s `Display` spell the name out in full
 /// (`"June"`, `"Friday"`); Bazel's format wants the three-letter form, so
 /// take a prefix rather than hand-rolling the calendar math ourselves.
@@ -98,7 +99,7 @@ fn format_date(dt: OffsetDateTime) -> String {
     let month = dt.month().to_string();
     let weekday = dt.weekday().to_string();
     format!(
-        "{} {} {} {:02}:{:02}:{:02} {}",
+        "{} {} {:02} {:02} {:02} {:02} {}",
         dt.year(),
         &month[..3],
         dt.day(),
@@ -123,12 +124,12 @@ mod tests {
         // 1970-01-01 00:00:00 UTC was a Thursday.
         assert_eq!(
             format_date(OffsetDateTime::from_unix_timestamp(0).unwrap()),
-            "1970 Jan 1 00:00:00 Thu"
+            "1970 Jan 01 00 00 00 Thu"
         );
         // 2023-06-02 01:44:29 UTC, the doc's own example, was a Friday.
         assert_eq!(
             format_date(OffsetDateTime::from_unix_timestamp(1_685_670_269).unwrap()),
-            "2023 Jun 2 01:44:29 Fri"
+            "2023 Jun 02 01 44 29 Fri"
         );
     }
 

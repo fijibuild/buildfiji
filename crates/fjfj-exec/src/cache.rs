@@ -16,6 +16,9 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::UNIX_EPOCH;
 
+/// Where the volatile half of the workspace status is written.
+const VOLATILE_STATUS: &str = "bazel-out/volatile-status.txt";
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct FileDigest {
     mtime_ns: u128,
@@ -188,7 +191,15 @@ impl ActionCache {
         if let Some(fragment) = *found {
             return Some(fragment);
         }
-        let digest = self.digest(root, exec_path)?;
+        // The volatile half of the workspace status changes with every build
+        // and never makes an action that reads it run again, so what it holds
+        // is not part of the key; that it exists is.
+        let digest = if exec_path == VOLATILE_STATUS {
+            std::fs::metadata(root.join(exec_path)).ok()?;
+            "volatile".to_owned()
+        } else {
+            self.digest(root, exec_path)?
+        };
         let mut hasher = Sha256::new();
         for bytes in [exec_path.as_bytes(), digest.as_bytes()] {
             hasher.update((bytes.len() as u64).to_le_bytes());

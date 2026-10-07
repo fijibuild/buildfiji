@@ -197,7 +197,12 @@ fn file_members(builder: &mut MethodsBuilder) {
 
     #[starlark(attribute)]
     fn owner<'v>(this: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
-        Ok(heap.alloc(crate::label::StarlarkLabel::from(file(this).owner.clone())))
+        let owner = &file(this).owner;
+        // The status files are the build's, made by no target.
+        if owner.name.is_empty() {
+            return Ok(Value::new_none());
+        }
+        Ok(heap.alloc(crate::label::StarlarkLabel::from(owner.clone())))
     }
 
     #[starlark(attribute)]

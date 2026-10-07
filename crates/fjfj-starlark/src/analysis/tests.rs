@@ -726,6 +726,37 @@ r = rule(implementation = _impl, attrs = {"k": attr.string()})
     }
 }
 
+/// Probed on Bazel 9.2.0: `ctx.info_file` and `ctx.version_file` are the files
+/// the build writes its workspace status to, under `bazel-out` itself and made
+/// by no target.
+#[test]
+fn the_status_files_are_files_of_the_build_that_no_target_made() {
+    let src = r#"
+def _impl(ctx):
+    for f in [ctx.info_file, ctx.version_file]:
+        print(f.path, f.short_path, f.root.path, f.basename, f.dirname, f.extension, f.is_source, f.is_directory, f.owner)
+    out = ctx.actions.declare_file("o")
+    ctx.actions.run_shell(outputs = [out], inputs = [ctx.info_file, ctx.version_file], command = "true")
+    return [DefaultInfo(files = depset([out]))]
+r = rule(implementation = _impl)
+"#;
+    let out = run_rule(&request(src, "r", Vec::new(), Vec::new())).unwrap();
+    assert_eq!(
+        out.printed.without_sites(),
+        [
+            "bazel-out/stable-status.txt stable-status.txt bazel-out stable-status.txt bazel-out txt False False None",
+            "bazel-out/volatile-status.txt volatile-status.txt bazel-out volatile-status.txt bazel-out txt False False None"
+        ]
+    );
+    assert_eq!(
+        paths(&out.actions[0].inputs),
+        [
+            "bazel-out/stable-status.txt",
+            "bazel-out/volatile-status.txt"
+        ]
+    );
+}
+
 /// Probed on Bazel 9.2.0: a `map_each` that is not a top-level def is
 /// refused, at the name of a def and at the `lambda` of a lambda, unless
 /// `allow_closure`; a builtin function is accepted.
