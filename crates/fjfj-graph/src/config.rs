@@ -283,6 +283,11 @@ impl Configuration {
         for (name, value) in &self.settings {
             out.insert(name.clone(), value.clone());
         }
+        // Held in `settings` so that transitions can set them and the runfiles
+        // trees read them, but Bazel's `build_options` has the tri-state
+        // `enable_runfiles` as an opaque object and no `legacy_external_runfiles`.
+        out.insert(option("enable_runfiles"), SettingValue::Str(String::new()));
+        out.remove(&option("legacy_external_runfiles"));
         out
     }
 
@@ -464,6 +469,35 @@ mod tests {
             SettingValue::List(vec!["-O2".into()])
         );
         assert_eq!(config.build_options().len(), 313);
+    }
+
+    /// Probed on Bazel 9.2.0: `--noenable_runfiles` leaves `enable_runfiles` an
+    /// opaque object, `--legacy_external_runfiles` adds no key, and
+    /// `--nobuild_runfile_links` shows as False.
+    #[test]
+    fn the_runfiles_flags_show_in_build_options_as_bazel_shows_them() {
+        let mut config = Configuration::default();
+        for (name, value) in [
+            ("enable_runfiles", false),
+            ("legacy_external_runfiles", true),
+            ("build_runfile_links", false),
+        ] {
+            config.settings.insert(
+                format!("{COMMAND_LINE_OPTION}{name}"),
+                SettingValue::Bool(value),
+            );
+        }
+        let options = config.build_options();
+        assert_eq!(
+            options["//command_line_option:enable_runfiles"],
+            SettingValue::Str(String::new())
+        );
+        assert_eq!(
+            options["//command_line_option:build_runfile_links"],
+            SettingValue::Bool(false)
+        );
+        assert!(!options.contains_key("//command_line_option:legacy_external_runfiles"));
+        assert_eq!(options.len(), 313);
     }
 
     #[test]
