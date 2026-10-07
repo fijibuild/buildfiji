@@ -205,6 +205,7 @@ fn expand<'v>(
     values: Value<'v>,
     named: bool,
     map_each: Option<Value<'v>>,
+    allow_closure: bool,
     format_each: Option<&str>,
     uniquify: bool,
     eval: &mut Evaluator<'v, '_, '_>,
@@ -235,6 +236,19 @@ fn expand<'v>(
         return Err(fatal(format!(
             "in call to {function}(), parameter 'map_each' got value of type '{}', want 'callable or NoneType'",
             f.get_type()
+        )));
+    }
+    if let Some(f) = map_each.filter(|f| !f.is_none())
+        && !allow_closure
+        && !starlark::eval::is_global_definition(f)
+        && let Some(span) = starlark::eval::definition_span(f)
+    {
+        let at = span.resolve();
+        return Err(fatal(format!(
+            "to avoid unintended retention of analysis data structures, the map_each function (declared at {}:{}:{}) must be declared by a top-level def statement",
+            at.file,
+            at.span.begin.line + 1,
+            at.span.begin.column + 1
         )));
     }
     for item in items {
@@ -367,12 +381,13 @@ fn args_members(builder: &mut MethodsBuilder) {
         let uniquify = flag("add_all", "uniquify", bound[6], false)?;
         flag("add_all", "expand_directories", bound[7], true)?;
         let terminate_with = string_opt("add_all", "terminate_with", bound[8])?;
-        flag("add_all", "allow_closure", bound[9], false)?;
+        let allow_closure = flag("add_all", "allow_closure", bound[9], false)?;
         let items = expand(
             "add_all",
             values,
             name.is_some(),
             bound[2],
+            allow_closure,
             format_each.as_deref(),
             uniquify,
             eval,
@@ -447,12 +462,13 @@ fn args_members(builder: &mut MethodsBuilder) {
         let omit_if_empty = flag("add_joined", "omit_if_empty", bound[6], true)?;
         let uniquify = flag("add_joined", "uniquify", bound[7], false)?;
         flag("add_joined", "expand_directories", bound[8], true)?;
-        flag("add_joined", "allow_closure", bound[9], false)?;
+        let allow_closure = flag("add_joined", "allow_closure", bound[9], false)?;
         let items = expand(
             "add_joined",
             values,
             name.is_some(),
             bound[3],
+            allow_closure,
             format_each.as_deref(),
             uniquify,
             eval,

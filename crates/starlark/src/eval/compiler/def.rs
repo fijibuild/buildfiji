@@ -636,6 +636,22 @@ pub fn definition_span(function: Value<'_>) -> Option<FileSpan> {
     )
 }
 
+/// Whether `function` is a `def` that is a global of the module it is written
+/// in, under its own name: what Bazel calls a top-level def. A lambda, a def
+/// nested in a function and a function made while a rule runs are not.
+pub fn is_global_definition(function: Value<'_>) -> bool {
+    let Some(def) = function.downcast_ref::<FrozenDef>() else {
+        return false;
+    };
+    let Some(module) = def.module.load_relaxed() else {
+        return false;
+    };
+    let name = def.def_info.name.as_str();
+    module
+        .all_items()
+        .any(|(n, v)| n.as_str() == name && v.to_value().ptr_eq(function))
+}
+
 starlark_complex_values!(Def);
 
 impl<'v> Def<'v> {

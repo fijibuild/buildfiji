@@ -29,6 +29,7 @@ use std::collections::HashMap;
 use std::time::Instant;
 
 pub use compiler::def::definition_span;
+pub use compiler::def::is_global_definition;
 use dupe::Dupe;
 pub use runtime::arguments::Arguments;
 pub use runtime::before_stmt::BeforeStmtFunc;

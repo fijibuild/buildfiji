@@ -363,7 +363,7 @@ impl FrozenModuleData {
             .filter_map(|(name, slot)| Some((name, self.slots.get_slot(slot)?)))
     }
 
-    fn all_items(&self) -> impl Iterator<Item = (FrozenStringValue, FrozenValue)> + '_ {
+    pub(crate) fn all_items(&self) -> impl Iterator<Item = (FrozenStringValue, FrozenValue)> + '_ {
         self.names
             .all_symbols()
             .filter_map(|(name, slot)| Some((name, self.slots.get_slot(slot)?)))

@@ -652,6 +652,55 @@ fn the_wrong_calls_of_args_say_what_bazel_says() {
     }
 }
 
+/// Probed on Bazel 9.2.0: a `map_each` that is not a top-level def is
+/// refused, at the name of a def and at the `lambda` of a lambda, unless
+/// `allow_closure`; a builtin function is accepted.
+#[test]
+fn map_each_must_be_a_top_level_def_unless_closures_are_allowed() {
+    let src = |body: &str| {
+        format!(
+            "def _top(x):\n    return x\n\ndef _impl(ctx):\n    a = ctx.actions.args()\n    def nested(x):\n        return x\n    {body}\n    return []\nr = rule(implementation = _impl)\n"
+        )
+    };
+    let run = |body: &str| run_rule(&request(&src(body), "r", Vec::new(), Vec::new()));
+    for ok in [
+        "a.add_all(['a'], map_each = _top)",
+        "a.add_all(['a'], map_each = str)",
+        "a.add_all(['a'], map_each = nested, allow_closure = True)",
+        "a.add_joined(['a'], join_with = ',', map_each = lambda x: x, allow_closure = True)",
+    ] {
+        run(ok).unwrap_or_else(|e| panic!("{ok}: {e}"));
+    }
+    for (call, function, at) in [
+        ("a.add_all(['a'], map_each = nested)", "add_all", "6:9"),
+        (
+            "a.add_all(['a'], map_each = lambda x: x)",
+            "add_all",
+            "8:33",
+        ),
+        (
+            "a.add_joined(['a'], join_with = ',', map_each = lambda x: x)",
+            "add_joined",
+            "8:53",
+        ),
+    ] {
+        let err = run(call).unwrap_err();
+        let want = format!(
+            "Error in {function}: to avoid unintended retention of analysis data structures, the map_each function (declared at "
+        );
+        let line = err
+            .lines()
+            .find(|line| line.starts_with(&want))
+            .unwrap_or_else(|| panic!("{call}: no refusal in\n{err}"));
+        assert!(
+            line.ends_with(&format!(
+                ":{at}) must be declared by a top-level def statement"
+            )),
+            "{call}: {line}"
+        );
+    }
+}
+
 /// An `Args` that asked for a param file gets one when the command line is
 /// longer than 31744, each word counting its separator and the executable
 /// counting too. Probed on Bazel 9.2.0 at both sides of the limit.
