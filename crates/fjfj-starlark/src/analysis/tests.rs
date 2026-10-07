@@ -922,6 +922,68 @@ fn add_refuses_a_tree_artifact() {
     );
 }
 
+/// Probed on Bazel 9.2.0: the functions of `ctx` that read a string the way a
+/// label or a shell does, and `print` of a label.
+#[test]
+fn ctx_reads_labels_command_lines_and_placeholders_as_bazel_does() {
+    let src = r#"
+def _impl(ctx):
+    print(ctx.package_relative_label("foo"), ctx.package_relative_label(":bar"), ctx.package_relative_label("//x:y"), ctx.package_relative_label("@@r//a:b"), ctx.label)
+    print(str(ctx.package_relative_label("foo")), repr(ctx.package_relative_label("foo")))
+    print(ctx.tokenize("a 'b c' \"d e\" f\\ g"))
+    print(ctx.check_placeholders("a %{x} b", ["x"]), ctx.check_placeholders("a %{y} b", ["x"]), ctx.check_placeholders("a %{x", ["x"]))
+    if ctx.attr.fail == "label":
+        ctx.package_relative_label("")
+    elif ctx.attr.fail == "label_type":
+        ctx.package_relative_label(1)
+    elif ctx.attr.fail == "quote":
+        ctx.tokenize("'abc")
+    elif ctx.attr.fail == "backslash":
+        ctx.tokenize("a\\")
+    return []
+r = rule(implementation = _impl, attrs = {"fail": attr.string()})
+"#;
+    let module = module_in("", "", src).unwrap();
+    let run = |fail: &str| {
+        run_rule(&request_in(
+            module.clone(),
+            "r",
+            vec![("fail".to_owned(), AttrValue::String(fail.to_owned()))],
+            Vec::new(),
+        ))
+    };
+    assert_eq!(
+        run("").unwrap().printed.without_sites(),
+        [
+            "//:foo //:bar //x:y @@r//a:b //:t",
+            r#"@@//:foo Label("//:foo")"#,
+            r#"["a", "b c", "d e", "f g"]"#,
+            "True False True"
+        ]
+    );
+    for (fail, want) in [
+        (
+            "label",
+            "Error in package_relative_label: invalid label in ctx.package_relative_label: invalid target name '': empty target name",
+        ),
+        (
+            "label_type",
+            "Error in package_relative_label: in call to package_relative_label(), parameter 'input' got value of type 'int', want 'string or Label'",
+        ),
+        (
+            "quote",
+            "Error in tokenize: unterminated quotation while tokenizing ''abc'",
+        ),
+        (
+            "backslash",
+            "Error in tokenize: backslash at end of string while tokenizing 'a\\'",
+        ),
+    ] {
+        let err = run(fail).unwrap_err();
+        assert!(err.lines().any(|l| l == want), "{fail}: {err}");
+    }
+}
+
 /// Probed on Bazel 9.2.0: a `map_each` that is not a top-level def is
 /// refused, at the name of a def and at the `lambda` of a lambda, unless
 /// `allow_closure`; a builtin function is accepted.

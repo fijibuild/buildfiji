@@ -121,6 +121,7 @@ pub(crate) fn module_globals(builder: &mut GlobalsBuilder) {
 /// The globals of a BUILD file: the standard ones, `print`, and the native
 /// functions.
 pub fn build_globals() -> Globals {
+    crate::label::install_print_format();
     GlobalsBuilder::extended_by(&[LibraryExtension::Print])
         .with(native_functions)
         .with(generated_native_rules)
@@ -277,6 +278,7 @@ pub(crate) fn format_globals() -> Globals {
 /// The globals of a `.bzl` file: the same, with the native functions under
 /// `native`.
 pub fn bzl_globals() -> Globals {
+    crate::label::install_print_format();
     let mut builder = GlobalsBuilder::extended_by(&[LibraryExtension::Print]);
     builder.namespace_with_missing("native", "no native function or rule '{}'", |native| {
         native_functions(native);

@@ -811,6 +811,17 @@ fn label_of<'v>(
     Ok(heap.alloc(label))
 }
 
+/// `print` writes a label as Bazel's `print` does: `//pkg:name` in the main
+/// repo, where `str()` says `@@//pkg:name`.
+pub(crate) fn install_print_format() {
+    fn format(value: Value<'_>) -> Option<String> {
+        value
+            .downcast_ref::<StarlarkLabel>()
+            .map(|l| display_label(&l.clone().into_label()))
+    }
+    starlark::eval::set_print_format(format);
+}
+
 #[starlark_module]
 pub(crate) fn label_globals(builder: &mut starlark::environment::GlobalsBuilder) {
     /// `Label(input)`.
@@ -869,10 +880,21 @@ pub(crate) fn relative_to_package<'v>(
     mappings: &RepoMappings,
     heap: Heap<'v>,
 ) -> starlark::Result<Value<'v>> {
+    relative_to_package_as(input, at, mappings, heap, "native.package_relative_label")
+}
+
+/// [`relative_to_package`] for the caller `who`, which a bad string names.
+pub(crate) fn relative_to_package_as<'v>(
+    input: Value<'v>,
+    at: LabelContext<'_>,
+    mappings: &RepoMappings,
+    heap: Heap<'v>,
+    who: &str,
+) -> starlark::Result<Value<'v>> {
     label_of(
         input,
         "package_relative_label",
-        "native.package_relative_label",
+        who,
         at,
         at.repo,
         mappings,

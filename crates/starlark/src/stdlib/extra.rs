@@ -117,6 +117,18 @@ impl fmt::Display for PrintWrapper<'_, '_> {
     }
 }
 
+/// How `print` writes a value that wants to be written another way than
+/// `str()` does, if it does: a label is `//pkg:name` there and `@@//pkg:name`
+/// to `str()`.
+type PrintFormat = for<'v> fn(Value<'v>) -> Option<String>;
+
+static PRINT_FORMAT: std::sync::OnceLock<PrintFormat> = std::sync::OnceLock::new();
+
+/// Set how `print` writes a value (once; later calls do nothing).
+pub fn set_print_format(format: PrintFormat) {
+    let _ = PRINT_FORMAT.set(format);
+}
+
 /// Invoked from `print` or `pprint` to print a value.
 pub trait PrintHandler {
     /// If this function returns error, evaluation fails with this error.
@@ -151,7 +163,16 @@ pub fn print(builder: &mut GlobalsBuilder) {
         let location = eval.call_stack_top_location();
         eval.print_handler.println_at(
             location.as_ref(),
-            &args.items.iter().map(|x| x.to_str()).join(" "),
+            &args
+                .items
+                .iter()
+                .map(|x| {
+                    PRINT_FORMAT
+                        .get()
+                        .and_then(|format| format(*x))
+                        .unwrap_or_else(|| x.to_str())
+                })
+                .join(" "),
         )?;
         Ok(NoneType)
     }

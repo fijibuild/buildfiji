@@ -68,6 +68,99 @@ pub struct LazyArg {
     pub call: LazyCall,
 }
 
+/// Why a string could not be split into words.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TokenizeError {
+    UnterminatedQuotation,
+    BackslashAtEnd,
+}
+
+impl std::fmt::Display for TokenizeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            TokenizeError::UnterminatedQuotation => "unterminated quotation",
+            TokenizeError::BackslashAtEnd => "backslash at end of string",
+        })
+    }
+}
+
+/// `text` split into words as a shell reads them (Bazel's `ShellUtils.tokenize`):
+/// whitespace separates, single quotes keep everything, double quotes keep
+/// everything but a backslash, which escapes the next character as it does
+/// outside quotes.
+pub fn tokenize(text: &str) -> Result<Vec<String>, TokenizeError> {
+    let mut words = Vec::new();
+    let mut current = String::new();
+    let mut in_word = false;
+    let mut chars = text.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            c if c.is_whitespace() => {
+                if in_word {
+                    words.push(std::mem::take(&mut current));
+                    in_word = false;
+                }
+            }
+            '\'' => {
+                in_word = true;
+                loop {
+                    match chars.next() {
+                        Some('\'') => break,
+                        Some(c) => current.push(c),
+                        None => return Err(TokenizeError::UnterminatedQuotation),
+                    }
+                }
+            }
+            '"' => {
+                in_word = true;
+                loop {
+                    match chars.next() {
+                        Some('"') => break,
+                        Some('\\') => match chars.next() {
+                            Some(c) => current.push(c),
+                            None => return Err(TokenizeError::UnterminatedQuotation),
+                        },
+                        Some(c) => current.push(c),
+                        None => return Err(TokenizeError::UnterminatedQuotation),
+                    }
+                }
+            }
+            '\\' => {
+                in_word = true;
+                match chars.next() {
+                    Some(c) => current.push(c),
+                    None => return Err(TokenizeError::BackslashAtEnd),
+                }
+            }
+            c => {
+                in_word = true;
+                current.push(c);
+            }
+        }
+    }
+    if in_word {
+        words.push(current);
+    }
+    Ok(words)
+}
+
+/// Whether every `%{name}` of `template` is one of `allowed` (Bazel's
+/// `ctx.check_placeholders`); text after a `%{` that is never closed is not one.
+pub fn placeholders_are_allowed(template: &str, allowed: &[String]) -> bool {
+    let mut rest = template;
+    while let Some(open) = rest.find("%{") {
+        let after = &rest[open + 2..];
+        let Some(close) = after.find('}') else {
+            return true;
+        };
+        if !allowed.iter().any(|a| a == &after[..close]) {
+            return false;
+        }
+        rest = &after[close + 1..];
+    }
+    true
+}
+
 /// `pattern` with `%s` replaced by `text`; `%%` is a `%`.
 pub fn format_arg(pattern: &str, text: &str) -> String {
     let mut out = String::with_capacity(pattern.len() + text.len());
@@ -356,6 +449,22 @@ mod tests {
             expand_words(&words, &lazy, &files),
             ["a", "--name", "t/b", "t/x/a", "b", "c"]
         );
+    }
+
+    /// Probed on Bazel 9.2.0 through `ctx.tokenize` and `ctx.check_placeholders`.
+    #[test]
+    fn words_are_split_as_a_shell_reads_them_and_placeholders_are_checked() {
+        assert_eq!(
+            tokenize("a 'b c' \"d e\" f\\ g").unwrap(),
+            ["a", "b c", "d e", "f g"]
+        );
+        assert_eq!(tokenize("x ''").unwrap(), ["x", ""]);
+        assert_eq!(tokenize("'abc"), Err(TokenizeError::UnterminatedQuotation));
+        assert_eq!(tokenize("a\\"), Err(TokenizeError::BackslashAtEnd));
+        let allowed = ["x".to_owned()];
+        assert!(placeholders_are_allowed("a %{x} b", &allowed));
+        assert!(!placeholders_are_allowed("a %{y} b", &allowed));
+        assert!(placeholders_are_allowed("a %{x", &allowed));
     }
 
     #[test]

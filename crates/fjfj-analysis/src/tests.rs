@@ -2140,7 +2140,7 @@ r(name = "via_flag", dep = ":f")
     ]);
     for name in ["//:via_alias", "//:via_flag"] {
         let t = analyse(&repos, name).await.unwrap();
-        assert_eq!(t.printed.without_sites(), ["label: @@//:a"]);
+        assert_eq!(t.printed.without_sites(), ["label: //:a"]);
     }
 }
 

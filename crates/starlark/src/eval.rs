@@ -28,6 +28,7 @@ use std::collections::HashMap;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 
+pub use crate::stdlib::extra::set_print_format;
 pub use compiler::def::definition_span;
 pub use compiler::def::is_global_definition;
 use dupe::Dupe;

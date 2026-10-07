@@ -739,6 +739,68 @@ fn ctx_members(builder: &mut MethodsBuilder) {
         Ok(new_struct(heap, fields))
     }
 
+    /// `ctx.package_relative_label(input)`: `input` as written in the BUILD
+    /// file of the rule's package.
+    fn package_relative_label<'v>(
+        this: Value<'v>,
+        input: Value<'v>,
+        heap: Heap<'v>,
+    ) -> starlark::Result<Value<'v>> {
+        let s = state(this);
+        crate::label::relative_to_package_as(
+            input,
+            LabelContext {
+                repo: &s.label.repo,
+                package: &s.label.package,
+            },
+            &s.mappings,
+            heap,
+            "ctx.package_relative_label",
+        )
+    }
+
+    /// `ctx.tokenize(option)`: the words of a shell command line.
+    fn tokenize<'v>(this: Value<'v>, option: Value<'v>) -> starlark::Result<Vec<String>> {
+        let _ = this;
+        let text = option.unpack_str().ok_or_else(|| {
+            fatal(format!(
+                "in call to tokenize(), parameter 'option' got value of type '{}', want 'string'",
+                option.get_type()
+            ))
+        })?;
+        fjfj_graph::command_line::tokenize(text)
+            .map_err(|e| fatal(format!("{e} while tokenizing '{text}'")))
+    }
+
+    /// `ctx.check_placeholders(template, allowed_placeholders)`: whether the
+    /// template uses no `%{name}` that is not allowed.
+    fn check_placeholders<'v>(
+        this: Value<'v>,
+        template: Value<'v>,
+        allowed_placeholders: Value<'v>,
+    ) -> starlark::Result<bool> {
+        let _ = this;
+        let text = template.unpack_str().ok_or_else(|| {
+            fatal(format!(
+                "in call to check_placeholders(), parameter 'template' got value of type '{}', want 'string'",
+                template.get_type()
+            ))
+        })?;
+        let allowed: Vec<String> = crate::args::sequence(allowed_placeholders)
+            .ok_or_else(|| {
+                fatal(format!(
+                    "in call to check_placeholders(), parameter 'allowed_placeholders' got value of type '{}', want 'sequence'",
+                    allowed_placeholders.get_type()
+                ))
+            })?
+            .iter()
+            .filter_map(|v| v.unpack_str().map(str::to_owned))
+            .collect();
+        Ok(fjfj_graph::command_line::placeholders_are_allowed(
+            text, &allowed,
+        ))
+    }
+
     /// `ctx.runfiles(files, transitive_files, collect_data, collect_default,
     /// symlinks, root_symlinks)`.
     fn runfiles<'v>(
