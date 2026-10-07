@@ -543,7 +543,7 @@ def _make_configuration(options):
         default_shell_env = dict([line.split("=", 1) for line in options["default_shell_env"].split("\n")]),
         host_path_separator = ":",
         short_id = options["short_id"],
-        test_env = {},
+        test_env = dict([line.split("=", 1) for line in options["test_env"].split("\n") if line]),
         is_tool_configuration = lambda: bool(options["exec"]),
         stamp_binaries = lambda: False,
         is_sibling_repository_layout = lambda: False,

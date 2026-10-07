@@ -645,14 +645,12 @@ async fn build_main(
     clap_flags::validate(&rest, command, &implemented)
         .map_err(|e| CliError::CommandLine(anyhow::Error::from(e)))?;
     let (build_flags, rest) = build_flags::extract(&rest, command);
-    // Only `test` has test flags; for it, `--test_env` and `--test_arg` shape
-    // the configuration.
-    let (test_flags, rest) = if command == "test" {
+    // `--test_env` and `--test_arg` shape the configuration of every command
+    // that builds, as they do in Bazel.
+    let (test_flags, rest) = {
         let (flags, rest) = test_flags::extract(&rest, command)
             .map_err(|e| CliError::CommandLine(anyhow::anyhow!(e)))?;
         (Some(flags), rest)
-    } else {
-        (None, rest)
     };
     let (run_flags, rest) = run_flags::extract(&rest, command)
         .map_err(|e| CliError::CommandLine(anyhow::anyhow!(e)))?;
@@ -822,7 +820,10 @@ async fn build_main(
             })?,
         },
         record_execution_platforms: true,
-        test: test_flags.as_ref().map(|t| t.output),
+        test: test_flags
+            .as_ref()
+            .filter(|_| command == "test")
+            .map(|t| t.output),
         workspace_status: Some((status.render_stable(), status.render_volatile())),
         run: run_mode,
         incompatible: Some(build_command::IncompatibleRoots {

@@ -113,6 +113,9 @@ pub struct Configuration {
     /// `--test_env`: set for every test, a name inherited from the client
     /// already given its value.
     pub test_env: BTreeMap<String, String>,
+    /// The names in `test_env` whose value is the client's, from
+    /// `--test_env=NAME`: a rule's `ctx.configuration.test_env` leaves them out.
+    pub test_env_inherited: std::collections::BTreeSet<String>,
     /// `--action_env`: set for every action that uses the default shell
     /// environment, a name inherited from the client already given its value.
     pub action_env: BTreeMap<String, String>,
@@ -186,6 +189,7 @@ impl Default for Configuration {
             platform_names: BTreeMap::new(),
             options: BTreeMap::new(),
             test_env: BTreeMap::new(),
+            test_env_inherited: std::collections::BTreeSet::new(),
             action_env: BTreeMap::new(),
             test_args: Vec::new(),
             exec: false,
@@ -504,6 +508,7 @@ mod tests {
             platform_names: BTreeMap::new(),
             options: BTreeMap::new(),
             test_env: BTreeMap::new(),
+            test_env_inherited: std::collections::BTreeSet::new(),
             action_env: BTreeMap::new(),
             test_args: Vec::new(),
             exec: true,

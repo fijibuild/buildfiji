@@ -328,6 +328,8 @@ pub(crate) async fn run(args: QueryArgs, kind: Kind) -> Result<(), CliError> {
         .collect();
     let (flags, rest) = extract(kind, &with_rc)?;
     let (build_flags, rest) = fjfj_bazel_compat::build_flags::extract(&rest, command);
+    let (test_flags, rest) = fjfj_bazel_compat::test_flags::extract(&rest, command)
+        .map_err(|e| CliError::CommandLine(anyhow::anyhow!(e)))?;
     let rest = crate::drop_build_family_flags(rest, command)?;
     let (bzlmod, rest) = bzlmod_flags::extract(&rest, command);
     let (fetch, rest) = fetch_command::extract(&rest)?;
@@ -371,7 +373,8 @@ pub(crate) async fn run(args: QueryArgs, kind: Kind) -> Result<(), CliError> {
         universe: flags.universe,
         expr,
     };
-    let configuration = build_command::configuration_from(&build_flags).map_err(bad)?;
+    let mut configuration = build_command::configuration_from(&build_flags).map_err(bad)?;
+    build_command::apply_test_flags(&mut configuration, &test_flags);
     let workspace_root = locate_workspace_root(command)?;
     let module_bazel_text =
         std::fs::read_to_string(workspace_root.join("MODULE.bazel")).map_err(|e| {

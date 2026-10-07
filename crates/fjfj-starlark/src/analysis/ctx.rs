@@ -283,6 +283,22 @@ impl CtxState {
                     .collect::<Vec<_>>()
                     .join("\n"),
             ),
+            // Only a test rule sees `--test_env`,
+            // and not the names it takes from the client.
+            (
+                "test_env",
+                if self.schema.test {
+                    config
+                        .test_env
+                        .iter()
+                        .filter(|(k, _)| !config.test_env_inherited.contains(*k))
+                        .map(|(k, v)| format!("{k}={v}"))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                } else {
+                    String::new()
+                },
+            ),
             ("short_id", config.mnemonic()),
             ("exec", if config.exec { "1" } else { "" }.to_owned()),
         ]

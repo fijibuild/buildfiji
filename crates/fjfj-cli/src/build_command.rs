@@ -149,12 +149,14 @@ pub(crate) fn apply_test_flags(
     for entry in &flags.env {
         match entry.split_once('=') {
             Some((name, value)) => {
+                configuration.test_env_inherited.remove(name);
                 configuration
                     .test_env
                     .insert(name.to_owned(), value.to_owned());
             }
             None => {
                 if let Ok(value) = std::env::var(entry) {
+                    configuration.test_env_inherited.insert(entry.clone());
                     configuration.test_env.insert(entry.clone(), value);
                 }
             }

@@ -2143,3 +2143,28 @@ r(name = "via_flag", dep = ":f")
         assert_eq!(t.printed.without_sites(), ["label: @@//:a"]);
     }
 }
+
+/// Probed on Bazel 9.2.0: a rule that is not a test sees no `--test_env`.
+/// (A test rule sees the entries given a value, and not the names taken from
+/// the client; that needs `@bazel_tools//tools/test`, so it is checked by
+/// running `fjfj build --test_env=A=B` on one.)
+#[tokio::test(flavor = "multi_thread")]
+async fn ctx_configuration_test_env_is_empty_for_a_rule_that_is_not_a_test() {
+    let (_dir, repos) = workspace(&[
+        ("MODULE.bazel", ""),
+        (
+            "defs.bzl",
+            r#"
+def _impl(ctx):
+    print("test_env:", ctx.configuration.test_env)
+    return []
+r = rule(implementation = _impl)
+"#,
+        ),
+        ("BUILD.bazel", "load(':defs.bzl', 'r')\nr(name = 'n')\n"),
+    ]);
+    let mut config = config();
+    config.test_env.insert("A".into(), "C".into());
+    let n = analyse_in(&repos, "//:n", config).await.unwrap();
+    assert_eq!(n.printed.without_sites(), ["test_env: {}"]);
+}
