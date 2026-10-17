@@ -9,7 +9,7 @@
 .beads/*.gate.lock
 user.bazelrc
 /target
-bazel-*
+/bazel-*
 
 # Lean
 spec/.lake/
