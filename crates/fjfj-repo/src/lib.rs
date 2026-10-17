@@ -1645,12 +1645,21 @@ impl Inner {
     /// `DIRENTS:`, the paths as `@@repo//path` (and none for a path that is in
     /// no repository).
     fn recorded_text(&self, input: &RecordedInput) -> Option<String> {
+        // A path read through `realpath` is spelled with the links resolved,
+        // so a root reached through a link (macOS's `/var` is `/private/var`)
+        // is matched by both spellings.
+        let under = |path: &Path, root: &Path| -> Option<PathBuf> {
+            let resolved = root.canonicalize();
+            std::iter::once(root)
+                .chain(resolved.as_deref().ok())
+                .find_map(|r| path.strip_prefix(r).ok().map(Path::to_path_buf))
+        };
         let repo_path = |path: &Path| -> Option<String> {
-            if let Ok(rest) = path.strip_prefix(&self.options.workspace_root) {
+            if let Some(rest) = under(path, &self.options.workspace_root) {
                 return Some(format!("@@//{}", rest.display()));
             }
             let external = self.options.output_base.join("external");
-            let rest = path.strip_prefix(&external).ok()?;
+            let rest = under(path, &external)?;
             let mut parts = rest.components();
             let repo = parts.next()?.as_os_str().to_string_lossy().into_owned();
             let rest: PathBuf = parts.collect();
