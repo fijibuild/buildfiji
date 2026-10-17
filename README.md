@@ -10,4 +10,6 @@ bazel build //... && bazel test //...
 bd ready   # planned work
 ```
 
-See `docs/ARCHITECTURE.md` and `docs/design/`.
+Documentation is in `docs/` (see `docs/README.md`): tutorials, how-to guides,
+reference and explanation. For the shape of the project, see
+`docs/ARCHITECTURE.md` and `docs/design/`.
