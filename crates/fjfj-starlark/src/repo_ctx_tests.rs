@@ -48,8 +48,10 @@ fn names(text: &str, repo: &Path, ext: &Path, ws: &Path) -> String {
 
 fn run_repo(bzl: &str, files: &[(&str, &str)]) -> Outcome {
     let dir = tempfile::tempdir().unwrap();
-    let ws = dir.path().join("ws");
-    let ext = dir.path().join("ext");
+    // `pwd` prints the real path, which differs from a symlinked temp dir (macOS).
+    let base = dir.path().canonicalize().unwrap();
+    let ws = base.join("ws");
+    let ext = base.join("ext");
     let repo = ext.join("+r+NAME");
     std::fs::create_dir_all(&ws).unwrap();
     std::fs::create_dir_all(&ext).unwrap();
@@ -96,7 +98,15 @@ fn run_repo(bzl: &str, files: &[(&str, &str)]) -> Outcome {
             .0
             .into_inner()
             .iter()
-            .map(|p| clean(p.trim_end_matches('\n')))
+            .map(|p| {
+                let p = p.trim_end_matches('\n');
+                // BSD `wc -l` pads its count with spaces; GNU's does not.
+                clean(if cfg!(target_os = "macos") {
+                    p.trim_start_matches(' ')
+                } else {
+                    p
+                })
+            })
             .collect(),
         tree: tree.into_iter().map(|(k, v)| (k, clean(&v))).collect(),
     }
