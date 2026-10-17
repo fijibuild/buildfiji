@@ -727,7 +727,7 @@ use_repo(e, "x")
 made = repository_rule(implementation = _r, attrs = {"v": attr.string(), "n": attr.int(), "b": attr.bool(), "l": attr.string_list(), "d": attr.string_dict(), "lab": attr.label(), "labs": attr.label_list(), "ld": attr.label_keyed_string_dict(), "sld": attr.string_list_dict(), "il": attr.int_list(), "o": attr.output()})
 
 def _impl(mctx):
-    mctx.read("/etc/hostname")
+    mctx.read("/etc/hosts")
     made(name = "x")
 
 collect = module_extension(implementation = _impl)
@@ -742,7 +742,7 @@ collect = module_extension(implementation = _impl)
         ],
         fetch: &[r#"+collect+x"#],
         env: &[],
-        expected: r#"{"//:ext.bzl%collect":{"general":{"bzlTransitiveDigest":"EiSoidYyZRGUF5DSEBbeDhp4BB+lPdKJal658SQokRw=","usagesDigest":"F+8iDTzTJ/5jCXyE+lMDbP4LtQig4r6YwvJE56X/qgA=","recordedInputs":[],"generatedRepoSpecs":{"x":{"repoRuleId":"@@//:ext.bzl%made","attributes":{}}}}}}"#,
+        expected: r#"{"//:ext.bzl%collect":{"general":{"bzlTransitiveDigest":"F5AqIEH3H46t9WHmH8bp5ZvVFluwqXlFhsxLOkzqkuA=","usagesDigest":"F+8iDTzTJ/5jCXyE+lMDbP4LtQig4r6YwvJE56X/qgA=","recordedInputs":[],"generatedRepoSpecs":{"x":{"repoRuleId":"@@//:ext.bzl%made","attributes":{}}}}}}"#,
         facts: r#"{}"#,
         warnings: &[],
         error: None,

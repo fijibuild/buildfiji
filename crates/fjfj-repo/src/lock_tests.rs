@@ -35,6 +35,34 @@ fn write(path: &std::path::Path, text: &str) {
     std::fs::write(path, text).unwrap();
 }
 
+/// The rows were recorded on Linux/amd64, where an extension that is
+/// `os_dependent` or `arch_dependent` is keyed `os:linux` and `arch:amd64`.
+/// Nothing else in an entry depends on the machine, so on another host only
+/// those two keys change.
+fn recorded_on_this_host(expected: &str) -> String {
+    expected
+        .replace("os:linux", &format!("os:{}", crate::os_factor()))
+        .replace("arch:amd64", &format!("arch:{}", crate::arch_factor()))
+}
+
+#[test]
+fn the_lockfile_names_the_host_as_java_does() {
+    // Bazel keys on the JVM's `os.name` and `os.arch`, lower-cased: "linux",
+    // "mac os x", "amd64" and "aarch64" (probed on Linux/amd64 and, for the
+    // others, from the JDK's property values).
+    let (os, arch) = (crate::os_factor(), crate::arch_factor());
+    match std::env::consts::OS {
+        "linux" => assert_eq!(os, "linux"),
+        "macos" => assert_eq!(os, "mac os x"),
+        _ => {}
+    }
+    match std::env::consts::ARCH {
+        "x86_64" => assert_eq!(arch, "amd64"),
+        "aarch64" => assert_eq!(arch, "aarch64"),
+        _ => {}
+    }
+}
+
 #[test]
 fn what_extensions_leave_in_the_lockfile_is_what_bazel_writes() {
     let mut wrong = Vec::new();
@@ -120,7 +148,7 @@ fn what_extensions_leave_in_the_lockfile_is_what_bazel_writes() {
                 .unwrap();
         let warnings = repos.warnings();
         // An extension that failed wrote nothing.
-        let ext_ok = row.error.is_some() || got == row.expected;
+        let ext_ok = row.error.is_some() || got == recorded_on_this_host(row.expected);
         let facts_ok = row.error.is_some() || got_facts == row.facts;
         if !error_ok || warnings != row.warnings || !ext_ok || !facts_ok {
             wrong.push(format!(

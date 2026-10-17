@@ -21,7 +21,7 @@ cases=[
  case("label_objects",'    made(name = "x", lab = Label("//:data.txt"), labs = [Label("//sub:y")])'),
  case("none_and_empty",'    made(name = "x", v = None, l = [], d = {})'),
  case("read_file",'    mctx.read(mctx.path(Label("//:data.txt")))\n    made(name = "x")'),
- case("read_path_str",'    mctx.read("/etc/hostname")\n    made(name = "x")'),
+ case("read_path_str",'    mctx.read("/etc/hosts")\n    made(name = "x")'),
  case("getenv",'    mctx.getenv("FJFJ_PROBE_A")\n    made(name = "x")'),
  case("getenv_default",'    mctx.getenv("FJFJ_PROBE_B", "dflt")\n    made(name = "x")'),
  case("environ",'    mctx.os.environ.get("FJFJ_PROBE_C")\n    made(name = "x")'),
