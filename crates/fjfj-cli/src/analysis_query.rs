@@ -1193,7 +1193,11 @@ r(name = "sel", ss = select({":fast": ["f"], "//conditions:default": ["d"]}))
         let files = run_query(Kind::Cquery, "files", "//:a + //:s.txt", None)
             .await
             .unwrap();
-        assert_eq!(files, "bazel-out/k8-fastbuild/bin/a.txt\ns.txt\n");
+        let cpu = fjfj_graph::config::host_cpu();
+        assert_eq!(
+            files,
+            format!("bazel-out/{cpu}-fastbuild/bin/a.txt\ns.txt\n")
+        );
         let error = run_query(Kind::Cquery, "transitions", "//:a", None)
             .await
             .unwrap_err();

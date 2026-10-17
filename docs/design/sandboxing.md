@@ -23,7 +23,10 @@ persistent workers (`--worker_max_instances`, `--worker_sandboxing`,
 `collect(outputs)`, `cleanup()`. Implementations:
 - `Local`: scratch execroot, symlinked/hardlinked inputs, no isolation.
 - `LinuxNamespaces`: `unshare(CLONE_NEWUSER|NEWNS|NEWPID|NEWNET)`, bind
-  mounts, tmpfs, using the `nix` crate; equivalent of `linux-sandbox`.
+  mounts, tmpfs, using the `nix` crate; equivalent of `linux-sandbox`. It lives
+  in `fjfj-sandbox/src/linux.rs`, compiled only on Linux; other hosts get stubs
+  with the same names (`namespaces_available()` is false) and run commands
+  unisolated (buildfiji-ufro).
 - `DarwinSeatbelt`: `sandbox-exec` with a generated profile; equivalent of
   `darwin-sandbox`.
 - `Oci`: run via an OCI runtime for `docker`-strategy parity.

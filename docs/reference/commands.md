@@ -31,12 +31,31 @@ engine epic (`bd show buildfiji-23d`).
 
 ## Platform support
 
-Development and CI have been on **Linux**. The default execution strategy is
-`linux-sandbox`, which uses user, mount, pid and ipc namespaces; where the host
-does not allow namespaces it falls back to `processwrapper-sandbox`. macOS
-sandboxing (`darwin-sandbox`) is not implemented, and at the time of writing
-`fjfj-sandbox` does not compile on macOS (see `bd list --status=open` for the
-bug and `buildfiji-fyz.4` for the sandbox).
+Development and CI have been on **Linux**; **macOS** (Apple silicon, macOS 27)
+builds and runs `build`, `test`, `query` and `mod`, including `fjfj build //...`
+and `fjfj test //...` on this repository.
+
+The default execution strategy is `linux-sandbox`, which uses user, mount, pid
+and ipc namespaces. Namespaces are Linux's, so on any other OS fjfj uses
+`processwrapper-sandbox`: each action runs in a directory of links to its
+declared inputs, with no isolation of the rest of the file system or the
+network. macOS sandboxing (`darwin-sandbox`) is not implemented
+(`buildfiji-fyz.4`).
+
+### Building on macOS
+
+- `.bazelrc` turns on `--enable_platform_specific_config`, and its
+  `build:macos` line passes `-Cstrip=none` to Rust crates built for the exec
+  configuration. Without it macOS 27's `strip` corrupts proc-macro dylibs and
+  rustc reports `E0463: can't find crate for ...`; real Bazel fails the same
+  way. fjfj reads `--enable_platform_specific_config` from rc files only; given
+  on the command line it is still refused.
+- The exec configuration keeps `--//pkg:flag=value` settings, as Bazel's does
+  (unless `--incompatible_exclude_starlark_flags_from_exec_config`), which is
+  how `--@rules_rust//rust/settings:extra_exec_rustc_flag` reaches tools.
+- Real Bazel 9.2.0 cannot yet build this repository's C dependencies on macOS
+  27 (`absolute path inclusion ... SDKSettings.json`); fjfj has no such check.
+  Tracked in `buildfiji-rq41`.
 
 ## Startup options
 

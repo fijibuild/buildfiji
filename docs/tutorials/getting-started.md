@@ -4,10 +4,10 @@ In this tutorial you will build `fjfj`, use it to build a target in a small
 workspace, ask it questions about that workspace, and see how it treats a flag
 it does not implement. It takes about fifteen minutes.
 
-You need a Linux machine with a Rust toolchain (see `rust-toolchain.toml`) and
-Bazel, and a checkout of this repository. fjfj is developed on Linux; see
-[Platform support](../reference/commands.md#platform-support) before trying
-another OS.
+You need a Linux or macOS machine with a Rust toolchain (see
+`rust-toolchain.toml`) and Bazel, and a checkout of this repository. fjfj is
+developed on Linux; see [Platform support](../reference/commands.md#platform-support)
+for what differs on macOS.
 
 ## 1. Build fjfj
 
@@ -31,8 +31,8 @@ directory:
 export FJFJ="$PWD/bazel-bin/fjfj"
 ```
 
-(`cargo build -p fjfj` also produces `target/debug/fjfj` on Linux, but Bazel is
-the project's gate, and `cargo test` is not.)
+(`cargo build -p fjfj` also produces `target/debug/fjfj` on Linux and macOS,
+but Bazel is the project's gate, and `cargo test` is not.)
 
 ## 2. Create a workspace
 

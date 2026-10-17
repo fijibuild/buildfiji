@@ -12,7 +12,8 @@ kind of question, so pick the section by what you are trying to do.
 ## Where fjfj is today
 
 fjfj builds. `build`, `test`, `run`, `query`, `cquery`, `aquery`, `fetch`, `mod`,
-`clean` and `info` work against Bazel 9.2.0's behaviour, on Linux. What is still
+`clean` and `info` work against Bazel 9.2.0's behaviour, on Linux and on macOS
+(see [Platform support](reference/commands.md#platform-support)). What is still
 missing is substantial: no server process (every invocation starts cold),
 no remote cache or execution, no macOS sandbox, no build event or `--profile`
 output, and `shutdown`, `print_action` and `dump` are stubs. Any Bazel flag

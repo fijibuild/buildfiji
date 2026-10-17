@@ -59,7 +59,8 @@ afterwards. This is what catches a rule that reads an undeclared file: the
 build fails here instead of working by accident and breaking on another
 machine or under remote execution. On Linux the default strategy adds user,
 mount, pid and ipc namespaces, with the file system read-only apart from the
-sandbox and `/tmp`. See [`design/sandboxing.md`](../design/sandboxing.md).
+sandbox and `/tmp`; elsewhere (macOS) the directory of links is all there is.
+See [`design/sandboxing.md`](../design/sandboxing.md).
 
 ## Where to look
 

@@ -47,7 +47,7 @@ is the `IMPLEMENTED` constant of each `*_flags` module in
 `--spawn_strategy` takes a comma-separated list and uses the first name fjfj
 can run: `local` (or `standalone`); `sandboxed` or `linux-sandbox`;
 `processwrapper-sandbox`. The default is `linux-sandbox`, which falls back to
-`processwrapper-sandbox` where namespaces are unavailable. An unknown list
+`processwrapper-sandbox` where namespaces are unavailable (always, off Linux). An unknown list
 exits `2` with `while parsing option --spawn_strategy=...: none of the
 strategies is available`.
 
