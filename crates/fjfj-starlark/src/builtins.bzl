@@ -124,11 +124,18 @@ PackageSpecificationInfo = provider(
 )
 
 # `OutputGroupInfo(group = depset_of_files, ...)`: each group is a depset of
-# files, as Bazel's constructor checks.
+# files, or a list or tuple of them (which becomes one), as Bazel's constructor
+# checks.
 def _output_group_info_init(*args, **kwargs):
     if args:
         fjfj_native_error("OutputGroupInfo", "OutputGroupInfo() got unexpected positional argument")
     for name, value in kwargs.items():
+        if type(value) in ("list", "tuple"):
+            for i, item in enumerate(value):
+                if type(item) != "File":
+                    fjfj_native_error("OutputGroupInfo", "at index %d of output group '%s', got element of type %s, want File" % (i, name, type(item)))
+            kwargs[name] = depset(value)
+            continue
         if type(value) != "depset":
             fjfj_native_error("OutputGroupInfo", "for output group '%s', got %s, want a depset of File" % (name, type(value)))
         element = fjfj_depset_item_type(value)

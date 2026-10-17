@@ -2148,6 +2148,41 @@ r = rule(implementation = _impl)
     assert!(err.contains(want), "wanted `{want}` in\n{err}");
 }
 
+/// Probed on Bazel 9.2.0: an output group is a depset of files, or a list or
+/// tuple of them.
+#[test]
+fn an_output_group_may_be_a_list_or_tuple_of_files() {
+    let src = |group: &str| {
+        format!(
+            "def _impl(ctx):\n    o = ctx.actions.declare_file('o')\n    ctx.actions.write(o, 'x')\n    return [OutputGroupInfo(a = {group})]\nr = rule(implementation = _impl)\n"
+        )
+    };
+    for group in ["[o]", "(o,)", "depset([o])", "[]"] {
+        run_rule(&request(&src(group), "r", Vec::new(), Vec::new())).unwrap();
+    }
+    for (group, want) in [
+        (
+            "[1]",
+            "at index 0 of output group 'a', got element of type int, want File",
+        ),
+        (
+            "[o, 's']",
+            "at index 1 of output group 'a', got element of type string, want File",
+        ),
+        (
+            "'x'",
+            "for output group 'a', got string, want a depset of File",
+        ),
+        (
+            "{'k': o}",
+            "for output group 'a', got dict, want a depset of File",
+        ),
+    ] {
+        let err = run_rule(&request(&src(group), "r", Vec::new(), Vec::new())).unwrap_err();
+        assert!(err.contains(want), "{group}: {err}");
+    }
+}
+
 /// Probed on Bazel 9.2.0: `testing.ExecutionInfo` and `testing.TestEnvironment`
 /// (a `RunEnvironmentInfo`) take their arguments positionally, with defaults.
 #[test]
