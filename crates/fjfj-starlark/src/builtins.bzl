@@ -417,17 +417,30 @@ _APPLE_PLATFORM_TYPE = struct(
     watchos = "watchos",
 )
 
+# The environment Bazel gives an action so `xcrun` and the wrappers pick the
+# Xcode and SDK the build chose: XCODE_VERSION_OVERRIDE from the host's
+# xcode_config, then the target's SDK version and platform name.
+def _apple_host_system_env(xcode_config):
+    version = xcode_config.xcode_version()
+    return {"XCODE_VERSION_OVERRIDE": str(version)} if version else {}
+
+def _target_apple_env(xcode_config, platform):
+    return {
+        "APPLE_SDK_VERSION_OVERRIDE": str(xcode_config.sdk_version_for_platform(platform)),
+        "APPLE_SDK_PLATFORM": platform.name_in_plist,
+    }
+
 apple_common = struct(
     Objc = _Objc,
     XcodeProperties = None,
     XcodeVersionConfig = _XcodeVersionConfig,
-    apple_host_system_env = fjfj_builtins_function("apple_host_system_env", "common/objc/apple_env.bzl", _unavailable("apple_common.apple_host_system_env", "buildfiji-136.15")),
+    apple_host_system_env = fjfj_builtins_function("apple_host_system_env", "common/objc/apple_env.bzl", _apple_host_system_env),
     apple_toolchain = fjfj_builtins_function("lambda", "common/objc/apple_common.bzl", lambda: struct(developer_dir = _unavailable("apple_common.apple_toolchain().developer_dir", "buildfiji-136.15"), platform_developer_framework_dir = _unavailable("apple_common.apple_toolchain().platform_developer_framework_dir", "buildfiji-136.15"), sdk_dir = _unavailable("apple_common.apple_toolchain().sdk_dir", "buildfiji-136.15"))),
     dotted_version = fjfj_builtins_function("lambda", "common/objc/apple_common.bzl", lambda version: str(version) if version else None),
     platform = _APPLE_PLATFORM,
     platform_type = _APPLE_PLATFORM_TYPE,
     new_objc_provider = _Objc,
-    target_apple_env = fjfj_builtins_function("target_apple_env", "common/objc/apple_env.bzl", _unavailable("apple_common.target_apple_env", "buildfiji-136.15")),
+    target_apple_env = fjfj_builtins_function("target_apple_env", "common/objc/apple_env.bzl", _target_apple_env),
 )
 
 android_common = struct(

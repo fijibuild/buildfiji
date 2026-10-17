@@ -1539,9 +1539,10 @@ def _impl(ctx):
         _feature("env", env_sets = [struct(actions = ["c++-compile"], with_features = [], env_entries = [struct(key = "K", value = "v-%{source_file}", expand_if_available = None)])]),
     ]
     gcc = struct(path = "bin/gcc", tool = None, with_features = [], execution_requirements = ["requires-x"])
+    built = struct(path = None, tool = struct(path = "bazel-out/k8-opt-exec/bin/wrapped"), with_features = [], execution_requirements = [])
     config = struct(
         _features_DO_NOT_USE = features,
-        _action_configs_DO_NOT_USE = [struct(action_name = "c++-compile", config_name = "c++-compile", enabled = True, tools = [gcc], flag_sets = [], implies = ["env"])],
+        _action_configs_DO_NOT_USE = [struct(action_name = "c++-compile", config_name = "c++-compile", enabled = True, tools = [gcc], flag_sets = [], implies = ["env"]), struct(action_name = "c++-link-static-library", config_name = "c++-link-static-library", enabled = True, tools = [built], flag_sets = [_flag_set([], [_flag_group(flags = ["-static", "-o", "%{source_file}"])])], implies = [])],
         _artifact_name_patterns_DO_NOT_USE = [],
     )
     engine = internals.cc_toolchain_features(toolchain_config_info = config, tools_directory = "external/tc")
@@ -1556,9 +1557,11 @@ def _impl(ctx):
         fc = engine.configure_features(requested_features = requested + engine.default_features_and_action_configs())
         print(requested, [n for n in ["opt", "base", "dep", "needs_opt", "env"] if fc.is_enabled(n)])
         print(cc_common.get_memory_inefficient_command_line(feature_configuration = fc, action_name = "c++-compile", variables = variables))
-    fc = engine.configure_features(requested_features = ["c++-compile", "base"])
+    fc = engine.configure_features(requested_features = ["c++-compile", "c++-link-static-library", "base"])
     print(cc_common.get_environment_variables(feature_configuration = fc, action_name = "c++-compile", variables = variables))
     print(cc_common.get_tool_for_action(feature_configuration = fc, action_name = "c++-compile"))
+    print(cc_common.get_tool_for_action(feature_configuration = fc, action_name = "c++-link-static-library"))
+    print(cc_common.get_memory_inefficient_command_line(feature_configuration = fc, action_name = "c++-link-static-library", variables = variables))
     print(cc_common.get_execution_requirements(feature_configuration = fc, action_name = "c++-compile"))
     print(cc_common.action_is_enabled(feature_configuration = fc, action_name = "c++-compile"), cc_common.action_is_enabled(feature_configuration = fc, action_name = "link"))
     return []
@@ -1568,7 +1571,7 @@ r = rule(implementation = _impl)
     assert_eq!(
         out.printed.without_sites(),
         [
-            r#"["base", "c++-compile"]"#,
+            r#"["base", "c++-compile", "c++-link-static-library"]"#,
             // base implies dep, and the c++-compile action config implies env.
             r#"["c++-compile"] ["base", "dep", "env"]"#,
             r#"["-c", "a.cc", "-I", "x", "-I", "y", "-fno-pic", "-lm", "100%", "-lz", "100%", "-dep"]"#,
@@ -1580,6 +1583,10 @@ r = rule(implementation = _impl)
             r#"["-c", "a.cc", "-I", "x", "-I", "y", "-fno-pic", "-lm", "100%", "-lz", "100%", "-dep"]"#,
             r#"{"K": "v-a.cc"}"#,
             "external/tc/bin/gcc",
+            // A tool that is a File is run from its exec path, not from the toolchain's package.
+            "bazel-out/k8-opt-exec/bin/wrapped",
+            // An action config's flag sets are its action's, with no `actions` of their own.
+            r#"["-static", "-o", "a.cc"]"#,
             r#"["requires-x"]"#,
             "True False",
         ]
@@ -2292,6 +2299,52 @@ r = rule(implementation = _impl)
 "#;
     let err = run_rule(&request(src, "r", Vec::new(), Vec::new())).unwrap_err();
     let want = "<function target_apple_env from @@_builtins//:common/objc/apple_env.bzl>|function|<function lambda from @@_builtins//:common/objc/apple_common.bzl>|<provider>|Provider|FeatureFlagInfo|1.2";
+    assert!(err.contains(want), "wanted `{want}` in\n{err}");
+}
+
+/// Probed on Bazel 9.2.0 through apple_support's libtool action, whose
+/// environment was `APPLE_SDK_PLATFORM=MacOSX`, `APPLE_SDK_VERSION_OVERRIDE=27.0`
+/// and `XCODE_VERSION_OVERRIDE=27.1.0.27A9275`: the host's Xcode version, then
+/// the target's SDK version and platform.
+#[test]
+fn apple_common_environment_names_the_xcode_and_sdk() {
+    let src = r#"
+def _impl(ctx):
+    config = apple_common.XcodeVersionConfig(
+        ios_sdk_version = "26.0",
+        ios_minimum_os_version = "26.0",
+        visionos_sdk_version = "26.0",
+        visionos_minimum_os_version = "26.0",
+        watchos_sdk_version = "26.0",
+        watchos_minimum_os_version = "26.0",
+        tvos_sdk_version = "26.0",
+        tvos_minimum_os_version = "26.0",
+        macos_sdk_version = "27.0",
+        macos_minimum_os_version = "27.0",
+        xcode_version = "27.1.0.27A9275",
+    )
+    none = apple_common.XcodeVersionConfig(
+        ios_sdk_version = "26.0",
+        ios_minimum_os_version = "26.0",
+        visionos_sdk_version = "26.0",
+        visionos_minimum_os_version = "26.0",
+        watchos_sdk_version = "26.0",
+        watchos_minimum_os_version = "26.0",
+        tvos_sdk_version = "26.0",
+        tvos_minimum_os_version = "26.0",
+        macos_sdk_version = "27.0",
+        macos_minimum_os_version = "27.0",
+    )
+    fail("|".join([
+        str(apple_common.apple_host_system_env(config)),
+        str(apple_common.apple_host_system_env(none)),
+        str(apple_common.target_apple_env(config, apple_common.platform.macos)),
+        str(apple_common.target_apple_env(config, apple_common.platform.ios_simulator)),
+    ]))
+r = rule(implementation = _impl)
+"#;
+    let err = run_rule(&request(src, "r", Vec::new(), Vec::new())).unwrap_err();
+    let want = r#"{"XCODE_VERSION_OVERRIDE": "27.1.0.27A9275"}|{}|{"APPLE_SDK_VERSION_OVERRIDE": "27.0", "APPLE_SDK_PLATFORM": "MacOSX"}|{"APPLE_SDK_VERSION_OVERRIDE": "26.0", "APPLE_SDK_PLATFORM": "iPhoneSimulator"}"#;
     assert!(err.contains(want), "wanted `{want}` in\n{err}");
 }
 

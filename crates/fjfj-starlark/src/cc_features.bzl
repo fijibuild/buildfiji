@@ -268,10 +268,12 @@ def _expand_groups(groups, variables):
                     stack.append((nested, s))
     return out
 
-def _expand_flag_sets(flag_sets, action_name, enabled, variables):
+def _expand_flag_sets(flag_sets, action_name, enabled, variables, of_action_config = False):
     out = []
     for flag_set in flag_sets:
-        if action_name not in flag_set.actions:
+        # The flag sets of an action config belong to its action; they need not
+        # name it.
+        if action_name not in flag_set.actions and not (of_action_config and not flag_set.actions):
             continue
         if not _with_features_hold(flag_set.with_features, enabled):
             continue
@@ -320,7 +322,11 @@ def action_is_enabled(feature_configuration, action_name):
 
 def get_tool_for_action(feature_configuration, action_name):
     tool = _tool_for_action(feature_configuration, action_name)
-    path = tool.tool.path if tool.tool else tool.path
+    # A tool given as a File is run from where it is built; one given as a
+    # path is relative to the toolchain's package.
+    if tool.tool:
+        return tool.tool.path
+    path = tool.path
     if path.startswith("/") or not feature_configuration._tools_directory:
         return path
     return feature_configuration._tools_directory + "/" + path
@@ -342,7 +348,7 @@ def get_memory_inefficient_command_line(feature_configuration, action_name, vari
     out = []
     config = feature_configuration._action_configs.get(action_name)
     if config != None:
-        out.extend(_expand_flag_sets(config.flag_sets, action_name, enabled, variables))
+        out.extend(_expand_flag_sets(config.flag_sets, action_name, enabled, variables, True))
     for feature in feature_configuration._features:
         out.extend(_expand_flag_sets(feature.flag_sets, action_name, enabled, variables))
     return out

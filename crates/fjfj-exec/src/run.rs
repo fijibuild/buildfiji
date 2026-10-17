@@ -916,6 +916,7 @@ impl Scheduler {
                     None
                 };
                 let run_in = sandbox.as_ref().map_or(&execroot, |s| &s.exec);
+                let env = &crate::xcode::local_env(env, &self.layout.output_base).map_err(&fail)?;
                 let isolation = (self.strategy == Strategy::LinuxSandbox
                     && sandbox.is_some()
                     && fjfj_sandbox::namespaces_available())
