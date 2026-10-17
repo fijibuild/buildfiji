@@ -154,6 +154,46 @@ impl<'v> StarlarkValue<'v> for ArgsValue {
     }
 }
 
+/// What a `map_each` of two parameters is given as the second: Bazel's
+/// `directory_expander`, which lists the files of a tree artifact.
+#[derive(ProvidesStaticType, NoSerialize, Allocative, Debug)]
+struct DirectoryExpander;
+
+starlark_simple_value!(DirectoryExpander);
+
+impl fmt::Display for DirectoryExpander {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("DirectoryExpander")
+    }
+}
+
+#[starlark_value(type = "DirectoryExpander")]
+impl<'v> StarlarkValue<'v> for DirectoryExpander {
+    fn get_methods() -> Option<&'static Methods> {
+        static RES: MethodsStatic = MethodsStatic::new("DirectoryExpander", directory_expander);
+        Some(RES.methods())
+    }
+}
+
+#[starlark_module]
+fn directory_expander(builder: &mut MethodsBuilder) {
+    /// `expander.expand(file)`: the files of a tree artifact, or the file
+    /// itself. A tree's files are not known during analysis (buildfiji-fcw9).
+    fn expand<'v>(
+        this: Value<'v>,
+        file: Value<'v>,
+        eval: &mut Evaluator<'v, '_, '_>,
+    ) -> starlark::Result<Value<'v>> {
+        let _ = this;
+        if artifact_of(file).is_some_and(|a| a.tree) {
+            return Err(fatal(
+                "directory_expander.expand of a tree artifact is not supported yet (buildfiji-fcw9)",
+            ));
+        }
+        Ok(eval.heap().alloc(vec![file]))
+    }
+}
+
 impl ArgsValue {
     pub(crate) fn new() -> ArgsValue {
         ArgsValue {
@@ -389,7 +429,13 @@ fn expand<'v>(
         let mut produced: Vec<String> = Vec::new();
         match map_each.filter(|f| !f.is_none()) {
             Some(f) => {
-                let mapped = eval.eval_function(f, &[item], &[])?;
+                // A function of two parameters is given the directory expander.
+                let mapped = if f.parameters_spec().is_some_and(|p| p.len() == 2) {
+                    let expander = eval.heap().alloc_simple(DirectoryExpander);
+                    eval.eval_function(f, &[item, expander], &[])?
+                } else {
+                    eval.eval_function(f, &[item], &[])?
+                };
                 if mapped.is_none() {
                     continue;
                 }

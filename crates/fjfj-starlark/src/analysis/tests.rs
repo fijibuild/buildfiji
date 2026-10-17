@@ -914,6 +914,18 @@ fn a_map_each_over_a_tree_that_expands_is_refused_until_it_can_be_made_to_work()
     assert!(lazy.is_empty());
 }
 
+/// A `map_each` of two parameters is given a `directory_expander`, which
+/// lists a file as itself (cc_common's module map callback takes one).
+#[test]
+fn a_map_each_of_two_parameters_is_given_a_directory_expander() {
+    let src = "def _f(x, expander):\n    return [f.basename for f in expander.expand(x)]\n\ndef _impl(ctx):\n    f = ctx.actions.declare_file('f')\n    ctx.actions.write(f, 'x')\n    a = ctx.actions.args()\n    a.add_all([f], map_each = _f)\n    ctx.actions.run_shell(outputs = [ctx.actions.declare_file('o')], inputs = [f], command = 'true', arguments = [a])\n    return []\nr = rule(implementation = _impl)\n";
+    let out = run_rule(&request(src, "r", Vec::new(), Vec::new())).unwrap();
+    let ActionKind::Spawn { argv, .. } = &out.actions.last().unwrap().kind else {
+        panic!()
+    };
+    assert_eq!(argv.last().map(String::as_str), Some("f"));
+}
+
 /// `add` does not take a tree, which may be many values.
 #[test]
 fn add_refuses_a_tree_artifact() {
@@ -1942,6 +1954,29 @@ fn flag_per_line_writes_a_line_for_each_flag_call() {
     assert_eq!(
         String::from_utf8_lossy(contents),
         "--k=v w\n--x=y\n--t=a b c\n--t0\n--j=a,b\n--eq==a b\n"
+    );
+}
+
+/// Probed on Bazel 9.2.0: `write` takes a `mnemonic`, and an `Args` is written
+/// a line to an argument, shell-quoted unless the format says otherwise.
+#[test]
+fn write_takes_a_mnemonic_and_args_content() {
+    let src = "def _f(x):\n    return 'm:' + x\n\ndef _impl(ctx):\n    a = ctx.actions.args()\n    a.add('a b')\n    a.add_all(['c', \"it's\"], map_each = _f)\n    a.add('--k', 'v')\n    ctx.actions.write(ctx.actions.declare_file('o'), a, mnemonic = 'MyWrite')\n    ctx.actions.write(ctx.actions.declare_file('p'), 'x', mnemonic = None)\n    return []\nr = rule(implementation = _impl)\n";
+    let out = run_rule(&request(src, "r", Vec::new(), Vec::new())).unwrap();
+    assert_eq!(out.actions[0].mnemonic, "MyWrite");
+    let ActionKind::WriteFile { contents, .. } = &out.actions[0].kind else {
+        panic!("{:?}", out.actions)
+    };
+    assert_eq!(
+        String::from_utf8_lossy(contents),
+        "'a b'\nm:c\n'm:it'\\''s'\n--k\nv\n"
+    );
+    assert_eq!(out.actions[1].mnemonic, "FileWrite");
+    let src = "def _impl(ctx):\n    ctx.actions.write(ctx.actions.declare_file('o'), 'x', mnemonic = 1)\n    return []\nr = rule(implementation = _impl)\n";
+    let err = run_rule(&request(src, "r", Vec::new(), Vec::new())).unwrap_err();
+    assert!(
+        err.contains("in call to write(), parameter 'mnemonic' got value of type 'int', want 'string or NoneType'"),
+        "{err}"
     );
 }
 

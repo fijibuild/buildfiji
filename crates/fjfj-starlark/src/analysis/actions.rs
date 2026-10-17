@@ -586,7 +586,7 @@ fn actions_members(builder: &mut MethodsBuilder) {
         Ok(heap.alloc(super::args_object::ArgsValue::new()))
     }
 
-    /// `ctx.actions.write(output, content, is_executable = False)`.
+    /// `ctx.actions.write(output, content, is_executable = False, *, mnemonic = None)`.
     fn write<'v>(
         this: Value<'v>,
         args: &Arguments<'v, '_>,
@@ -600,30 +600,68 @@ fn actions_members(builder: &mut MethodsBuilder) {
                 param("output", true, true),
                 param("content", true, true),
                 param("is_executable", true, false),
+                param("mnemonic", false, false),
             ],
             args,
             eval,
         )?;
         let output = unpacked("write", "output", bound[0], "File", artifact_of)?;
-        let content = unpacked("write", "content", bound[1], "string or Args", |v| {
-            v.unpack_str()
-        })?;
+        let content = bound[1].expect("required");
         let executable = flag("write", "is_executable", bound[2])?;
+        let mnemonic = optional_string("write", "mnemonic", bound[3])?
+            .unwrap_or_else(|| "FileWrite".to_owned());
         let message = if executable {
             format!("Writing script {}", basename(&output))
         } else {
             format!("Writing file {}", basename(&output))
         };
-        s.register(
-            "FileWrite",
-            Some(message),
-            ActionKind::WriteFile {
-                contents: content.as_bytes().to_vec(),
-                executable,
-            },
-            Vec::new(),
-            vec![output],
-        );
+        // An `Args` is written as a parameter file, a line to an argument.
+        let (kind, inputs) = match super::args_object::args_value(content) {
+            Some(built) => {
+                let state = built.state.lock().unwrap();
+                let format = state
+                    .format
+                    .unwrap_or(fjfj_graph::command_line::ParamFormat::Shell);
+                let (words, waiting) = state.words();
+                let words = match (format, state.flag_lines()) {
+                    (fjfj_graph::command_line::ParamFormat::FlagPerLine, Some(lines)) => lines,
+                    _ => words,
+                };
+                if waiting.is_empty() {
+                    let contents =
+                        fjfj_graph::command_line::param_file_contents(&words, format).into_bytes();
+                    (
+                        ActionKind::WriteFile {
+                            contents,
+                            executable,
+                        },
+                        Vec::new(),
+                    )
+                } else {
+                    // What waits for a tree reads it.
+                    let kind = ActionKind::ParamFile {
+                        items: words,
+                        lazy: waiting,
+                        format,
+                    };
+                    (kind, state.trees())
+                }
+            }
+            None => {
+                let content = content
+                    .unpack_str()
+                    .ok_or_else(|| wrong_type("write", "content", content, "string or Args"))?;
+                let contents = content.as_bytes().to_vec();
+                (
+                    ActionKind::WriteFile {
+                        contents,
+                        executable,
+                    },
+                    Vec::new(),
+                )
+            }
+        };
+        s.register(&mnemonic, Some(message), kind, inputs, vec![output]);
         Ok(NoneType)
     }
 
