@@ -28,6 +28,19 @@ use_repo(rust, "rust_toolchains")
 
 register_toolchains("@rust_toolchains//:all")
 
+# buildfiji-rq41: the C++ toolchain on macOS. rules_cc's generated
+# local_config_cc is picked first (it is registered by the module nearer the
+# root of the graph) and does not know the SDK root, so clang's dependency
+# file naming SDKSettings.json fails Bazel's absolute-path inclusion check.
+# apple_support's toolchain is the one Bazel's macOS support is built on; its
+# constraints select it on macOS only, so it is inert elsewhere.
+bazel_dep(name = "apple_support", version = "1.24.2")
+
+apple_cc = use_extension("@apple_support//crosstool:setup.bzl", "apple_cc_configure_extension")
+use_repo(apple_cc, "local_config_apple_cc_toolchains")
+
+register_toolchains("@local_config_apple_cc_toolchains//:all")
+
 # buildfiji-4b0.3: interim, non-hermetic — finds the PATH-installed `lean`
 # binary so lean_test can depend on it as a normal label (see
 # bazel/lean/repo.bzl). buildfiji-4b0.1 replaces this with a real pinned,

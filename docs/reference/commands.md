@@ -53,9 +53,17 @@ network. macOS sandboxing (`darwin-sandbox`) is not implemented
 - The exec configuration keeps `--//pkg:flag=value` settings, as Bazel's does
   (unless `--incompatible_exclude_starlark_flags_from_exec_config`), which is
   how `--@rules_rust//rust/settings:extra_exec_rustc_flag` reaches tools.
-- Real Bazel 9.2.0 cannot yet build this repository's C dependencies on macOS
-  27 (`absolute path inclusion ... SDKSettings.json`); fjfj has no such check.
-  Tracked in `buildfiji-rq41`.
+- `MODULE.bazel` registers apple_support's C++ toolchain ahead of rules_cc's
+  generated one. rules_cc's does not list the SDK root as built-in, so with
+  Xcode 27 clang's dependency file names `SDKSettings.json` and real Bazel
+  stops with `absolute path inclusion ... SDKSettings.json`. apple_support's
+  constraints select it on macOS only.
+- An action that names an Xcode and SDK (`XCODE_VERSION_OVERRIDE`,
+  `APPLE_SDK_VERSION_OVERRIDE`, `APPLE_SDK_PLATFORM`, set by
+  `apple_common.apple_host_system_env` and `target_apple_env`) runs with
+  `DEVELOPER_DIR` and `SDKROOT` added, as Bazel does. fjfj finds the Xcode with
+  `xcode-locator`, which it builds from `@bazel_tools`' source into
+  `<output_base>/bin` the first time, and the SDK with `xcrun`.
 
 ## Startup options
 
