@@ -422,7 +422,10 @@ mod tests {
     /// `//:flag`, `//:flag2` and `--copt`.
     #[test]
     fn a_transition_names_the_output_directory_as_bazel_does() {
-        let mut config = Configuration::default();
+        let mut config = Configuration {
+            cpu: "k8".into(),
+            ..Configuration::default()
+        };
         config
             .settings
             .insert("//:flag".into(), SettingValue::Str("on".into()));
@@ -437,7 +440,10 @@ mod tests {
             .affected
             .insert("//:flag2".into(), SettingValue::Str("".into()));
         assert_eq!(config.mnemonic(), "k8-fastbuild-ST-92296e9f19db");
-        let mut copt = Configuration::default();
+        let mut copt = Configuration {
+            cpu: "k8".into(),
+            ..Configuration::default()
+        };
         copt.settings.insert(
             format!("{COMMAND_LINE_OPTION}copt"),
             SettingValue::List(vec!["-O2".into()]),
