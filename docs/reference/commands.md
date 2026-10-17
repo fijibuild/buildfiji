@@ -1,51 +1,145 @@
 # Commands
 
 ```
-fjfj [--output-base <DIR>] [--bazelrc <FILE>]... <COMMAND> [ARGS]...
+fjfj [--output_base=DIR] [--output_user_root=DIR] [--bazelrc=FILE]... <COMMAND> [ARGS]...
 ```
 
-The command names and order match `bazel help`. Status is as of the
-current `main`; `bd ready` lists the work that changes it.
+Command names and order match `bazel help`. Run fjfj from anywhere inside a
+workspace; it finds the root by searching upward for `MODULE.bazel`,
+`REPO.bazel`, `WORKSPACE` or `WORKSPACE.bazel`. Outside a workspace, commands
+that need one exit `2` with Bazel's message.
 
 | Command | Status |
 |---|---|
-| [`version`](#version) | Works |
-| [`license`](#license) | Works |
-| [`canonicalize-flags`](#canonicalize-flags) | Works |
+| [`build`](#build) | Works |
+| [`test`](#test) | Works |
+| [`run`](#run) | Works |
+| [`query`](#query-cquery-aquery) | Works |
+| [`cquery`](#query-cquery-aquery) | Works |
+| [`aquery`](#query-cquery-aquery) | Works |
+| [`fetch`](#fetch) | Works |
 | [`mod`](#mod) | Works: `graph`, `deps`, `show_repo`, `explain` |
-| [`build`](#build) | Partial: validates, then stops (see below) |
-| `test`, `run`, `query`, `cquery`, `aquery`, `fetch`, `clean`, `info`, `shutdown`, `print_action`, `dump` | Parsed only. Exit `1` with `ERROR: command not implemented yet: ...` |
+| [`clean`](#clean) | Works |
+| [`info`](#info) | Works, without Bazel's server keys |
+| [`version`](#version), [`license`](#license), [`canonicalize-flags`](#canonicalize-flags) | Work |
+| [`analyze-profile`](#analyze-profile) | Works (fjfj only) |
+| `shutdown`, `print_action`, `dump` | Parsed only. Exit `1` with `ERROR: command not implemented yet: ...` |
+
+fjfj has no server process yet, so there is nothing for `shutdown` to stop and
+every invocation starts cold. The daemon is tracked under the incremental
+engine epic (`bd show buildfiji-23d`).
+
+## Platform support
+
+Development and CI have been on **Linux**. The default execution strategy is
+`linux-sandbox`, which uses user, mount, pid and ipc namespaces; where the host
+does not allow namespaces it falls back to `processwrapper-sandbox`. macOS
+sandboxing (`darwin-sandbox`) is not implemented, and at the time of writing
+`fjfj-sandbox` does not compile on macOS (see `bd list --status=open` for the
+bug and `buildfiji-fyz.4` for the sandbox).
 
 ## Startup options
 
-| Option | Status |
+| Option | Effect |
 |---|---|
-| `--output-base <DIR>` | Parsed; not used yet |
-| `--bazelrc <FILE>` | Parsed, repeatable; not used yet. `.bazelrc` files are not applied to any command |
+| `--output_base=DIR` | Root of the output tree for this workspace. |
+| `--output_user_root=DIR` | Directory that holds output bases and the repository cache. Default: `$XDG_CACHE_HOME` or `~/.cache`, then `fjfj/_fjfj_<user>`. |
+| `--bazelrc=FILE` | Parsed, repeatable. Startup options use Bazel's underscore spelling; `--output-base` is rejected. |
 
-fjfj reads `MODULE.bazel` from the current directory. It does not search
-parent directories for a workspace root.
+## Reading `.bazelrc`
 
-## `version`
+`build`, `test`, `run`, `query`, `cquery`, `aquery`, `info` and `clean` apply
+the flags that the system, workspace and home `.bazelrc` files give them:
+`import`s and `--config`s expanded, and the lines of every command they
+inherit from included. Flags from rc files come first, so the command line
+overrides them. They are checked the same way as flags typed on the command
+line, so a shared `.bazelrc` that uses a flag fjfj has not implemented stops
+the command (see [Flags](flags.md)).
 
-Prints `fjfj <version>`.
-
-## `license`
-
-Prints a short Apache-2.0 notice. The full text is `LICENSE` in the
-repository root.
-
-## `canonicalize-flags`
+## `build`
 
 ```
-fjfj canonicalize-flags [--for-command <COMMAND>] [--] [FLAG]...
+fjfj build [FLAGS] [--] <TARGET>...
 ```
 
-Prints the flags in canonical form on one line: abbreviations expanded to
-long names, order preserved. `--for-command` defaults to `build`. A flag
-that is not a Bazel flag prints `ERROR: unrecognized option '<flag>'` and
-exits `2`. It checks that a flag exists in Bazel; it does not check that
-fjfj implements it.
+Loads packages, resolves `MODULE.bazel` and makes the repositories the
+patterns need, analyses the targets, runs their actions and reports, in
+Bazel's words. Progress and the summary go to stderr, for example
+`INFO: Analyzed target //:g (1 packages loaded, 1 target configured).`,
+`Target //:g up-to-date:` with the files, `INFO: Elapsed time: ...`, and
+`INFO: Build completed successfully, N total actions`. A failed build ends
+`ERROR: Build did NOT complete successfully`.
+
+Outputs appear under the `bazel-bin`, `bazel-out` and `bazel-testlogs`
+convenience links, whose prefix `--symlink_prefix` sets. The resolved module
+graph is recorded in `MODULE.bazel.lock` according to `--lockfile_mode`.
+
+A negative pattern (`-//pkg:skip`) is accepted only after `--`, as in Bazel.
+Patterns: `//pkg:target`, `//pkg:all`, `//pkg/...`, `//...`, `@repo//pkg:target`,
+and relative patterns from a subdirectory. Package names are ASCII only;
+target names may contain any non-ASCII character.
+
+Actions run with `--spawn_strategy`; see [Platform support](#platform-support).
+There is no remote execution or remote cache yet; `--remote_cache`,
+`--remote_executor` and `--disk_cache` are recognized but not implemented.
+
+## `test`
+
+```
+fjfj test [FLAGS] <TARGET>...
+```
+
+Builds the targets and runs the tests among them, then prints Bazel's summary
+(`PASSED`, `FAILED`, `NO STATUS`, and `Executed N out of M tests: ...`).
+`--test_output`, `--test_env`, `--test_arg` and `--cache_test_results` are read.
+Exit `3` if a test failed, `4` if no target was a test.
+
+## `run`
+
+```
+fjfj run [FLAGS] <TARGET> [-- PROGRAM_ARGS...]
+```
+
+Builds one target and runs it as `bazel run` does on Linux: with the real path
+in `argv[0]`, in the `_main` directory of its runfiles tree, with fjfj's
+environment plus `BUILD_WORKSPACE_DIRECTORY`, `BUILD_WORKING_DIRECTORY`,
+`BUILD_EXECROOT` and `BUILD_ID`. The program's exit code is `run`'s.
+`--run_under` and `--script_path` are read.
+
+## `query`, `cquery`, `aquery`
+
+```
+fjfj query  [FLAGS] <EXPRESSION>
+fjfj cquery [FLAGS] <EXPRESSION>
+fjfj aquery [FLAGS] <EXPRESSION>
+```
+
+`query` evaluates over the loaded packages. `cquery` and `aquery` analyse the
+targets the expression names without building them, then evaluate over the
+configured targets or the actions they registered. Output formats, per command:
+
+| Command | `--output` |
+|---|---|
+| `query` | `label`, `label_kind`, `location`, `minrank`, `maxrank`, `graph`, `xml`, `build`, `package`, `proto`, `streamed_proto`, `streamed_jsonproto` |
+| `cquery` | `label`, `label_kind`, `graph`, `build`, `files`, `starlark`, `proto`, `streamed_proto`, `textproto`, `jsonproto` |
+| `aquery` | `text`, `commands`, `summary`, `proto`, `streamed_proto`, `textproto`, `jsonproto` |
+
+Where fjfj's output differs from Bazel 9.2.0 (ordering within hash-ordered
+sets, configuration checksum digits, and a few others), the differences are
+listed with their beads in
+[`design/query-family.md`](../design/query-family.md).
+
+## `fetch`
+
+```
+fjfj fetch [--repo=@name]... [--all] [FLAGS]
+```
+
+Makes external repositories. `--repo` makes one repository and what it needs;
+`--all` makes every repository in the module graph. A repository that cannot be
+made exits `8`, as in Bazel. Reads `--repository_cache`, `--distdir`,
+`--override_repository`, `--credential_helper` and
+`--credential_helper_timeout`.
 
 ## `mod`
 
@@ -56,51 +150,63 @@ fjfj mod show_repo <repo>... [FLAGS]
 fjfj mod explain <module>... [FLAGS]
 ```
 
-Resolves the current directory's `MODULE.bazel` and reports on the result.
-`FLAGS` are the [bzlmod flags](flags.md#bzlmod). Output goes to stdout.
+Resolves the workspace's `MODULE.bazel` and reports on the result. `FLAGS` are
+the [bzlmod flags](flags.md#bzlmod). Output goes to stdout. Resolution writes
+`MODULE.bazel.lock` unless `--lockfile_mode=off`.
 
 | Subcommand | Output |
 |---|---|
-| `graph` | The dependency tree, rooted at `<root>`. Text by default. `--output=json` uses Bazel's `bazel mod graph --output=json` shape. `bazel_tools` is hidden, as in Bazel. |
-| `deps` | For each module: its own `bazel_dep` edges and what each resolved to, including the originally requested version. |
-| `show_repo` | For each repo: `key`, `name`, `version`, `repo_name`, `canonical_repo_name`, `registry`. Repository rule attributes are not shown. |
-| `explain` | For each module: the selected version, then every requester in the unpruned graph and the version it asked for. |
+| `graph` | The dependency tree, rooted at `<root>`. `--output=json` uses the shape of `bazel mod graph --output=json`. `bazel_tools` is hidden, as in Bazel. |
+| `deps` | Each module's own `bazel_dep` edges and what each resolved to, with the originally requested version. |
+| `show_repo` | Each repo's `key`, `name`, `version`, `repo_name`, `canonical_repo_name` and `registry`. Repository rule attributes are not shown. |
+| `explain` | Each module's selected version, then every requester in the unpruned graph and the version it asked for. |
 
-`--output` is read by `graph` only. Only the JSON shape of `graph` is
-checked for conformance against Bazel; the other output is fjfj's own
-format and may change.
+Only the JSON form of `graph` is checked against Bazel; the other output is
+fjfj's own format. A missing subcommand, an unknown one, a module not in the
+graph, or no workspace exits `2`; a resolution failure exits `1`.
 
-Errors: no subcommand, or an unknown one, exits `2` with a usage message. A
-module not in the graph exits `2` (`module '<name>' is not in the resolved
-graph`). A missing `MODULE.bazel` exits `2`. A resolution failure (for
-example a version that cannot be found) exits `1`.
+## `clean`
 
-## `build`
+Removes the output tree as Bazel's `clean` does: the execroot, the action cache
+and the convenience links. `--expunge` removes the whole output base; `--async`
+(or `--expunge_async`) renames the tree and deletes it in a separate process,
+saying where it went.
+
+## `info`
+
+With no keys, prints every key as `key: value`, in byte order. One key prints
+its value alone; several print `key: value` in the order asked. An unknown key is
+reported after the rest and exits `2`. `--show_make_env` adds the configuration's
+make variables. Bazel's server keys (`server_pid`, the JVM's) are not present,
+because there is no server.
+
+## `version`
+
+Prints `fjfj <version>`.
+
+## `license`
+
+Prints a short Apache-2.0 notice. The full text is `LICENSE` in the repository
+root.
+
+## `canonicalize-flags`
 
 ```
-fjfj build [FLAGS] <TARGET>...
+fjfj canonicalize-flags [--for-command <COMMAND>] [--] [FLAG]...
 ```
 
-Today `build` runs the setup half of a build and stops before doing any
-work:
+Prints the flags in canonical form on one line: abbreviations expanded to long
+names, order preserved. `--for-command` defaults to `build`. A flag that is not a
+Bazel flag prints `ERROR: unrecognized option '<flag>'` and exits `2`. It
+checks that a flag exists in Bazel, not that fjfj implements it.
 
-1. Rewrites `--flag_alias` aliases.
-2. Rejects any flag that is not a real Bazel flag for `build`, or is one
-   fjfj does not implement (exit `2`; see [Flags](flags.md)).
-3. Parses target patterns (exit `2` on a malformed one).
-4. Opens `--execution_log_compact_file` and writes its header, and creates
-   `--remote_grpc_log`, so an unwritable path fails immediately.
-5. Computes workspace status (`[1] Computing workspace status`).
-6. Resolves `MODULE.bazel` (`[2] Resolving MODULE.bazel`) and prints
-   `Resolved <n> bzlmod module(s)`.
-7. Exits `1` with `ERROR: fjfj build is not implemented yet; see `bd ready``.
+## `analyze-profile`
 
-Progress lines and the final count go to stdout; logs go to stderr.
+```
+fjfj analyze-profile <TRACE> [--top N]   # N defaults to 15
+```
 
-### Target patterns
-
-Accepted syntax: `//pkg:target`, `//pkg:all`, `//pkg/...`, `//...`,
-`@repo//pkg:target`, and a leading `-` for an exclusion (`-//pkg:skip`).
-Patterns must start with `//` or `@`. Package names are ASCII only; target
-names may contain any non-ASCII character. Patterns are validated, not yet
-expanded.
+Summarises a trace file written with `FJFJ_TRACE_FILE`: time in each step,
+how many commands ran at once, time by mnemonic, the critical path and the
+slowest actions. Not a Bazel command. See
+[Profile a build](../how-to/profile-a-build.md).

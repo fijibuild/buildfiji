@@ -1,7 +1,7 @@
 # Resolve modules against a local registry or override
 
 Two flags change where fjfj finds modules without editing `MODULE.bazel`.
-Both work on `fjfj build` and `fjfj mod`.
+Both work on `fjfj build`, `test`, `run`, `fetch` and `mod`.
 
 ## Use a registry other than the Bazel Central Registry
 
@@ -51,16 +51,27 @@ fjfj mod graph --allow_yanked_versions=foo@1.2.3,bar@2.0
 `all` allows every yanked version; otherwise give a comma-separated list of
 `name@version`.
 
+## Control the lockfile
+
+Resolution reads and writes `MODULE.bazel.lock` in the workspace root:
+
+```sh
+fjfj mod graph --lockfile_mode=off      # neither read nor write it
+fjfj build --lockfile_mode=error //...  # fail if it would change
+```
+
+The modes are `off`, `update` (the default), `refresh` and `error`.
+
 ## Make it permanent
 
-These are ordinary Bazel flags, so the same lines work in a `.bazelrc`
-shared with Bazel:
+These are ordinary Bazel flags, so the same lines work in the workspace
+`.bazelrc` shared with Bazel:
 
 ```
 common --registry=https://bcr.bazel.build
 common --registry=file:///path/to/registry
 ```
 
-Note that fjfj's `--bazelrc` startup option and `.bazelrc` discovery are
-parsed by `fjfj-bazel-compat`, but are not yet applied to commands. Until
-they are, pass flags on the command line.
+fjfj applies `.bazelrc` lines to `build`, `test`, `run`, `query`, `cquery`,
+`aquery`, `info` and `clean`. `mod` and `fetch` read their flags from the
+command line.

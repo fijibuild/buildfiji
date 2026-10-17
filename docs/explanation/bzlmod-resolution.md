@@ -36,7 +36,9 @@ version is a function of the whole graph, and the question "why is this
    from resolution and does no I/O of its own.
 
 `mod explain` is the one command that needs step 1's unpruned graph
-instead of step 2's pruned one.
+instead of step 2's pruned one. After selection, `build`, `test`, `run` and
+`fetch` go on to make the repositories the build needs; see
+[How a build runs](how-a-build-runs.md).
 
 ## Why it is a port, not a reimplementation
 
@@ -65,12 +67,16 @@ depends on other modules, and those requests raise versions elsewhere. A
 graph that includes them can therefore differ from Bazel's until the real
 file is available. The design doc tracks this.
 
-## What is not done
+## What happens after selection
 
-Running module extensions and repository rules, writing
-`MODULE.bazel.lock`, and the apparent-name half of repository mapping are
-separate pieces of work. Until they exist, fjfj can tell you *which*
-modules a project uses but cannot yet fetch their contents.
+Resolution answers *which* modules. Making their contents is a separate stage
+in `fjfj-repo`: a module's repository is made by running the rule its
+`source.json` (or a non-registry override) names, and extensions generate
+further repositories on demand. The outcome of resolution and of extension
+runs is recorded in `MODULE.bazel.lock`, which the resolving commands read and
+write according to `--lockfile_mode` (`off`, `update`, `refresh`, `error`).
+The design record has the details:
+[`design/starlark-and-loading.md`](../design/starlark-and-loading.md).
 
 ## Related
 

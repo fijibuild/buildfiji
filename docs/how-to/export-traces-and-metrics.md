@@ -27,9 +27,9 @@ export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
 bazel run //:fjfj -- build //...
 ```
 
-Any fjfj command works. Today `build` is the most useful one: it gets as
-far as resolving `MODULE.bazel` and then reports it is not implemented, but
-the span for that run is still exported on exit.
+Any fjfj command works. Each command runs inside a `run` span, and each
+action a build runs is an `action` span with `step` spans beneath it.
+Spans are exported when the process exits.
 
 fjfj speaks OTLP over gRPC only, which is why the collector sits in front of
 the backends: VictoriaMetrics accepts OTLP over HTTP only.
@@ -43,20 +43,24 @@ the backends: VictoriaMetrics accepts OTLP over HTTP only.
 The exporter turns dots into underscores, so `fjfj.action.count` is
 `fjfj_action_count_total` and `fjfj.build.critical_path` is
 `fjfj_build_critical_path_bucket`/`_sum`/`_count`. The full list is in
-`crates/fjfj-telemetry/src/metrics.rs`. Nothing records those metrics yet;
-they will appear as the execution engine is built.
+`crates/fjfj-telemetry/src/metrics.rs`. The build does not record to them yet,
+so expect an empty metrics view; traces are the useful signal today.
 
 ## Control local log output
 
-Independently of export, fjfj writes logs to **stderr**. Control them with
-the standard `RUST_LOG` filter:
+Independently of export, fjfj writes its own logs to **stderr**. Control them
+with the standard `RUST_LOG` filter:
 
 ```sh
-RUST_LOG=warn fjfj build //...      # quiet
-RUST_LOG=fjfj_bzlmod=debug fjfj mod graph
+RUST_LOG=fjfj_exec=debug fjfj build //...
+RUST_LOG=info fjfj mod graph
 ```
 
-With no `RUST_LOG`, the level is `info`.
+With no `RUST_LOG`, the level is `warn`. Bazel-style `INFO:` build output is
+separate and is not affected.
+
+To look at one run's spans without a collector, see
+[Profile a build](profile-a-build.md).
 
 ## Stop the stack
 

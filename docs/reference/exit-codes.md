@@ -10,12 +10,13 @@ scripts check `$?` and grep for `ERROR:`. The numbering is Bazel's, from
 | Code | Name | Meaning | Produced today |
 |---|---|---|---|
 | 0 | Success | Command completed. | Yes |
-| 1 | Build failed | The command ran but did not succeed. Also used for commands that are not implemented yet. | Yes |
+| 1 | Build failed | The command ran but did not succeed. Also the exit code of `run` when the program it ran exited non-zero. Also used for commands that are not implemented yet. | Yes |
 | 2 | Command line problem | Bad or unknown flag, unparseable target pattern, bad flag value, missing `MODULE.bazel`. | Yes |
-| 3 | Tests failed | Build succeeded, some tests failed or timed out. | No |
-| 4 | No tests found | `test` found no tests. | No |
-| 7 | Partial analysis failure | `query` succeeded only partially. | No |
-| 8 | Interrupted | Orderly shutdown after Ctrl-C. | No |
+| 3 | Tests failed | Build succeeded, some tests failed or timed out. Also a `--keep_going` query that skipped some patterns, as in Bazel. | Yes |
+| 4 | No tests found | `test` found no tests. | Yes |
+| 6 | Run failure | `run` could not write its `--script_path` script or start the program. | Yes |
+| 7 | Query failure | A query could not be evaluated. | Yes |
+| 8 | Interrupted / fetch failure | Orderly shutdown after Ctrl-C (not produced yet), and Bazel's code for a repository that `fetch` could not make (produced). | `fetch` only |
 | 9 | Lock held, no block | Server lock held with `--noblock_for_lock`. | No |
 | 32 | External environmental issue | An external service is unavailable. | No |
 | 33 | Out of memory | fjfj ran out of memory. | No |
@@ -34,12 +35,13 @@ fjfj starts its runtime.
 | `ERROR: ` | A failure the user can act on. Written to stderr. |
 | `FATAL: ` | An internal error (exit `37`). Written to stderr. |
 
-Free-form progress text (`[1] Computing workspace status`) is not part of
-the stable surface; do not parse it.
+Bazel's `INFO:` lines, Elapsed time and summary text follow Bazel's wording but
+are not a stable interface; scripts should rely on the exit code and the
+`ERROR:`/`FATAL:` prefixes.
 
 ## Streams
 
 | Stream | Content |
 |---|---|
-| stdout | Command output (`version`, `mod`, ...), progress lines, `Resolved n bzlmod module(s)`. |
-| stderr | `ERROR:` and `FATAL:` lines, and `tracing` logs (see [Environment variables](environment.md)). |
+| stdout | Command output (`version`, `mod`, `query`, ...) and, with `--curses`, progress lines. |
+| stderr | `ERROR:` and `FATAL:` lines, a build's `INFO:` lines, target and test summaries, and `tracing` logs (see [Environment variables](environment.md)). |

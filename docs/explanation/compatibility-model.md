@@ -38,9 +38,9 @@ The second question is where the design is opinionated.
 
 ## Refusing is better than ignoring
 
-Consider a CI job that runs `bazel build --jobs=4 //...`. The easy way for
-fjfj to be "compatible" is to accept `--jobs=4`, print a warning, and carry
-on. fjfj used to work that way and stopped.
+Consider a CI job that runs `bazel build --remote_executor=grpc://host:8980
+//...`. The easy way for fjfj to be "compatible" is to accept the flag, print
+a warning, and build locally. fjfj used to work that way and stopped.
 
 A warning scrolls past. The build then proceeds looking as though it
 honoured the flag, and it did not. That is a worse failure than an error:
@@ -73,24 +73,30 @@ up](../how-to/wire-up-a-bazel-flag.md) touches both places.
 ## Exit codes and prefixes are part of the contract
 
 Scripts test `$?` and grep stderr for `ERROR:`. fjfj therefore uses Bazel's
-numbering (`1` build failed, `2` command-line problem, `37` internal error,
-and so on) instead of a convention of its own, and maps every failure to a
-code at one choke point. See [Exit codes](../reference/exit-codes.md).
+numbering (`1` build failed, `2` command-line problem, `3` tests failed,
+`37` internal error, and so on) instead of a convention of its own, and maps
+every failure to a code at one choke point. See
+[Exit codes](../reference/exit-codes.md).
 
-Internally, failures are one of three kinds: a command-line problem, a
-build failure, or an internal error. The third prints `FATAL:` rather than
+Internally, each failure is a variant of one error type that knows its exit
+code: a command-line problem, a build failure, a failed test run, a query or
+fetch failure, and so on. An internal error prints `FATAL:` rather than
 `ERROR:` because it means a bug in fjfj, not something the user's input can
 fix.
 
 ## What compatibility does not promise
 
-- **Not every command yet.** The command names are all accepted so the
-  surface matches `bazel help`, but most are not implemented.
-  [Commands](../reference/commands.md) is the current truth.
-- **Not byte-identical human output.** Only the parts scripts depend on are
-  held to Bazel's output. `fjfj mod graph --output=json` matches Bazel's
-  shape, checked against the conformance fixtures; the text renderings do
-  not match Bazel's box-drawing tree.
+- **Not every command or flag.** The command names are all accepted so the
+  surface matches `bazel help`, but `shutdown`, `print_action` and `dump` are
+  stubs, and remote caching and execution, build event output and `--profile`
+  are among the flags that are refused. [Commands](../reference/commands.md)
+  and [Flags](../reference/flags.md) are the current truth.
+- **Not byte-identical everywhere.** The build and test summaries, query and
+  aquery formats and error texts are compared with Bazel 9.2.0 and follow its
+  wording. The known differences (hash-ordered sets, configuration checksum
+  digits, and a few others) are listed with their beads in
+  [`design/query-family.md`](../design/query-family.md). `mod`'s text output
+  is fjfj's own; only `mod graph --output=json` is matched.
 - **Not a fallback to Bazel.** An idea recorded in the design is a mode in
   which unsupported commands shell out to a real Bazel. It is not built, and
   fjfj today fails instead.

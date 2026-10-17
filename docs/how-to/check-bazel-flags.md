@@ -28,10 +28,10 @@ A flag that is not a Bazel flag at all is reported with Bazel's own
 find out whether fjfj *implements* them, run the command:
 
 ```sh
-fjfj build --jobs=4 //...
+fjfj build --remote_executor=grpc://localhost:8980 //...
 ```
 
-- `ERROR: flag '--jobs' is recognized by Bazel for 'build' but not
+- `ERROR: flag '--remote_executor' is recognized by Bazel for 'build' but not
   implemented by fjfj yet` (exit `2`): Bazel accepts it, fjfj does not do
   anything with it yet, so fjfj refuses to run. Check
   [Flags](../reference/flags.md) for what is implemented, and `bd search`
@@ -39,8 +39,10 @@ fjfj build --jobs=4 //...
 - A clap error such as `unexpected argument '--nosuchflag' found` (exit
   `2`): not a Bazel flag for this command. Likely a typo, or a flag that
   belongs to a different command.
-- No flag error: every flag was accepted. The command may still stop later;
-  see [Commands](../reference/commands.md).
+- No flag error: every flag was accepted.
 
-To test a whole `.bazelrc`, copy its `build`/`common` lines onto one command
-line. fjfj does not apply `.bazelrc` files to commands yet.
+To test a whole `.bazelrc`, run the command in the workspace: fjfj applies the
+system, workspace and home rc files (with `import`s and `--config`s expanded)
+to `build`, `test`, `run`, `query`, `cquery`, `aquery`, `info` and `clean`, and
+checks those flags the same way. The error names the flag, not the rc line it
+came from, so `grep` the rc files for it.

@@ -26,9 +26,14 @@ The reason is consistency. If three outputs each had their own bookkeeping,
 they would eventually disagree about what happened. If they are all views of
 one trace, they cannot.
 
-This is a design direction, not a description of today. At present fjfj
-emits a `run` span per command and writes the execution-log header; the BEP
-and profile exporters do not exist yet.
+This is partly a design direction. Today fjfj emits a `run` span per command
+and, for builds, an `action` span per action with `step` spans beneath it
+(waiting for dependencies, waiting for a job slot, hashing, preparing the
+sandbox, spawning, the command itself, collecting outputs). The spans can be
+exported over OTLP or written to a Chrome trace file with `FJFJ_TRACE_FILE`
+and summarised with `fjfj analyze-profile`. The compact execution log is
+written. The Build Event Protocol and `--profile` exporters do not exist yet,
+and their flags are refused.
 
 ## Metrics are recorded as metrics
 
@@ -44,9 +49,9 @@ Worker utilisation is recorded as a fraction between 0 and 1 because that is
 what a dashboard wants, and computing it once is better than every consumer
 doing it differently.
 
-The instruments exist and are tested against a real OpenTelemetry pipeline,
-but nothing records to them yet: there is no execution engine producing
-actions to count.
+The instruments are tested against a real OpenTelemetry pipeline, but nothing
+in the build calls them yet, so the metrics backend stays empty. The action
+spans are what carry timing today.
 
 ## Why a collector sits in front of the backends
 
@@ -60,7 +65,9 @@ right places. fjfj stays configured by one variable.
 ## Console output is separate
 
 The terminal UI (`--color`, `--curses`, `--show_progress`,
-`--ui_event_filters`) is not derived from traces. It is a deliberately small
+`--ui_event_filters`) and Bazel's `INFO:` build summary are not derived from
+traces; fjfj's own `tracing` logs default to `warn` so they do not mix with
+them. It is a deliberately small
 rendering layer: a pure half that turns settings and progress updates into
 text, and an I/O half that owns the stream. Keeping the pure half free of
 terminals and clocks makes it testable byte for byte, which matters because

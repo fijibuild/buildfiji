@@ -11,11 +11,18 @@ kind of question, so pick the section by what you are trying to do.
 
 ## Where fjfj is today
 
-fjfj is early. Today it can parse Bazel's command line, resolve a bzlmod
-module graph, and report on that graph. It cannot build anything yet:
-`fjfj build //...` validates its flags and resolves `MODULE.bazel`, then exits
-with `fjfj build is not implemented yet`. [Commands](reference/commands.md)
-lists exactly what works. Planned work is tracked with `bd ready`.
+fjfj builds. `build`, `test`, `run`, `query`, `cquery`, `aquery`, `fetch`, `mod`,
+`clean` and `info` work against Bazel 9.2.0's behaviour, on Linux. What is still
+missing is substantial: no server process (every invocation starts cold),
+no remote cache or execution, no macOS sandbox, no build event or `--profile`
+output, and `shutdown`, `print_action` and `dump` are stubs. Any Bazel flag
+fjfj has not implemented is refused rather than ignored.
+[Commands](reference/commands.md) and [Flags](reference/flags.md) list exactly
+what works. Planned work is tracked with `bd ready`.
+
+These pages were written against the source and tests of `main`; the
+tutorial's output has not been re-run on a Linux build of every revision, so
+treat the shape of the sample output, not the exact numbers, as the contract.
 
 ## Tutorials
 
@@ -26,6 +33,7 @@ lists exactly what works. Planned work is tracked with `bd ready`.
 
 - [Inspect a module graph](how-to/inspect-a-module-graph.md)
 - [Resolve modules against a local registry or override](how-to/use-a-local-registry-or-override.md)
+- [Profile a build](how-to/profile-a-build.md)
 - [Export traces and metrics to a local stack](how-to/export-traces-and-metrics.md)
 - [Check how fjfj will read a set of Bazel flags](how-to/check-bazel-flags.md)
 - [Wire up a Bazel flag](how-to/wire-up-a-bazel-flag.md) (contributors)
@@ -40,6 +48,7 @@ lists exactly what works. Planned work is tracked with `bd ready`.
 ## Explanation
 
 - [The compatibility model](explanation/compatibility-model.md)
+- [How a build runs](explanation/how-a-build-runs.md)
 - [How bzlmod resolution fits in](explanation/bzlmod-resolution.md)
 - [Observability: traces first](explanation/observability.md)
 

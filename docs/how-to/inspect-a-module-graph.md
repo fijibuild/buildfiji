@@ -1,11 +1,10 @@
 # Inspect a module graph
 
-Use `fjfj mod` to see what your `MODULE.bazel` resolves to. Run it from the
-directory containing `MODULE.bazel`; fjfj does not search upward for a
-workspace root yet.
+Use `fjfj mod` to see what your `MODULE.bazel` resolves to. Run it anywhere
+inside the workspace; fjfj searches upward for the root.
 
-fjfj's logging goes to stderr and shares your terminal. Set `RUST_LOG=warn`
-to quiet it, or redirect stderr (`2>/dev/null`) when piping stdout.
+Resolution writes `MODULE.bazel.lock` in the workspace root when it changes,
+as `bazel mod` does. Pass `--lockfile_mode=off` to leave the lockfile alone.
 
 ## See the whole graph
 
@@ -27,7 +26,7 @@ Each node has `key`, `name`, `version`, `apparentName`, `dependencies`,
 For example, to list every selected module with its version:
 
 ```sh
-fjfj mod graph --output=json 2>/dev/null \
+fjfj mod graph --output=json \
   | jq -r '.. | objects | select(.key?) | "\(.name) \(.version)"' | sort -u
 ```
 

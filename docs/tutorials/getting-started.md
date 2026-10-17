@@ -1,171 +1,176 @@
 # Getting started
 
-In this tutorial you will build `fjfj`, run its first commands, and use it to
-explore the module graph of a small project. It takes about ten minutes and
-needs no network access.
+In this tutorial you will build `fjfj`, use it to build a target in a small
+workspace, ask it questions about that workspace, and see how it treats a flag
+it does not implement. It takes about fifteen minutes.
 
-fjfj cannot build targets yet, so this tutorial is about the parts that do
-work: the Bazel-compatible command line and bzlmod module resolution.
-
-You need a Rust toolchain (see `rust-toolchain.toml`) and a checkout of this
-repository.
+You need a Linux machine with a Rust toolchain (see `rust-toolchain.toml`) and
+Bazel, and a checkout of this repository. fjfj is developed on Linux; see
+[Platform support](../reference/commands.md#platform-support) before trying
+another OS.
 
 ## 1. Build fjfj
 
-From the repository root:
+From the repository root, use the project's own gate:
 
 ```sh
-cargo build -p fjfj
+bazel build //:fjfj
 ```
 
-Cargo is enough for a quick local check. The project's real gate uses Bazel
-(`bazel build //... && bazel test //...`), but you do not need it for this
-tutorial.
-
-Check that it runs:
+The binary is at `bazel-bin/fjfj`. Check it runs:
 
 ```sh
-./target/debug/fjfj version
+bazel-bin/fjfj version
 ```
 
-You should see `fjfj 0.0.1` (or the current version). For the rest of this
-tutorial, `fjfj` means `./target/debug/fjfj`; the commands below use an
-absolute path through a shell variable so they work from other directories:
+You should see `fjfj` followed by a version. For the rest of this tutorial,
+`fjfj` means that binary; set a variable so the commands work from any
+directory:
 
 ```sh
-export FJFJ="$PWD/target/debug/fjfj"
+export FJFJ="$PWD/bazel-bin/fjfj"
 ```
 
-## 2. See Bazel's command line at work
+(`cargo build -p fjfj` also produces `target/debug/fjfj` on Linux, but Bazel is
+the project's gate, and `cargo test` is not.)
 
-fjfj accepts the same commands and flags as Bazel. List them:
+## 2. Create a workspace
 
-```sh
-$FJFJ --help
-```
-
-The same command names as `bazel help` appear. Many are not implemented yet.
-Try one:
-
-```sh
-$FJFJ test //...
-echo "exit code: $?"
-```
-
-You will see `ERROR: command not implemented yet: ...` and an exit code of
-`1`. Notice the `ERROR:` prefix: scripts that grep Bazel's output for it keep
-working unchanged.
-
-## 3. Watch fjfj refuse a flag it cannot honour
-
-Now give `build` a flag that Bazel accepts but fjfj has not implemented:
-
-```sh
-$FJFJ build --jobs=4 //...
-echo "exit code: $?"
-```
-
-The result:
-
-```
-ERROR: flag '--jobs' is recognized by Bazel for 'build' but not implemented by fjfj yet; see `bd ready`
-```
-
-The exit code is `2` (a command-line problem). fjfj stops rather than
-building while quietly ignoring `--jobs`. This is a deliberate choice, and
-[the compatibility model](../explanation/compatibility-model.md) explains
-why.
-
-A misspelled flag fails the same way, with a different message:
-
-```sh
-$FJFJ build --nosuchflag //...
-```
-
-## 4. Create a small project
-
-fjfj reads `MODULE.bazel` from the current directory. Make a throwaway
-project:
+fjfj finds your workspace by looking for `MODULE.bazel`. Make one with a single
+target that copies a file:
 
 ```sh
 mkdir /tmp/fjfj-tutorial && cd /tmp/fjfj-tutorial
 cat > MODULE.bazel <<'EOF'
-module(name = "root", version = "0")
-bazel_dep(name = "a", version = "1.0")
+module(name = "tutorial", version = "0")
 EOF
+cat > BUILD.bazel <<'EOF'
+genrule(
+    name = "greeting",
+    srcs = ["in.txt"],
+    outs = ["out.txt"],
+    cmd = "cat $(SRCS) > $@",
+)
+EOF
+echo hello > in.txt
 ```
 
-The module depends on `a@1.0`. That module is not on the network registry, so
-point fjfj at the small registry fixture that ships with this repository.
-Substitute the path to your checkout:
+## 3. Build a target
 
 ```sh
-export REGISTRY="file://<path-to-your-checkout>/crates/fjfj-bzlmod/tests/fixtures/registry"
+$FJFJ build //:greeting
 ```
 
-## 5. Print the module graph
+fjfj loads the package, analyses the target, runs the genrule and reports in
+Bazel's words, on stderr. Expect lines of this shape:
+
+```
+INFO: Analyzed target //:greeting (1 packages loaded, 1 target configured).
+INFO: Found 1 target...
+Target //:greeting up-to-date:
+  bazel-bin/out.txt
+INFO: Elapsed time: ..., Critical Path: ...
+INFO: ... process...
+INFO: Build completed successfully, ... total action...
+```
+
+The result is where Bazel would put it:
 
 ```sh
-RUST_LOG=warn $FJFJ mod graph --registry=$REGISTRY
+cat bazel-bin/out.txt
 ```
 
-You should see:
+prints `hello`. The `bazel-bin`, `bazel-out` and `bazel-testlogs` links in your
+workspace are the same convenience links Bazel makes.
 
-```
-<root> (root)
-  a@1.0 (a)
-```
+Run the build again. Nothing changed, so the genrule's output is still valid
+and the summary should count it as an action cache hit instead of running it
+again.
 
-`RUST_LOG=warn` quiets fjfj's informational logging, which otherwise shares
-your terminal. The output on stdout is the graph itself; `a@1.0` is the
-module fjfj resolved your `bazel_dep` to, taken from the registry.
-
-## 6. Ask about one module
+Make it fail on purpose:
 
 ```sh
-RUST_LOG=warn $FJFJ mod deps a --registry=$REGISTRY
-RUST_LOG=warn $FJFJ mod show_repo a --registry=$REGISTRY
-```
-
-`deps` shows the module's own dependency edges and what they resolved to.
-`show_repo` shows what fjfj knows about the repository: its key, version,
-canonical name (`a+`) and the registry it came from.
-
-Ask about a module that is not in the graph:
-
-```sh
-RUST_LOG=warn $FJFJ mod explain b --registry=$REGISTRY
+cat >> BUILD.bazel <<'EOF'
+genrule(name = "broken", outs = ["broken.txt"], cmd = "exit 3")
+EOF
+$FJFJ build //:broken
 echo "exit code: $?"
 ```
 
-You get `ERROR: module 'b' is not in the resolved graph`.
+fjfj prints the failing command in Bazel's wording
+(`(Exit 3): bash failed: error executing Genrule command ...`), then
+`ERROR: Build did NOT complete successfully`, and exits `1`.
 
-## 7. See `build` get as far as it can
+## 4. Ask questions about the workspace
 
 ```sh
-$FJFJ build --registry=$REGISTRY //...
+$FJFJ query '//...'
+$FJFJ query --output=graph 'deps(//:greeting)'
+$FJFJ cquery '//:greeting'
+$FJFJ aquery '//:greeting'
 ```
 
-fjfj parses your target pattern, computes workspace status, resolves
-`MODULE.bazel`, prints `Resolved 3 bzlmod module(s)` and then stops. The
-count of three is your root module, `a@1.0`, and the `bazel_tools`
-placeholder every module implicitly depends on (`mod graph` hides that one,
-as Bazel does):
+`query` answers from the loaded packages. `cquery` and `aquery` analyse the
+target first (without building it) and show the configured target and the
+actions it registered, including the genrule's command line. Their output
+formats follow Bazel 9.2.0; see [Commands](../reference/commands.md#query-cquery-aquery).
+
+## 5. Watch fjfj refuse a flag it cannot honour
+
+fjfj accepts every flag Bazel does, but implements only some of them. Give
+`build` one it does not:
+
+```sh
+$FJFJ build --remote_executor=grpc://localhost:8980 //:greeting
+echo "exit code: $?"
+```
 
 ```
-ERROR: fjfj build is not implemented yet; see `bd ready`
+ERROR: flag '--remote_executor' is recognized by Bazel for 'build' but not implemented by fjfj yet; see `bd ready`
 ```
 
-That final line is expected. Everything before it ran for real.
+The exit code is `2`. fjfj stops rather than build locally while silently
+ignoring a flag that asked for remote execution. [The compatibility
+model](../explanation/compatibility-model.md) explains why. A misspelled flag
+fails too, with a different message:
+
+```sh
+$FJFJ build --nosuchflag //:greeting
+```
+
+The same check applies to flags that come from a `.bazelrc`: fjfj reads the
+workspace and home rc files for the command, so a shared `.bazelrc` that uses an
+unimplemented flag stops fjfj in the same way.
+
+## 6. Look at the module graph
+
+Add a dependency to `MODULE.bazel` and print the graph. This step needs network
+access to the Bazel Central Registry (or a registry of your own; see [Resolve
+modules against a local registry or
+override](../how-to/use-a-local-registry-or-override.md)):
+
+```sh
+cat >> MODULE.bazel <<'EOF'
+bazel_dep(name = "platforms", version = "1.0.0")
+EOF
+$FJFJ mod graph
+$FJFJ mod explain platforms
+```
+
+`graph` prints the resolved tree; `explain` shows which version was selected
+and who asked for it. Resolution also writes a `MODULE.bazel.lock` beside
+`MODULE.bazel`, as Bazel does.
 
 ## Where next
 
-- To explore a larger graph, see
+- To do more with the module graph, see
   [Inspect a module graph](../how-to/inspect-a-module-graph.md).
-- To learn what each command does today, see
+- To find out where a build spent its time, see
+  [Profile a build](../how-to/profile-a-build.md).
+- To see what each command supports today, see
   [Commands](../reference/commands.md).
-- To find out why fjfj is built this way, start with
-  [The compatibility model](../explanation/compatibility-model.md).
+- To understand the build pipeline you just used, see
+  [How a build runs](../explanation/how-a-build-runs.md).
 - To help build the missing parts, run `bd ready` and read
   [`CONTRIBUTING.md`](../../CONTRIBUTING.md).
 
