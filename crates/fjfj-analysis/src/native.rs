@@ -97,7 +97,20 @@ pub(crate) async fn analyze(
         "config_setting" => config_setting(ctx, key, attrs, target).await,
         "toolchain" => {
             let mappings = ctx.data::<Env>()?.rules.mappings();
-            toolchain_rule(key, attrs, &mappings, target)
+            let mut target = toolchain_rule(key, attrs, &mappings, target)?;
+            // `@platforms//os:macos` is an alias of `:osx`, which is the value
+            // a platform has.
+            if let Some(decl) = &mut target.toolchain_decl {
+                for list in [
+                    &mut decl.exec_compatible_with,
+                    &mut decl.target_compatible_with,
+                ] {
+                    for constraint in list.iter_mut() {
+                        *constraint = crate::toolchain::follow_aliases(ctx, constraint).await?;
+                    }
+                }
+            }
+            Ok(target)
         }
         "constraint_setting" => constraint_setting(key, target),
         "constraint_value" => constraint_value(ctx, key, attrs, target).await,

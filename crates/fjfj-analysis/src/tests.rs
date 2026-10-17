@@ -643,6 +643,52 @@ r(name = "t")
     assert!(error.contains("No matching toolchains found"), "{error}");
 }
 
+/// A toolchain's constraint may be an alias of the value a platform has
+/// (`@platforms//os:macos` is `:osx`).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_toolchain_constraint_may_be_an_alias_of_a_constraint_value() {
+    let (_dir, repos) = workspace(&[
+        ("MODULE.bazel", ""),
+        (
+            "defs.bzl",
+            r#"
+def _tc_impl(ctx):
+    return [platform_common.ToolchainInfo(name = ctx.attr.n)]
+my_toolchain = rule(implementation = _tc_impl, attrs = {"n": attr.string()})
+
+def _impl(ctx):
+    print("toolchain:", ctx.toolchains["//:tt"].name)
+    return []
+r = rule(implementation = _impl, toolchains = ["//:tt"])
+"#,
+        ),
+        (
+            "BUILD.bazel",
+            r#"
+load(":defs.bzl", "my_toolchain", "r")
+toolchain_type(name = "tt")
+constraint_setting(name = "os")
+constraint_value(name = "osx", constraint_setting = ":os")
+alias(name = "macos", actual = ":osx")
+my_toolchain(name = "impl", n = "mac")
+toolchain(name = "tc", toolchain_type = ":tt", toolchain = ":impl", exec_compatible_with = [":macos"], target_compatible_with = [":macos"])
+r(name = "t")
+"#,
+        ),
+    ]);
+    let mut on_mac = config();
+    on_mac.constraints.insert(Label {
+        repo: String::new(),
+        package: String::new(),
+        name: "osx".into(),
+    });
+    let registered = vec![(String::new(), "//:tc".to_owned())];
+    let t = analyse_registering(&repos, "//:t", on_mac, registered)
+        .await
+        .unwrap();
+    assert_eq!(t.printed.without_sites(), ["toolchain: mac"]);
+}
+
 /// Probed with `bazel build` of the same files: a group has toolchains of
 /// its own, `ctx.toolchains` stays the rule's, and an action may only name a
 /// group the rule declared.
