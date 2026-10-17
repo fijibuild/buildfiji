@@ -1,6 +1,7 @@
 # Shared with fjfj: fjfj reads the same rc files and accepts the same flags.
 common --enable_bzlmod
 build --incompatible_strict_action_env
+build --enable_platform_specific_config
 test --test_output=errors
 try-import %workspace%/user.bazelrc
 
@@ -9,3 +10,7 @@ build --aspects=@rules_rust//rust:defs.bzl%rust_clippy_aspect,@rules_rust//rust:
 build --output_groups=+clippy_checks,+rustfmt_checks
 build --@rules_rust//rust/settings:clippy_flags=-Dwarnings
 build --@rules_rust//rust/settings:error_format=human
+
+# macOS 27's strip corrupts the proc-macro dylibs rustc strips for opt-exec
+# (dlopen: mis-aligned LINKEDIT string pool, then E0463 can't find crate).
+build:macos --@rules_rust//rust/settings:extra_exec_rustc_flag=-Cstrip=none

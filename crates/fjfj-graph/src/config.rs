@@ -201,10 +201,29 @@ impl Default for Configuration {
 
 impl Configuration {
     /// The configuration a tool is built in (`cfg = "exec"`): optimised, on the
-    /// execution platform, with the target's flags dropped. Bazel names it
-    /// `k8-opt-exec`.
+    /// execution platform, with the target's flags dropped but for its Starlark
+    /// build settings (unless `--incompatible_exclude_starlark_flags_from_exec_config`).
+    /// Bazel names it `k8-opt-exec`.
     pub fn to_exec(&self) -> Configuration {
+        let exclude_starlark =
+            "//command_line_option:incompatible_exclude_starlark_flags_from_exec_config";
+        let excluded = matches!(
+            self.settings.get(exclude_starlark),
+            Some(SettingValue::Bool(true))
+        ) || self
+            .options
+            .get("incompatible_exclude_starlark_flags_from_exec_config")
+            .is_some_and(|v| v == "true");
         Configuration {
+            settings: if excluded {
+                BTreeMap::new()
+            } else {
+                self.settings
+                    .iter()
+                    .filter(|(name, _)| !name.starts_with(COMMAND_LINE_OPTION))
+                    .map(|(name, value)| (name.clone(), value.clone()))
+                    .collect()
+            },
             cpu: self.cpu.clone(),
             compilation_mode: CompilationMode::Opt,
             constraints: self.constraints.clone(),

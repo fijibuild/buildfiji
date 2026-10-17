@@ -207,6 +207,24 @@ pub fn resolve_command(lines: &[ResolvedLine], command: &str) -> Result<Vec<Stri
             append_expanding(lines, command, &line.flags, &mut out, &mut active_chain)?;
         }
     }
+    // `--enable_platform_specific_config` is `--config=<host os>` after the
+    // rest, and is spent here (the config's flags, not a `--config` flag).
+    let mut enabled = false;
+    out.retain(|flag| match flag.as_str() {
+        "--enable_platform_specific_config" | "--enable_platform_specific_config=true" => {
+            enabled = true;
+            false
+        }
+        "--noenable_platform_specific_config" | "--enable_platform_specific_config=false" => {
+            enabled = false;
+            false
+        }
+        _ => true,
+    });
+    if enabled {
+        let os = std::env::consts::OS;
+        expand_config(lines, command, os, &mut out, &mut active_chain)?;
+    }
     Ok(out)
 }
 
@@ -307,6 +325,26 @@ mod tests {
                 "--define=asan=true",
             ]
         );
+    }
+
+    #[test]
+    fn platform_specific_config_is_the_host_os_config() {
+        let os = std::env::consts::OS;
+        let lines = [
+            line("build", None, &["--enable_platform_specific_config"]),
+            line("build", Some(os), &["--jobs=3"]),
+            line("build", Some("not_this_os"), &["--jobs=9"]),
+        ];
+        assert_eq!(
+            resolve_command(&lines, "build").unwrap(),
+            vec!["--jobs=3".to_owned()]
+        );
+        let lines = [
+            line("build", None, &["--enable_platform_specific_config"]),
+            line("build", None, &["--noenable_platform_specific_config"]),
+            line("build", Some(os), &["--jobs=3"]),
+        ];
+        assert!(resolve_command(&lines, "build").unwrap().is_empty());
     }
 
     #[test]
