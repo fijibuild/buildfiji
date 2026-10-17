@@ -44,6 +44,11 @@ resolver = "2"
 [lib]
 name = "starlark_syntax"
 path = "src/lib.rs"
+# fjfj (buildfiji-19qr): the upstream tests assert upstream's wording and
+# behaviour, which fjfj's patches change to Bazel's on purpose; Bazel's
+# observable behaviour is checked by fjfj-starlark's conformance corpus instead.
+test = false
+doctest = false
 
 [dependencies.allocative]
 version = "0.3.6"
