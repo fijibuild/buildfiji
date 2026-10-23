@@ -12,7 +12,8 @@
 //!   flag wins. A scope that is not a domain name (`127.0.0.1:1234`,
 //!   `http://host`, `under_score`) is refused when the flag is parsed, as are an
 //!   empty scope and an empty path.
-//! - The program is an absolute path or a bare name looked up on `PATH`;
+//! - The program is an absolute path, `%workspace%/<path>` (the workspace root
+//!   joined with `<path>`; buildfiji-s2fl), or a bare name looked up on `PATH`;
 //!   anything else with a `/` in it is refused.
 //! - A helper that cannot be run, exits with a code or answers nonsense does not
 //!   stop the download: the request goes without, and `Error retrieving auth
@@ -71,8 +72,12 @@ impl CredentialHelper {
         })
     }
 
-    /// The program to run: an absolute path, or a name found on `path_env`.
-    fn resolve(&self, path_env: &str) -> Result<PathBuf, String> {
+    /// The program to run: an absolute path, a path under `workspace`, or a
+    /// name found on `path_env`.
+    fn resolve(&self, workspace: &Path, path_env: &str) -> Result<PathBuf, String> {
+        if let Some(rest) = self.program.strip_prefix("%workspace%/") {
+            return Ok(workspace.join(rest));
+        }
         if Path::new(&self.program).is_absolute() {
             return Ok(PathBuf::from(&self.program));
         }
@@ -126,7 +131,7 @@ impl CredentialHelpers {
     ) -> Result<CredentialHelpers, String> {
         let resolved = helpers
             .iter()
-            .map(|h| Ok((h.scope.clone(), h.resolve(path_env)?)))
+            .map(|h| Ok((h.scope.clone(), h.resolve(&cwd, path_env)?)))
             .collect::<Result<Vec<_>, String>>()?;
         Ok(CredentialHelpers {
             helpers: resolved,
@@ -310,16 +315,21 @@ mod tests {
     #[test]
     fn a_program_is_absolute_or_found_on_the_path() {
         let h = |p: &str| CredentialHelper::parse(&format!("a.com={p}")).unwrap();
-        assert!(h("/x/y").resolve("").is_ok());
+        let ws = Path::new("/ws");
+        assert!(h("/x/y").resolve(ws, "").is_ok());
         assert_eq!(
-            h("rel/h").resolve("").unwrap_err(),
+            h("%workspace%/tools/h.sh").resolve(ws, "").unwrap(),
+            Path::new("/ws/tools/h.sh")
+        );
+        assert_eq!(
+            h("rel/h").resolve(ws, "").unwrap_err(),
             "Path 'rel/h' must either be absolute or not contain any path separators"
         );
         assert_eq!(
-            h("nope-h").resolve("/nonexistent").unwrap_err(),
+            h("nope-h").resolve(ws, "/nonexistent").unwrap_err(),
             "Could not find file with name 'nope-h' on PATH '/nonexistent'"
         );
-        assert!(h("sh").resolve("/bin:/usr/bin").is_ok());
+        assert!(h("sh").resolve(ws, "/bin:/usr/bin").is_ok());
     }
 
     fn helpers(list: &[&str]) -> CredentialHelpers {
