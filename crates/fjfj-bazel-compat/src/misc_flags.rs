@@ -15,6 +15,7 @@ pub const IMPLEMENTED: &[&str] = &[
     "memory_profile",
     "enable_bzlmod",
     "incompatible_strict_action_env",
+    "slim_profile",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -32,6 +33,10 @@ pub struct MiscFlags {
     /// `--[no]incompatible_strict_action_env`: actions here always run
     /// with the strict environment (`PATH` fixed), so off is not honoured yet.
     pub strict_action_env: bool,
+    /// `--[no]slim_profile` (default on): merge small events of the JSON trace
+    /// profile. Read once `--profile` is written, which it is not yet, so a
+    /// `--profile` still stops the run (buildfiji-5dwx).
+    pub slim_profile: bool,
 }
 
 impl Default for MiscFlags {
@@ -41,6 +46,7 @@ impl Default for MiscFlags {
             memory_profile: None,
             enable_bzlmod: true,
             strict_action_env: false,
+            slim_profile: true,
         }
     }
 }
@@ -66,6 +72,7 @@ pub fn extract(args: &[String], command: &str) -> (MiscFlags, Vec<String>) {
             "check_visibility" => flags.check_visibility = !m.negated,
             "enable_bzlmod" => flags.enable_bzlmod = !m.negated,
             "incompatible_strict_action_env" => flags.strict_action_env = !m.negated,
+            "slim_profile" => flags.slim_profile = !m.negated,
             "memory_profile" => {
                 match m.value.map(str::to_string).or_else(|| iter.next().cloned()) {
                     Some(value) => flags.memory_profile = Some(PathBuf::from(value)),
@@ -93,6 +100,15 @@ mod tests {
         assert_eq!(flags, MiscFlags::default());
         assert!(flags.check_visibility);
         assert!(rest.is_empty());
+    }
+
+    #[test]
+    fn noslim_profile_turns_it_off() {
+        let (flags, rest) = extract(&args(&["--noslim_profile"]), "build");
+        assert!(!flags.slim_profile);
+        assert!(rest.is_empty());
+        let (flags, _) = extract(&args(&["--noslim_profile", "--slim_profile"]), "build");
+        assert!(flags.slim_profile);
     }
 
     #[test]
