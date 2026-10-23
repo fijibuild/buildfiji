@@ -193,18 +193,22 @@ fn resolve_import_path(importer: &Path, raw: &str, workspace_root: Option<&Path>
 }
 
 /// Compute the final, ordered flag list for `command` (e.g. `"build"`):
-/// every plain (`config: None`) `command`/`common` line across `lines`, in
-/// order, with each `--config=NAME` flag expanded in place to the flags of
-/// every matching `command:NAME`/`common:NAME` line — recursively, so a
-/// config's own flags may reference further configs. A config that
-/// (transitively) references itself is an error rather than an infinite
-/// expansion.
+/// the plain (`config: None`) lines of `common`, then of each command
+/// `command` inherits from, then of `command` itself, as Bazel applies them
+/// (every `common` line of every file before any `build` line, whatever
+/// their line numbers; buildfiji-ez35), with each `--config=NAME` flag
+/// expanded in place to the flags of every matching `command:NAME` line, in
+/// that same command order and recursively, so a config's own flags may
+/// reference further configs. A config that (transitively) references itself
+/// is an error rather than an infinite expansion.
 pub fn resolve_command(lines: &[ResolvedLine], command: &str) -> Result<Vec<String>, ResolveError> {
     let mut out = Vec::new();
     let mut active_chain = Vec::new();
-    for line in lines {
-        if line.config.is_none() && applies_to(line, command) {
-            append_expanding(lines, command, &line.flags, &mut out, &mut active_chain)?;
+    for applicable in command_chain(command) {
+        for line in lines {
+            if line.config.is_none() && line.command == applicable {
+                append_expanding(lines, command, &line.flags, &mut out, &mut active_chain)?;
+            }
         }
     }
     // `--enable_platform_specific_config` is `--config=<host os>` after the
@@ -238,10 +242,15 @@ fn inherits(command: &str) -> &'static [&'static str] {
     }
 }
 
-fn applies_to(line: &ResolvedLine, command: &str) -> bool {
-    line.command == command
-        || line.command == "common"
-        || inherits(command).contains(&line.command.as_str())
+/// The sections of an rc file that apply to `command`, in the order Bazel
+/// applies them: `common`, the commands it inherits, then `command`.
+fn command_chain(command: &str) -> Vec<&str> {
+    let mut chain = vec!["common"];
+    chain.extend(inherits(command));
+    if command != "common" {
+        chain.push(command);
+    }
+    chain
 }
 
 fn append_expanding(
@@ -274,9 +283,11 @@ fn expand_config(
         });
     }
     active_chain.push(config_name.to_string());
-    for line in lines {
-        if line.config.as_deref() == Some(config_name) && applies_to(line, command) {
-            append_expanding(lines, command, &line.flags, out, active_chain)?;
+    for applicable in command_chain(command) {
+        for line in lines {
+            if line.config.as_deref() == Some(config_name) && line.command == applicable {
+                append_expanding(lines, command, &line.flags, out, active_chain)?;
+            }
         }
     }
     active_chain.pop();
@@ -311,6 +322,52 @@ mod tests {
     }
 
     #[test]
+    fn a_common_line_after_a_build_line_still_comes_first() {
+        let lines = vec![
+            line("build", None, &["-c", "dbg"]),
+            line("common", None, &["-c", "opt"]),
+        ];
+        assert_eq!(
+            resolve_command(&lines, "build").unwrap(),
+            vec!["-c", "opt", "-c", "dbg"]
+        );
+    }
+
+    #[test]
+    fn an_inheriting_command_reads_common_then_its_parents_then_itself() {
+        let lines = vec![
+            line("test", None, &["--t"]),
+            line("build", None, &["--b1"]),
+            line("coverage", None, &["--cov"]),
+            line("common", None, &["--c"]),
+            line("build", None, &["--b2"]),
+        ];
+        assert_eq!(
+            resolve_command(&lines, "test").unwrap(),
+            vec!["--c", "--b1", "--b2", "--t"]
+        );
+        assert_eq!(
+            resolve_command(&lines, "coverage").unwrap(),
+            vec!["--c", "--b1", "--b2", "--t", "--cov"]
+        );
+    }
+
+    #[test]
+    fn a_config_is_read_command_by_command_with_nested_configs_met_in_line() {
+        // Probed on Bazel 9.3.1: build:ci, then build:ci2 (named by it), then test:ci.
+        let lines = vec![
+            line("test", None, &["--config=ci"]),
+            line("test", Some("ci"), &["--t"]),
+            line("build", Some("ci"), &["--b", "--config=ci2"]),
+            line("build", Some("ci2"), &["--b2"]),
+        ];
+        assert_eq!(
+            resolve_command(&lines, "test").unwrap(),
+            vec!["--config=ci", "--b", "--config=ci2", "--b2", "--t"]
+        );
+    }
+
+    #[test]
     fn config_expands_in_place() {
         let lines = vec![
             line("build", None, &["--config=asan"]),
@@ -321,8 +378,8 @@ mod tests {
             resolve_command(&lines, "build").unwrap(),
             vec![
                 "--config=asan",
-                "--copt=-fsanitize=address",
                 "--define=asan=true",
+                "--copt=-fsanitize=address",
             ]
         );
     }
