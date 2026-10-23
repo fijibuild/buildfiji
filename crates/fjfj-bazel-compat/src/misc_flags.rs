@@ -16,6 +16,7 @@ pub const IMPLEMENTED: &[&str] = &[
     "enable_bzlmod",
     "incompatible_strict_action_env",
     "slim_profile",
+    "experimental_profile_include_target_label",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -37,6 +38,10 @@ pub struct MiscFlags {
     /// profile. Read once `--profile` is written, which it is not yet, so a
     /// `--profile` still stops the run (buildfiji-5dwx).
     pub slim_profile: bool,
+    /// `--[no]experimental_profile_include_target_label`: the trace profile
+    /// names the target in each action event; read with `--profile`
+    /// (buildfiji-avk2).
+    pub profile_include_target_label: bool,
 }
 
 impl Default for MiscFlags {
@@ -47,6 +52,7 @@ impl Default for MiscFlags {
             enable_bzlmod: true,
             strict_action_env: false,
             slim_profile: true,
+            profile_include_target_label: false,
         }
     }
 }
@@ -73,6 +79,9 @@ pub fn extract(args: &[String], command: &str) -> (MiscFlags, Vec<String>) {
             "enable_bzlmod" => flags.enable_bzlmod = !m.negated,
             "incompatible_strict_action_env" => flags.strict_action_env = !m.negated,
             "slim_profile" => flags.slim_profile = !m.negated,
+            "experimental_profile_include_target_label" => {
+                flags.profile_include_target_label = !m.negated
+            }
             "memory_profile" => {
                 match m.value.map(str::to_string).or_else(|| iter.next().cloned()) {
                     Some(value) => flags.memory_profile = Some(PathBuf::from(value)),
@@ -109,6 +118,16 @@ mod tests {
         assert!(rest.is_empty());
         let (flags, _) = extract(&args(&["--noslim_profile", "--slim_profile"]), "build");
         assert!(flags.slim_profile);
+    }
+
+    #[test]
+    fn the_profile_target_label_flag_is_taken() {
+        let (flags, rest) = extract(
+            &args(&["--experimental_profile_include_target_label"]),
+            "build",
+        );
+        assert!(flags.profile_include_target_label);
+        assert!(rest.is_empty());
     }
 
     #[test]
