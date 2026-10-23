@@ -1170,3 +1170,27 @@ options), `subrule()` calls (the calling rule's `ctx` and its attributes, includ
 the subrules it lists), late-bound defaults (`configuration_field`), `ctx.files` for every
 label attribute (probed), re-declaring a file (allowed when the actions are equal) and
 `label_flag`.
+
+## A language server for BUILD, .bzl and MODULE.bazel (decided 2026-10-23, buildfiji-ykjj)
+
+fjfj ships its own language server, `fjfj lsp` over stdio, rather than pointing users at
+bazel-contrib/starlark-lsp or upstream `starlark_lsp`. It is built in two steps behind one seam.
+
+1. **The seam.** A new crate `fjfj-lsp` holds the protocol layer (LSP messages, document sync,
+   diagnostics) and a trait that answers "what is this symbol or label, and what attributes does
+   it take". Diagnostics come from `fjfj-starlark`'s `dialect::parse_all` and `scope_errors`, so
+   wording matches Bazel's for each `FileKind`.
+2. **The syntactic oracle comes first** (buildfiji-mum.30): builtin globals and docs, local scope,
+   `load()` targets by path or label from a light read of `MODULE.bazel`. It needs no daemon,
+   build tree or network. It cannot see through a macro-wrapped `rule()` or resolve an
+   `@apparent_name` to a canonical repo.
+3. **The engine-backed oracle comes second** (buildfiji-mum.33): evaluated `.bzl` modules give
+   real rule attributes and providers, macro signatures and repository mapping. It talks to the
+   daemon over `fjfj-proto` and falls back to the syntactic oracle when no daemon runs or a
+   repository is not materialised. It waits on the daemon (buildfiji-23d.4), an engine overlay
+   file source for unsaved buffers (buildfiji-23d.24) and a loader mode that never fetches
+   (buildfiji-mum.32), because an editor must not run repository rules or module extensions.
+
+Open question, answered by buildfiji-mum.31 before the syntactic server starts: whether the
+`starlark` parser returns any AST for a buffer with a syntax error, or whether completion
+mid-edit needs a last-good-AST cache.
