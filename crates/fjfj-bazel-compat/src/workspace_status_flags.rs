@@ -5,8 +5,6 @@
 //! rather than given individual clap fields — see that module's doc
 //! comment for why.
 
-use std::path::PathBuf;
-
 use crate::flag_registry::FlagRegistry;
 
 /// Flag names this module reads, for `clap_flags::validate`'s
@@ -20,10 +18,11 @@ pub const IMPLEMENTED: &[&str] = &["workspace_status_command", "stamp", "embed_l
 /// `--embed_label`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct WorkspaceStatusFlags {
-    /// `--workspace_status_command=<program>`: a native executable run
-    /// once at the start of the build; its stdout is parsed by
+    /// `--workspace_status_command=<command>`: a shell command, run from the
+    /// workspace once at the start of the build (so `$(pwd)/status.sh` and
+    /// arguments work, as in Bazel); its stdout is parsed by
     /// [`crate::workspace_status::WorkspaceStatus::parse`].
-    pub workspace_status_command: Option<PathBuf>,
+    pub workspace_status_command: Option<String>,
     /// `--stamp`/`--nostamp`: whether `stamp = -1` rules (the default for
     /// `*_binary`) embed workspace status into their outputs.
     pub stamp: bool,
@@ -54,7 +53,7 @@ pub fn extract(args: &[String], command: &str) -> (WorkspaceStatusFlags, Vec<Str
             "stamp" => flags.stamp = !m.negated,
             "workspace_status_command" => {
                 match m.value.map(str::to_string).or_else(|| iter.next().cloned()) {
-                    Some(value) => flags.workspace_status_command = Some(PathBuf::from(value)),
+                    Some(value) => flags.workspace_status_command = Some(value),
                     None => rest.push(arg.clone()),
                 }
             }
@@ -99,8 +98,8 @@ mod tests {
             "build",
         );
         assert_eq!(
-            flags.workspace_status_command,
-            Some(PathBuf::from("/usr/bin/true"))
+            flags.workspace_status_command.as_deref(),
+            Some("/usr/bin/true")
         );
         assert!(rest.is_empty());
     }
@@ -112,8 +111,8 @@ mod tests {
             "build",
         );
         assert_eq!(
-            flags.workspace_status_command,
-            Some(PathBuf::from("/usr/bin/true"))
+            flags.workspace_status_command.as_deref(),
+            Some("/usr/bin/true")
         );
         assert!(rest.is_empty());
     }

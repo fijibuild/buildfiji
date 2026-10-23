@@ -674,7 +674,7 @@ async fn build_main(
     // above has ruled out any unimplemented or unrecognized flag.
     let cwd = std::env::current_dir()
         .map_err(|e| CliError::Internal(anyhow::anyhow!("couldn't get current directory: {e}")))?;
-    let (_, offset) = workspace::locate(&cwd).ok_or_else(|| {
+    let (workspace_root, offset) = workspace::locate(&cwd).ok_or_else(|| {
         CliError::CommandLine(anyhow::anyhow!(workspace::not_in_a_workspace(command)))
     })?;
     let context = PatternContext {
@@ -765,7 +765,7 @@ async fn build_main(
     // yet since there's no execroot/bazel-out layout for
     // stable-status.txt/volatile-status.txt to land in (see
     // fjfj_exec::workspace_status).
-    let status = fjfj_exec::workspace_status::compute(&workspace_status)
+    let status = fjfj_exec::workspace_status::compute(&workspace_status, &workspace_root)
         .await
         .map_err(|e| CliError::Build(anyhow::anyhow!(e)))?;
     tracing::info!(stable = ?status.stable, "workspace status computed");

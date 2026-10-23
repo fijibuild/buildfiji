@@ -14,19 +14,22 @@ use time::OffsetDateTime;
 #[derive(Debug, thiserror::Error)]
 pub enum ComputeError {
     #[error("workspace status command {0:?} could not be run: {1}")]
-    Spawn(std::path::PathBuf, std::io::Error),
+    Spawn(String, std::io::Error),
     #[error("workspace status command {0:?} exited with {1}")]
-    NonZeroExit(std::path::PathBuf, std::process::ExitStatus),
+    NonZeroExit(String, std::process::ExitStatus),
     #[error("workspace status command {0:?} printed invalid output: {1}")]
-    Invalid(std::path::PathBuf, WorkspaceStatusError),
+    Invalid(String, WorkspaceStatusError),
 }
 
 /// Run `flags.workspace_status_command` (a no-op, matching Bazel's
-/// documented `--workspace_status_command=/bin/true`, when unset) and
-/// build the resulting [`WorkspaceStatus`].
-pub async fn compute(flags: &WorkspaceStatusFlags) -> Result<WorkspaceStatus, ComputeError> {
+/// documented `--workspace_status_command=/bin/true`, when unset) from
+/// `workspace`, and build the resulting [`WorkspaceStatus`].
+pub async fn compute(
+    flags: &WorkspaceStatusFlags,
+    workspace: &Path,
+) -> Result<WorkspaceStatus, ComputeError> {
     let raw = match &flags.workspace_status_command {
-        Some(program) => run(program).await?,
+        Some(command) => run(command, workspace).await?,
         None => String::new(),
     };
     let host = std::env::var("HOSTNAME").unwrap_or_else(|_| hostname_fallback());
@@ -62,16 +65,19 @@ pub fn write(status: &WorkspaceStatus, out_dir: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-async fn run(program: &Path) -> Result<String, ComputeError> {
-    let output = tokio::process::Command::new(program)
+/// Bazel 9.2.0 hands the flag's value to a shell, from the workspace
+/// (probed: `$(pwd)/status.sh`, arguments, quoting and `&&` all work), so the
+/// value is a command line and not a path (buildfiji-le8o).
+async fn run(command: &str, workspace: &Path) -> Result<String, ComputeError> {
+    let output = tokio::process::Command::new("/bin/bash")
+        .arg("-c")
+        .arg(command)
+        .current_dir(workspace)
         .output()
         .await
-        .map_err(|e| ComputeError::Spawn(program.to_path_buf(), e))?;
+        .map_err(|e| ComputeError::Spawn(command.to_owned(), e))?;
     if !output.status.success() {
-        return Err(ComputeError::NonZeroExit(
-            program.to_path_buf(),
-            output.status,
-        ));
+        return Err(ComputeError::NonZeroExit(command.to_owned(), output.status));
     }
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
@@ -136,7 +142,9 @@ mod tests {
     #[tokio::test]
     async fn no_command_still_produces_builtins() {
         let _turn = SPAWN.lock().await;
-        let status = compute(&WorkspaceStatusFlags::default()).await.unwrap();
+        let status = compute(&WorkspaceStatusFlags::default(), Path::new("."))
+            .await
+            .unwrap();
         assert!(status.stable.contains_key("BUILD_HOST"));
         assert!(status.stable.contains_key("BUILD_USER"));
         assert!(status.volatile.contains_key("BUILD_TIMESTAMP"));
@@ -146,10 +154,10 @@ mod tests {
     async fn nonzero_exit_fails_the_build() {
         let _turn = SPAWN.lock().await;
         let flags = WorkspaceStatusFlags {
-            workspace_status_command: Some(std::path::PathBuf::from("/usr/bin/false")),
+            workspace_status_command: Some("/usr/bin/false".to_owned()),
             ..Default::default()
         };
-        let err = compute(&flags).await.unwrap_err();
+        let err = compute(&flags, Path::new(".")).await.unwrap_err();
         assert!(matches!(err, ComputeError::NonZeroExit(_, _)));
     }
 
@@ -167,7 +175,7 @@ mod tests {
             std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
         }
         let flags = WorkspaceStatusFlags {
-            workspace_status_command: Some(script.clone()),
+            workspace_status_command: Some(script.display().to_string()),
             ..Default::default()
         };
         // Another test thread may fork while the script is still open for
@@ -175,7 +183,7 @@ mod tests {
         // child has exec'd itself: try again.
         let mut tries = 0;
         let status = loop {
-            match compute(&flags).await {
+            match compute(&flags, Path::new(".")).await {
                 Err(ComputeError::Spawn(_, e))
                     if e.kind() == std::io::ErrorKind::ExecutableFileBusy && tries < 50 =>
                 {
@@ -187,6 +195,24 @@ mod tests {
         };
         std::fs::remove_file(&script).ok();
         assert_eq!(status.stable["STABLE_GIT_COMMIT"], "abc123");
+    }
+
+    #[tokio::test]
+    async fn the_command_is_a_shell_command_line_run_from_the_workspace() {
+        let _turn = SPAWN.lock().await;
+        let dir = std::env::temp_dir().join(format!(
+            "fjfj-workspace-status-shell-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("ws.sh"), "echo STABLE_ARGS \"$#:$1\"\n").unwrap();
+        let flags = WorkspaceStatusFlags {
+            workspace_status_command: Some("bash $(pwd)/ws.sh 'a b'".to_owned()),
+            ..Default::default()
+        };
+        let status = compute(&flags, &dir).await.unwrap();
+        std::fs::remove_dir_all(&dir).ok();
+        assert_eq!(status.stable["STABLE_ARGS"], "1:a b");
     }
 
     #[test]
