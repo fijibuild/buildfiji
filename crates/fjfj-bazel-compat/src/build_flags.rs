@@ -43,6 +43,7 @@ pub const IMPLEMENTED: &[&str] = &[
     "tool_java_runtime_version",
     "java_language_version",
     "tool_java_language_version",
+    "experimental_strict_java_deps",
     "copt",
     "cxxopt",
     "conlyopt",
@@ -94,6 +95,7 @@ const STRING_OPTIONS: &[&str] = &[
     "tool_java_runtime_version",
     "java_language_version",
     "tool_java_language_version",
+    "experimental_strict_java_deps",
 ];
 
 /// The flags that name a label, the last one given winning: the options the
@@ -314,6 +316,25 @@ mod tests {
 
     fn args(words: &[&str]) -> Vec<String> {
         words.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn strict_java_deps_is_a_string_option_the_last_one_wins() {
+        let (flags, rest) = extract(
+            &args(&[
+                "--experimental_strict_java_deps=warn",
+                "--experimental_strict_java_deps=error",
+            ]),
+            "build",
+        );
+        assert_eq!(
+            flags.options,
+            vec![(
+                "experimental_strict_java_deps".to_owned(),
+                "error".to_owned()
+            )]
+        );
+        assert!(rest.is_empty());
     }
 
     #[test]
