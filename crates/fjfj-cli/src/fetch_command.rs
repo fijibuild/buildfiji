@@ -35,6 +35,7 @@ pub(crate) const IMPLEMENTED: &[&str] = &[
     "credential_helper",
     "credential_helper_timeout",
     "experimental_isolated_extension_usages",
+    "repo_env",
 ];
 
 /// The flags `build` shares with `fetch`: where repositories come from.
@@ -45,6 +46,7 @@ pub(crate) const BUILD_IMPLEMENTED: &[&str] = &[
     "credential_helper",
     "credential_helper_timeout",
     "experimental_isolated_extension_usages",
+    "repo_env",
 ];
 
 /// What `fetch` was asked for.
@@ -61,6 +63,8 @@ pub(crate) struct FetchFlags {
     pub credential_helpers: Vec<CredentialHelper>,
     pub credential_helper_timeout: Option<Duration>,
     pub isolated_extension_usages: bool,
+    /// `--repo_env`: `NAME=VALUE` or `NAME`, in the order given.
+    pub repo_env: Vec<String>,
 }
 
 fn bad(flag: &str, value: &str, why: impl std::fmt::Display) -> CliError {
@@ -123,6 +127,10 @@ pub(crate) fn extract(args: &[String]) -> Result<(FetchFlags, Vec<String>), CliE
                 flags.credential_helper_timeout = Some(parse_duration(&v).ok_or_else(|| {
                     bad(name, &v, "expected a duration such as 10s, 500ms or 2m")
                 })?);
+            }
+            "repo_env" => {
+                let v = value(&mut iter);
+                flags.repo_env.push(v);
             }
             "experimental_isolated_extension_usages" => flags.isolated_extension_usages = true,
             "noexperimental_isolated_extension_usages" => flags.isolated_extension_usages = false,
@@ -334,6 +342,34 @@ pub(crate) fn run_for_build(
     })
 }
 
+/// What repository rules and module extensions see as their environment: the
+/// client's, then each `--repo_env` in order. `NAME=VALUE` sets (an empty value
+/// is set, to nothing); `NAME` takes the client's value, and leaves the
+/// variable unset when the client has none. Probed on Bazel 9.3.1
+/// (buildfiji-y1nv).
+fn with_repo_env(
+    mut environ: BTreeMap<String, String>,
+    repo_env: &[String],
+) -> BTreeMap<String, String> {
+    let client = environ.clone();
+    for entry in repo_env {
+        match entry.split_once('=') {
+            Some((name, value)) => {
+                environ.insert(name.to_owned(), value.to_owned());
+            }
+            None => match client.get(entry) {
+                Some(value) => {
+                    environ.insert(entry.clone(), value.clone());
+                }
+                None => {
+                    environ.remove(entry);
+                }
+            },
+        }
+    }
+    environ
+}
+
 /// What `build` has learnt once its patterns are resolved.
 pub(crate) struct BuildLoad {
     pub resolution: Resolution,
@@ -368,7 +404,7 @@ pub(crate) fn begin(
         .output_base
         .clone()
         .unwrap_or_else(|| default_output_base(workspace_root));
-    let environ: BTreeMap<String, String> = std::env::vars().collect();
+    let environ = with_repo_env(std::env::vars().collect(), &flags.repo_env);
     let mut downloader = HttpDownloader::standard()
         .map_err(|e| CliError::Internal(anyhow::anyhow!("cannot make the HTTP client: {e}")))?;
     if !flags.credential_helpers.is_empty() {
@@ -615,5 +651,56 @@ mod print_tests {
             "DEBUG: ob/external/rules_x+/BUILD.bazel:1:1: x: y"
         );
         assert_eq!(debug_line("no site", ws, ext), "DEBUG: no site");
+    }
+}
+
+#[cfg(test)]
+mod repo_env_tests {
+    use super::{extract, with_repo_env};
+    use std::collections::BTreeMap;
+
+    fn env(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
+        pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
+    }
+
+    fn apply(client: &[(&str, &str)], repo_env: &[&str]) -> BTreeMap<String, String> {
+        let flags: Vec<String> = repo_env.iter().map(|s| s.to_string()).collect();
+        with_repo_env(env(client), &flags)
+    }
+
+    /// Each row is what Bazel 9.3.1 showed a repository rule for the same flags.
+    #[test]
+    fn repo_env_is_what_bazel_gives_a_repository_rule() {
+        let client = [("FOO", "a"), ("BAR", "b")];
+        assert_eq!(apply(&client, &[]), env(&client));
+        assert_eq!(
+            apply(&client, &["FOO=x"]),
+            env(&[("FOO", "x"), ("BAR", "b")])
+        );
+        assert_eq!(apply(&client, &["FOO"]), env(&client));
+        assert_eq!(apply(&[("BAR", "b")], &["FOO"]), env(&[("BAR", "b")]));
+        assert_eq!(apply(&client, &["FOO="]), env(&[("FOO", ""), ("BAR", "b")]));
+        assert_eq!(
+            apply(&client, &["FOO=x", "FOO=y"]),
+            env(&[("FOO", "y"), ("BAR", "b")])
+        );
+        assert_eq!(
+            apply(&client, &["NEW=1", "BAR=z"]),
+            env(&[("FOO", "a"), ("BAR", "z"), ("NEW", "1")])
+        );
+    }
+
+    #[test]
+    fn the_flag_is_taken_in_order_in_both_spellings() {
+        let args: Vec<String> = ["--repo_env=A=1", "--repo_env", "B", "--repo_env=A=2"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let (flags, rest) = extract(&args).unwrap();
+        assert_eq!(flags.repo_env, ["A=1", "B", "A=2"]);
+        assert!(rest.is_empty());
     }
 }
