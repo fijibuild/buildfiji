@@ -17,6 +17,7 @@ pub const IMPLEMENTED: &[&str] = &[
     "incompatible_strict_action_env",
     "slim_profile",
     "experimental_profile_include_target_label",
+    "experimental_profile_include_primary_output",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,6 +43,10 @@ pub struct MiscFlags {
     /// names the target in each action event; read with `--profile`
     /// (buildfiji-avk2).
     pub profile_include_target_label: bool,
+    /// `--[no]experimental_profile_include_primary_output`: the trace profile
+    /// names the action's primary output; read with `--profile`
+    /// (buildfiji-96fe).
+    pub profile_include_primary_output: bool,
 }
 
 impl Default for MiscFlags {
@@ -53,6 +58,7 @@ impl Default for MiscFlags {
             strict_action_env: false,
             slim_profile: true,
             profile_include_target_label: false,
+            profile_include_primary_output: false,
         }
     }
 }
@@ -81,6 +87,9 @@ pub fn extract(args: &[String], command: &str) -> (MiscFlags, Vec<String>) {
             "slim_profile" => flags.slim_profile = !m.negated,
             "experimental_profile_include_target_label" => {
                 flags.profile_include_target_label = !m.negated
+            }
+            "experimental_profile_include_primary_output" => {
+                flags.profile_include_primary_output = !m.negated
             }
             "memory_profile" => {
                 match m.value.map(str::to_string).or_else(|| iter.next().cloned()) {
@@ -127,6 +136,16 @@ mod tests {
             "build",
         );
         assert!(flags.profile_include_target_label);
+        assert!(rest.is_empty());
+    }
+
+    #[test]
+    fn the_profile_primary_output_flag_is_taken() {
+        let (flags, rest) = extract(
+            &args(&["--experimental_profile_include_primary_output"]),
+            "build",
+        );
+        assert!(flags.profile_include_primary_output);
         assert!(rest.is_empty());
     }
 
