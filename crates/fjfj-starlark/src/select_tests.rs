@@ -12,9 +12,6 @@ const GENERIC: &[&str] = &[];
 
 /// Probes the crate cannot answer the way Bazel does.
 const SKIPPED: &[&str] = &[
-    // A plain dict on the left of `|` has no hook for the right operand to
-    // take over (buildfiji-v32).
-    "} | select(",
     // The crate prints `range(2)` where Bazel prints `range(0, 2)`.
     "range(",
     // The crate calls a builtin a `function`, prints it and a function by

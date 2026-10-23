@@ -583,6 +583,15 @@ impl<'v> AValueDyn<'v> {
     }
 
     #[inline]
+    pub(crate) fn rbit_or(
+        self,
+        other: Value<'v>,
+        heap: Heap<'v>,
+    ) -> Option<crate::Result<Value<'v>>> {
+        (self.vtable.starlark_value.rbit_or)(self.value, other, heap)
+    }
+
+    #[inline]
     pub(crate) fn radd(self, other: Value<'v>, heap: Heap<'v>) -> Option<crate::Result<Value<'v>>> {
         (self.vtable.starlark_value.radd)(self.value, other, heap)
     }

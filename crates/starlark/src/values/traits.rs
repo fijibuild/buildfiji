@@ -700,6 +700,13 @@ pub trait StarlarkValue<'v>:
         ValueError::unsupported(self, "-")
     }
 
+    /// `lhs | self`, tried when `lhs.bit_or(self)` fails (fjfj): Bazel joins a
+    /// dict with a `select()` on either side of `|`, and a dict cannot know the
+    /// `select` type.
+    fn rbit_or(&self, _lhs: Value<'v>, _heap: Heap<'v>) -> Option<crate::Result<Value<'v>>> {
+        None
+    }
+
     /// Add with the arguments the other way around.
     /// Normal `add` should return `None` in order for it to be evaluated.
     fn radd(&self, _lhs: Value<'v>, _heap: Heap<'v>) -> Option<crate::Result<Value<'v>>> {

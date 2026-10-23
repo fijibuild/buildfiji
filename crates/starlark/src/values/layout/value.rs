@@ -643,7 +643,14 @@ impl<'v> Value<'v> {
 
     /// `x | other`.
     pub fn bit_or(self, other: Value<'v>, heap: Heap<'v>) -> crate::Result<Value<'v>> {
-        self.get_ref().bit_or(other, heap)
+        match self.get_ref().bit_or(other, heap) {
+            Ok(v) => Ok(v),
+            // fjfj: `dict | select(...)`, which only the select knows how to join.
+            Err(e) => match other.get_ref().rbit_or(self, heap) {
+                Some(r) => r,
+                None => Err(e),
+            },
+        }
     }
 
     /// `x ^ other`.

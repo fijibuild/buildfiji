@@ -1102,7 +1102,7 @@ source is cheaper and `git log` on the file says why a line is there.
   is an error not a panic (gpj); `split`/`rsplit` keywords and empty separator (wtt);
   `elems()`/`codepoints()` return lists, so `string/iter.rs` is deleted (9zq); self-containing
   list/dict/tuple prints `...` (sib); `r'\"'` keeps the backslash (sib, `starlark_syntax`);
-  `dict.get`/`setdefault` take `default` by name (b0s); a list frozen by `Starlark.freeze` (`fjfj_freeze`, which `cc_common.internal_DO_NOT_USE().freeze` is) can no longer change and is hashable, as it is in Bazel, so a provider holding one can be a depset element or a dict key (136.16). A new difference is a normal commit
+  `dict.get`/`setdefault` take `default` by name (b0s); a list frozen by `Starlark.freeze` (`fjfj_freeze`, which `cc_common.internal_DO_NOT_USE().freeze` is) can no longer change and is hashable, as it is in Bazel, so a provider holding one can be a depset element or a dict key (136.16). `Value::bit_or` tries the right operand's `StarlarkValue::rbit_or` when the left's `|` fails, so `dict | select(...)` joins as in Bazel (1a34). A new difference is a normal commit
   that names its bead and replays its probe row.
 - Upstream: the PRs Buck2 would want are sent from a branch rebased on the upstream
   tag; a rebase on a new upstream release is `git diff` of the two trees.

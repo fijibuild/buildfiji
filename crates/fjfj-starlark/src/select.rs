@@ -22,8 +22,9 @@
 //! - Two selects are equal when their elements are and each `select` has the
 //!   same `no_match_error`; Java's equality, so `1` is not `1.0`.
 //!
-//! The crate gives `dict | select` no hook: a plain dict on the left of `|`
-//! fails in the dict's own words (buildfiji-v32).
+//! A plain value on the left of `|` is joined by [`StarlarkValue::rbit_or`], a hook
+//! of the vendored crate (buildfiji-1a34), which `Value::bit_or` tries when the
+//! left operand's own `|` fails.
 
 use crate::args::{
     Param, Wording, bind, fatal, param, positional_only, sequence, unsupported_binary,
@@ -322,6 +323,10 @@ where
 
     fn bit_or(&self, rhs: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
         combine(heap, "|", self_value(self, heap), rhs)
+    }
+
+    fn rbit_or(&self, lhs: Value<'v>, heap: Heap<'v>) -> Option<starlark::Result<Value<'v>>> {
+        Some(combine(heap, "|", lhs, self_value(self, heap)))
     }
 }
 
