@@ -12,6 +12,6 @@ pub use ast::{Directive, Line, RcFile};
 pub use diagnostics::render_parse_errors;
 pub use parse::{ParseError, parse_rc_file};
 pub use resolve::{
-    DiscoveryOptions, ResolveError, ResolvedLine, discover_and_parse, expand_command_line,
-    resolve_command,
+    DiscoveryOptions, ResolveError, ResolvedLine, announce, discover_and_parse,
+    expand_command_line, resolve_command,
 };

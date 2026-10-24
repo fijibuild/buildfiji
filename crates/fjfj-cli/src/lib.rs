@@ -342,7 +342,33 @@ pub(crate) fn rc_and_args(command: &str, args: &[String]) -> Result<Vec<String>,
     flags.extend(
         fjfj_bazel_compat::bazelrc::expand_command_line(&lines, command, args).map_err(bad)?,
     );
+    // `--announce_rc`, from an rc file or the command line, says where the
+    // options came from before anything else is said.
+    let announced = fjfj_bazel_compat::option_syntax::normalize(&flags, command)
+        .ok()
+        .is_some_and(|normal| misc_flags::extract(&normal, command).0.announce_rc);
+    if announced {
+        for message in
+            fjfj_bazel_compat::bazelrc::announce(&lines, command, args, &client_options())
+        {
+            eprintln!("INFO: {message}");
+        }
+    }
     Ok(flags)
+}
+
+/// The options Bazel's client sends with every command: whether the terminal is
+/// one, and its width (`$COLUMNS`, else 80; the width is not asked of the
+/// terminal).
+fn client_options() -> String {
+    use std::io::IsTerminal;
+    let tty = std::io::stdout().is_terminal() && std::io::stderr().is_terminal();
+    let columns = std::env::var("COLUMNS")
+        .ok()
+        .and_then(|c| c.parse::<u32>().ok())
+        .filter(|_| tty)
+        .unwrap_or(80);
+    format!("--isatty={} --terminal_columns={columns}", u8::from(tty))
 }
 
 fn locate_workspace_root(command: &str) -> Result<std::path::PathBuf, CliError> {

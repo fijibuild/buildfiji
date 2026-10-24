@@ -18,6 +18,7 @@ pub const IMPLEMENTED: &[&str] = &[
     "slim_profile",
     "experimental_profile_include_target_label",
     "experimental_profile_include_primary_output",
+    "announce_rc",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -47,6 +48,9 @@ pub struct MiscFlags {
     /// names the action's primary output; read with `--profile`
     /// (buildfiji-96fe).
     pub profile_include_primary_output: bool,
+    /// `--[no]announce_rc` (default off): say which rc files and configs the
+    /// options came from, before the command runs (buildfiji-e5go).
+    pub announce_rc: bool,
 }
 
 impl Default for MiscFlags {
@@ -59,6 +63,7 @@ impl Default for MiscFlags {
             slim_profile: true,
             profile_include_target_label: false,
             profile_include_primary_output: false,
+            announce_rc: false,
         }
     }
 }
@@ -88,6 +93,7 @@ pub fn extract(args: &[String], command: &str) -> (MiscFlags, Vec<String>) {
             "experimental_profile_include_target_label" => {
                 flags.profile_include_target_label = !m.negated
             }
+            "announce_rc" => flags.announce_rc = !m.negated,
             "experimental_profile_include_primary_output" => {
                 flags.profile_include_primary_output = !m.negated
             }
@@ -147,6 +153,16 @@ mod tests {
         );
         assert!(flags.profile_include_primary_output);
         assert!(rest.is_empty());
+    }
+
+    #[test]
+    fn announce_rc_is_off_until_asked_for_and_the_last_spelling_wins() {
+        let (flags, _) = extract(&args(&[]), "build");
+        assert!(!flags.announce_rc);
+        let (flags, rest) = extract(&args(&["--announce_rc"]), "build");
+        assert!(flags.announce_rc && rest.is_empty());
+        let (flags, _) = extract(&args(&["--announce_rc", "--noannounce_rc"]), "build");
+        assert!(!flags.announce_rc);
     }
 
     #[test]

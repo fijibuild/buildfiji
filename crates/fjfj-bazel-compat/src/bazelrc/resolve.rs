@@ -252,6 +252,160 @@ pub fn expand_command_line(
     Ok(out)
 }
 
+/// What `--announce_rc` says about how the options of `command` were read
+/// (probed on Bazel 9.3.1, buildfiji-e5go), one string per `INFO:` message:
+///
+/// - `Reading 'startup' options from <file>: <flags>` for each file with
+///   startup lines;
+/// - `Options provided by the client:` and the client's own options;
+/// - for each section of the command chain (see [`resolve_command`]) and each
+///   stretch of rc lines from one file (an `import` ends the importer's stretch,
+///   which goes on after it), `Reading rc options for '<command>' from <file>:`
+///   and `  [Inherited ]'<section>' options: <flags>`;
+/// - for each `--config` met, in the order its lines are read,
+///   `Found applicable config definition <section>:<name> in file <file>: <flags>`,
+///   a config named by one of those lines following it at once.
+pub fn announce(
+    lines: &[ResolvedLine],
+    command: &str,
+    args: &[String],
+    client_options: &str,
+) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut files: Vec<&Path> = Vec::new();
+    for line in lines.iter().filter(|l| l.command == "startup") {
+        if !files.contains(&line.source.as_path()) {
+            files.push(&line.source);
+        }
+    }
+    for file in files {
+        let flags: Vec<&str> = lines
+            .iter()
+            .filter(|l| l.command == "startup" && l.source == file)
+            .flat_map(|l| l.flags.iter().map(String::as_str))
+            .collect();
+        out.push(format!(
+            "Reading 'startup' options from {}: {}",
+            file.display(),
+            flags.join(" ")
+        ));
+    }
+    out.push(format!(
+        "Options provided by the client:\n  Inherited 'common' options: {client_options}"
+    ));
+    let stretches = stretches(lines);
+    let chain = command_chain(command);
+    let mut seeds: Vec<String> = Vec::new();
+    for section in &chain {
+        for stretch in distinct(&stretches) {
+            let in_stretch: Vec<&ResolvedLine> = lines
+                .iter()
+                .zip(&stretches)
+                .filter(|(l, s)| **s == stretch && l.config.is_none() && l.command == *section)
+                .map(|(l, _)| l)
+                .collect();
+            let Some(first) = in_stretch.first() else {
+                continue;
+            };
+            let flags: Vec<&str> = in_stretch
+                .iter()
+                .flat_map(|l| l.flags.iter().map(String::as_str))
+                .collect();
+            let label = if *section == command {
+                format!("'{section}'")
+            } else {
+                format!("Inherited '{section}'")
+            };
+            out.push(format!(
+                "Reading rc options for '{command}' from {}:\n  {label} options: {}",
+                first.source.display(),
+                flags.join(" ")
+            ));
+            seeds.extend(config_names(flags.iter().map(|f| f.to_string())));
+        }
+    }
+    let end = args.iter().position(|a| a == "--").unwrap_or(args.len());
+    seeds.extend(config_names(args[..end].iter().cloned()));
+    for name in seeds {
+        announce_config(lines, &stretches, &chain, &name, &mut out);
+    }
+    out
+}
+
+/// The names `--config=NAME` and `--config NAME` give among `flags`.
+fn config_names(flags: impl Iterator<Item = String>) -> Vec<String> {
+    let mut names = Vec::new();
+    let mut flags = flags;
+    while let Some(flag) = flags.next() {
+        if let Some(name) = flag.strip_prefix("--config=") {
+            names.push(name.to_owned());
+        } else if flag == "--config"
+            && let Some(name) = flags.next()
+        {
+            names.push(name);
+        }
+    }
+    names
+}
+
+fn announce_config(
+    lines: &[ResolvedLine],
+    stretches: &[usize],
+    chain: &[&str],
+    name: &str,
+    out: &mut Vec<String>,
+) {
+    for section in chain {
+        for stretch in distinct(stretches) {
+            let in_stretch: Vec<&ResolvedLine> = lines
+                .iter()
+                .zip(stretches)
+                .filter(|(l, s)| {
+                    **s == stretch && l.config.as_deref() == Some(name) && l.command == *section
+                })
+                .map(|(l, _)| l)
+                .collect();
+            let Some(first) = in_stretch.first() else {
+                continue;
+            };
+            let flags: Vec<String> = in_stretch.iter().flat_map(|l| l.flags.clone()).collect();
+            out.push(format!(
+                "Found applicable config definition {section}:{name} in file {}: {}",
+                first.source.display(),
+                flags.join(" ")
+            ));
+            for nested in config_names(flags.into_iter()) {
+                announce_config(lines, stretches, chain, &nested, out);
+            }
+        }
+    }
+}
+
+/// The number of the stretch of one file each line is in: it changes whenever
+/// the file the next line comes from does.
+fn stretches(lines: &[ResolvedLine]) -> Vec<usize> {
+    let mut out = Vec::with_capacity(lines.len());
+    let mut current = 0;
+    for (i, line) in lines.iter().enumerate() {
+        if i > 0 && lines[i - 1].source != line.source {
+            current += 1;
+        }
+        out.push(current);
+    }
+    out
+}
+
+/// The stretch numbers in order, once each.
+fn distinct(stretches: &[usize]) -> Vec<usize> {
+    let mut seen = Vec::new();
+    for s in stretches {
+        if !seen.contains(s) {
+            seen.push(*s);
+        }
+    }
+    seen
+}
+
 /// The commands whose flags `command` also takes, as Bazel has them:
 /// `test` and `run` read `build`'s, `coverage` `test`'s and so `build`'s.
 fn inherits(command: &str) -> &'static [&'static str] {
@@ -424,6 +578,56 @@ mod tests {
                 .unwrap_err()
                 .to_string(),
             "Config value 'nope' is not defined in any .rc file"
+        );
+    }
+
+    fn at(source: &str, command: &str, config: Option<&str>, flags: &[&str]) -> ResolvedLine {
+        ResolvedLine {
+            source: PathBuf::from(source),
+            ..line(command, config, flags)
+        }
+    }
+
+    /// What Bazel 9.3.1 printed for these files: .bazelrc has common, an
+    /// import of extra.rc, then more common and a build section; build:ci
+    /// names ci2.
+    #[test]
+    fn announce_says_what_bazel_says() {
+        let lines = vec![
+            at("/w/.bazelrc", "startup", None, &["--max_idle_secs=100"]),
+            at("/w/.bazelrc", "common", None, &["--a_before"]),
+            at("/w/extra.rc", "common", None, &["--noshow_timestamps"]),
+            at("/w/extra.rc", "build", None, &["--jobs=4"]),
+            at("/w/extra.rc", "startup", None, &["--max_idle_secs=200"]),
+            at("/w/.bazelrc", "common", None, &["--a_after"]),
+            at("/w/.bazelrc", "build", None, &["--jobs=3"]),
+            at("/w/.bazelrc", "test", None, &["--test_output=errors"]),
+            at(
+                "/w/.bazelrc",
+                "build",
+                Some("ci"),
+                &["-c", "dbg", "--config=ci2"],
+            ),
+            at("/w/.bazelrc", "test", Some("ci"), &["--test_timeout=5"]),
+            at("/w/.bazelrc", "build", Some("ci2"), &["--jobs=2"]),
+        ];
+        let args = vec!["--config=ci".to_owned(), "//:g".to_owned()];
+        assert_eq!(
+            announce(&lines, "test", &args, "--isatty=0 --terminal_columns=80"),
+            vec![
+                "Reading 'startup' options from /w/.bazelrc: --max_idle_secs=100",
+                "Reading 'startup' options from /w/extra.rc: --max_idle_secs=200",
+                "Options provided by the client:\n  Inherited 'common' options: --isatty=0 --terminal_columns=80",
+                "Reading rc options for 'test' from /w/.bazelrc:\n  Inherited 'common' options: --a_before",
+                "Reading rc options for 'test' from /w/extra.rc:\n  Inherited 'common' options: --noshow_timestamps",
+                "Reading rc options for 'test' from /w/.bazelrc:\n  Inherited 'common' options: --a_after",
+                "Reading rc options for 'test' from /w/extra.rc:\n  Inherited 'build' options: --jobs=4",
+                "Reading rc options for 'test' from /w/.bazelrc:\n  Inherited 'build' options: --jobs=3",
+                "Reading rc options for 'test' from /w/.bazelrc:\n  'test' options: --test_output=errors",
+                "Found applicable config definition build:ci in file /w/.bazelrc: -c dbg --config=ci2",
+                "Found applicable config definition build:ci2 in file /w/.bazelrc: --jobs=2",
+                "Found applicable config definition test:ci in file /w/.bazelrc: --test_timeout=5",
+            ]
         );
     }
 
