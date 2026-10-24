@@ -138,6 +138,35 @@ pub struct Cli {
     /// Bazel startup option: path to a bazelrc file. Repeatable.
     #[arg(long, global = true)]
     pub bazelrc: Vec<std::path::PathBuf>,
+    /// Bazel startup option: read the system rc file (default).
+    #[arg(long = "system_rc", global = true, overrides_with = "nosystem_rc")]
+    pub system_rc: bool,
+    /// Bazel startup option: do not read the system rc file.
+    #[arg(long = "nosystem_rc", global = true, overrides_with = "system_rc")]
+    pub nosystem_rc: bool,
+    /// Bazel startup option: read the workspace's .bazelrc (default).
+    #[arg(
+        long = "workspace_rc",
+        global = true,
+        overrides_with = "noworkspace_rc"
+    )]
+    pub workspace_rc: bool,
+    /// Bazel startup option: do not read the workspace's .bazelrc.
+    #[arg(
+        long = "noworkspace_rc",
+        global = true,
+        overrides_with = "workspace_rc"
+    )]
+    pub noworkspace_rc: bool,
+    /// Bazel startup option: read the home .bazelrc (default).
+    #[arg(long = "home_rc", global = true, overrides_with = "nohome_rc")]
+    pub home_rc: bool,
+    /// Bazel startup option: do not read the home .bazelrc.
+    #[arg(long = "nohome_rc", global = true, overrides_with = "home_rc")]
+    pub nohome_rc: bool,
+    /// Bazel startup option: read no rc file at all.
+    #[arg(long = "ignore_all_rc_files", global = true)]
+    pub ignore_all_rc_files: bool,
     #[command(subcommand)]
     pub command: Command,
 }
@@ -160,5 +189,22 @@ mod startup_option_tests {
         assert_eq!(cli.output_base, Some("/tmp/ob".into()));
         assert_eq!(cli.output_user_root, Some("/tmp/our".into()));
         assert!(Cli::try_parse_from(["fjfj", "--output-base=/tmp/ob", "build"]).is_err());
+    }
+
+    #[test]
+    fn the_rc_startup_options_are_switches_the_last_of_a_pair_wins() {
+        let cli = Cli::try_parse_from([
+            "fjfj",
+            "--noworkspace_rc",
+            "--nohome_rc",
+            "--home_rc",
+            "--ignore_all_rc_files",
+            "build",
+        ])
+        .unwrap();
+        assert!(cli.noworkspace_rc && !cli.workspace_rc);
+        assert!(cli.home_rc && !cli.nohome_rc);
+        assert!(!cli.nosystem_rc);
+        assert!(cli.ignore_all_rc_files);
     }
 }

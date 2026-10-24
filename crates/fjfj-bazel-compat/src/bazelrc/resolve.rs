@@ -17,6 +17,8 @@ pub struct DiscoveryOptions {
     pub no_system_rc: bool,
     pub no_workspace_rc: bool,
     pub no_home_rc: bool,
+    /// `--ignore_all_rc_files`: read none, whatever the other options say.
+    pub ignore_all_rc_files: bool,
     /// `--bazelrc=PATH`, in the order given; read after the default
     /// locations. An empty path means "stop reading rc files here",
     /// matching Bazel's `--bazelrc=` / `--bazelrc=/dev/null` behavior.
@@ -32,6 +34,7 @@ impl Default for DiscoveryOptions {
             no_system_rc: false,
             no_workspace_rc: false,
             no_home_rc: false,
+            ignore_all_rc_files: false,
             explicit_bazelrc: Vec::new(),
         }
     }
@@ -63,6 +66,9 @@ pub enum ResolveError {
     },
     #[error("import cycle: {}", chain.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join(" -> "))]
     ImportCycle { chain: Vec<PathBuf> },
+    /// A `--bazelrc` file that is not there, in Bazel 9.3.1's words.
+    #[error("Unable to read .bazelrc file '{}'.", .0.display())]
+    UnreadableBazelrc(PathBuf),
     #[error("--config cycle: {} -> {repeated}", chain.join(" -> "))]
     ConfigCycle {
         chain: Vec<String>,
@@ -77,6 +83,9 @@ pub enum ResolveError {
 /// `import`/`try-import` in place, producing one flat, ordered list of
 /// `CommandFlags` lines (across every file) ready for `resolve_command`.
 pub fn discover_and_parse(opts: &DiscoveryOptions) -> Result<Vec<ResolvedLine>, ResolveError> {
+    if opts.ignore_all_rc_files {
+        return Ok(Vec::new());
+    }
     let mut roots = Vec::new();
     if !opts.no_system_rc {
         roots.push(opts.system_rc_path.clone());
@@ -94,6 +103,9 @@ pub fn discover_and_parse(opts: &DiscoveryOptions) -> Result<Vec<ResolvedLine>, 
     for explicit in &opts.explicit_bazelrc {
         if explicit.as_os_str().is_empty() {
             break;
+        }
+        if !explicit.exists() {
+            return Err(ResolveError::UnreadableBazelrc(explicit.clone()));
         }
         roots.push(explicit.clone());
     }

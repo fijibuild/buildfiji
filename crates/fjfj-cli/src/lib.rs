@@ -316,6 +316,18 @@ async fn resolve_workspace_bzlmod(flags: &BzlmodFlags) -> Result<Resolution, Cli
 }
 
 /// The workspace root above the current directory, or Bazel's refusal.
+/// The startup options that say which rc files are read.
+#[derive(Debug, Default)]
+struct RcStartup {
+    no_system_rc: bool,
+    no_workspace_rc: bool,
+    no_home_rc: bool,
+    ignore_all_rc_files: bool,
+    bazelrc: Vec<std::path::PathBuf>,
+}
+
+static RC_STARTUP: std::sync::OnceLock<RcStartup> = std::sync::OnceLock::new();
+
 /// The flags the `.bazelrc` files give `command` (the system, workspace and
 /// home ones, `import`s followed, those of the commands it inherits from
 /// included) and then `args`, with every `--config` of either expanded in
@@ -327,17 +339,19 @@ pub(crate) fn rc_and_args(command: &str, args: &[String]) -> Result<Vec<String>,
     let workspace = std::env::current_dir()
         .ok()
         .and_then(|cwd| workspace::locate(&cwd));
-    let lines = match workspace {
-        Some((workspace_root, _)) => {
-            let options = fjfj_bazel_compat::bazelrc::DiscoveryOptions {
-                workspace_root: Some(workspace_root),
-                home: std::env::var_os("HOME").map(std::path::PathBuf::from),
-                ..Default::default()
-            };
-            fjfj_bazel_compat::bazelrc::discover_and_parse(&options).map_err(bad)?
-        }
-        None => Vec::new(),
+    let startup = RC_STARTUP.get_or_init(RcStartup::default);
+    // Without a workspace only the rc files that do not need one are read.
+    let options = fjfj_bazel_compat::bazelrc::DiscoveryOptions {
+        workspace_root: workspace.map(|(root, _)| root),
+        home: std::env::var_os("HOME").map(std::path::PathBuf::from),
+        no_system_rc: startup.no_system_rc,
+        no_workspace_rc: startup.no_workspace_rc,
+        no_home_rc: startup.no_home_rc,
+        ignore_all_rc_files: startup.ignore_all_rc_files,
+        explicit_bazelrc: startup.bazelrc.clone(),
+        ..Default::default()
     };
+    let lines = fjfj_bazel_compat::bazelrc::discover_and_parse(&options).map_err(bad)?;
     let mut flags = fjfj_bazel_compat::bazelrc::resolve_command(&lines, command).map_err(bad)?;
     flags.extend(
         fjfj_bazel_compat::bazelrc::expand_command_line(&lines, command, args).map_err(bad)?,
@@ -419,6 +433,14 @@ pub fn main() -> std::process::ExitCode {
     // A command in namespaces starts as a fresh process of this program.
     fjfj_sandbox::run_helper_if_asked();
     fjfj_sandbox::use_helper();
+    // `bazel --version` alone prints the version; with another startup option it
+    // is an unknown option (probed on Bazel 9.3.1, buildfiji-2q2e).
+    if std::env::args_os().nth(1).is_some_and(|a| a == "--version")
+        && std::env::args_os().count() == 2
+    {
+        println!("fjfj {}", env!("CARGO_PKG_VERSION"));
+        return std::process::ExitCode::SUCCESS;
+    }
     // exits 2 itself on a flag-syntax error
     let cli = Cli::parse_from(workspace::keep_end_of_options(
         std::env::args_os().collect(),
@@ -471,6 +493,13 @@ pub fn main() -> std::process::ExitCode {
 #[tracing::instrument(skip_all)]
 async fn run(cli: Cli) -> Result<(), CliError> {
     fetch_command::set_startup(cli.output_base.clone(), cli.output_user_root.clone());
+    let _ = RC_STARTUP.set(RcStartup {
+        no_system_rc: cli.nosystem_rc,
+        no_workspace_rc: cli.noworkspace_rc,
+        no_home_rc: cli.nohome_rc,
+        ignore_all_rc_files: cli.ignore_all_rc_files,
+        bazelrc: cli.bazelrc.clone(),
+    });
     match cli.command {
         Command::Version => {
             println!("fjfj {}", env!("CARGO_PKG_VERSION"));
