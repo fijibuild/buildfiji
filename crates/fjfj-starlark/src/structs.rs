@@ -30,7 +30,8 @@ use starlark::values::{
 };
 use starlark_derive::starlark_value;
 use std::fmt;
-use std::hash::Hash;
+use std::hash::{Hash, Hasher};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// A struct, before or after freezing. `names` is sorted and `values` runs
 /// alongside it.
@@ -44,6 +45,13 @@ pub struct StructGen<V> {
     values: Vec<V>,
     /// The provider this is an instance of; none for `struct()` itself.
     provider: Vec<V>,
+    /// The hash of the fields once they have been hashed, 0 before: a struct
+    /// cannot change, and rules nest them (a `CrateInfo` holds the infos of its
+    /// dependencies), so hashing one afresh each time a depset or dict takes it
+    /// is quadratic in the depth of the graph (buildfiji-cho5).
+    #[trace(static)]
+    #[allocative(skip)]
+    hash: AtomicU64,
 }
 
 starlark_complex_value!(pub Struct);
@@ -64,6 +72,7 @@ impl<'v> Freeze for Struct<'v> {
                 .into_iter()
                 .map(|v| v.freeze(freezer))
                 .collect::<FreezeResult<Vec<FrozenValue>>>()?,
+            hash: self.hash,
         })
     }
 }
@@ -175,6 +184,7 @@ fn build<'v>(
         names,
         values,
         provider: provider.into_iter().collect(),
+        hash: AtomicU64::new(0),
     })
 }
 
@@ -231,13 +241,22 @@ where
     }
 
     fn write_hash(&self, hasher: &mut StarlarkHasher) -> starlark::Result<()> {
-        for (name, value) in self.names.iter().zip(&self.values) {
-            name.hash(hasher);
-            value
-                .to_value()
-                .write_hash(hasher)
-                .map_err(|_| fatal("unhashable type: 'struct'"))?;
+        let mut cached = self.hash.load(Ordering::Relaxed);
+        if cached == 0 {
+            // Only a struct whose fields all hashed is kept: what they hold
+            // is immutable then.
+            let mut own = StarlarkHasher::new();
+            for (name, value) in self.names.iter().zip(&self.values) {
+                name.hash(&mut own);
+                value
+                    .to_value()
+                    .write_hash(&mut own)
+                    .map_err(|_| fatal("unhashable type: 'struct'"))?;
+            }
+            cached = own.finish().max(1);
+            self.hash.store(cached, Ordering::Relaxed);
         }
+        cached.hash(hasher);
         Ok(())
     }
 
@@ -380,5 +399,44 @@ fn type_global(builder: &mut starlark::environment::GlobalsBuilder) {
             return Ok(heap.alloc("FeatureFlagInfo"));
         }
         Ok(a.get_type_value().to_value())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::test_support::run;
+
+    /// Rules nest structs and hand them to depsets and dicts; a struct that
+    /// holds one twice, 64 deep, would take 2^64 steps to hash afresh each time
+    /// (buildfiji-cho5).
+    #[test]
+    fn a_nested_struct_is_hashed_once() {
+        let out = run(r#"
+def deep():
+    s = struct(x = 1)
+    for _ in range(64):
+        s = struct(l = s, r = s)
+    return s
+s = deep()
+d = {s: 1}
+print(d[s])
+print(len(depset([s, s, struct(y = 2)]).to_list()))
+"#)
+        .unwrap();
+        assert_eq!(out, ["1", "2"]);
+    }
+
+    #[test]
+    fn equal_structs_hash_alike_and_an_unhashable_field_still_refuses() {
+        let out = run(r#"
+print({struct(a = 1, b = "x"): 1}[struct(a = 1, b = "x")])
+"#)
+        .unwrap();
+        assert_eq!(out, ["1"]);
+        let err = run(r#"
+d = {struct(a = [1]): 1}
+"#)
+        .unwrap_err();
+        assert!(err.contains("unhashable"), "{err}");
     }
 }
