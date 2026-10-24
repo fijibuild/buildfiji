@@ -68,6 +68,9 @@ pub enum ResolveError {
         chain: Vec<String>,
         repeated: String,
     },
+    /// Bazel 9.3.1's wording, and its exit code is a command-line error's.
+    #[error("Config value '{0}' is not defined in any .rc file")]
+    UndefinedConfig(String),
 }
 
 /// Discover `.bazelrc` files per `opts`, parse each, and expand every
@@ -199,8 +202,10 @@ fn resolve_import_path(importer: &Path, raw: &str, workspace_root: Option<&Path>
 /// their line numbers; buildfiji-ez35), with each `--config=NAME` flag
 /// expanded in place to the flags of every matching `command:NAME` line, in
 /// that same command order and recursively, so a config's own flags may
-/// reference further configs. A config that (transitively) references itself
-/// is an error rather than an infinite expansion.
+/// reference further configs. The `--config` token itself is spent in the
+/// expansion. A config that (transitively) references itself is an error
+/// rather than an infinite expansion, and so is one no line defines for
+/// `command` (buildfiji-iggq).
 pub fn resolve_command(lines: &[ResolvedLine], command: &str) -> Result<Vec<String>, ResolveError> {
     let mut out = Vec::new();
     let mut active_chain = Vec::new();
@@ -227,8 +232,23 @@ pub fn resolve_command(lines: &[ResolvedLine], command: &str) -> Result<Vec<Stri
     });
     if enabled {
         let os = std::env::consts::OS;
-        expand_config(lines, command, os, &mut out, &mut active_chain)?;
+        expand_config(lines, command, os, false, &mut out, &mut active_chain)?;
     }
+    Ok(out)
+}
+
+/// `args` (flags and patterns of a command line) with each `--config=NAME` or
+/// `--config NAME` before the `--` marker expanded in place, as the rc files'
+/// own are. The flags of the rc files come first, from [`resolve_command`].
+pub fn expand_command_line(
+    lines: &[ResolvedLine],
+    command: &str,
+    args: &[String],
+) -> Result<Vec<String>, ResolveError> {
+    let mut out = Vec::with_capacity(args.len());
+    let end = args.iter().position(|a| a == "--").unwrap_or(args.len());
+    append_expanding(lines, command, &args[..end], &mut out, &mut Vec::new())?;
+    out.extend(args[end..].iter().cloned());
     Ok(out)
 }
 
@@ -236,7 +256,9 @@ pub fn resolve_command(lines: &[ResolvedLine], command: &str) -> Result<Vec<Stri
 /// `test` and `run` read `build`'s, `coverage` `test`'s and so `build`'s.
 fn inherits(command: &str) -> &'static [&'static str] {
     match command {
-        "test" | "run" | "cquery" | "aquery" | "mobile-install" | "print_action" => &["build"],
+        "test" | "run" | "cquery" | "aquery" | "mobile-install" | "print_action" | "info" => {
+            &["build"]
+        }
         "coverage" => &["build", "test"],
         _ => &[],
     }
@@ -260,19 +282,29 @@ fn append_expanding(
     out: &mut Vec<String>,
     active_chain: &mut Vec<String>,
 ) -> Result<(), ResolveError> {
-    for flag in flags {
-        out.push(flag.clone());
-        if let Some(config_name) = flag.strip_prefix("--config=") {
-            expand_config(lines, command, config_name, out, active_chain)?;
+    let mut iter = flags.iter();
+    while let Some(flag) = iter.next() {
+        let name = match flag.strip_prefix("--config=") {
+            Some(name) => Some(name.to_owned()),
+            // `--config NAME`: the next word is the name.
+            None if flag == "--config" => iter.next().cloned(),
+            None => None,
+        };
+        match name {
+            Some(name) => expand_config(lines, command, &name, true, out, active_chain)?,
+            None => out.push(flag.clone()),
         }
     }
     Ok(())
 }
 
+/// The flags of every `command:NAME` line, `required` to exist for `command`
+/// (a config an option asks for by name must, the host OS's need not).
 fn expand_config(
     lines: &[ResolvedLine],
     command: &str,
     config_name: &str,
+    required: bool,
     out: &mut Vec<String>,
     active_chain: &mut Vec<String>,
 ) -> Result<(), ResolveError> {
@@ -283,14 +315,19 @@ fn expand_config(
         });
     }
     active_chain.push(config_name.to_string());
+    let mut defined = false;
     for applicable in command_chain(command) {
         for line in lines {
             if line.config.as_deref() == Some(config_name) && line.command == applicable {
+                defined = true;
                 append_expanding(lines, command, &line.flags, out, active_chain)?;
             }
         }
     }
     active_chain.pop();
+    if required && !defined {
+        return Err(ResolveError::UndefinedConfig(config_name.to_owned()));
+    }
     Ok(())
 }
 
@@ -363,8 +400,37 @@ mod tests {
         ];
         assert_eq!(
             resolve_command(&lines, "test").unwrap(),
-            vec!["--config=ci", "--b", "--config=ci2", "--b2", "--t"]
+            vec!["--b", "--b2", "--t"]
         );
+    }
+
+    #[test]
+    fn the_command_lines_configs_expand_in_both_spellings_before_the_marker() {
+        let lines = vec![
+            line("build", Some("d"), &["-c", "dbg"]),
+            line("common", Some("e"), &["--jobs=2"]),
+        ];
+        let args: Vec<String> = ["//:g", "--config=d", "--config", "e", "--", "--config=d"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        assert_eq!(
+            expand_command_line(&lines, "build", &args).unwrap(),
+            vec!["//:g", "-c", "dbg", "--jobs=2", "--", "--config=d"]
+        );
+        let undefined = ["--config=nope".to_owned()];
+        assert_eq!(
+            expand_command_line(&lines, "build", &undefined)
+                .unwrap_err()
+                .to_string(),
+            "Config value 'nope' is not defined in any .rc file"
+        );
+    }
+
+    #[test]
+    fn info_reads_the_build_section() {
+        let lines = vec![line("build", None, &["--b"]), line("info", None, &["--i"])];
+        assert_eq!(resolve_command(&lines, "info").unwrap(), vec!["--b", "--i"]);
     }
 
     #[test]
@@ -376,11 +442,7 @@ mod tests {
         ];
         assert_eq!(
             resolve_command(&lines, "build").unwrap(),
-            vec![
-                "--config=asan",
-                "--define=asan=true",
-                "--copt=-fsanitize=address",
-            ]
+            vec!["--define=asan=true", "--copt=-fsanitize=address"]
         );
     }
 
@@ -413,12 +475,7 @@ mod tests {
         ];
         assert_eq!(
             resolve_command(&lines, "build").unwrap(),
-            vec![
-                "--config=ci",
-                "--config=asan",
-                "--copt=-fsanitize=address",
-                "--jobs=4",
-            ]
+            vec!["--copt=-fsanitize=address", "--jobs=4"]
         );
     }
 
@@ -440,10 +497,10 @@ mod tests {
             line("build", None, &["--config=asan"]),
             line("test", Some("asan"), &["--test_arg=--asan"]),
         ];
-        // The `test:asan` line doesn't match `build`'s `--config=asan`.
-        assert_eq!(
-            resolve_command(&lines, "build").unwrap(),
-            vec!["--config=asan"]
-        );
+        // The `test:asan` line doesn't define `asan` for `build`.
+        assert!(matches!(
+            resolve_command(&lines, "build"),
+            Err(ResolveError::UndefinedConfig(name)) if name == "asan"
+        ));
     }
 }

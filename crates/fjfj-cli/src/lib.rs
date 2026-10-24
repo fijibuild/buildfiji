@@ -316,25 +316,33 @@ async fn resolve_workspace_bzlmod(flags: &BzlmodFlags) -> Result<Resolution, Cli
 }
 
 /// The workspace root above the current directory, or Bazel's refusal.
-/// The flags the `.bazelrc` files give `command`: the system, workspace and
-/// home ones, `import`s and `--config`s expanded, those of the commands it
-/// inherits from included. Nothing if there is no workspace here.
-pub(crate) fn rc_flags(command: &str) -> Result<Vec<String>, CliError> {
-    let Ok(cwd) = std::env::current_dir() else {
-        return Ok(Vec::new());
+/// The flags the `.bazelrc` files give `command` (the system, workspace and
+/// home ones, `import`s followed, those of the commands it inherits from
+/// included) and then `args`, with every `--config` of either expanded in
+/// place, so the command line overrides the rc files. Nothing but `args` if
+/// there is no workspace here.
+pub(crate) fn rc_and_args(command: &str, args: &[String]) -> Result<Vec<String>, CliError> {
+    let bad =
+        |e: fjfj_bazel_compat::bazelrc::ResolveError| CliError::CommandLine(anyhow::anyhow!("{e}"));
+    let workspace = std::env::current_dir()
+        .ok()
+        .and_then(|cwd| workspace::locate(&cwd));
+    let lines = match workspace {
+        Some((workspace_root, _)) => {
+            let options = fjfj_bazel_compat::bazelrc::DiscoveryOptions {
+                workspace_root: Some(workspace_root),
+                home: std::env::var_os("HOME").map(std::path::PathBuf::from),
+                ..Default::default()
+            };
+            fjfj_bazel_compat::bazelrc::discover_and_parse(&options).map_err(bad)?
+        }
+        None => Vec::new(),
     };
-    let Some((workspace_root, _)) = workspace::locate(&cwd) else {
-        return Ok(Vec::new());
-    };
-    let options = fjfj_bazel_compat::bazelrc::DiscoveryOptions {
-        workspace_root: Some(workspace_root),
-        home: std::env::var_os("HOME").map(std::path::PathBuf::from),
-        ..Default::default()
-    };
-    let lines = fjfj_bazel_compat::bazelrc::discover_and_parse(&options)
-        .map_err(|e| CliError::CommandLine(anyhow::anyhow!("{e}")))?;
-    fjfj_bazel_compat::bazelrc::resolve_command(&lines, command)
-        .map_err(|e| CliError::CommandLine(anyhow::anyhow!("{e}")))
+    let mut flags = fjfj_bazel_compat::bazelrc::resolve_command(&lines, command).map_err(bad)?;
+    flags.extend(
+        fjfj_bazel_compat::bazelrc::expand_command_line(&lines, command, args).map_err(bad)?,
+    );
+    Ok(flags)
 }
 
 fn locate_workspace_root(command: &str) -> Result<std::path::PathBuf, CliError> {
@@ -610,11 +618,7 @@ async fn build_main(
     let started = std::time::Instant::now();
     // The flags the rc files give the command come first, so the command
     // line overrides them.
-    let rc = rc_flags(command)?;
-    let with_rc: Vec<String> = rc
-        .into_iter()
-        .chain(args.patterns.iter().cloned())
-        .collect();
+    let with_rc = rc_and_args(command, &args.patterns)?;
     // Only what follows `--` is a pattern that may start with `-`.
     let (before, after_marker) = workspace::split_end_of_options(&with_rc);
     if let Some(negative) = before

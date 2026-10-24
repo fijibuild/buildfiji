@@ -80,10 +80,7 @@ fn say(out: &mut dyn Write, flags: &Flags, cleaned: &Cleaned) -> std::io::Result
 }
 
 pub(crate) async fn run(args: QueryArgs) -> Result<(), CliError> {
-    let with_rc: Vec<String> = crate::rc_flags("clean")?
-        .into_iter()
-        .chain(args.expr.iter().cloned())
-        .collect();
+    let with_rc = crate::rc_and_args("clean", &args.expr)?;
     let rest = crate::drop_build_family_flags(with_rc, "clean")?;
     let (fetch, rest) = fetch_command::extract(&rest)?;
     let mut implemented: Vec<&'static str> = build_flags::IMPLEMENTED.to_vec();

@@ -223,10 +223,7 @@ fn first_package_in(expr: &fjfj_query::Expr, repos: &fjfj_repo::Repos, repo: &st
 
 pub(crate) async fn run(args: QueryArgs) -> Result<(), CliError> {
     // What the rc files give `query`, which the command line overrides.
-    let with_rc: Vec<String> = crate::rc_flags("query")?
-        .into_iter()
-        .chain(args.expr.iter().cloned())
-        .collect();
+    let with_rc = crate::rc_and_args("query", &args.expr)?;
     let (flags, rest) = extract(&with_rc)?;
     let rest = crate::drop_build_family_flags(rest, "query")?;
     let (bzlmod, rest) = bzlmod_flags::extract(&rest, "query");

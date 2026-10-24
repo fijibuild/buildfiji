@@ -23,10 +23,7 @@ const STARLARK_SEMANTICS: &str = "StarlarkSemantics{internal_bazel_only_utf_8_by
 
 pub(crate) async fn run(args: QueryArgs) -> Result<(), CliError> {
     let bad = |message: String| CliError::CommandLine(anyhow::anyhow!(message));
-    let with_rc: Vec<String> = crate::rc_flags("info")?
-        .into_iter()
-        .chain(args.expr.iter().cloned())
-        .collect();
+    let with_rc = crate::rc_and_args("info", &args.expr)?;
     let rest = crate::drop_build_family_flags(with_rc, "info")?;
     let (fetch, rest) = fetch_command::extract(&rest)?;
     let mut implemented: Vec<&'static str> = build_flags::IMPLEMENTED.to_vec();

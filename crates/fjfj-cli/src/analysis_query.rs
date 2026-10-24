@@ -322,10 +322,7 @@ pub(crate) async fn run(args: QueryArgs, kind: Kind) -> Result<(), CliError> {
     let command = kind.name();
     // What the rc files give the command comes first, as for `build`, so the
     // command line overrides it.
-    let with_rc: Vec<String> = crate::rc_flags(command)?
-        .into_iter()
-        .chain(args.expr.iter().cloned())
-        .collect();
+    let with_rc = crate::rc_and_args(command, &args.expr)?;
     let with_rc = fjfj_bazel_compat::option_syntax::normalize(&with_rc, command)
         .map_err(|e| CliError::CommandLine(anyhow::anyhow!(e)))?;
     let (flags, rest) = extract(kind, &with_rc)?;
